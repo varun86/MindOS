@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn } from 'child_process';
-import { spawnAcpAgent } from './subprocess';
+import fs from 'node:fs';
+import path from 'node:path';
+import { killAgent, spawnAcpAgent } from './subprocess';
 
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
@@ -76,5 +78,40 @@ describe('spawnAcpAgent', () => {
       ['--yes', '@agentclientprotocol/claude-agent-acp'],
       expect.objectContaining({ shell: false }),
     );
+  });
+});
+
+describe('killAgent', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    mockExecFileSync.mockReset();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('uses argv-safe taskkill for Windows process trees', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    const acpProc = {
+      id: 'acp-test-1',
+      agentId: 'test',
+      proc: makeChildProcess(),
+      alive: true,
+    };
+
+    killAgent(acpProc);
+
+    expect(mockExecFileSync).toHaveBeenCalledWith('taskkill', ['/PID', '4321', '/T', '/F'], { stdio: 'ignore' });
+    expect(acpProc.alive).toBe(false);
+  });
+
+  it('keeps process cleanup subprocess calls argv-safe', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'subprocess.ts'), 'utf-8');
+
+    expect(source).not.toContain('execSync(');
+    expect(source).not.toContain('taskkill /PID ${pid}');
+    expect(source).toContain("execFileSync('taskkill', ['/PID', String(pid), '/T', '/F']");
   });
 });

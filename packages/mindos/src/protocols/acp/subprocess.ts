@@ -4,7 +4,7 @@
  * All JSON-RPC protocol handling is delegated to @agentclientprotocol/sdk.
  */
 
-import { execSync, spawn, type ChildProcess } from 'child_process';
+import { execFileSync, spawn, type ChildProcess } from 'child_process';
 import { Readable, Writable } from 'node:stream';
 import path from 'path';
 import os from 'os';
@@ -207,7 +207,7 @@ export function killAgent(acpProc: AcpProcess): void {
   if (isWin) {
     // Windows: Use taskkill /T to kill process tree
     try {
-      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+      execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
     } catch {
       // Process already dead or taskkill unavailable
     }

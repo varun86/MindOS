@@ -2139,6 +2139,12 @@ mindos onboard
 - **解决：** 改为 `execFileSync(command, ['--version'])`，`command` 只在 `npm` / `pnpm` 两个静态值之间选择。
 - **防回归：** `tests/unit/cli-build.test.ts` 增加 source contract，并断言 workspace install 分支调用 `execFileSync('pnpm', ['--version'], ...)`。
 
+### ACP Windows taskkill 不要拼 shell 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/src/protocols/acp/subprocess.ts` 的 `killAgent()` 在 Windows 分支用 ``execSync(`taskkill /PID ${pid} /T /F`)``。PID 来自子进程对象，但仍会把进程控制交给 shell 解析，和 CLI stop/update 的 argv 安全规则不一致。
+- **解决：** 改为 `execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })`，保留 Windows 进程树终止语义，同时避免 shell 字符串。
+- **防回归：** `packages/mindos/src/protocols/acp/subprocess.test.ts` 覆盖 Windows killAgent 行为，并禁止 subprocess 源码重新出现 `execSync(` / `taskkill /PID ${pid}`。
+
 ### Desktop 私有 Node 的 macOS quarantine 清理不能拼 shell 路径 (2026-05-10)
 
 - **问题：** `packages/desktop/src/node-bootstrap.ts` 下载私有 Node 后用 `execSync(\`xattr ... "${NODE_DIR}"\`)` 清理 quarantine。用户 home / app support 路径如果包含引号、`$` 等字符，会重新进入 shell 解析。
@@ -2538,7 +2544,7 @@ exit 0
 if (process.platform === 'win32') {
   // Windows: use taskkill to kill process tree
   try {
-    execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
   } catch (err) {
     // Process may already be dead
   }
