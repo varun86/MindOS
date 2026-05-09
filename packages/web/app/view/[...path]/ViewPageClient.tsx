@@ -348,15 +348,16 @@ export default function ViewPageClient({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === 's') {
         e.preventDefault();
         if (editing) handleSave();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !editing) {
+      if ((e.metaKey || e.ctrlKey) && key === 'f' && !editing) {
         e.preventDefault();
         setFindOpen(true);
       }
-      if (e.key === 'e' && !editing && !isBinaryFile && document.activeElement?.tagName === 'BODY') {
+      if (key === 'e' && !editing && !isBinaryFile && document.activeElement?.tagName === 'BODY') {
         handleEdit();
       }
       if (e.key === 'Escape' && editing && !isMarkdown) handleCancel();

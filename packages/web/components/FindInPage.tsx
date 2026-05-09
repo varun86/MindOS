@@ -16,6 +16,7 @@ export default function FindInPage({ containerRef, onClose }: FindInPageProps) {
   const { t } = useLocale();
   const [query, setQuery] = useState('');
   const [current, setCurrent] = useState(0);
+  const [totalMarks, setTotalMarks] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const marksRef = useRef<HTMLElement[]>([]);
 
@@ -40,6 +41,7 @@ export default function FindInPage({ containerRef, onClose }: FindInPageProps) {
   useEffect(() => {
     clearHighlights();
     setCurrent(0);
+    setTotalMarks(0);
 
     const container = containerRef.current;
     if (!container || !query.trim()) return;
@@ -100,6 +102,7 @@ export default function FindInPage({ containerRef, onClose }: FindInPageProps) {
     }
 
     marksRef.current = newMarks;
+    setTotalMarks(newMarks.length);
     setCurrent(newMarks.length > 0 ? 1 : 0);
 
     // Highlight first match
@@ -119,8 +122,6 @@ export default function FindInPage({ containerRef, onClose }: FindInPageProps) {
       clearHighlights();
     };
   }, [clearHighlights]);
-
-  const totalMarks = marksRef.current.length;
 
   const goTo = useCallback((index: number) => {
     const marks = marksRef.current;

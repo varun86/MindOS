@@ -1965,7 +1965,13 @@ mindos onboard
 - 批量查找替换 `focus:` → `focus-visible:` 时，必须保留 `focus:outline-none`
 - 任何含 `backdrop-filter` 的元素都会成为 containing block，影响子元素 `position: fixed`
 
+### KeyboardEvent.key 在快捷键中可能是大写 (2026-05-10)
 
+**症状**：`Ctrl+F` / `Cmd+F` 触发浏览器 keydown 时，Chromium/Playwright 可能上报 `e.key === 'F'`，代码只判断 `e.key === 'f'` 会导致应用内查找栏打不开；`Ctrl+S` 同理可能跳过保存逻辑。
+
+**规则**：处理字母快捷键时先 `const key = e.key.toLowerCase()`，后续用 `key === 'f'` / `key === 's'` 判断；非字母键（如 `Escape`、`Enter`）保持原始 key 判断。
+
+**防回归**：`packages/web/__tests__/components/view-page-find-shortcut.test.ts` 检查 `ViewPageClient` 对字母快捷键统一 lowercase。
 
 ## Agent 重试 / Retry
 
@@ -2532,7 +2538,7 @@ const visibleNodes = useMemo(() => {
 - 不要为了消除依赖数组而在 render 中写 callback ref；优先让 effect 明确依赖最新 callback
 - 如果 ref 只是缓存初始化快照，先用 lazy `useState` 读取外部存储，再用这个普通 state 值初始化 ref 和其他 state，避免在 render 阶段读取 `ref.current`
 
-**防回归**：`packages/web/__tests__/hooks/useResizeDrag-lint.test.ts`、`packages/web/__tests__/renderers/useRendererState-lint.test.ts`、`packages/web/__tests__/lib/LocaleStoreInit-lint.test.ts`、`packages/web/__tests__/hooks/acp-hooks-lint.test.ts` 和 `packages/web/__tests__/hooks/hook-ref-lint.test.ts` 用 ESLint JSON 输出断言关键启动/render hook 不再出现 `react-hooks/refs` warning。
+**防回归**：`packages/web/__tests__/hooks/useResizeDrag-lint.test.ts`、`packages/web/__tests__/renderers/useRendererState-lint.test.ts`、`packages/web/__tests__/lib/LocaleStoreInit-lint.test.ts`、`packages/web/__tests__/hooks/acp-hooks-lint.test.ts`、`packages/web/__tests__/hooks/hook-ref-lint.test.ts` 和 `packages/web/__tests__/components/find-in-page-lint.test.ts` 用 ESLint JSON 输出断言关键启动/render hook 不再出现 `react-hooks/refs` warning。
 
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
