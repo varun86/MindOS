@@ -14,6 +14,7 @@
     "start": "next start -p ${MINDOS_WEB_PORT:-3456}",
     "lint": "eslint",
     "test": "vitest run",
+    "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "postinstall": "node ../../scripts/fix-postcss-deps.cjs"
   },

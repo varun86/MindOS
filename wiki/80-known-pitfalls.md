@@ -2491,6 +2491,19 @@ const visibleNodes = useMemo(() => {
 
 ## CI / Release
 
+### 根 type-check 只跑到少数 package，主要客户端漏检（2026-05-10）
+
+**症状**：`pnpm run type-check` 显示成功，但输出里实际只跑了 `@geminilight/mindos`、`@mindos/search`、`@mindos/vector` 等少数包；Web、Desktop、Mobile、Browser Extension、retrieval API/Indexer 没有进入根质量门。
+
+**根因**：根脚本执行 `turbo run type-check`，但多个 package 只声明了 `typecheck` 或没有 type-check 脚本。Turbo 只会运行同名任务，命名不一致会静默跳过。
+
+**修复**：
+- 所有有 `tsconfig.json` 且属于 workspace 的 TS package 都声明 `"type-check": "tsc --noEmit"`
+- 对已有外部 workflow 仍使用 `typecheck` 的包，保留 `typecheck` 兼容别名
+- Browser Extension 直接 import `turndown`，必须声明 `@types/turndown`，否则纳入 type-check 后会暴露 TS7016
+
+**防回归**：`tests/test-architecture-contract.test.ts` 检查 workspace TS package 的 `type-check` 脚本，`pnpm run type-check` 应至少覆盖 10 个真实 TS package。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

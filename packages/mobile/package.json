@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "eslint .",
     "test": "vitest run",
+    "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "build:dev": "eas build --profile development --platform all",
     "build:preview": "eas build --profile preview --platform all",

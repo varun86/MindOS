@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(__dirname, '..');
@@ -43,6 +43,30 @@ describe('test architecture contract', () => {
     expect(pkg.scripts?.['test:unit']).toBe('vitest run tests/unit/*.test.ts');
     expect(pkg.scripts?.['test:integration']).toBe('vitest run --config tests/integration/vitest.config.ts');
     expect(pkg.scripts?.['test:e2e']).toBe('playwright test -c tests/e2e/playwright.config.ts');
+  });
+
+  it('keeps workspace TypeScript packages covered by the root type-check script', () => {
+    const workspacePackageDirs = [
+      'packages/browser-extension',
+      'packages/desktop-tauri',
+      'packages/mindos',
+      'packages/web',
+      'packages/desktop',
+      'packages/mobile',
+      'packages/retrieval/api',
+      'packages/retrieval/indexer',
+      'packages/retrieval/search',
+      'packages/retrieval/vector',
+    ];
+
+    for (const packageDir of workspacePackageDirs) {
+      expect(existsSync(resolve(root, packageDir, 'tsconfig.json')), packageDir).toBe(true);
+      const pkg = JSON.parse(readFileSync(resolve(root, packageDir, 'package.json'), 'utf-8')) as {
+        scripts?: Record<string, string>;
+      };
+
+      expect(pkg.scripts?.['type-check'], packageDir).toBe('tsc --noEmit');
+    }
   });
 
   it('keeps the product package test script scoped to product source tests', () => {

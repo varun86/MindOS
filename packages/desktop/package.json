@@ -18,6 +18,7 @@
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
+    "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepare-mindos-runtime": "node scripts/prepare-mindos-runtime.mjs",
