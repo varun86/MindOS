@@ -2085,6 +2085,12 @@ mindos onboard
 - **解决：** 改为 `execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], ...)`，逐个检查返回候选并继续跳过 `~/.mindos/bin` shim。
 - **规则：** daemon/service 安装脚本也必须遵守"命令查找走 argv"规则；不能因为命令名固定就回退到 shell 字符串。
 
+### gateway service 管理命令不要拼 systemctl/launchctl 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/bin/lib/gateway.js` 的 systemd/launchd 分支仍用 `execSync('systemctl ...')`、``execSync(`launchctl ... ${LAUNCHD_PLIST}`)``、``execSync(`tail -f ${LOG_PATH}`)``。daemon 安装/启停路径直接处理用户 home、plist 路径和日志路径，shell 解析会让空格、引号、`$` 等路径字符变成启动失败或误诊断。
+- **解决：** `id`、`systemctl`、`journalctl`、`launchctl`、`tail` 全部改成 `execFileSync(command, args)`；`gui/<uid>/...`、`LAUNCHD_PLIST`、`LOG_PATH` 都作为独立 argv 参数传入。
+- **防回归：** `tests/unit/cli-gateway.test.ts` 禁止 `gateway.js` 重新引入 `execSync(`，并断言 systemctl/journalctl/launchctl/tail 的关键调用保留 argv 形式。
+
 ### `mindos open` 不要把端口拼进浏览器启动 shell 字符串 (2026-05-10)
 
 - **问题：** `packages/mindos/bin/commands/open.js` 从 `MINDOS_WEB_PORT` 直接拼 URL，再用 `execSync(\`start ...\`)` / `execSync(\`${cmd} ...\`)` 启动浏览器。端口配置异常时会生成坏 URL；Windows `start` 还会重新进入 shell 解析。

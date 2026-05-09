@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, statSync, renameSync, unlinkSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -220,7 +220,7 @@ export async function waitForHttp(port, { retries = 60, intervalMs = 2000, label
 }
 
 function launchctlUid() {
-  return execSync('id -u').toString().trim();
+  return execFileSync('id', ['-u'], { stdio: 'pipe' }).toString().trim();
 }
 
 // ── systemd (Linux) ──────────────────────────────────────────────────────────
@@ -256,53 +256,53 @@ const systemd = {
     ].join('\n');
     writeFileSync(SYSTEMD_UNIT, unit, 'utf-8');
     console.log(green(`\u2714 Wrote ${SYSTEMD_UNIT}`));
-    execSync('systemctl --user daemon-reload', { stdio: ['ignore', 'inherit', 'inherit'] });
-    execSync('systemctl --user enable mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
-    execSync('systemctl --user start mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'enable', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'start', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
     console.log(green('\u2714 Service installed and started'));
   },
 
   async start() {
     rotateLogs();
-    execSync('systemctl --user start mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'start', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
     const ok = await waitForService(() => {
       try {
-        const out = execSync('systemctl --user is-active mindos', { encoding: 'utf-8' }).trim();
+        const out = execFileSync('systemctl', ['--user', 'is-active', 'mindos'], { encoding: 'utf-8' }).trim();
         return out === 'active';
       } catch { return false; }
     });
     if (!ok) {
       console.error(red('\n\u2718 Service failed to start. Last log output:'));
-      try { execSync(`journalctl --user -u mindos -n 30 --no-pager`, { stdio: ['ignore', 'inherit', 'inherit'] }); } catch {}
+      try { execFileSync('journalctl', ['--user', '-u', 'mindos', '-n', '30', '--no-pager'], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch {}
       process.exit(1);
     }
     console.log(green('\u2714 Service started'));
   },
 
   stop() {
-    execSync('systemctl --user stop mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'stop', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
     console.log(green('\u2714 Service stopped'));
   },
 
   status() {
     try {
-      execSync('systemctl --user status mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync('systemctl', ['--user', 'status', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
     } catch { /* status exits non-zero when stopped */ }
   },
 
   logs() {
-    execSync(`journalctl --user -u mindos -f`, { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('journalctl', ['--user', '-u', 'mindos', '-f'], { stdio: ['ignore', 'inherit', 'inherit'] });
   },
 
   uninstall() {
     try {
-      execSync('systemctl --user disable --now mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync('systemctl', ['--user', 'disable', '--now', 'mindos'], { stdio: ['ignore', 'inherit', 'inherit'] });
     } catch { /* may already be stopped */ }
     if (existsSync(SYSTEMD_UNIT)) {
       rmSync(SYSTEMD_UNIT);
       console.log(green(`\u2714 Removed ${SYSTEMD_UNIT}`));
     }
-    execSync('systemctl --user daemon-reload', { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: ['ignore', 'inherit', 'inherit'] });
     console.log(green('\u2714 Service uninstalled'));
   },
 };
@@ -350,9 +350,9 @@ const launchd = {
 `;
     writeFileSync(LAUNCHD_PLIST, plist, 'utf-8');
     console.log(green(`\u2714 Wrote ${LAUNCHD_PLIST}`));
-    try { execSync(`launchctl bootout gui/${launchctlUid()}/${LAUNCHD_LABEL}`, { stdio: 'pipe' }); } catch {}
+    try { execFileSync('launchctl', ['bootout', `gui/${launchctlUid()}/${LAUNCHD_LABEL}`], { stdio: 'pipe' }); } catch {}
     try {
-      execSync(`launchctl bootstrap gui/${launchctlUid()} ${LAUNCHD_PLIST}`, { stdio: 'pipe' });
+      execFileSync('launchctl', ['bootstrap', `gui/${launchctlUid()}`, LAUNCHD_PLIST], { stdio: 'pipe' });
     } catch (e) {
       const msg = (e.stderr?.toString() ?? e.message ?? '').trim();
       console.error(red(`\n\u2718 launchctl bootstrap failed: ${msg}`));
@@ -364,16 +364,16 @@ const launchd = {
 
   async start() {
     rotateLogs();
-    execSync(`launchctl kickstart -k gui/${launchctlUid()}/${LAUNCHD_LABEL}`, { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('launchctl', ['kickstart', '-k', `gui/${launchctlUid()}/${LAUNCHD_LABEL}`], { stdio: ['ignore', 'inherit', 'inherit'] });
     const ok = await waitForService(() => {
       try {
-        const out = execSync(`launchctl print gui/${launchctlUid()}/${LAUNCHD_LABEL}`, { encoding: 'utf-8' });
+        const out = execFileSync('launchctl', ['print', `gui/${launchctlUid()}/${LAUNCHD_LABEL}`], { encoding: 'utf-8' });
         return out.includes('state = running');
       } catch { return false; }
     });
     if (!ok) {
       console.error(red('\n\u2718 Service failed to start. Last log output:'));
-      try { execSync(`tail -n 30 ${LOG_PATH}`, { stdio: ['ignore', 'inherit', 'inherit'] }); } catch {}
+      try { execFileSync('tail', ['-n', '30', LOG_PATH], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch {}
       process.exit(1);
     }
     console.log(green('\u2714 Service started'));
@@ -389,7 +389,7 @@ const launchd = {
     } catch {}
 
     try {
-      execSync(`launchctl bootout gui/${launchctlUid()} ${LAUNCHD_PLIST}`, { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync('launchctl', ['bootout', `gui/${launchctlUid()}`, LAUNCHD_PLIST], { stdio: ['ignore', 'inherit', 'inherit'] });
     } catch { /* may not be running */ }
 
     // launchctl bootout is async — wait for ports to actually be freed
@@ -415,19 +415,19 @@ const launchd = {
 
   status() {
     try {
-      execSync(`launchctl print gui/${launchctlUid()}/${LAUNCHD_LABEL}`, { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync('launchctl', ['print', `gui/${launchctlUid()}/${LAUNCHD_LABEL}`], { stdio: ['ignore', 'inherit', 'inherit'] });
     } catch {
       console.log(dim('Service is not running'));
     }
   },
 
   logs() {
-    execSync(`tail -f ${LOG_PATH}`, { stdio: ['ignore', 'inherit', 'inherit'] });
+    execFileSync('tail', ['-f', LOG_PATH], { stdio: ['ignore', 'inherit', 'inherit'] });
   },
 
   uninstall() {
     try {
-      execSync(`launchctl bootout gui/${launchctlUid()} ${LAUNCHD_PLIST}`, { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync('launchctl', ['bootout', `gui/${launchctlUid()}`, LAUNCHD_PLIST], { stdio: ['ignore', 'inherit', 'inherit'] });
     } catch { /* may not be running */ }
     if (existsSync(LAUNCHD_PLIST)) {
       rmSync(LAUNCHD_PLIST);
