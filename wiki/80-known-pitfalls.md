@@ -2073,6 +2073,12 @@ mindos onboard
 - **解决：** 改为 `execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], ...)`，并在 `tests/unit/cli-update-root.test.ts` 加 source contract，避免回退到 shell 字符串。
 - **规则：** CLI 里即使命令名是静态字符串，查 PATH 也必须走 argv；`execSync('which ...')` / `execSync('where ...')` 不允许新增。
 
+### gateway service 查找 `mindos` binary 不要拼 shell 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/bin/lib/gateway.js` 的 `getCurrentCliPath()` 仍用 `execSync('which mindos')` / `execSync('where mindos')` 解析 service 启动入口。`mindos gateway install` 运行在更新、daemon、GUI/终端 PATH 不一致等场景时，这类 shell 字符串会复用旧的脆弱命令查找逻辑。
+- **解决：** 改为 `execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], ...)`，逐个检查返回候选并继续跳过 `~/.mindos/bin` shim。
+- **规则：** daemon/service 安装脚本也必须遵守"命令查找走 argv"规则；不能因为命令名固定就回退到 shell 字符串。
+
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
 
 - **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。

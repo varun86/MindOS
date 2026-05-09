@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, statSync, renameSync, unlinkSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -20,10 +20,12 @@ import { stripBom } from './jsonc.js';
 function getCurrentCliPath() {
   const shimBinDir = resolve(MINDOS_DIR, 'bin');
   try {
-    const whichCmd = process.platform === 'win32' ? 'where mindos' : 'which mindos';
-    // `where` on Windows can return multiple lines; take the first match
-    const mindosBin = execSync(whichCmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
-    if (mindosBin) {
+    const mindosBins = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] })
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean);
+    // `where` on Windows can return multiple lines; check each candidate.
+    for (const mindosBin of mindosBins) {
       try {
         const realPath = realpathSync(mindosBin);
         if (existsSync(realPath) && resolve(dirname(realPath)) !== shimBinDir) return realPath;
