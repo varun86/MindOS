@@ -2521,6 +2521,18 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/test-architecture-contract.test.ts` 检查共享 ESLint 依赖和根 `eslint.config.mjs`。`pnpm run lint` 必须能完整跑完，warning 视为待清理 backlog。
 
+### 自定义 hook 不要在 render 阶段写 ref.current（2026-05-10）
+
+**症状**：React compiler lint 报 `react-hooks/refs`，典型位置是自定义 hook 为了避免事件回调 stale closure，在组件 render 阶段直接执行 `someRef.current = value`。
+
+**根因**：ref 适合在事件、effect 或 layout effect 中读写；render 阶段写 ref 会绕开 React 的渲染模型，未来 React compiler 优化时可能导致不可预期行为。
+
+**修复**：
+- 对需要给鼠标/键盘事件读取的最新值，用 `useLayoutEffect` 同步到 ref，保证用户交互前已经更新
+- 不要为了消除依赖数组而在 render 中写 callback ref；优先让 effect 明确依赖最新 callback
+
+**防回归**：`packages/web/__tests__/hooks/useResizeDrag-lint.test.ts` 用 ESLint JSON 输出断言 `useResizeDrag` 不再出现 `react-hooks/refs` warning。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

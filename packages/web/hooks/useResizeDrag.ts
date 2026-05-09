@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 export interface UseResizeDragOptions {
   /** Current width */
@@ -39,13 +39,16 @@ export function useResizeDrag({
   const startX = useRef(0);
   const startWidth = useRef(0);
   const latestWidthRef = useRef(width);
-  latestWidthRef.current = width;
 
   // Use refs for callbacks to avoid stale closures in mousemove/mouseup
   const onResizeRef = useRef(onResize);
-  onResizeRef.current = onResize;
   const onResizeEndRef = useRef(onResizeEnd);
-  onResizeEndRef.current = onResizeEnd;
+
+  useLayoutEffect(() => {
+    latestWidthRef.current = width;
+    onResizeRef.current = onResize;
+    onResizeEndRef.current = onResizeEnd;
+  }, [width, onResize, onResizeEnd]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (disabled) return;
