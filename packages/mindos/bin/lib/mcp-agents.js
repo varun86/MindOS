@@ -12,7 +12,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { expandHome } from './path-expand.js';
 
@@ -315,10 +315,7 @@ export function detectAgentPresence(agentKey) {
   if (!agent) return false;
   if (agent.presenceCli) {
     try {
-      execSync(
-        process.platform === 'win32' ? `where ${agent.presenceCli}` : `which ${agent.presenceCli}`,
-        { stdio: 'pipe' },
-      );
+      execFileSync(process.platform === 'win32' ? 'where' : 'which', [agent.presenceCli], { stdio: 'pipe' });
       return true;
     } catch { /* not found */ }
   }

@@ -2064,7 +2064,7 @@ mindos onboard
 ### MCP Agent CLI 检测不要用 shell 字符串 (2026-05-10)
 
 - **问题：** MCP Agent presence detection 用 ``execSync(`which ${cmd}`)`` / ``execSync(`where ${cmd}`)`` 拼 shell 字符串。虽然内置 `presenceCli` 当前是静态值，但这条路径会把命令查找绑定到 shell 解析规则，Windows / 空格 / 特殊字符都更脆弱，也会给未来自定义 agent 留下注入风险。
-- **解决：** Web 侧 `detectAgentPresence()` 和产品 server handler 的默认 `commandExists()` 改成 `execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd])`，用 argv 传参。
+- **解决：** Web 侧 `detectAgentPresence()`、产品 server handler 的默认 `commandExists()`、CLI `packages/mindos/bin/lib/mcp-agents.js` 都改成 `execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd])`，用 argv 传参。
 - **规则：** 只要是"查一个命令是否存在"，用 `execFileSync(bin, [arg])` 或 `spawn/execFile`，不要用 shell 字符串拼 `which/where`。
 
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
