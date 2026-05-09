@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import { execFile } from 'child_process';
-import { detectLocalAcpAgents } from '../../lib/acp/detect-local';
+import { detectLocalAcpAgents, resolveExistingPresenceDir } from '../../lib/acp/detect-local';
 
 vi.mock('child_process', () => ({
   execFile: vi.fn(),
@@ -12,6 +12,7 @@ const mockExecFile = vi.mocked(execFile);
 describe('detectLocalAcpAgents', () => {
   let existsSyncSpy: ReturnType<typeof vi.spyOn>;
   const originalPlatform = process.platform;
+  const originalAppData = process.env.APPDATA;
 
   beforeEach(() => {
     existsSyncSpy = vi.spyOn(fs, 'existsSync').mockReturnValue(false);
@@ -21,6 +22,8 @@ describe('detectLocalAcpAgents', () => {
   afterEach(() => {
     existsSyncSpy.mockRestore();
     Object.defineProperty(process, 'platform', { value: originalPlatform });
+    if (originalAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = originalAppData;
   });
 
   it('detects installed agents from PATH lookups', async () => {
@@ -93,5 +96,16 @@ describe('detectLocalAcpAgents', () => {
     const result = await detectLocalAcpAgents({ acpAgents: {} } as any);
 
     expect(result.installed.some((agent) => agent.id === 'qwen-code' && agent.binaryPath === '/usr/local/bin/qwen')).toBe(true);
+  });
+
+  it('expands Windows APPDATA placeholders when probing ACP presence directories', () => {
+    process.env.APPDATA = 'C:/Users/Test/AppData/Roaming';
+    existsSyncSpy.mockImplementation((filePath: fs.PathLike) => (
+      String(filePath) === 'C:/Users/Test/AppData/Roaming/Code/User/globalStorage/saoudrizwan.claude-dev/'
+    ));
+
+    expect(resolveExistingPresenceDir(['%APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/'])).toBe(
+      'C:/Users/Test/AppData/Roaming/Code/User/globalStorage/saoudrizwan.claude-dev/',
+    );
   });
 });

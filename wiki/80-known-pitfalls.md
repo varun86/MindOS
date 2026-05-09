@@ -2073,6 +2073,12 @@ mindos onboard
 - **解决：** 在 `packages/web/lib/mcp-agents.ts` 增加平台路径 helper：Windows 使用 `%APPDATA%`（fallback 到 `~/AppData/Roaming`），VS Code 系写到 `%APPDATA%/Code/User/...`，Trae CN 写到 `%APPDATA%/Trae CN/User/mcp.json`。
 - **规则：** Agent registry 里凡是 `Library/Application Support` / `.config` 这类 app data 路径，都必须显式包含 `win32` 分支；不要让 Windows 走 Linux fallback。
 
+### ACP Agent presenceDirs 要支持 Windows `%APPDATA%` (2026-05-10)
+
+- **问题：** ACP `cline` descriptor 的 `presenceDirs` 只包含 macOS `~/Library/Application Support/...` 和 Linux `~/.config/...`。Windows 用户安装 VS Code 扩展后，检测逻辑不会探测 `%APPDATA%/Code/User/globalStorage/...`，导致本地 Agent 状态误判。
+- **解决：** 在 `packages/mindos/src/protocols/acp/agent-descriptors.ts` 为 Cline 增加 `%APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/`，并让 `detect-local.ts` 的 `expandHome()` 同时展开 `%ENVVAR%` token。由于 Web 通过 `@geminilight/mindos/protocols/acp` 的 `dist` export 使用该逻辑，改完 source 后必须重新 build 产品包。
+- **规则：** ACP/MCP Agent descriptor 中出现 VS Code / AppData 风格路径时，必须同时覆盖 macOS、Linux、Windows，并给 `%APPDATA%` 展开加测试；不要只测当前开发机平台。
+
 ### Turbopack dev cache 与 webpack build cache 混用导致每请求 compile 7-8s（2026-04-05）
 
 - **症状：** 历史 `next dev`（Turbopack）每个请求 compile 7-8s，`/api/tree-version`（9 行代码）也要 15s 完成；view 页面 render 60-100s；3s 轮询不断积压，页面完全点不动

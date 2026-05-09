@@ -193,6 +193,10 @@ describe('AGENT_DESCRIPTORS', () => {
     const uniqueBinaries = new Set(binaries);
     expect(binaries.length).toBe(uniqueBinaries.size);
   });
+
+  it('includes Windows APPDATA presence directories for VS Code-family agents', () => {
+    expect(AGENT_DESCRIPTORS['cline'].presenceDirs).toContain('%APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/');
+  });
 });
 
 /* ── Aliases ──────────────────────────────────────────────────────────── */

@@ -96,7 +96,7 @@ export const AGENT_DESCRIPTORS: Record<string, AcpAgentDescriptor> = {
   'cursor':          { binary: 'cursor',          detectCommands: ['cursor'],      presenceDirs: ['~/.cursor/extensions/'], cmd: 'cursor',    args: [],
     displayName: 'Cursor',
     description: 'Cursor AI 编程智能体。AI-first 代码编辑器的 CLI 模式，支持上下文感知的代码编辑、Tab 补全和多文件协同修改。' },
-  'cline':           { binary: 'cline',           detectCommands: ['cline'],       presenceDirs: ['~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/', '~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/'], cmd: 'cline',     args: [],        installCmd: 'npm install -g cline',
+  'cline':           { binary: 'cline',           detectCommands: ['cline'],       presenceDirs: ['~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/', '~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/', '%APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/'], cmd: 'cline',     args: [],        installCmd: 'npm install -g cline',
     displayName: 'Cline',
     description: '开源自主编程智能体。支持多模型后端，内置文件编辑、终端执行和浏览器自动化能力。' },
   'github-copilot-cli': { binary: 'github-copilot', cmd: 'github-copilot', args: [], installCmd: 'npm install -g @github/copilot',

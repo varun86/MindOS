@@ -27,9 +27,13 @@ export interface LocalAcpDetectionOptions {
 }
 
 export function expandHome(filePath: string): string {
-  if (filePath === '~') return os.homedir();
-  if (filePath.startsWith('~/')) return `${os.homedir()}/${filePath.slice(2)}`;
-  return filePath;
+  let homeExpanded = filePath;
+  if (filePath === '~') {
+    homeExpanded = os.homedir();
+  } else if (filePath.startsWith('~/')) {
+    homeExpanded = `${os.homedir()}/${filePath.slice(2)}`;
+  }
+  return homeExpanded.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (match, name: string) => process.env[name] ?? match);
 }
 
 export function isPathLikeCommand(command: string): boolean {
