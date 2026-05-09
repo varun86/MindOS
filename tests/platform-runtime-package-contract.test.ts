@@ -97,6 +97,9 @@ describe('OpenCode-style platform runtime packages', () => {
     expect(script).toContain('dist/protocols/mcp-server/index.cjs');
     expect(script).toContain('os: [target.os]');
     expect(script).toContain('cpu: [target.cpu]');
+    expect(script).toContain("key: 'windows-arm64'");
+    expect(script).toContain('binary: false');
+    expect(script).toContain("'bin/cli.js'");
   });
 
   it('documents the migration plan and acceptance criteria', () => {

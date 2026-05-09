@@ -22,7 +22,7 @@ const platforms = [
   { key: 'linux-arm64-musl', os: 'linux', cpu: 'arm64', koffi: ['musl_arm64'], clipboard: ['clipboard', 'clipboard-linux-arm64-musl'] },
   { key: 'linux-x64', os: 'linux', cpu: 'x64', koffi: ['linux_x64'], clipboard: ['clipboard', 'clipboard-linux-x64-gnu'] },
   { key: 'linux-x64-musl', os: 'linux', cpu: 'x64', koffi: ['musl_x64'], clipboard: ['clipboard', 'clipboard-linux-x64-musl'] },
-  { key: 'windows-arm64', os: 'win32', cpu: 'arm64', koffi: ['win32_arm64'], clipboard: ['clipboard', 'clipboard-win32-arm64-msvc'] },
+  { key: 'windows-arm64', os: 'win32', cpu: 'arm64', koffi: ['win32_arm64'], clipboard: ['clipboard', 'clipboard-win32-arm64-msvc'], binary: false },
   { key: 'windows-x64', os: 'win32', cpu: 'x64', koffi: ['win32_x64'], clipboard: ['clipboard', 'clipboard-win32-x64-msvc'] },
 ];
 
@@ -37,16 +37,17 @@ assertProductRuntimeReady();
 mkdirSync(outDir, { recursive: true });
 
 for (const target of selected) {
+  const targetBuildBinary = buildBinary && target.binary !== false;
   const packageDir = resolve(outDir, target.key);
   rmSync(packageDir, { recursive: true, force: true });
   mkdirSync(packageDir, { recursive: true });
 
   copyRuntimeRoot(packageDir);
-  writePlatformPackageJson(packageDir, target);
-  writePlatformRuntimeManifest(packageDir, target);
+  writePlatformPackageJson(packageDir, target, targetBuildBinary);
+  writePlatformRuntimeManifest(packageDir, target, targetBuildBinary);
   pruneKoffi(packageDir, target);
   pruneMarioClipboardPackages(packageDir, target);
-  if (buildBinary) {
+  if (targetBuildBinary) {
     buildBunBinary({
       runtimeRoot: packageDir,
       outFile: resolve(packageDir, 'bin', binaryName(target)),
@@ -151,7 +152,7 @@ function copyRuntimeRoot(packageDir) {
   rmSync(resolve(packageDir, 'bin', 'mindos-shim.cjs'), { force: true });
 }
 
-function writePlatformPackageJson(packageDir, target) {
+function writePlatformPackageJson(packageDir, target, targetBuildBinary = buildBinary) {
   const manifest = {
     name: `@geminilight/mindos-${target.key}`,
     version: productPkg.version,
@@ -161,9 +162,9 @@ function writePlatformPackageJson(packageDir, target) {
     os: [target.os],
     cpu: [target.cpu],
     bin: {
-      mindos: `bin/${binaryName(target)}`,
+      mindos: targetBuildBinary ? `bin/${binaryName(target)}` : 'bin/cli.js',
     },
-    files: fallbackRuntime
+    files: fallbackRuntime || !targetBuildBinary
       ? [
         'bin/',
         'dist/',
@@ -195,14 +196,14 @@ function writePlatformPackageJson(packageDir, target) {
   writeFileSync(resolve(packageDir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
 }
 
-function writePlatformRuntimeManifest(packageDir, target) {
+function writePlatformRuntimeManifest(packageDir, target, targetBuildBinary = buildBinary) {
   writeSharedRuntimeManifest(packageDir, {
     productPkg,
     packageName: `@geminilight/mindos-${target.key}`,
     platform: target.key,
     os: target.os,
     cpu: target.cpu,
-    layout: buildBinary ? 'bun-single-binary' : 'platform',
+    layout: targetBuildBinary ? 'bun-single-binary' : 'platform',
   });
 }
 

@@ -56,12 +56,13 @@ describe('Bun single-binary runtime contract', () => {
     expect(manifest.artifacts).not.toContain('_standalone/');
   });
 
-  it('builds platform packages around the Bun binary rather than bin/cli.js', () => {
+  it('builds platform packages around Bun binaries with explicit fallback exceptions', () => {
     const script = read('scripts/build-platform-packages.mjs');
     expect(script).toContain('buildBunBinary');
     expect(script).toContain('bun-single-binary');
-    expect(script).toContain('mindos: `bin/${binaryName(target)}`');
-    expect(script).toContain('bin/cli.js');
+    expect(script).toContain('targetBuildBinary ? `bin/${binaryName(target)}`');
+    expect(script).toContain("'bin/cli.js'");
+    expect(script).toContain('binary: false');
     expect(script).toContain('fallbackRuntime');
   });
 
