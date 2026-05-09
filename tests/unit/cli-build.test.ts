@@ -3,11 +3,13 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+const ROOT = path.resolve(__dirname, '..', '..');
+
 /**
  * Tests for packages/mindos/bin/lib/build.js — needsBuild, writeBuildStamp, cleanNextDir, ensureAppDeps.
  *
  * We mock constants.js to point ROOT/BUILD_STAMP/DEPS_STAMP at a temp directory,
- * and mock execSync to avoid real npm install.
+ * and mock child_process to avoid real install/probe commands.
  */
 
 let tempDir: string;
@@ -157,6 +159,14 @@ describe('clearBuildLock', () => {
 // ── ensureAppDeps ───────────────────────────────────────────────────────────
 
 describe('ensureAppDeps', () => {
+  it('uses argv-safe subprocess probes for npm and pnpm availability', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'packages', 'mindos', 'bin', 'lib', 'build.js'), 'utf-8');
+
+    expect(source).not.toContain('execSync(');
+    expect(source).toContain("execFileSync(command, ['--version']");
+    expect(source).toContain("const command = usePnpmWorkspaceInstall ? 'pnpm' : 'npm'");
+  });
+
   it('skips install when next is present and deps hash matches', async () => {
     // Create node_modules/next/package.json
     const nextPkg = path.join(appDir, 'node_modules', 'next');
@@ -172,10 +182,10 @@ describe('ensureAppDeps', () => {
       .slice(0, 16);
     fs.writeFileSync(depsStamp, hash, 'utf-8');
 
-    // Mock execSync — should NOT be called for npm install
+    // Mock child_process — should NOT be called for install/probe commands
     const mockExec = vi.fn();
     vi.doMock('node:child_process', () => ({
-      execSync: mockExec,
+      execFileSync: mockExec,
     }));
     vi.resetModules();
 
@@ -203,7 +213,7 @@ describe('ensureAppDeps', () => {
 
     const build = await importBuild();
     build.ensureAppDeps();
-    // npm install should not have been called
+    // install/probe commands should not have been called
     expect(mockExec).not.toHaveBeenCalled();
   });
 
@@ -220,9 +230,9 @@ describe('ensureAppDeps', () => {
       }),
     );
 
-    const mockExecSync = vi.fn(() => Buffer.from('10.0.0'));
+    const mockExecFileSync = vi.fn(() => Buffer.from('10.0.0'));
     vi.doMock('node:child_process', () => ({
-      execSync: mockExecSync,
+      execFileSync: mockExecFileSync,
     }));
 
     const mockNpmInstall = vi.fn();
@@ -265,6 +275,7 @@ describe('ensureAppDeps', () => {
     const build = await importBuild();
     build.ensureAppDeps();
 
+    expect(mockExecFileSync).toHaveBeenCalledWith('pnpm', ['--version'], { stdio: 'pipe' });
     expect(mockRun).toHaveBeenCalledWith('pnpm install --no-frozen-lockfile', tempDir);
     expect(mockNpmInstall).not.toHaveBeenCalled();
   });

@@ -2127,6 +2127,12 @@ mindos onboard
 - **解决：** macOS `osascript` 和 Linux `notify-send` 都改为 `execFileSync(command, args)`；失败继续静默忽略。
 - **防回归：** `tests/unit/cli-start-host.test.ts` 增加 source contract，禁止 start 命令重新引入 `execSync(`。
 
+### build dependency probe 不要用 `npm --version` shell 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/bin/lib/build.js` 的依赖安装前置检查用 `execSync('npm --version')` / `execSync('pnpm --version')`。虽然参数固定，但会把 PATH 解析和参数解析交给 shell，和其他 CLI 入口的 argv 规则不一致。
+- **解决：** 改为 `execFileSync(command, ['--version'])`，`command` 只在 `npm` / `pnpm` 两个静态值之间选择。
+- **防回归：** `tests/unit/cli-build.test.ts` 增加 source contract，并断言 workspace install 分支调用 `execFileSync('pnpm', ['--version'], ...)`。
+
 ### Desktop 私有 Node 的 macOS quarantine 清理不能拼 shell 路径 (2026-05-10)
 
 - **问题：** `packages/desktop/src/node-bootstrap.ts` 下载私有 Node 后用 `execSync(\`xattr ... "${NODE_DIR}"\`)` 清理 quarantine。用户 home / app support 路径如果包含引号、`$` 等字符，会重新进入 shell 解析。

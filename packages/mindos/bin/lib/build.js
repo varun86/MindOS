@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -136,9 +136,9 @@ function shouldUsePnpmWorkspaceInstall() {
 }
 
 function verifyInstallTool(usePnpmWorkspaceInstall) {
-  const command = usePnpmWorkspaceInstall ? 'pnpm --version' : 'npm --version';
+  const command = usePnpmWorkspaceInstall ? 'pnpm' : 'npm';
   try {
-    execSync(command, { stdio: 'pipe' });
+    execFileSync(command, ['--version'], { stdio: 'pipe' });
   } catch {
     if (usePnpmWorkspaceInstall) {
       console.error(red('\n✘ pnpm not found in PATH.\n'));
