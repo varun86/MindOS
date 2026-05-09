@@ -2061,6 +2061,12 @@ mindos onboard
   - `port.js`/`build.js`/`doctor.js`: 错误提示区分平台（lsof vs netstat）
 - **规则：** 新增 shell 命令前先问"Windows cmd.exe 支持吗？"；路径比较用 `path.relative()`，不用字符串拼接
 
+### MCP Agent CLI 检测不要用 shell 字符串 (2026-05-10)
+
+- **问题：** MCP Agent presence detection 用 ``execSync(`which ${cmd}`)`` / ``execSync(`where ${cmd}`)`` 拼 shell 字符串。虽然内置 `presenceCli` 当前是静态值，但这条路径会把命令查找绑定到 shell 解析规则，Windows / 空格 / 特殊字符都更脆弱，也会给未来自定义 agent 留下注入风险。
+- **解决：** Web 侧 `detectAgentPresence()` 和产品 server handler 的默认 `commandExists()` 改成 `execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd])`，用 argv 传参。
+- **规则：** 只要是"查一个命令是否存在"，用 `execFileSync(bin, [arg])` 或 `spawn/execFile`，不要用 shell 字符串拼 `which/where`。
+
 ### Turbopack dev cache 与 webpack build cache 混用导致每请求 compile 7-8s（2026-04-05）
 
 - **症状：** 历史 `next dev`（Turbopack）每个请求 compile 7-8s，`/api/tree-version`（9 行代码）也要 15s 完成；view 页面 render 60-100s；3s 轮询不断积压，页面完全点不动

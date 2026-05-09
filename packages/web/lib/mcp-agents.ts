@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 /** Parse JSONC — strips single-line (//) and block comments before JSON.parse */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -766,10 +766,7 @@ export function detectAgentPresence(agentKey: string): boolean {
   // 1. CLI check
   if (agent.presenceCli) {
     try {
-      execSync(
-        process.platform === 'win32' ? `where ${agent.presenceCli}` : `which ${agent.presenceCli}`,
-        { stdio: 'pipe' },
-      );
+      execFileSync(process.platform === 'win32' ? 'where' : 'which', [agent.presenceCli], { stdio: 'pipe' });
       return true;
     } catch { /* not found */ }
   }

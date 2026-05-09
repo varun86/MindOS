@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
@@ -514,7 +514,7 @@ function defaultListSkillNames(sourcePath: string): string[] {
 
 function defaultCommandExists(command: string): boolean {
   try {
-    execSync(process.platform === 'win32' ? `where ${command}` : `which ${command}`, { stdio: 'pipe' });
+    execFileSync(process.platform === 'win32' ? 'where' : 'which', [command], { stdio: 'pipe' });
     return true;
   } catch {
     return false;

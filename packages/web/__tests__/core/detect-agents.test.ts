@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { detectAgentPresence, MCP_AGENTS } from '@/lib/mcp-agents';
 
 vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
+  execSync: vi.fn(() => { throw new Error('shell command lookup should not be used'); }),
 }));
 
+const mockExecFileSync = vi.mocked(execFileSync);
 const mockExecSync = vi.mocked(execSync);
 
 describe('detectAgentPresence', () => {
@@ -14,7 +16,9 @@ describe('detectAgentPresence', () => {
 
   beforeEach(() => {
     existsSyncSpy = vi.spyOn(fs, 'existsSync');
+    mockExecFileSync.mockReset();
     mockExecSync.mockReset();
+    mockExecSync.mockImplementation(() => { throw new Error('shell command lookup should not be used'); });
     existsSyncSpy.mockReset();
   });
 
@@ -27,13 +31,15 @@ describe('detectAgentPresence', () => {
   });
 
   it('returns true when CLI is found via which', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/claude'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/claude'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('claude-code')).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith('which', ['claude'], { stdio: 'pipe' });
+    expect(mockExecSync).not.toHaveBeenCalled();
   });
 
   it('returns true when data directory exists (no CLI)', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('.cursor');
     });
@@ -41,13 +47,13 @@ describe('detectAgentPresence', () => {
   });
 
   it('returns false when neither CLI nor dirs found', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('claude-code')).toBe(false);
   });
 
   it('returns true when dir found even if CLI fails (gemini-cli)', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('.gemini');
     });
@@ -62,19 +68,19 @@ describe('detectAgentPresence', () => {
   });
 
   it('detects codebuddy via codebuddy CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/local/bin/codebuddy'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/local/bin/codebuddy'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('codebuddy')).toBe(true);
   });
 
   it('detects iflow-cli via CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/iflow'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/iflow'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('iflow-cli')).toBe(true);
   });
 
   it('detects augment via dir', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('.augment');
     });
@@ -82,7 +88,7 @@ describe('detectAgentPresence', () => {
   });
 
   it('detects roo via globalStorage dir', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('rooveterinaryinc.roo-cline');
     });
@@ -90,13 +96,13 @@ describe('detectAgentPresence', () => {
   });
 
   it('detects kimi-cli via CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/kimi'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/kimi'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('kimi-cli')).toBe(true);
   });
 
   it('detects qwen-code via dir', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('.qwen');
     });
@@ -104,13 +110,13 @@ describe('detectAgentPresence', () => {
   });
 
   it('detects qoder via CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/qoder'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/qoder'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('qoder')).toBe(true);
   });
 
   it('detects trae-cn via dir', () => {
-    mockExecSync.mockImplementation(() => { throw new Error('not found'); });
+    mockExecFileSync.mockImplementation(() => { throw new Error('not found'); });
     existsSyncSpy.mockImplementation((p: fs.PathLike) => {
       return String(p).includes('Trae CN');
     });
@@ -118,13 +124,13 @@ describe('detectAgentPresence', () => {
   });
 
   it('detects opencode via CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/opencode'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/opencode'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('opencode')).toBe(true);
   });
 
   it('detects pi via CLI', () => {
-    mockExecSync.mockReturnValue(Buffer.from('/usr/bin/pi'));
+    mockExecFileSync.mockReturnValue(Buffer.from('/usr/bin/pi'));
     existsSyncSpy.mockReturnValue(false);
     expect(detectAgentPresence('pi')).toBe(true);
   });
