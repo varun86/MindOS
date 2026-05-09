@@ -513,9 +513,12 @@ export {
 
 export {
   defaultWaitForPortFree,
+  findMcpProcessIdsByPort,
   handleMcpRestartPost,
   killMcpProcessesByPort,
+  parseNetstatListeningPids,
   waitForPortFreeWithProbe,
+  type FindMcpProcessIdsOptions,
   type MindosMcpRestartPayload,
   type MindosMcpRestartServices,
   type MindosMcpRestartSettings,

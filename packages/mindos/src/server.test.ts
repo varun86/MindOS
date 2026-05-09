@@ -62,8 +62,10 @@ import {
   handleMcpAgentsGet,
   handleMcpInstallPost,
   handleMcpInstallSkillPost,
+  findMcpProcessIdsByPort,
   handleMcpRestartPost,
   handleMcpUninstallPost,
+  parseNetstatListeningPids,
   handleMcpDirectToolsPost,
   handleMcpToolsGet,
   handleRawFile,
@@ -1494,6 +1496,58 @@ describe('MindOS product server contract', () => {
         MINDOS_URL: 'http://127.0.0.1:5678',
       }),
     }]);
+  });
+
+  it('finds MCP restart port owners without shell-interpolated process lookup', () => {
+    expect(parseNetstatListeningPids(8781, [
+      '  TCP    0.0.0.0:8781       0.0.0.0:0       LISTENING       111',
+      '  TCP    [::]:8781          [::]:0          LISTENING       222',
+      '  TCP    127.0.0.1:87810    0.0.0.0:0       LISTENING       333',
+      '  TCP    127.0.0.1:8781     0.0.0.0:0       ESTABLISHED     444',
+    ].join('\r\n'))).toEqual([111, 222]);
+
+    const winCalls: Array<{ command: string; args: string[] }> = [];
+    const winPids = findMcpProcessIdsByPort(8781, {
+      platform: 'win32',
+      execFile: (command, args) => {
+        winCalls.push({ command, args });
+        if (command === 'netstat') {
+          return [
+            '  TCP    0.0.0.0:8781       0.0.0.0:0       LISTENING       1234',
+            '  TCP    127.0.0.1:87810    0.0.0.0:0       LISTENING       5678',
+          ].join('\r\n');
+        }
+        return '';
+      },
+    });
+    expect(winPids).toEqual([1234]);
+    expect(winCalls).toEqual([{ command: 'netstat', args: ['-ano'] }]);
+
+    const unixCalls: Array<{ command: string; args: string[] }> = [];
+    const unixPids = findMcpProcessIdsByPort(8781, {
+      platform: 'linux',
+      execFile: (command, args) => {
+        unixCalls.push({ command, args });
+        if (command === 'lsof') throw new Error('lsof unavailable');
+        if (command === 'ss') {
+          return [
+            'LISTEN 0 4096 0.0.0.0:8781 0.0.0.0:* users:(("node",pid=2468,fd=20))',
+            'LISTEN 0 4096 0.0.0.0:87810 0.0.0.0:* users:(("node",pid=1357,fd=20))',
+          ].join('\n');
+        }
+        return '';
+      },
+    });
+    expect(unixPids).toEqual([2468]);
+    expect(unixCalls).toEqual([
+      { command: 'lsof', args: ['-ti', ':8781'] },
+      { command: 'ss', args: ['-tlnp'] },
+    ]);
+
+    const source = readFileSync(join(__dirname, 'server', 'handlers', 'mcp-restart.ts'), 'utf-8');
+    expect(source).not.toContain('execSync(');
+    expect(source).not.toContain('lsof -ti :${port}');
+    expect(source).not.toContain('| xargs kill');
   });
 
   it('handles content changes summary, list, and mark_seen from product runtime', async () => {

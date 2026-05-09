@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
@@ -29,6 +29,11 @@ export type MindosMcpRestartPayload =
   | { ok: true; port: number; note: string }
   | { ok: true; pid?: number; port: number }
   | { error: string };
+
+export type FindMcpProcessIdsOptions = {
+  platform?: NodeJS.Platform;
+  execFile?(command: string, args: string[]): string;
+};
 
 export async function handleMcpRestartPost(
   services: MindosMcpRestartServices,
@@ -85,30 +90,102 @@ export async function handleMcpRestartPost(
 }
 
 export function killMcpProcessesByPort(port: number): void {
-  try {
-    execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, { stdio: 'ignore' });
-    return;
-  } catch {
-    // Fall back to ss below.
+  const platform = process.platform;
+  for (const pid of findMcpProcessIdsByPort(port, { platform })) {
+    try {
+      if (platform === 'win32') {
+        execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGKILL');
+      }
+    } catch {
+      // Process already exited or the platform kill tool is unavailable.
+    }
+  }
+}
+
+export function findMcpProcessIdsByPort(port: number, options: FindMcpProcessIdsOptions = {}): number[] {
+  if (!isValidTcpPort(port)) return [];
+
+  const platform = options.platform ?? process.platform;
+  const execFile = options.execFile ?? ((command: string, args: string[]) => (
+    execFileSync(command, args, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }) as string
+  ));
+
+  if (platform === 'win32') {
+    try {
+      return parseNetstatListeningPids(port, execFile('netstat', ['-ano']));
+    } catch {
+      return [];
+    }
   }
 
+  const pids = new Set<number>();
   try {
-    const output = execSync('ss -tlnp 2>/dev/null', { encoding: 'utf-8' });
-    const portRe = new RegExp(`:${port}(?!\\d)`);
-    for (const line of output.split('\n')) {
-      if (!portRe.test(line)) continue;
-      const pidMatch = line.match(/pid=(\d+)/g);
-      if (!pidMatch) continue;
-      for (const match of pidMatch) {
-        const pid = Number(match.slice(4));
-        if (pid > 0) {
-          try { process.kill(pid, 'SIGKILL'); } catch {}
-        }
-      }
+    for (const pid of parseLsofPids(execFile('lsof', ['-ti', `:${port}`]))) {
+      pids.add(pid);
     }
   } catch {
-    // No listener or no compatible process listing command.
+    // lsof may be unavailable in minimal Linux environments.
   }
+
+  if (pids.size === 0) {
+    try {
+      for (const pid of parseSsListeningPids(port, execFile('ss', ['-tlnp']))) {
+        pids.add(pid);
+      }
+    } catch {
+      // No listener or no compatible process listing command.
+    }
+  }
+
+  return [...pids];
+}
+
+export function parseNetstatListeningPids(port: number, output: string): number[] {
+  const pids = new Set<number>();
+  for (const line of output.split(/\r?\n/)) {
+    if (!/LISTENING/i.test(line)) continue;
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 5) continue;
+    const localAddress = parts[1];
+    const pid = Number(parts[parts.length - 1]);
+    if (localAddressHasPort(localAddress, port) && pid > 0) {
+      pids.add(pid);
+    }
+  }
+  return [...pids];
+}
+
+function parseLsofPids(output: string): number[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((pid) => pid > 0);
+}
+
+function parseSsListeningPids(port: number, output: string): number[] {
+  const pids = new Set<number>();
+  for (const line of output.split(/\r?\n/)) {
+    if (!lineHasPort(line, port)) continue;
+    for (const match of line.matchAll(/pid=(\d+)/g)) {
+      const pid = Number(match[1]);
+      if (pid > 0) pids.add(pid);
+    }
+  }
+  return [...pids];
+}
+
+function localAddressHasPort(localAddress: string | undefined, port: number): boolean {
+  return localAddress?.endsWith(`:${port}`) ?? false;
+}
+
+function lineHasPort(line: string, port: number): boolean {
+  return new RegExp(`:${port}(?!\\d)`).test(line);
+}
+
+function isValidTcpPort(port: number): boolean {
+  return Number.isInteger(port) && port > 0 && port <= 65535;
 }
 
 function resolveMcpRuntime(

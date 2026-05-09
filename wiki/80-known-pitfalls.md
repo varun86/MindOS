@@ -2091,6 +2091,12 @@ mindos onboard
 - **解决：** 端口先规范为 `1..65535` 的整数，否则回退 `3456`；macOS/Linux/WSL/Windows 启动浏览器均改为 `execFileSync(command, args)`。
 - **规则：** CLI 里任何来自 env/config 的端口都要先做 TCP 端口范围校验；打开浏览器也走 argv，不拼 shell 字符串。
 
+### Product Server 重启 MCP 时不要用 Unix-only 端口 kill 管道 (2026-05-10)
+
+- **问题：** `packages/mindos/src/server/handlers/mcp-restart.ts` 仍用 `lsof -ti :${port} | xargs kill -9`，Windows 下无法工作，也会把端口和命令管道重新交给 shell。
+- **解决：** 端口占用检测拆成可测的 argv 调用：Windows 解析 `netstat -ano` 的 LISTENING 行；Unix 先 `lsof -ti :PORT`，再用 `ss -tlnp` fallback，并在 `ss` 输出中继续按目标端口过滤。
+- **规则：** 产品运行时的进程控制不能假设 Unix 工具链；涉及端口的 kill/restart 逻辑必须覆盖 Windows 路径和 fallback 输出过滤。
+
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
 
 - **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。
