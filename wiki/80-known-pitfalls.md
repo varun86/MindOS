@@ -2085,6 +2085,12 @@ mindos onboard
 - **解决：** 改为 `execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], ...)`，逐个检查返回候选并继续跳过 `~/.mindos/bin` shim。
 - **规则：** daemon/service 安装脚本也必须遵守"命令查找走 argv"规则；不能因为命令名固定就回退到 shell 字符串。
 
+### `mindos open` 不要把端口拼进浏览器启动 shell 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/bin/commands/open.js` 从 `MINDOS_WEB_PORT` 直接拼 URL，再用 `execSync(\`start ...\`)` / `execSync(\`${cmd} ...\`)` 启动浏览器。端口配置异常时会生成坏 URL；Windows `start` 还会重新进入 shell 解析。
+- **解决：** 端口先规范为 `1..65535` 的整数，否则回退 `3456`；macOS/Linux/WSL/Windows 启动浏览器均改为 `execFileSync(command, args)`。
+- **规则：** CLI 里任何来自 env/config 的端口都要先做 TCP 端口范围校验；打开浏览器也走 argv，不拼 shell 字符串。
+
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
 
 - **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。
