@@ -2121,6 +2121,12 @@ mindos onboard
 - **解决：** 保留 `cmd` 作为 UI 展示字符串，但实际执行改为 argv 调用；默认优先用 `process.execPath` 运行 npm 的 `npx-cli.js`，避免 Windows `.cmd` shell shim。
 - **规则：** API/CLI 返回给前端看的命令字符串不能直接作为执行入口；执行入口必须保留结构化 command + args。Windows 下不要把 `.cmd` / `.bat` 当作 `execFile` 目标。
 
+### Product Server sync git metadata 不要用 `execSync('git ...')` (2026-05-10)
+
+- **问题：** `packages/mindos/src/server/handlers/sync.ts` 的默认 metadata path 用 `execSync('git remote ...')`、`execSync('git rev-list ...')`。命令当前是静态字符串，但这会让后续改动很容易把 branch/remote 参数拼回 shell。
+- **解决：** 抽出 `runGit(cwd, args)`，所有 git metadata 查询都用 `execFileSync('git', args, ...)`，stderr 走 stdio 配置而不是 shell 重定向。
+- **规则：** Product Server 只要调用 git，都保持 `command + args` 结构；不要把“现在没有用户输入”当作可以用 shell 字符串的理由。
+
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
 
 - **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。

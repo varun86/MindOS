@@ -1,4 +1,4 @@
-import { execFile, execSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -342,17 +342,25 @@ function callIsGitRepo(services: MindosSyncServices, dir: string): boolean {
 
 function callGetRemoteUrl(services: MindosSyncServices, cwd: string): string | null {
   if (services.getRemoteUrl) return services.getRemoteUrl(cwd);
-  try { return execSync('git remote get-url origin', { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim(); } catch { return null; }
+  try { return runGit(cwd, ['remote', 'get-url', 'origin']); } catch { return null; }
 }
 
 function callGetBranch(services: MindosSyncServices, cwd: string): string {
   if (services.getBranch) return services.getBranch(cwd);
-  try { return execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim(); } catch { return 'main'; }
+  try { return runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']); } catch { return 'main'; }
 }
 
 function callGetUnpushedCount(services: MindosSyncServices, cwd: string): string {
   if (services.getUnpushedCount) return services.getUnpushedCount(cwd);
-  try { return execSync('git rev-list --count @{u}..HEAD', { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim(); } catch { return '?'; }
+  try { return runGit(cwd, ['rev-list', '--count', '@{u}..HEAD']); } catch { return '?'; }
+}
+
+function runGit(cwd: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
 }
 
 function isPathWithinMindRoot(mindRoot: string, filePath: string): boolean {

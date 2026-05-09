@@ -2093,6 +2093,15 @@ describe('MindOS product server contract', () => {
     });
   });
 
+  it('reads sync git metadata through argv-safe git commands', () => {
+    const source = readFileSync(join(__dirname, 'server', 'handlers', 'sync.ts'), 'utf-8');
+
+    expect(source).not.toContain('execSync(');
+    expect(source).toContain("execFileSync('git', args");
+    expect(source).toContain("runGit(cwd, ['remote', 'get-url', 'origin'])");
+    expect(source).toContain("runGit(cwd, ['rev-list', '--count', '@{u}..HEAD'])");
+  });
+
   it('verifies channel credentials through product validation and injected verifier', async () => {
     const verified = await handleChannelsVerifyPost({
       platform: 'telegram',
