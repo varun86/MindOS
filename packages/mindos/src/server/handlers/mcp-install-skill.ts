@@ -1,6 +1,6 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { errorResponse, json, type MindosServerResponse } from '../response.js';
 import type { MindosSkillAgentRegistration } from './mcp-install.js';
 
@@ -15,12 +15,24 @@ export type MindosMcpInstallSkillServices = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   pathExists?(path: string): boolean;
-  runCommand?(cmd: string, options: {
+  runCommand?(command: string, args: string[], options: {
     encoding: 'utf-8';
     timeout: number;
     env: NodeJS.ProcessEnv;
     stdio: 'pipe';
   }): string;
+};
+
+export type MindosNpxInvocationOptions = {
+  env?: NodeJS.ProcessEnv;
+  nodeExecPath?: string;
+  pathExists?(path: string): boolean;
+  platform?: NodeJS.Platform;
+};
+
+export type MindosNpxInvocation = {
+  command: string;
+  args: string[];
 };
 
 export type MindosMcpInstallSkillResult =
@@ -71,10 +83,11 @@ export function handleMcpInstallSkillPost(
     const runCommand = services.runCommand ?? defaultRunCommand;
 
     for (const source of sources) {
-      const cmd = buildMcpInstallSkillCommand(source, skill, additionalAgents);
+      const args = buildMcpInstallSkillArgs(source, skill, additionalAgents);
+      const cmd = formatCommandForDisplay('npx', args);
       lastCmd = cmd;
       try {
-        lastStdout = runCommand(cmd, {
+        lastStdout = runCommand('npx', args, {
           encoding: 'utf-8',
           timeout: 30_000,
           env: { ...process.env, ...(services.env ?? {}), NODE_ENV: 'production' },
@@ -124,11 +137,54 @@ export function buildMcpInstallSkillCommand(
   skill: string,
   additionalAgents: string[],
 ): string {
-  const agentFlags = additionalAgents.length > 0
-    ? additionalAgents.map((agent) => `-a ${agent}`).join(' ')
-    : '-a universal';
-  const quotedSource = /[/\\]/.test(source) ? `"${source}"` : source;
-  return `npx skills add ${quotedSource} --skill ${skill} ${agentFlags} -g -y`;
+  return formatCommandForDisplay('npx', buildMcpInstallSkillArgs(source, skill, additionalAgents));
+}
+
+export function buildMcpInstallSkillArgs(
+  source: string,
+  skill: string,
+  additionalAgents: string[],
+): string[] {
+  const agents = additionalAgents.length > 0 ? additionalAgents : ['universal'];
+  return [
+    'skills',
+    'add',
+    source,
+    '--skill',
+    skill,
+    ...agents.flatMap((agent) => ['-a', agent]),
+    '-g',
+    '-y',
+  ];
+}
+
+export function resolveNpxInvocation(
+  args: string[],
+  options: MindosNpxInvocationOptions = {},
+): MindosNpxInvocation {
+  const env = options.env ?? process.env;
+  const nodeExecPath = options.nodeExecPath ?? process.execPath;
+  const pathExists = options.pathExists ?? existsSync;
+  const npxCliPath = findNpxCliPath(nodeExecPath, env, pathExists);
+
+  if (npxCliPath) {
+    return { command: nodeExecPath, args: [npxCliPath, ...args] };
+  }
+
+  if ((options.platform ?? process.platform) === 'win32') {
+    throw new Error('Unable to locate npm npx-cli.js for shell-free skill installation on Windows');
+  }
+
+  return { command: 'npx', args };
+}
+
+function formatCommandForDisplay(command: string, args: string[]): string {
+  return [command, ...args].map(formatArgForDisplay).join(' ');
+}
+
+function formatArgForDisplay(arg: string): string {
+  if (/^[A-Za-z0-9._=-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
 }
 
 function findLocalSkillsDir(services: MindosMcpInstallSkillServices): string | null {
@@ -152,7 +208,8 @@ function normalizeInstallSkillRequest(body: unknown): MindosMcpInstallSkillReque
 }
 
 function defaultRunCommand(
-  cmd: string,
+  command: string,
+  args: string[],
   options: {
     encoding: 'utf-8';
     timeout: number;
@@ -160,5 +217,28 @@ function defaultRunCommand(
     stdio: 'pipe';
   },
 ): string {
-  return execSync(cmd, options);
+  const invocation = command === 'npx'
+    ? resolveNpxInvocation(args, { env: options.env })
+    : { command, args };
+  return execFileSync(invocation.command, invocation.args, options);
+}
+
+function findNpxCliPath(
+  nodeExecPath: string,
+  env: NodeJS.ProcessEnv,
+  pathExists: (path: string) => boolean,
+): string | null {
+  const candidates = new Set<string>();
+  if (env.npm_execpath) {
+    candidates.add(join(dirname(env.npm_execpath), 'npx-cli.js'));
+  }
+
+  const nodeDir = dirname(nodeExecPath);
+  candidates.add(join(nodeDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'));
+  candidates.add(resolve(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npx-cli.js'));
+
+  for (const candidate of candidates) {
+    if (pathExists(candidate)) return candidate;
+  }
+  return null;
 }

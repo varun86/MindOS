@@ -62,6 +62,7 @@ import {
   handleMcpAgentsGet,
   handleMcpInstallPost,
   handleMcpInstallSkillPost,
+  resolveNpxInvocation,
   findMcpProcessIdsByPort,
   handleMcpRestartPost,
   handleMcpUninstallPost,
@@ -1339,7 +1340,7 @@ describe('MindOS product server contract', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-install-skill-'));
     const localSkills = join(root, 'skills');
     mkdirSync(localSkills, { recursive: true });
-    const commands: string[] = [];
+    const commands: Array<{ command: string; args: string[] }> = [];
 
     expect(handleMcpInstallSkillPost({ agents: [] }, {
       runCommand: () => {
@@ -1360,8 +1361,8 @@ describe('MindOS product server contract', () => {
         cursor: { mode: 'universal' },
         'claude-code': { mode: 'additional', skillAgentName: 'claude-code' },
       },
-      runCommand: (cmd) => {
-        commands.push(cmd);
+      runCommand: (command, args) => {
+        commands.push({ command, args });
         if (commands.length === 1) {
           const error = new Error('network down') as Error & { stdout: string; stderr: string };
           error.stdout = '';
@@ -1381,8 +1382,14 @@ describe('MindOS product server contract', () => {
     });
 
     expect(commands).toEqual([
-      'npx skills add "GeminiLight/MindOS" --skill mindos-zh -a claude-code -a unknown-agent -g -y',
-      `npx skills add "${localSkills}" --skill mindos-zh -a claude-code -a unknown-agent -g -y`,
+      {
+        command: 'npx',
+        args: ['skills', 'add', 'GeminiLight/MindOS', '--skill', 'mindos-zh', '-a', 'claude-code', '-a', 'unknown-agent', '-g', '-y'],
+      },
+      {
+        command: 'npx',
+        args: ['skills', 'add', localSkills, '--skill', 'mindos-zh', '-a', 'claude-code', '-a', 'unknown-agent', '-g', '-y'],
+      },
     ]);
 
     expect(handleMcpInstallSkillPost({ skill: 'mindos', agents: ['cursor'] }, {
@@ -1396,6 +1403,48 @@ describe('MindOS product server contract', () => {
         agents: [],
         cmd: 'npx skills add "GeminiLight/MindOS" --skill mindos -a universal -g -y',
       },
+    });
+  });
+
+  it('runs MindOS skill installation through argv-safe subprocess args', () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+
+    expect(handleMcpInstallSkillPost({ skill: 'mindos', agents: ['claude-code'] }, {
+      skillAgentRegistry: { 'claude-code': { mode: 'additional', skillAgentName: 'claude-code' } },
+      pathExists: () => false,
+      runCommand: (command, args) => {
+        calls.push({ command, args });
+        return 'Done!\n';
+      },
+    })).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        cmd: 'npx skills add "GeminiLight/MindOS" --skill mindos -a claude-code -g -y',
+      },
+    });
+
+    expect(calls).toEqual([{
+      command: 'npx',
+      args: ['skills', 'add', 'GeminiLight/MindOS', '--skill', 'mindos', '-a', 'claude-code', '-g', '-y'],
+    }]);
+
+    const source = readFileSync(join(__dirname, 'server', 'handlers', 'mcp-install-skill.ts'), 'utf-8');
+    expect(source).not.toContain('execSync(cmd');
+    expect(source).toContain('execFileSync(invocation.command, invocation.args');
+  });
+
+  it('resolves npx through the npm CLI on Windows without shell shims', () => {
+    const npxCliPath = '/node/node_modules/npm/bin/npx-cli.js';
+
+    expect(resolveNpxInvocation(['skills', 'add', 'GeminiLight/MindOS'], {
+      platform: 'win32',
+      nodeExecPath: '/node/node.exe',
+      pathExists: (path) => path === npxCliPath,
+      env: {},
+    })).toEqual({
+      command: '/node/node.exe',
+      args: [npxCliPath, 'skills', 'add', 'GeminiLight/MindOS'],
     });
   });
 

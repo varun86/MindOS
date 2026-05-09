@@ -506,9 +506,12 @@ export {
   buildMcpInstallSkillCommand,
   filterAdditionalSkillAgents,
   handleMcpInstallSkillPost,
+  resolveNpxInvocation,
   type MindosMcpInstallSkillRequest,
   type MindosMcpInstallSkillResult,
   type MindosMcpInstallSkillServices,
+  type MindosNpxInvocation,
+  type MindosNpxInvocationOptions,
 } from './handlers/mcp-install-skill.js';
 
 export {

@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-/* ── Mock child_process.execSync ──────────────────────────────────
- * We mock execSync so tests don't actually run npx.
+/* ── Mock child_process.execFileSync ───────────────────────────────
+ * We mock execFileSync so tests don't actually run npx.
  * Each test can configure the mock to succeed or throw.
  */
-let execSyncMock: ReturnType<typeof vi.fn>;
+let execFileSyncMock: ReturnType<typeof vi.fn>;
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
   return {
     ...actual,
-    execSync: (...args: unknown[]) => execSyncMock(...args),
+    execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
   };
 });
 
@@ -35,9 +35,14 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 beforeEach(() => {
-  execSyncMock = vi.fn().mockReturnValue('Done!\n');
+  execFileSyncMock = vi.fn().mockReturnValue('Done!\n');
   mockExistsSync = null;
 });
+
+function calledCommand(index = 0): string {
+  const [command, args] = execFileSyncMock.mock.calls[index] as [string, string[]];
+  return [command, ...args].join(' ');
+}
 
 async function importRoute() {
   return await import('../../app/api/mcp/install-skill/route');
@@ -92,7 +97,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['cursor', 'cline', 'gemini-cli'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
     expect(cmd).not.toContain('-a cursor');
     expect(cmd).not.toContain('-a cline');
@@ -102,7 +107,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['claude-code', 'windsurf'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a claude-code');
     expect(cmd).toContain('-a windsurf');
     expect(cmd).not.toContain('-a universal');
@@ -112,7 +117,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['claude-code', 'windsurf', 'trae'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).not.toMatch(/-a \S+,\S+/);
     expect(cmd).toContain('-a claude-code');
     expect(cmd).toContain('-a windsurf');
@@ -123,7 +128,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['some-unknown-agent', 'claude-code'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a claude-code');
     // unknown agents pass through as-is (not filtered)
     expect(cmd).toContain('-a some-unknown-agent');
@@ -133,7 +138,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['cursor'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
   });
 
@@ -141,7 +146,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['github-copilot'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
     expect(cmd).not.toContain('-a vscode');
   });
@@ -150,7 +155,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: [] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
   });
 
@@ -158,7 +163,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos-zh', agents: ['cursor', 'claude-code', 'cline', 'windsurf'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a claude-code');
     expect(cmd).toContain('-a windsurf');
     expect(cmd).not.toContain('-a cursor');
@@ -170,7 +175,7 @@ describe('POST /api/mcp/install-skill — agent filtering', () => {
     const { POST } = await importRoute();
     const res = await POST(makeReq({ skill: 'mindos', agents: null as unknown as string[] }));
     expect(res.status).toBe(200);
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
   });
 });
@@ -182,12 +187,12 @@ describe('POST /api/mcp/install-skill — source fallback', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: [] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('GeminiLight/MindOS');
   });
 
   it('returns ok=false when all sources fail', async () => {
-    execSyncMock.mockImplementation(() => {
+    execFileSyncMock.mockImplementation(() => {
       const err = new Error('fail') as Error & { stderr: string; stdout: string };
       err.stderr = 'some error';
       err.stdout = '';
@@ -209,7 +214,7 @@ describe('POST /api/mcp/install-skill — command format', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: [] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('--skill mindos');
   });
 
@@ -217,7 +222,7 @@ describe('POST /api/mcp/install-skill — command format', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos-zh', agents: [] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-g');
     expect(cmd).toContain('-y');
   });
@@ -242,7 +247,7 @@ describe('POST /api/mcp/install-skill — command format', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['augment', 'roo', 'trae-cn', 'qoder'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a augment');
     expect(cmd).toContain('-a roo');
     expect(cmd).toContain('-a trae-cn');
@@ -254,7 +259,7 @@ describe('POST /api/mcp/install-skill — command format', () => {
     const { POST } = await importRoute();
     await POST(makeReq({ skill: 'mindos', agents: ['kimi-cli', 'opencode'] }));
 
-    const cmd = execSyncMock.mock.calls[0][0] as string;
+    const cmd = calledCommand();
     expect(cmd).toContain('-a universal');
     expect(cmd).not.toContain('-a kimi-cli');
     expect(cmd).not.toContain('-a opencode');
@@ -271,9 +276,9 @@ describe('AGENT_NAME_MAP completeness', () => {
     const { POST } = await importRoute();
 
     for (const key of Object.keys(MCP_AGENTS)) {
-      execSyncMock.mockClear();
+      execFileSyncMock.mockClear();
       await POST(makeReq({ skill: 'mindos', agents: [key] }));
-      const cmd = execSyncMock.mock.calls[0]?.[0] as string;
+      const cmd = execFileSyncMock.mock.calls[0] ? calledCommand() : '';
       const reg = SKILL_AGENT_REGISTRY[key];
       if (!reg || reg.mode === 'additional') {
         expect(cmd, `Agent '${key}' should produce an explicit -a flag`).toContain(`-a ${key}`);

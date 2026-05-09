@@ -2109,6 +2109,12 @@ mindos onboard
 - **解决：** 增加 `resolveSshCommandForPlatform()`，所有 SSH/ssh-add/sc/ps 探测改为 `execFile` / `execFileSync` argv；`SshTunnel.start()` 直接 spawn 解析后的 `.exe`/`ssh`，不再给 Windows 开 shell。
 - **规则：** Desktop remote mode 的 host、key path、工具路径都按用户输入处理；子进程调用必须走 argv，Windows `.exe` 不需要 `shell: true`。
 
+### Product Server 安装 Skill 不要把 npx 命令拼成 shell 字符串 (2026-05-10)
+
+- **问题：** `packages/mindos/src/server/handlers/mcp-install-skill.ts` 生成 `npx skills add ...` 字符串后用 `execSync(cmd)` 执行。source、agent 名或本地路径一旦包含空格/引号，会重新进入 shell 解析，也扩大注入面。
+- **解决：** 保留 `cmd` 作为 UI 展示字符串，但实际执行改为 argv 调用；默认优先用 `process.execPath` 运行 npm 的 `npx-cli.js`，避免 Windows `.cmd` shell shim。
+- **规则：** API/CLI 返回给前端看的命令字符串不能直接作为执行入口；执行入口必须保留结构化 command + args。Windows 下不要把 `.cmd` / `.bat` 当作 `execFile` 目标。
+
 ### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
 
 - **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。
