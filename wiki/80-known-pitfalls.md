@@ -2067,6 +2067,12 @@ mindos onboard
 - **解决：** Web 侧 `detectAgentPresence()` 和产品 server handler 的默认 `commandExists()` 改成 `execFileSync(process.platform === 'win32' ? 'where' : 'which', [cmd])`，用 argv 传参。
 - **规则：** 只要是"查一个命令是否存在"，用 `execFileSync(bin, [arg])` 或 `spawn/execFile`，不要用 shell 字符串拼 `which/where`。
 
+### VS Code 系 MCP Agent Windows 配置路径不能落到 `~/.config` (2026-05-10)
+
+- **问题：** `github-copilot`、`cline`、`roo`、`trae-cn` 的 MCP global config 只区分 macOS 和 Linux；Windows 下会落到 `~/.config/...`，导致安装成功但写到目标 Agent 不会读取的位置。
+- **解决：** 在 `packages/web/lib/mcp-agents.ts` 增加平台路径 helper：Windows 使用 `%APPDATA%`（fallback 到 `~/AppData/Roaming`），VS Code 系写到 `%APPDATA%/Code/User/...`，Trae CN 写到 `%APPDATA%/Trae CN/User/mcp.json`。
+- **规则：** Agent registry 里凡是 `Library/Application Support` / `.config` 这类 app data 路径，都必须显式包含 `win32` 分支；不要让 Windows 走 Linux fallback。
+
 ### Turbopack dev cache 与 webpack build cache 混用导致每请求 compile 7-8s（2026-04-05）
 
 - **症状：** 历史 `next dev`（Turbopack）每个请求 compile 7-8s，`/api/tree-version`（9 行代码）也要 15s 完成；view 页面 render 60-100s；3s 轮询不断积压，页面完全点不动

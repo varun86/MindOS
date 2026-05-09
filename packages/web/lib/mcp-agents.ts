@@ -16,6 +16,38 @@ export function expandHome(p: string): string {
   return p.startsWith('~/') ? path.resolve(os.homedir(), p.slice(2)) : p;
 }
 
+function normalizeConfigRoot(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function windowsAppDataRoot(): string {
+  return normalizeConfigRoot(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'));
+}
+
+function platformAppDataPath(options: { darwin: string; linux: string; win32: string }): string {
+  if (process.platform === 'darwin') return options.darwin;
+  if (process.platform === 'win32') return `${windowsAppDataRoot()}/${options.win32}`;
+  return options.linux;
+}
+
+const codeUserRoot = platformAppDataPath({
+  darwin: '~/Library/Application Support/Code/User',
+  linux: '~/.config/Code/User',
+  win32: 'Code/User',
+});
+
+const codeRoot = platformAppDataPath({
+  darwin: '~/Library/Application Support/Code',
+  linux: '~/.config/Code',
+  win32: 'Code',
+});
+
+const traeCnRoot = platformAppDataPath({
+  darwin: '~/Library/Application Support/Trae CN',
+  linux: '~/.config/Trae CN',
+  win32: 'Trae CN',
+});
+
 export interface AgentDef {
   name: string;
   project: string | null;
@@ -76,14 +108,11 @@ export const MCP_AGENTS: Record<string, AgentDef> = {
   'cline': {
     name: 'Cline',
     project: null,
-    global: process.platform === 'darwin'
-      ? '~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json'
-      : '~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json',
+    global: `${codeUserRoot}/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`,
     key: 'mcpServers',
     preferredTransport: 'stdio',
     presenceDirs: [
-      '~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/',
-      '~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/',
+      `${codeUserRoot}/globalStorage/saoudrizwan.claude-dev/`,
     ],
   },
   'trae': {
@@ -187,41 +216,32 @@ export const MCP_AGENTS: Record<string, AgentDef> = {
   'trae-cn': {
     name: 'Trae CN',
     project: '.trae/mcp.json',
-    global: process.platform === 'darwin'
-      ? '~/Library/Application Support/Trae CN/User/mcp.json'
-      : '~/.config/Trae CN/User/mcp.json',
+    global: `${traeCnRoot}/User/mcp.json`,
     key: 'mcpServers',
     preferredTransport: 'stdio',
     presenceCli: 'trae-cli',
     presenceDirs: [
-      '~/Library/Application Support/Trae CN/',
-      '~/.config/Trae CN/',
+      `${traeCnRoot}/`,
     ],
   },
   'roo': {
     name: 'Roo Code',
     project: '.roo/mcp.json',
-    global: process.platform === 'darwin'
-      ? '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json'
-      : '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
+    global: `${codeUserRoot}/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`,
     key: 'mcpServers',
     preferredTransport: 'stdio',
     presenceDirs: [
-      '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/',
-      '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/',
+      `${codeUserRoot}/globalStorage/rooveterinaryinc.roo-cline/`,
     ],
   },
   'github-copilot': {
     name: 'GitHub Copilot',
     project: '.vscode/mcp.json',
-    global: process.platform === 'darwin'
-      ? '~/Library/Application Support/Code/User/mcp.json'
-      : '~/.config/Code/User/mcp.json',
+    global: `${codeUserRoot}/mcp.json`,
     key: 'servers',
     preferredTransport: 'stdio',
     presenceDirs: [
-      '~/Library/Application Support/Code/',
-      '~/.config/Code/',
+      `${codeRoot}/`,
     ],
     presenceCli: 'code',
   },
