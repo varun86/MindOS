@@ -2121,6 +2121,12 @@ mindos onboard
 - **解决：** 抽出 `bin/lib/npm-invocation.js`，update/uninstall 共用 `resolveNpmInvocation(args)`；Unix 保持 PATH 解析，Windows 用 `process.execPath + npm-cli.js` 避免 `.cmd` shim。
 - **防回归：** `tests/unit/cli-uninstall.test.ts` 默认注入 fake npm，记录 argv 并断言卸载参数是 `uninstall -g @geminilight/mindos`，同时 source contract 禁止 `execSync(` 回流。
 
+### `mindos start --daemon` 通知不要拼 osascript/notify-send shell 字符串 (2026-05-10)
+
+- **问题：** daemon 启动完成后，`packages/mindos/bin/commands/start.js` 用 `execSync(\`osascript ... ${webPort}\`)` / `execSync(\`notify-send ... ${webPort}\`)` 发系统通知。端口来自配置/环境，通知本身是 best-effort，不应因为 shell 解析问题影响启动路径。
+- **解决：** macOS `osascript` 和 Linux `notify-send` 都改为 `execFileSync(command, args)`；失败继续静默忽略。
+- **防回归：** `tests/unit/cli-start-host.test.ts` 增加 source contract，禁止 start 命令重新引入 `execSync(`。
+
 ### Desktop 私有 Node 的 macOS quarantine 清理不能拼 shell 路径 (2026-05-10)
 
 - **问题：** `packages/desktop/src/node-bootstrap.ts` 下载私有 Node 后用 `execSync(\`xattr ... "${NODE_DIR}"\`)` 清理 quarantine。用户 home / app support 路径如果包含引号、`$` 等字符，会重新进入 shell 解析。

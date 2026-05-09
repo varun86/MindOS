@@ -2,7 +2,7 @@
  * mindos start — production app + MCP server
  */
 
-import { execSync, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   readFileSync,
@@ -191,12 +191,12 @@ export const run = async (args, flags) => {
       // System notification
       try {
         if (process.platform === 'darwin') {
-          execSync(
-            `osascript -e 'display notification "http://localhost:${webPort}" with title "MindOS Ready"'`,
-            { stdio: 'ignore' },
-          );
+          execFileSync('osascript', [
+            '-e',
+            `display notification "http://localhost:${webPort}" with title "MindOS Ready"`,
+          ], { stdio: 'ignore' });
         } else if (process.platform === 'linux') {
-          execSync(`notify-send "MindOS Ready" "http://localhost:${webPort}"`, { stdio: 'ignore' });
+          execFileSync('notify-send', ['MindOS Ready', `http://localhost:${webPort}`], { stdio: 'ignore' });
         }
       } catch { /* notification is best-effort */ }
       console.log(`${green('✔ MindOS is running as a background service')}`);
