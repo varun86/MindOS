@@ -127,8 +127,9 @@ echo "📦 Bumping version ($BUMP)..."
 npm version "$BUMP" --no-git-tag-version
 (cd packages/mindos && npm version "$BUMP" --no-git-tag-version)
 node scripts/sync-platform-package-versions.mjs
+pnpm install --lockfile-only
 VERSION="v$(node -p "require('./packages/mindos/package.json').version")"
-git add package.json packages/mindos/package.json packages/mindos-platforms/*/package.json
+git add package.json packages/mindos/package.json packages/mindos-platforms/*/package.json pnpm-lock.yaml
 git commit -m "$VERSION"
 git tag "$VERSION"
 echo "   Version: $VERSION"
