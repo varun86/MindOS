@@ -2115,6 +2115,12 @@ mindos onboard
 - **解决：** npm install 和 daemon 探测全部改成 argv 调用；Windows 下 npm 通过 `process.execPath + npm-cli.js` 运行，避免直接执行 `.cmd` shell shim。
 - **防回归：** `tests/unit/cli-update-root.test.ts` 断言 update 命令源码不再包含 `execSync(`，并用 fake npm 记录 argv，确认全局安装参数是 `install -g @geminilight/mindos@latest`。
 
+### `mindos uninstall` 不要通过 shell 执行全局 npm 卸载 (2026-05-10)
+
+- **问题：** `packages/mindos/bin/commands/uninstall.js` 在所有确认流程完成后用 `execSync('npm uninstall -g ...')`。这是卸载流程的最后一步，测试环境也会真正触发全局 npm，既慢又依赖本机 shell/PATH 行为。
+- **解决：** 抽出 `bin/lib/npm-invocation.js`，update/uninstall 共用 `resolveNpmInvocation(args)`；Unix 保持 PATH 解析，Windows 用 `process.execPath + npm-cli.js` 避免 `.cmd` shim。
+- **防回归：** `tests/unit/cli-uninstall.test.ts` 默认注入 fake npm，记录 argv 并断言卸载参数是 `uninstall -g @geminilight/mindos`，同时 source contract 禁止 `execSync(` 回流。
+
 ### Desktop 私有 Node 的 macOS quarantine 清理不能拼 shell 路径 (2026-05-10)
 
 - **问题：** `packages/desktop/src/node-bootstrap.ts` 下载私有 Node 后用 `execSync(\`xattr ... "${NODE_DIR}"\`)` 清理 quarantine。用户 home / app support 路径如果包含引号、`$` 等字符，会重新进入 shell 解析。

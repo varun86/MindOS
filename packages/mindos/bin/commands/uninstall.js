@@ -4,13 +4,14 @@
  * Uses dynamic import for readline and gateway to limit upfront module cost.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 import { CONFIG_PATH, MINDOS_DIR } from '../lib/constants.js';
 import { bold, dim, cyan, green, red, yellow } from '../lib/colors.js';
 import { stopMindos } from '../lib/stop.js';
+import { resolveNpmInvocation } from '../lib/npm-invocation.js';
 
 export const meta = {
   name: 'uninstall',
@@ -143,7 +144,8 @@ export const run = async () => {
   // 5. npm uninstall -g
   console.log(`\n${cyan('Uninstalling npm package...')}`);
   try {
-    execSync('npm uninstall -g @geminilight/mindos', { stdio: ['ignore', 'inherit', 'inherit'] });
+    const invocation = resolveNpmInvocation(['uninstall', '-g', '@geminilight/mindos']);
+    execFileSync(invocation.command, invocation.args, { stdio: ['ignore', 'inherit', 'inherit'] });
   } catch {
     console.log(yellow('  npm uninstall failed — you may need to run manually:'));
     console.log(dim('  npm uninstall -g @geminilight/mindos'));

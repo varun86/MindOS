@@ -19,9 +19,17 @@ const CLI = path.join(ROOT, 'packages', 'mindos', 'bin', 'cli.js');
 
 let tempHome: string;
 let savedHome: string | undefined;
+let fakeBinDir: string;
 
 beforeEach(() => {
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-uninstall-'));
+  fakeBinDir = path.join(tempHome, 'fake-bin');
+  fs.mkdirSync(fakeBinDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(fakeBinDir, 'npm'),
+    `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(path.join(tempHome, 'npm-argv.txt'))}\nexit 0\n`,
+    { mode: 0o755 },
+  );
   savedHome = process.env.HOME;
 });
 
@@ -38,7 +46,12 @@ function run(
   try {
     const stdout = execFileSync(process.execPath, [CLI, ...args], {
       encoding: 'utf-8',
-      env: { ...process.env, HOME: home, NODE_ENV: 'test' },
+      env: {
+        ...process.env,
+        HOME: home,
+        NODE_ENV: 'test',
+        PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ''}`,
+      },
       input: opts.input ?? '',
       timeout: 15000,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -82,6 +95,25 @@ describe('mindos uninstall — smoke', () => {
     expect(stdout).toContain('Stop running MindOS processes');
     expect(stdout).toContain('Remove background service');
     expect(stdout).toContain('Uninstall npm package');
+  });
+
+  it('uses argv APIs instead of shell strings for npm uninstall', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'packages', 'mindos', 'bin', 'commands', 'uninstall.js'), 'utf-8');
+
+    expect(source).not.toContain('execSync(');
+    expect(source).toContain("resolveNpmInvocation(['uninstall', '-g', '@geminilight/mindos']");
+    expect(source).toContain('execFileSync(invocation.command, invocation.args');
+  });
+
+  it('runs npm uninstall with argv args after confirmation', () => {
+    const { exitCode } = run(['uninstall'], { input: 'y\nn\n' });
+
+    expect(exitCode).toBe(0);
+    expect(fs.readFileSync(path.join(tempHome, 'npm-argv.txt'), 'utf-8').trim().split(/\r?\n/)).toEqual([
+      'uninstall',
+      '-g',
+      '@geminilight/mindos',
+    ]);
   });
 });
 

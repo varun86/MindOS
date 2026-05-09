@@ -6,7 +6,7 @@
 
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { ROOT, BUILD_STAMP, CONFIG_PATH, LOG_PATH, MINDOS_DIR, PRODUCT_PACKAGE_JSON } from '../lib/constants.js';
 import { bold, dim, cyan, green, red, yellow } from '../lib/colors.js';
@@ -18,6 +18,7 @@ import { getLocalIP } from '../lib/startup.js';
 import { isPortInUse } from '../lib/port.js';
 import { cleanEnvForRestart } from '../lib/clean-env.js';
 import { stripBom } from '../lib/jsonc.js';
+import { resolveNpmInvocation } from '../lib/npm-invocation.js';
 
 /**
  * Dynamically resolve the new ROOT after `npm install -g`.
@@ -53,50 +54,6 @@ function getUpdatedRoot() {
     }
   } catch {}
   return ROOT;
-}
-
-/**
- * Resolve npm on Windows without invoking a .cmd shim through the shell.
- * On Unix-like platforms, keep PATH lookup so tests and user-managed npm
- * shims continue to work as expected.
- *
- * @param {string[]} args
- * @param {{ platform?: NodeJS.Platform, nodeExecPath?: string, env?: NodeJS.ProcessEnv, pathExists?: (path: string) => boolean }} [options]
- */
-export function resolveNpmInvocation(args, options = {}) {
-  const platform = options.platform ?? process.platform;
-  if (platform !== 'win32') {
-    return { command: 'npm', args };
-  }
-
-  const env = options.env ?? process.env;
-  const nodeExecPath = options.nodeExecPath ?? process.execPath;
-  const pathExists = options.pathExists ?? existsSync;
-  const npmCliPath = findNpmCliPath(nodeExecPath, env, pathExists);
-  if (!npmCliPath) {
-    throw new Error('Unable to locate npm-cli.js for shell-free update on Windows');
-  }
-  return { command: nodeExecPath, args: [npmCliPath, ...args] };
-}
-
-function findNpmCliPath(nodeExecPath, env, pathExists) {
-  const candidates = new Set();
-  if (env.npm_execpath) {
-    if (env.npm_execpath.endsWith('npm-cli.js')) {
-      candidates.add(env.npm_execpath);
-    } else {
-      candidates.add(join(dirname(env.npm_execpath), 'npm-cli.js'));
-    }
-  }
-
-  const nodeDir = dirname(nodeExecPath);
-  candidates.add(join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
-  candidates.add(resolve(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'));
-
-  for (const candidate of candidates) {
-    if (pathExists(candidate)) return candidate;
-  }
-  return null;
 }
 
 function runNpmInstallLatest() {
