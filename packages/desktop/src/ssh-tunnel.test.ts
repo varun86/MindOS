@@ -21,6 +21,7 @@ import {
 } from './ssh-tunnel';
 import path from 'path';
 import fs from 'fs';
+import { execFileSync } from 'child_process';
 
 describe('SSH Tunnel', () => {
   describe('parseSshConfig', () => {
@@ -191,6 +192,30 @@ Host tilde-test
       expect(source).not.toContain('execAsync(`ssh-add "${resolvedKey}"`');
       expect(source).not.toContain('execAsync(\'ssh -V 2>&1\'');
       expect(source).not.toContain('shell: process.platform === \'win32\'');
+    });
+  });
+
+  describe('SSH_ASKPASS scripts', () => {
+    const unixIt = process.platform === 'win32' ? it.skip : it;
+
+    unixIt('emits passphrases with printf instead of echo option parsing', async () => {
+      const { buildUnixAskpassScript } = await import('./ssh-tunnel');
+      const passphrase = String.raw`-n tricky\value'secret`;
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ssh-askpass-'));
+      const scriptPath = path.join(tmpDir, 'askpass.sh');
+
+      try {
+        const script = buildUnixAskpassScript(passphrase);
+        expect(script).toContain("printf '%s\\n'");
+        expect(script).not.toContain('\necho ');
+
+        fs.writeFileSync(scriptPath, script, { mode: 0o700 });
+        const output = execFileSync('/bin/sh', [scriptPath], { encoding: 'utf-8' });
+        expect(output).toBe(`${passphrase}\n`);
+      } finally {
+        try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+        try { fs.rmdirSync(tmpDir); } catch { /* ignore */ }
+      }
     });
   });
 

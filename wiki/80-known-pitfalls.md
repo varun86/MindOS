@@ -2795,6 +2795,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/desktop/src/node-detect.test.ts` 增加 source contract，禁止 `node-detect.ts` 重新出现 `exec` import、`promisify(exec)` 和 `npmBin` / login shell 的字符串插值命令。
 
+### SSH_ASKPASS 临时脚本不要用 `echo` 输出密钥口令（2026-05-10）
+
+**症状**：Desktop Remote 模式用 `ssh-add` 加载带口令私钥时，若 passphrase 以 `-n` 开头或包含反斜杠转义，不同 `/bin/sh` 的 `echo` 实现可能把内容当选项或转义处理，导致实际传给 `ssh-add` 的口令被改写。
+
+**根因**：`ssh-tunnel.ts` 生成的 Unix askpass 脚本使用 `echo '<passphrase>'`。POSIX 对 `echo -n` 和反斜杠行为不做强一致保证，不能用于逐字节输出敏感字符串。
+
+**修复**：抽出 `buildUnixAskpassScript()`，用 `printf '%s\n' <single-quoted-passphrase>` 输出口令；单引号仍按 POSIX 规则转义。
+
+**防回归**：`packages/desktop/src/ssh-tunnel.test.ts` 执行生成的 askpass 脚本，覆盖 `-n`、反斜杠和单引号组合，断言输出和原始 passphrase 完全一致。
+
 ### Hook / Component 不要在 render 阶段读写 ref.current（2026-05-10）
 
 **症状**：React compiler lint 报 `react-hooks/refs`，典型位置是 hook / component 为了避免事件回调 stale closure，在组件 render 阶段直接执行 `someRef.current = value`，用 `someRef.current` 初始化 state，或在 JSX handler 中直接调用会读写 ref 的 callback。

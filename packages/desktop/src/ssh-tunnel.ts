@@ -49,6 +49,16 @@ export function resolveSshCommandForPlatform(
   return null;
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildUnixAskpassScript(passphrase: string): string {
+  return `#!/bin/sh
+printf '%s\\n' ${shellSingleQuote(passphrase)}
+`;
+}
+
 /** Write SSH child PID to disk so we can clean up orphans on next launch */
 function writeTunnelPid(pid: number): void {
   try { writeFileSync(SSH_TUNNEL_PID_FILE, String(pid), 'utf-8'); } catch { /* best effort */ }
@@ -251,9 +261,8 @@ export async function addKeyToAgent(keyPath: string, passphrase: string): Promis
   // Unix/macOS: use a temporary script as SSH_ASKPASS
   const tmpScript = path.join(app.getPath('temp'), `mindos-askpass-${Date.now()}.sh`);
   try {
-    // Create a script that outputs the passphrase
-    writeFileSync(tmpScript, `#!/bin/sh\necho '${passphrase.replace(/'/g, "'\\''")}'
-`, { mode: 0o700 });
+    // Create a script that outputs the passphrase without echo option parsing.
+    writeFileSync(tmpScript, buildUnixAskpassScript(passphrase), { mode: 0o700 });
     await execFileAsync('ssh-add', [resolvedKey], {
       timeout: 10000,
       env: { ...process.env, SSH_ASKPASS: tmpScript, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: ':0' },
