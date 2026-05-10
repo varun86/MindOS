@@ -2223,6 +2223,12 @@ mindos onboard
 - **解决：** 抽出 `runGit(cwd, args)`，所有 git metadata 查询都用 `execFileSync('git', args, ...)`，stderr 走 stdio 配置而不是 shell 重定向。
 - **规则：** Product Server 只要调用 git，都保持 `command + args` 结构；不要把“现在没有用户输入”当作可以用 shell 字符串的理由。
 
+### PostCSS dependency repair script 不要用 `npm install ...` shell 字符串 (2026-05-10)
+
+- **问题：** `scripts/fix-postcss-deps.cjs` 的 postinstall 修复路径用 `execSync('npm install --no-save --install-strategy=nested')`。这虽然是固定命令，但会把 npm shim / PATH 解析交给 shell，Windows `.cmd` launcher 和路径特殊字符行为都不稳定。
+- **解决：** 抽出 `resolveNpmInvocation()` + `runNpmInstall()`，Unix 下保持 `npm` argv 调用，Windows 下通过 `process.execPath + npm-cli.js` 执行 npm，避免直接执行 `.cmd` shell shim。
+- **防回归：** `tests/unit/fix-postcss-deps-subprocess.test.ts` 禁止脚本重新出现 `execSync(`，并断言 npm install 继续通过 `execFileSync(invocation.command, invocation.args, ...)` 执行。
+
 ### Web sync-config git metadata 不要复制 shell 版实现 (2026-05-10)
 
 - **问题：** `packages/web/lib/sync-config.ts` 仍保留 `execSync('git remote get-url origin')`、`execSync('git rev-parse --abbrev-ref HEAD')`、`execSync('git rev-list --count @{u}..HEAD')`。这和 product server sync handler 已修复的 shell probe 是同一类问题，容易出现双份实现不一致。

@@ -15,8 +15,8 @@
  */
 
 const { existsSync, mkdirSync, cpSync, symlinkSync } = require('fs');
-const { join, resolve } = require('path');
-const { execSync } = require('child_process');
+const { dirname, join, resolve } = require('path');
+const { execFileSync } = require('child_process');
 
 const postcssDir = join('node_modules', 'next', 'node_modules', 'postcss');
 const postcssNm = join(postcssDir, 'node_modules');
@@ -38,6 +38,46 @@ if (existsSync(marker)) {
 const compatibleDeps = ['picocolors', 'source-map-js'];
 const appNm = 'node_modules';
 
+function resolveNpmInvocation(args) {
+  if (process.platform !== 'win32') {
+    return { command: 'npm', args };
+  }
+
+  const npmCliPath = findNpmCliPath();
+  if (!npmCliPath) {
+    throw new Error('Unable to locate npm-cli.js for shell-free npm execution on Windows');
+  }
+  return { command: process.execPath, args: [npmCliPath, ...args] };
+}
+
+function findNpmCliPath() {
+  const candidates = new Set();
+  if (process.env.npm_execpath) {
+    if (process.env.npm_execpath.endsWith('npm-cli.js')) {
+      candidates.add(process.env.npm_execpath);
+    } else {
+      candidates.add(join(dirname(process.env.npm_execpath), 'npm-cli.js'));
+    }
+  }
+
+  const nodeDir = dirname(process.execPath);
+  candidates.add(join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+  candidates.add(resolve(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function runNpmInstall(cwd) {
+  const invocation = resolveNpmInvocation(['install', '--no-save', '--install-strategy=nested']);
+  execFileSync(invocation.command, invocation.args, {
+    cwd,
+    stdio: 'ignore',
+  });
+}
+
 try {
   mkdirSync(postcssNm, { recursive: true });
 
@@ -57,18 +97,12 @@ try {
 
   // nanoid needs ^3 (app has v5) — must install separately
   if (!existsSync(join(postcssNm, 'nanoid'))) {
-    execSync('npm install --no-save --install-strategy=nested', {
-      cwd: postcssDir,
-      stdio: 'ignore',
-    });
+    runNpmInstall(postcssDir);
   }
 } catch {
   // If anything fails, fall back to full nested npm install
   try {
-    execSync('npm install --no-save --install-strategy=nested', {
-      cwd: postcssDir,
-      stdio: 'ignore',
-    });
+    runNpmInstall(postcssDir);
   } catch {
     // Best-effort — build will report the real error if deps are still missing
   }
