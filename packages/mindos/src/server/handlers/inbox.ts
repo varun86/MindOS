@@ -6,8 +6,8 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { extname, basename, resolve, join } from 'node:path';
-import { resolveSafe } from '../../foundation/security/index.js';
+import { extname, basename, join } from 'node:path';
+import { resolveExistingSafe, resolveSafe } from '../../foundation/security/index.js';
 import { json, type MindosServerResponse } from '../response.js';
 
 export const INBOX_DIR = 'Inbox';
@@ -81,8 +81,12 @@ export function handleInboxGet(
   if (!services.mindRoot.trim()) {
     return json({ error: 'MIND_ROOT is not configured' }, { status: 400 });
   }
-  ensureInboxSpace(services.mindRoot);
-  return json({ files: listInboxFiles(services.mindRoot) });
+  try {
+    ensureInboxSpace(services.mindRoot);
+    return json({ files: listInboxFiles(services.mindRoot) });
+  } catch (error) {
+    return mapInboxError(error);
+  }
 }
 
 export function handleInboxPost(
@@ -97,7 +101,11 @@ export function handleInboxPost(
   }
 
   const { files, source } = body as { files: InboxSaveInput[]; source?: string };
-  return json(saveToInbox(services.mindRoot, files, source));
+  try {
+    return json(saveToInbox(services.mindRoot, files, source));
+  } catch (error) {
+    return mapInboxError(error);
+  }
 }
 
 export function handleInboxDelete(
@@ -113,11 +121,15 @@ export function handleInboxDelete(
     return json({ error: 'Request body must contain a non-empty names array' }, { status: 400 });
   }
 
-  return json(archiveFromInbox(services.mindRoot, names.filter((name): name is string => typeof name === 'string')));
+  try {
+    return json(archiveFromInbox(services.mindRoot, names.filter((name): name is string => typeof name === 'string')));
+  } catch (error) {
+    return mapInboxError(error);
+  }
 }
 
 export function ensureInboxSpace(mindRoot: string): string {
-  const inboxDir = resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   mkdirSync(inboxDir, { recursive: true });
 
   const instructionPath = join(inboxDir, 'INSTRUCTION.md');
@@ -134,7 +146,7 @@ export function ensureInboxSpace(mindRoot: string): string {
 }
 
 export function listInboxFiles(mindRoot: string): InboxFileInfo[] {
-  const inboxDir = resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   if (!existsSync(inboxDir)) return [];
 
   const now = Date.now();
@@ -202,7 +214,7 @@ export function saveToInbox(mindRoot: string, files: InboxSaveInput[], source?: 
 }
 
 export function archiveFromInbox(mindRoot: string, names: string[]): InboxArchiveResult {
-  const inboxDir = resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   const processedDir = join(inboxDir, PROCESSED_DIR);
   mkdirSync(processedDir, { recursive: true });
 
@@ -235,6 +247,14 @@ export function archiveFromInbox(mindRoot: string, names: string[]): InboxArchiv
   }
 
   return { archived, notFound };
+}
+
+function mapInboxError(error: unknown): MindosServerResponse<{ error: string }> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/access denied|outside root|absolute paths/i.test(message)) {
+    return json({ error: 'Access denied' }, { status: 403 });
+  }
+  return json({ error: message }, { status: 500 });
 }
 
 function decodeContent(encoding: string | undefined, content: string): string {

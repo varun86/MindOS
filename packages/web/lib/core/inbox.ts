@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { resolveSafe } from './security';
+import { resolveExistingSafe, resolveSafe } from './security';
 import { sanitizeFileName, convertToMarkdown, ALLOWED_IMPORT_EXTENSIONS } from './file-convert';
 
 export const INBOX_DIR = 'Inbox';
@@ -58,7 +58,7 @@ export interface InboxSaveInput {
  * Idempotent — safe to call multiple times concurrently.
  */
 export function ensureInboxSpace(mindRoot: string): string {
-  const inboxDir = path.resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   fs.mkdirSync(inboxDir, { recursive: true });
 
   const instructionPath = path.join(inboxDir, 'INSTRUCTION.md');
@@ -79,7 +79,7 @@ export function ensureInboxSpace(mindRoot: string): string {
  * Returns files sorted by modification time (newest first).
  */
 export function listInboxFiles(mindRoot: string): InboxFileInfo[] {
-  const inboxDir = path.resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   if (!fs.existsSync(inboxDir)) return [];
 
   const entries = fs.readdirSync(inboxDir, { withFileTypes: true });
@@ -144,7 +144,7 @@ export interface InboxDeleteResult {
  * Only deletes user files — never INSTRUCTION.md or README.md.
  */
 export function deleteFromInbox(mindRoot: string, names: string[]): InboxDeleteResult {
-  const inboxDir = path.resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   const deleted: string[] = [];
   const notFound: string[] = [];
 
@@ -182,7 +182,7 @@ export interface InboxArchiveResult {
  * Preserves originals so users can recover them from the processed folder.
  */
 export function archiveFromInbox(mindRoot: string, names: string[]): InboxArchiveResult {
-  const inboxDir = path.resolve(mindRoot, INBOX_DIR);
+  const inboxDir = resolveExistingSafe(mindRoot, INBOX_DIR);
   const processedDir = path.join(inboxDir, PROCESSED_DIR);
   fs.mkdirSync(processedDir, { recursive: true });
 
@@ -234,7 +234,7 @@ export interface ProcessedFileInfo {
  * Returns files sorted by archive time (newest first).
  */
 export function listProcessedFiles(mindRoot: string): ProcessedFileInfo[] {
-  const processedDir = path.resolve(mindRoot, INBOX_DIR, PROCESSED_DIR);
+  const processedDir = resolveExistingSafe(mindRoot, `${INBOX_DIR}/${PROCESSED_DIR}`);
   if (!fs.existsSync(processedDir)) return [];
 
   const entries = fs.readdirSync(processedDir, { withFileTypes: true });

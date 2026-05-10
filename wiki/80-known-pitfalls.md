@@ -3345,6 +3345,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/web/__tests__/core/fs-public-paths.test.ts`、`packages/web/__tests__/core/tree.test.ts`、`packages/web/__tests__/core/tree-async.test.ts`、`packages/web/__tests__/core/space-scaffold.test.ts`、`packages/web/__tests__/core/create-space.test.ts`、`packages/web/__tests__/core/content-changes.test.ts`、`packages/web/__tests__/core/agent-audit-log.test.ts` 覆盖 symlinked directory / `.mindos` 场景。
 
+### Inbox 目录是用户可控路径，不能假设固定子目录安全（2026-05-10）
+
+**症状**：Inbox 捕获区用 `path.resolve(mindRoot, 'Inbox')` 作为固定内部目录。若用户 vault 里 `Inbox` 是指向 root 外的 symlink，保存捕获文件、列出 Inbox、归档到 `.processed` 都可能访问 root 外目录。
+
+**根因**：固定目录名不等于可信目录。只要目录位于用户可写 vault 内，就必须和普通用户路径一样做 realpath containment。
+
+**修复**：Product Server 与 Web core 的 Inbox ensure/list/save/archive/delete/processed-list 入口统一通过 `resolveExistingSafe()` 校验 `Inbox` 或 `Inbox/.processed`。
+
+**防回归**：`packages/mindos/src/server.test.ts` 覆盖 Product Inbox symlink 拒绝；`packages/web/__tests__/core/inbox.test.ts` 覆盖 Web Inbox ensure/list/archive symlink 拒绝。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

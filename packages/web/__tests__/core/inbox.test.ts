@@ -40,6 +40,19 @@ describe('ensureInboxSpace', () => {
     ensureInboxSpace(mindRoot);
     expect(fs.existsSync(path.join(mindRoot, INBOX_DIR, 'INSTRUCTION.md'))).toBe(true);
   });
+
+  it('rejects symlinked Inbox directories outside mindRoot', () => {
+    const outsideRoot = fs.mkdtempSync(path.join(path.dirname(mindRoot), 'mindos-inbox-outside-'));
+    try {
+      fs.symlinkSync(outsideRoot, path.join(mindRoot, INBOX_DIR), 'dir');
+
+      expect(() => ensureInboxSpace(mindRoot)).toThrow('Access denied');
+      expect(fs.existsSync(path.join(outsideRoot, 'INSTRUCTION.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outsideRoot, 'README.md'))).toBe(false);
+    } finally {
+      fs.rmSync(outsideRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('listInboxFiles', () => {
@@ -119,6 +132,18 @@ describe('listInboxFiles', () => {
     const files = listInboxFiles(mindRoot);
     expect(files).toHaveLength(1);
     expect(files[0].name).toBe('top.md');
+  });
+
+  it('does not list files through symlinked Inbox directories outside mindRoot', () => {
+    const outsideRoot = fs.mkdtempSync(path.join(path.dirname(mindRoot), 'mindos-inbox-list-outside-'));
+    try {
+      fs.writeFileSync(path.join(outsideRoot, 'leak.md'), 'outside', 'utf-8');
+      fs.symlinkSync(outsideRoot, path.join(mindRoot, INBOX_DIR), 'dir');
+
+      expect(() => listInboxFiles(mindRoot)).toThrow('Access denied');
+    } finally {
+      fs.rmSync(outsideRoot, { recursive: true, force: true });
+    }
   });
 });
 
@@ -371,6 +396,19 @@ describe('archiveFromInbox', () => {
 
     archiveFromInbox(mindRoot, ['a.md']);
     expect(fs.existsSync(processedDir)).toBe(true);
+  });
+
+  it('does not archive through symlinked Inbox directories outside mindRoot', () => {
+    const outsideRoot = fs.mkdtempSync(path.join(path.dirname(mindRoot), 'mindos-inbox-archive-outside-'));
+    try {
+      fs.writeFileSync(path.join(outsideRoot, 'notes.md'), '# Outside', 'utf-8');
+      fs.symlinkSync(outsideRoot, path.join(mindRoot, INBOX_DIR), 'dir');
+
+      expect(() => archiveFromInbox(mindRoot, ['notes.md'])).toThrow('Access denied');
+      expect(fs.existsSync(path.join(outsideRoot, '.processed'))).toBe(false);
+    } finally {
+      fs.rmSync(outsideRoot, { recursive: true, force: true });
+    }
   });
 
   it('archived files are hidden from listInboxFiles', () => {

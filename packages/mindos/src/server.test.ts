@@ -1981,6 +1981,29 @@ describe('MindOS product server contract', () => {
     });
   });
 
+  it('rejects inbox operations when Inbox is a symlink outside mindRoot', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-inbox-symlink-root-'));
+    const outside = mkdtempSync(join(tmpdir(), 'mindos-inbox-symlink-outside-'));
+    symlinkSync(outside, join(root, 'Inbox'), 'dir');
+
+    expect(handleInboxGet({ mindRoot: root })).toMatchObject({
+      status: 403,
+      body: { error: 'Access denied' },
+    });
+    expect(handleInboxPost({
+      files: [{ name: 'todo.txt', content: 'Buy milk' }],
+    }, { mindRoot: root })).toMatchObject({
+      status: 403,
+      body: { error: 'Access denied' },
+    });
+    expect(existsSync(join(outside, 'todo.md'))).toBe(false);
+
+    expect(handleInboxDelete({ names: ['todo.md'] }, { mindRoot: root })).toMatchObject({
+      status: 403,
+      body: { error: 'Access denied' },
+    });
+  });
+
   it('handles setup path checks and directory listing without Web dependencies', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-setup-path-'));
     mkdirSync(join(root, 'Documents'), { recursive: true });
