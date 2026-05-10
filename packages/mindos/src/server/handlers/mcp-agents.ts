@@ -488,7 +488,7 @@ function parseJsonc(text: string): Record<string, unknown> {
 }
 
 function expandHome(path: string, homeDir?: string): string {
-  if (!path.startsWith('~/')) return path;
+  if (!path.startsWith('~/') && !path.startsWith('~\\')) return path;
   return resolve(homeDir ?? homedir(), path.slice(2));
 }
 

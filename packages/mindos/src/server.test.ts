@@ -1159,6 +1159,41 @@ describe('MindOS product server contract', () => {
     expect(afterUninstall.mcp.clients.mindos).toBeUndefined();
   });
 
+  it('expands Windows-style home-relative MCP config paths', () => {
+    const home = mkdtempSync(join(tmpdir(), 'mindos-mcp-install-home-backslash-'));
+    const configPath = join(home, '.copaw\\config.json');
+    writeFileSync(configPath, JSON.stringify({
+      mcp: {
+        clients: {
+          mindos: { type: 'stdio', command: 'mindos' },
+          search: { type: 'stdio', command: 'search' },
+        },
+      },
+    }), 'utf-8');
+
+    const agents: Record<string, MindosMcpAgentDef> = {
+      copaw: {
+        name: 'CoPaw',
+        project: null,
+        global: '~\\.copaw\\config.json',
+        key: 'mcp',
+        globalNestedKey: 'mcp.clients',
+        preferredTransport: 'stdio',
+      },
+    };
+
+    expect(handleMcpUninstallPost({
+      agents: [{ key: 'copaw', scope: 'global' }],
+    }, { agents, homeDir: home })).toMatchObject({
+      status: 200,
+      body: { results: [{ agent: 'copaw', status: 'ok', path: '~\\.copaw\\config.json' }] },
+    });
+
+    const afterUninstall = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(afterUninstall.mcp.clients.mindos).toBeUndefined();
+    expect(afterUninstall.mcp.clients.search).toMatchObject({ command: 'search' });
+  });
+
   it('lists MCP tools and updates direct tool exposure from product handlers', () => {
     let directTools: boolean | string[] = false;
     const tools = handleMcpToolsGet({
@@ -1327,6 +1362,59 @@ describe('MindOS product server contract', () => {
       customBaseDir: '~/.custom/',
       configuredMcpServers: ['mindos', 'search'],
       installedSkillNames: ['mindos'],
+    });
+  });
+
+  it('discovers custom MCP agents with Windows-style home-relative config paths', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'mindos-mcp-agents-home-backslash-'));
+    const configPath = join(home, '.custom\\mcp.json');
+    writeFileSync(configPath, JSON.stringify({
+      mcpServers: {
+        mindos: {},
+        search: {},
+      },
+    }), 'utf-8');
+
+    const agents: Record<string, MindosMcpAgentRegistryDef> = {
+      'custom-one': {
+        name: 'Custom One',
+        project: null,
+        global: '~\\.custom\\mcp.json',
+        key: 'mcpServers',
+        preferredTransport: 'stdio',
+        presenceDirs: ['~\\.custom\\'],
+      },
+    };
+    const customAgents: MindosCustomMcpAgentDef[] = [{
+      name: 'Custom One',
+      key: 'custom-one',
+      baseDir: '~\\.custom\\',
+      global: '~\\.custom\\mcp.json',
+      configKey: 'mcpServers',
+      format: 'json',
+      preferredTransport: 'stdio',
+      presenceDirs: ['~\\.custom\\'],
+    }];
+
+    const response = await handleMcpAgentsGet({
+      agents,
+      builtInAgents: {},
+      customAgents,
+      homeDir: home,
+      pathExists: (targetPath) => targetPath === configPath,
+      readTextFile: (targetPath) => {
+        expect(targetPath).toBe(configPath);
+        return readFileSync(targetPath, 'utf-8');
+      },
+      listSkillNames: () => [],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.agents[0]).toMatchObject({
+      key: 'custom-one',
+      installed: true,
+      configuredMcpServers: ['mindos', 'search'],
+      configuredMcpSources: [`local:${configPath}`],
     });
   });
 

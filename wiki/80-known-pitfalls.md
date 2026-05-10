@@ -2973,6 +2973,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/unit/custom-agents.test.ts` 覆盖 Windows 尾反斜杠默认值与 `~\` 输入；`packages/web/__tests__/core/mcp-agents-windows-paths.test.ts` 覆盖 `~\` expansion。
 
+### 产品 MCP handler 的 home expansion 也要支持 Windows `~\`（2026-05-10）
+
+**症状**：自定义 Agent 保存了 `~\.agent\mcp.json` 这类 Windows 风格 home-relative 路径后，产品 runtime 的 MCP 安装/卸载和 Agent discovery 会把它当成普通相对路径，导致找不到实际配置文件，或把配置写到错误位置。
+
+**根因**：`packages/mindos/src/server/handlers/mcp-install.ts` 和 `mcp-agents.ts` 各自有一份 `expandHome()`，都只识别 `~/`，没有跟 custom-agent handler 的 `~\` 修复同步。
+
+**修复**：两个产品 MCP handler 的 `expandHome()` 同时识别 `~/` 和 `~\`。
+
+**防回归**：`packages/mindos/src/server.test.ts` 覆盖 Windows 风格 home-relative MCP config 的卸载和 custom Agent discovery。
+
 ### Desktop updater 路径白名单要覆盖 getRuntimePaths 全量输出（2026-05-10）
 
 **症状**：Desktop updater 下载运行时后，`getRuntimePaths()` 生成的 `tarballPath` 是 `~/.mindos/runtime-download.tar.gz`，但 `validateRuntimePath()` 会报 `SECURITY: Subdirectory not whitelisted: runtime-download.tar.gz`。

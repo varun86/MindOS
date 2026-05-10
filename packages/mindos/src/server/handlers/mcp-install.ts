@@ -81,7 +81,7 @@ function parseJsonc(text: string): Record<string, unknown> {
 }
 
 function expandHome(input: string, homeDir = homedir()): string {
-  return input.startsWith('~/') ? resolve(homeDir, input.slice(2)) : input;
+  return input.startsWith('~/') || input.startsWith('~\\') ? resolve(homeDir, input.slice(2)) : input;
 }
 
 function ensureNestedPath(obj: Record<string, unknown>, dotPath: string): Record<string, unknown> {
