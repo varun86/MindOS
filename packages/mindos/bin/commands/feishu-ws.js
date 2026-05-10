@@ -26,6 +26,7 @@ export async function run() {
     cwd: WEB_APP_DIR,
     stdio: 'inherit',
     env: process.env,
+    shell: process.platform === 'win32',
   });
 
   child.on('exit', (code) => {

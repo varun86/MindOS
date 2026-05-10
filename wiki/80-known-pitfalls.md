@@ -2163,6 +2163,12 @@ mindos onboard
 - **解决：** 在 `packages/mindos/bin/lib/shell.js` 增加 `formatManualCdCommand()`，Unix 用 POSIX 单引号转义，Windows 用 `cd /d "..."`；`build.js` 的 pnpm / npm 依赖修复提示都复用该 helper。
 - **防回归：** `tests/unit/cli-shell-subprocess.test.ts` 覆盖含空格和单引号的路径、Windows `cd /d` 提示，以及 npm fallback 的实际输出；`tests/unit/cli-build.test.ts` 禁止 build.js 回退到裸 `cd ${ROOT}` / `cd ${appDir}`。
 
+### Windows `.cmd` helper 只能在明确需要时进 shell (2026-05-10)
+
+- **问题：** `mindos feishu-ws` 选择了 `node_modules/.bin/tsx.cmd`，但 `spawn()` 默认 `shell: false`。Windows 下 `.cmd` shim 不是可直接执行的 PE 文件，长连接调试命令可能在启动前就报 spawn 失败。
+- **解决：** 保持 Unix 走直接 argv spawn，仅 Windows Feishu helper 设置 `shell: process.platform === 'win32'`，限定在 `.cmd` shim 这一条路径。
+- **防回归：** `tests/unit/cli-dev-webpack.test.ts` 断言 Feishu long connection 继续从 Web app 的本地 `.bin/tsx(.cmd)` 启动，并在 Windows 分支启用 shell。
+
 ### setup.js 首次配置流程也不要拼 shell 字符串 (2026-05-10)
 
 - **问题：** 根目录 `scripts/setup.js` 是 `mindos onboard` 的源码，但 `packages/mindos/scripts/` 是忽略的打包副本；修首次配置问题时必须改根目录源码。该脚本历史上用 shell 字符串执行 tar、npx skills、open/xdg-open/cmd.exe、`command -v`、`npm link`、`node cli.js start/restart`，路径和 URL 一旦含空格/引号就容易解析错，Windows 的 npx/npm `.cmd` shim 也不能直接交给 `execFile`。

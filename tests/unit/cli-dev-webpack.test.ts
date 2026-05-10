@@ -21,6 +21,7 @@ describe('CLI local TypeScript helpers', () => {
     expect(feishuWsCommand).toContain("WEB_APP_DIR");
     expect(feishuWsCommand).toContain("'node_modules', '.bin'");
     expect(feishuWsCommand).toContain("'tsx.cmd' : 'tsx'");
+    expect(feishuWsCommand).toContain("shell: process.platform === 'win32'");
     expect(feishuWsCommand).not.toContain("spawn('npx'");
     expect(feishuWsCommand).not.toContain("resolve(process.cwd(), 'app')");
   });
