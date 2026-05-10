@@ -2205,6 +2205,12 @@ mindos onboard
 - **解决：** 抽出 `escapeCmdSetValue()`，写入 batch `set` 值前依次转义 `^`、`%`、`!`，确保路径按字面量进入变量。
 - **防回归：** `packages/desktop/src/install-cli-shim.test.ts` 覆盖 `%`、`^`、`!` 混合路径，避免只修 delayed expansion 而漏掉 batch 百分号展开。
 
+### Settings 入口不能只打开 modal 而缺少 `/settings` 页面路由 (2026-05-10)
+
+- **问题：** Command palette、空状态和部分帮助文案会导航到 `/settings`，但 App Router 没有 `app/settings/page.tsx`，用户从这些入口会看到 404，而不是设置界面。
+- **解决：** 增加 `/settings` 页面，复用 `SettingsContent` 的 `panel` variant，并支持 `?tab=` 初始化 tab；setup 未完成时保持和其他页面一致跳转 `/setup`。
+- **防回归：** `packages/web/__tests__/settings/settings-page-route.test.ts` 断言 `/settings` route 存在，并继续渲染共享 SettingsContent。
+
 ### Desktop SSH 隧道探测不要把 ssh 路径和 host 拼进 shell (2026-05-10)
 
 - **问题：** `packages/desktop/src/ssh-tunnel.ts` 用 `execAsync("ssh ... ${host}")`、`execAsync(\`ssh-add "${resolvedKey}"\`)`、`execSync(\`"${candidate}" -V\`)` 探测 SSH。Windows 安装路径、key 路径或 host 名含空格/引号时容易解析错，也扩大了 shell 注入面。
