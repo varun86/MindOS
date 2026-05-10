@@ -7,7 +7,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, renameSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
-import { resolve, basename, dirname, relative, sep } from 'node:path';
+import { resolve, basename, dirname, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { bold, dim, cyan, green, red, yellow } from '../lib/colors.js';
 import { loadConfig } from '../lib/config.js';
@@ -15,6 +15,7 @@ import { output, isJsonMode, EXIT } from '../lib/command.js';
 import { isRemoteMode, apiCall } from '../lib/remote.js';
 import { replaceSection, insertAfterHeading, listHeadings } from '../lib/markdown.js';
 import { escapeCsvRow } from '../lib/csv.js';
+import { resolveInsideRoot } from '../lib/safe-path.js';
 
 function getMindRoot() {
   loadConfig();
@@ -27,15 +28,12 @@ function getMindRoot() {
 }
 
 function resolvePath(root, filePath) {
-  const resolved = resolve(root, filePath);
-  if (resolved !== root) {
-    const rel = relative(root, resolved);
-    if (rel === '..' || rel.startsWith(`..${sep}`) || rel.startsWith('../')) {
-      console.error(red(`Access denied: path outside knowledge base`));
-      process.exit(EXIT.ERROR);
-    }
+  try {
+    return resolveInsideRoot(root, filePath);
+  } catch {
+    console.error(red(`Access denied: path outside knowledge base`));
+    process.exit(EXIT.ERROR);
   }
-  return resolved;
 }
 
 export const meta = {

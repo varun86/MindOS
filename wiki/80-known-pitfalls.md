@@ -14,6 +14,16 @@
 
 **防回归**：`packages/mindos/src/foundation/security/path-safety.test.ts` 覆盖 Windows absolute path 在 POSIX host 也必须拒绝、`..\secret.md` 必须被视为 traversal、`Projects\note.md` 仍能解析为 root 内安全路径。
 
+### CLI file/space 命令也要使用跨平台路径语义（2026-05-10）
+
+**症状**：`mindos file create 'C:/Users/Ada/secret.md'` 或 `mindos space mkdir '..\outside'` 在 POSIX host 上会被当成知识库内路径；`Projects\note.md` / `Projects\Area` 也会创建成带反斜杠的文件名，而不是跨平台一致的子路径。
+
+**根因**：CLI 命令直接用 Node 当前 OS 的 `path.resolve(root, input)` 判断边界，和共享 `resolveSafe()` 一样没有识别 Windows drive / UNC absolute path，也没有在 containment 前把 `\` 视为路径分隔符。
+
+**修复**：CLI 命令统一走 `packages/mindos/bin/lib/safe-path.js` 的 `resolveInsideRoot()`，先规范化反斜杠，再拒绝 POSIX/Windows absolute path 与跨平台 parent traversal。`file` 读写、`space` 读取/创建/重命名/init 都通过该入口解析用户路径。
+
+**防回归**：`tests/unit/cli-file-safe-path.test.ts` 与 `tests/unit/cli-space-safe-path.test.ts` 通过真实 CLI subprocess 覆盖 Windows absolute path、反斜杠 traversal、以及安全反斜杠子路径规范化。
+
 ## v1 Monorepo Migration
 
 ### v1 迁移后不要再把顶层 `app/` / `apps/` / `desktop/` / `mobile/` 当源码入口

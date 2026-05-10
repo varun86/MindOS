@@ -7,11 +7,12 @@
  */
 
 import { existsSync, readdirSync, statSync, mkdirSync, writeFileSync, rmSync, renameSync } from 'node:fs';
-import { resolve, basename, relative, sep } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { bold, dim, cyan, green, red, yellow } from '../lib/colors.js';
 import { loadConfig } from '../lib/config.js';
 import { output, isJsonMode, EXIT } from '../lib/command.js';
 import { isRemoteMode, apiCall } from '../lib/remote.js';
+import { resolveInsideRoot } from '../lib/safe-path.js';
 
 function getMindRoot() {
   loadConfig();
@@ -92,19 +93,21 @@ function countFiles(dir) {
 }
 
 function resolvePath(root, relPath) {
-  const full = relPath ? resolve(root, relPath) : root;
-  if (full !== root) {
-    const rel = relative(root, full);
-    if (rel === '..' || rel.startsWith(`..${sep}`) || rel.startsWith('../')) {
-      console.error(red(`Access denied: path outside knowledge base`));
-      process.exit(EXIT.ERROR);
-    }
-  }
+  const full = resolveTargetPath(root, relPath);
   if (!existsSync(full)) {
     console.error(red(`Not found: ${relPath || '(root)'}`));
     process.exit(EXIT.NOT_FOUND);
   }
   return full;
+}
+
+function resolveTargetPath(root, relPath) {
+  try {
+    return resolveInsideRoot(root, relPath || '');
+  } catch {
+    console.error(red(`Access denied: path outside knowledge base`));
+    process.exit(EXIT.ERROR);
+  }
 }
 
 // ── ls: list contents of a directory ──────────────────────────────────────────
@@ -249,7 +252,7 @@ function spaceCreate(root, name, flags) {
     console.error(red('Usage: mindos space create <name>'));
     process.exit(EXIT.ARGS);
   }
-  const dir = resolve(root, name);
+  const dir = resolveTargetPath(root, name);
   if (existsSync(dir)) {
     console.error(red(`Already exists: ${name}`));
     process.exit(EXIT.ERROR);
@@ -273,7 +276,7 @@ function spaceMkdir(root, relPath, flags) {
     console.error(red('Usage: mindos space mkdir <path>'));
     process.exit(EXIT.ARGS);
   }
-  const full = resolve(root, relPath);
+  const full = resolveTargetPath(root, relPath);
   if (existsSync(full)) {
     if (isJsonMode(flags)) {
       output({ ok: true, path: relPath, created: false }, flags);
@@ -318,7 +321,7 @@ function spaceRename(root, oldPath, newPath, flags) {
     process.exit(EXIT.ARGS);
   }
   const oldDir = resolvePath(root, oldPath);
-  const newDir = resolve(root, newPath);
+  const newDir = resolveTargetPath(root, newPath);
   if (existsSync(newDir)) {
     console.error(red(`Target already exists: ${newPath}`));
     process.exit(EXIT.ERROR);
@@ -344,7 +347,7 @@ function spaceInit(root, relPath, flags) {
     console.error(red('Usage: mindos space init <path>'));
     process.exit(EXIT.ARGS);
   }
-  const dir = resolve(root, relPath);
+  const dir = resolveTargetPath(root, relPath);
 
   // If doesn't exist, create it + init as Space
   if (!existsSync(dir)) {
