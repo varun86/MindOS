@@ -26,11 +26,12 @@ import { homedir, tmpdir, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { pipeline } from 'node:stream/promises';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
 import http from 'node:http';
 import { MCP_AGENTS, SKILL_AGENT_REGISTRY, detectAgentPresence } from '../packages/mindos/bin/lib/mcp-agents.js';
+import { resolveNpmInvocation, resolveNpxInvocation } from '../packages/mindos/bin/lib/npm-invocation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -541,7 +542,7 @@ async function downloadAndExtract(url, destDir) {
 
   const extractDir = join(tmp, 'extracted');
   mkdirSync(extractDir, { recursive: true });
-  execSync(`tar -xzf "${tarPath}" -C "${extractDir}"`);
+  execFileSync('tar', ['-xzf', tarPath, '-C', extractDir]);
 
   const { readdirSync, statSync } = await import('node:fs');
   let contentRoot = extractDir;
@@ -842,17 +843,17 @@ function runSkillInstallStep(template, selectedAgents) {
     } catch { /* best-effort copy for unsupported agents */ }
   }
 
-  const agentFlags = additionalAgents.length > 0
-    ? additionalAgents.map(a => `-a ${a}`).join(' ')
-    : '-a universal';
+  const agentArgs = additionalAgents.length > 0
+    ? additionalAgents.flatMap(a => ['-a', a])
+    : ['-a', 'universal'];
 
   const sources = [githubSource, localSource];
 
   for (const source of sources) {
-    const quotedSource = /[/\\]/.test(source) ? `"${source}"` : source;
-    const cmd = `npx skills add ${quotedSource} --skill ${skillName} ${agentFlags} -g -y`;
+    const args = ['skills', 'add', source, '--skill', skillName, ...agentArgs, '-g', '-y'];
     try {
-      execSync(cmd, {
+      const invocation = resolveNpxInvocation(args);
+      execFileSync(invocation.command, invocation.args, {
         encoding: 'utf-8',
         timeout: 30_000,
         env: { ...process.env, NODE_ENV: 'production' },
@@ -871,18 +872,18 @@ function openBrowser(url) {
   try {
     const platform = process.platform;
     if (platform === 'darwin') {
-      execSync(`open "${url}"`, { stdio: 'ignore' });
+      execFileSync('open', [url], { stdio: 'ignore' });
     } else if (platform === 'linux') {
       // Check for WSL
       const isWSL = existsSync('/proc/version') &&
         readFileSync('/proc/version', 'utf-8').toLowerCase().includes('microsoft');
       if (isWSL) {
-        execSync(`cmd.exe /c start "${url}"`, { stdio: 'ignore' });
+        execFileSync('cmd.exe', ['/c', 'start', '', url], { stdio: 'ignore' });
       } else {
-        execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
+        execFileSync('xdg-open', [url], { stdio: 'ignore' });
       }
     } else {
-      execSync(`cmd.exe /c start "${url}"`, { stdio: 'ignore' });
+      execFileSync('cmd.exe', ['/c', 'start', '', url], { stdio: 'ignore' });
     }
     return true;
   } catch {
@@ -1343,8 +1344,7 @@ async function main() {
 
 function ensureCliInPath() {
   try {
-    const checkCmd = process.platform === 'win32' ? 'where mindos' : 'command -v mindos';
-    execSync(checkCmd, { stdio: 'ignore' });
+    execFileSync(process.platform === 'win32' ? 'where' : 'which', ['mindos'], { stdio: 'ignore' });
     return; // already in PATH (npm -g install or previous link)
   } catch { /* not found */ }
 
@@ -1356,7 +1356,8 @@ function ensureCliInPath() {
 
   write('\n');
   try {
-    execSync('npm link', { cwd: ROOT, stdio: 'ignore' });
+    const invocation = resolveNpmInvocation(['link']);
+    execFileSync(invocation.command, invocation.args, { cwd: ROOT, stdio: 'ignore' });
     write(c.green(uiLang === 'zh'
       ? '  ✔ mindos CLI 已注册到全局路径\n'
       : '  ✔ mindos CLI registered globally\n'));
@@ -1391,7 +1392,7 @@ async function finish(mindDir, startMode = 'start', mcpPort = 8781, authToken = 
         const cliPath = resolve(__dirname, '../packages/mindos/bin/cli.js');
         // Use 'restart' (stop → start) instead of bare 'start' which would
         // fail assertPortFree because the old process is still running.
-        execSync(`node "${cliPath}" restart`, { stdio: 'inherit' });
+        execFileSync(process.execPath, [cliPath, 'restart'], { stdio: 'inherit' });
       } else {
         write(c.dim(t('restartManual') + '\n'));
       }
@@ -1409,13 +1410,12 @@ async function finish(mindDir, startMode = 'start', mcpPort = 8781, authToken = 
 
   const doStart = await askYesNoDefault('startNow');
   if (doStart) {
-    const { execSync: exec } = await import('node:child_process');
     const cliPath = resolve(__dirname, '../packages/mindos/bin/cli.js');
     if (installDaemon) {
       // Install and start as background service — returns immediately
-      exec(`node "${cliPath}" start --daemon`, { stdio: 'inherit' });
+      execFileSync(process.execPath, [cliPath, 'start', '--daemon'], { stdio: 'inherit' });
     } else {
-      exec(`node "${cliPath}" ${startMode}`, { stdio: 'inherit' });
+      execFileSync(process.execPath, [cliPath, startMode], { stdio: 'inherit' });
     }
   }
 }

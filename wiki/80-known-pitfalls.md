@@ -2145,6 +2145,12 @@ mindos onboard
 - **解决：** 增加 `execInheritedFile(command, args, cwd, envPatch)` 和 `execNpmInherited(args, cwd, envPatch)`，所有 CLI 长任务用结构化 argv；Next 改为 `process.execPath + node_modules/next/dist/bin/next`，避免直接执行 `.bin/next` shim；npm 继续复用 `resolveNpmInvocation()`，Windows 下通过 `npm-cli.js` 执行。
 - **防回归：** `tests/unit/cli-shell-subprocess.test.ts` 禁止 `shell.js` 回退到 `execSync(`，并覆盖 `npmInstall()` 的 prefer-offline fallback argv；`tests/unit/cli-build.test.ts` 和 `tests/unit/mcp-build.test.ts` 断言 build/MCP 分支继续传 argv。
 
+### setup.js 首次配置流程也不要拼 shell 字符串 (2026-05-10)
+
+- **问题：** 根目录 `scripts/setup.js` 是 `mindos onboard` 的源码，但 `packages/mindos/scripts/` 是忽略的打包副本；修首次配置问题时必须改根目录源码。该脚本历史上用 shell 字符串执行 tar、npx skills、open/xdg-open/cmd.exe、`command -v`、`npm link`、`node cli.js start/restart`，路径和 URL 一旦含空格/引号就容易解析错，Windows 的 npx/npm `.cmd` shim 也不能直接交给 `execFile`。
+- **解决：** `scripts/setup.js` 统一改为 `execFileSync(command, args)`；npx/npm 走 `resolveNpxInvocation()` / `resolveNpmInvocation()`，Windows 下通过 `npx-cli.js` / `npm-cli.js` 执行；浏览器启动在 Windows/WSL 用 `cmd.exe /c start "" <url>` 的 argv 形式。
+- **防回归：** `tests/unit/cli-setup-subprocess.test.ts` 读取根目录 `scripts/setup.js`，禁止回退到 `execSync(`；`tests/unit/npm-invocation.test.ts` 覆盖 Windows npx CLI 解析。
+
 ### ACP Windows taskkill 不要拼 shell 字符串 (2026-05-10)
 
 - **问题：** `packages/mindos/src/protocols/acp/subprocess.ts` 的 `killAgent()` 在 Windows 分支用 ``execSync(`taskkill /PID ${pid} /T /F`)``。PID 来自子进程对象，但仍会把进程控制交给 shell 解析，和 CLI stop/update 的 argv 安全规则不一致。
