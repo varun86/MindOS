@@ -21,6 +21,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/lib/toast';
 import type { SkillInfo } from '@/components/settings/types';
 import { Toggle } from '@/components/settings/Primitives';
+import { escapeHtml } from '@/components/renderers/safe-html';
 import { AgentAvatar, ConfirmDialog } from './AgentsPrimitives';
 import { capabilityFromText, type SkillCapability } from './agents-content-model';
 
@@ -124,11 +125,11 @@ function MarkdownContent({ text, className = '' }: { text: string; className?: s
 }
 
 /** Minimal markdown to HTML — no external deps */
-function renderMarkdown(md: string): string {
-  let html = md
+export function renderMarkdown(md: string): string {
+  let html = escapeHtml(md)
     // Code blocks (fenced)
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) =>
-      `<pre><code>${escHtml(code.trimEnd())}</code></pre>`)
+      `<pre><code>${code.trimEnd()}</code></pre>`)
     // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     // Headers
@@ -159,10 +160,6 @@ function renderMarkdown(md: string): string {
   }).join('\n');
 
   return html;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /* ────────── Component ────────── */

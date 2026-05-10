@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import type { RendererContext } from '@/lib/renderers/registry';
+import { escapeAttribute, escapeHtml, safeHref } from '../safe-html';
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
@@ -68,16 +69,17 @@ function parseTimeline(content: string): TimelineEntry[] {
 // ─── Markdown inline renderer (no extra dep) ──────────────────────────────────
 
 function renderInline(text: string): string {
-  return text
+  return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code class="font-display" style="font-size:0.85em;padding:1px 5px;border-radius:4px;background:var(--muted)">$1</code>')
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) =>
-      `<span style="color:var(--amber);cursor:pointer" title="${target}">${alias ?? target}</span>`)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:var(--amber)">$1</a>');
+      `<span style="color:var(--amber);cursor:pointer" title="${escapeAttribute(target)}">${alias ?? target}</span>`)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) =>
+      `<a href="${safeHref(href)}" style="color:var(--amber)">${label}</a>`);
 }
 
-function renderBody(body: string): string {
+export function renderBody(body: string): string {
   const lines = body.split('\n');
   const out: string[] = [];
   let inList = false;

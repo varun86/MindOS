@@ -549,6 +549,14 @@ rootcause: app/api/ask/route.ts:143 直接传递 llmHistoryMessages（pi-ai Mess
 
 ## 前端
 
+### dangerouslySetInnerHTML 渲染 AI / Markdown 输出前必须先转义原文（2026-05-10）
+
+- **现象：** Timeline、Summary、Skill detail 这类轻量 Markdown renderer 先做 Markdown 替换，再直接 `dangerouslySetInnerHTML`，如果原文包含 `<script>`、`<img onerror>` 或 `javascript:` 链接，会把不可信内容带入 DOM。
+- **根因：** 这些 renderer 不是通用 Markdown 引擎，也没有 sanitizer；正则替换只处理少数 Markdown 语法，不会自动转义普通 HTML 或校验链接协议。
+- **解决：** 统一在 Markdown 替换前对原始文本做 `escapeHtml()`；属性值用 `escapeAttribute()`；链接 href 走 `safeHref()` 白名单（`http(s)`、`mailto`、站内路径和 hash），不合规则降级为 `#`。
+- **规则：** 新增 `dangerouslySetInnerHTML` 必须满足二选一：输入来自可信静态模板，或先经过明确的 escape/sanitize helper，并补一条包含 HTML 注入和危险链接的回归测试。
+- **验证：** `packages/web/__tests__/renderers/generated-html-safety.test.ts` 覆盖 Summary、Timeline 和 Skill detail 的 HTML 转义与危险链接降级。
+
 ### 渠道详情页若只展示配置表单，用户会误解为“聊天页”或“不知道下一步做什么”
 - **现象：** 用户点击 Feishu / Telegram 这类 Channel 后，会问“我能在这里聊天吗？”“这个页面到底是干嘛的？”
 - **原因：** 页面只展示凭证表单和 test send，缺少用途说明、运行状态、最近活动，无法建立“消息投递渠道”的正确心智模型

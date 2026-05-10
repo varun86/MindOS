@@ -5,6 +5,7 @@ import { Sparkles, RefreshCw, Clock, FileText } from 'lucide-react';
 import { encodePath } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import type { RendererContext } from '@/lib/renderers/registry';
+import { escapeHtml } from '../safe-html';
 
 interface RecentFile {
   path: string;
@@ -27,8 +28,8 @@ function basename(p: string) {
 }
 
 // Minimal markdown→HTML for the streamed summary
-function renderMarkdown(md: string): string {
-  return md
+export function renderMarkdown(md: string): string {
+  return escapeHtml(md)
     .replace(/^### (.+)$/gm, '<h3 style="font-size:.8rem;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.06em;margin:1em 0 .3em">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 style="font-size:.9rem;font-weight:700;color:var(--foreground);margin:1.2em 0 .4em">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 style="font-size:1rem;font-weight:700;color:var(--foreground);margin:1.2em 0 .4em">$1</h1>')
