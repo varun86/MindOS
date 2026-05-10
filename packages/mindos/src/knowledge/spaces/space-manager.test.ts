@@ -220,6 +220,16 @@ describe('SpaceManager', () => {
       }
     });
 
+    it('should allow consecutive dots inside a single space name segment', async () => {
+      const result = await manager.createSpace('Research..2026');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.name).toBe('Research..2026');
+        expect(result.value.path).toBe('/spaces/Research..2026');
+      }
+    });
+
     it('should fail if space already exists', async () => {
       await manager.createSpace('test-space');
       const result = await manager.createSpace('test-space');

@@ -3073,6 +3073,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/web/__tests__/components/view-page-draft-name.test.tsx` 通过 jsdom 覆盖 draft 保存 `meeting..notes` 会调用 `createDraftAction('meeting..notes.md', '')`。
 
+### Space 名称校验不要拒绝普通连续点号（2026-05-10）
+
+**症状**：`SpaceManager.createSpace('Research..2026')` 返回 `VALIDATION_ERROR`，虽然这是合法的单段目录名。
+
+**根因**：Space 名称已经禁止 `/`、`\`、`.`、`..` 和绝对路径，但额外的 `trimmed.includes('..')` 把普通连续点号误判成 traversal。
+
+**修复**：保留单段路径约束，只拒绝精确的 `.` / `..`，不拒绝名称内部的连续点号。
+
+**防回归**：`packages/mindos/src/knowledge/spaces/space-manager.test.ts` 覆盖 `Research..2026` 可以创建，同时既有 unsafe name case 继续覆盖 `../evil`、nested path 和 absolute path。
+
 ### 删除风险评估不要把 `..name` 当成系统路径（2026-05-10）
 
 **症状**：Desktop 与产品 CLI 的 `assessDeletionRisk()` 会把 `.mindos/..cache/runtime` 这种仍在配置目录内的路径标记为 `isSystemPath: true`，误报为系统路径风险。

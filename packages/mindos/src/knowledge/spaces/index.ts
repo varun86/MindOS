@@ -43,8 +43,7 @@ function validateSpaceName(name: string): Result<string> {
     trimmed.includes('/') ||
     trimmed.includes('\\') ||
     trimmed === '.' ||
-    trimmed === '..' ||
-    trimmed.includes('..')
+    trimmed === '..'
   ) {
     return err(
       createError('VALIDATION_ERROR', 'Space name must be a single safe path segment', {
