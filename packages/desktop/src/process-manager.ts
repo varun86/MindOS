@@ -2,16 +2,18 @@
  * Process Manager — manages Next.js and MCP child processes.
  * Handles spawning, health checks, crash recovery, and graceful shutdown.
  */
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, execFile, spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import path from 'path';
 import http from 'http';
 import net from 'net';
+import { promisify } from 'util';
 import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdirSync, chmodSync, appendFileSync } from 'fs';
 import { desktopTelemetry } from './telemetry';
 import { resolveCliPath, resolveMcpDir, resolveWebAppDir } from './mindos-runtime-layout';
 
 const IS_WIN = process.platform === 'win32';
+const execFileAsync = promisify(execFile);
 
 export interface ProcessManagerOptions {
   nodePath: string;
@@ -733,10 +735,6 @@ export class ProcessManager extends EventEmitter {
 
   /** Find PIDs listening on a given port — cross-platform with fallbacks */
   private static async findPidsOnPort(port: number): Promise<number[]> {
-    const { exec, execFile } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    const execFileAsync = promisify(execFile);
     const timeout = 3000;
 
     if (process.platform === 'win32') {
@@ -759,7 +757,7 @@ export class ProcessManager extends EventEmitter {
     {
       const stop = desktopTelemetry.startTimer('desktop.port.find_pids', { port, method: 'lsof' });
       try {
-        const { stdout } = await execAsync(`lsof -ti:${port}`, { encoding: 'utf-8', timeout });
+        const { stdout } = await execFileAsync('lsof', [`-ti:${port}`], { encoding: 'utf-8', timeout });
         if (stdout.trim()) {
           const pids = stdout.trim().split('\n').map(Number).filter((p: number) => p > 0 && !isNaN(p));
           stop({ port, method: 'lsof', pidCount: pids.length, success: true });
@@ -775,7 +773,7 @@ export class ProcessManager extends EventEmitter {
     if (process.platform === 'linux') {
       const stop = desktopTelemetry.startTimer('desktop.port.find_pids', { port, method: 'ss' });
       try {
-        const { stdout } = await execAsync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8', timeout });
+        const { stdout } = await execFileAsync('ss', ['-tlnp', 'sport', '=', `:${port}`], { encoding: 'utf-8', timeout });
         const pids: number[] = [];
         for (const match of (stdout as string).matchAll(/pid=(\d+)/g)) {
           const p = parseInt(match[1], 10);
@@ -794,13 +792,22 @@ export class ProcessManager extends EventEmitter {
     // Fallback: fuser (available on most Unix)
     const stop = desktopTelemetry.startTimer('desktop.port.find_pids', { port, method: 'fuser' });
     try {
-      const { stdout } = await execAsync(`fuser ${port}/tcp 2>&1`, { encoding: 'utf-8', timeout });
-      const pids = (stdout as string).match(/\d+/g)?.map(Number).filter((p: number) => p > 0 && p !== port) ?? [];
+      let output = '';
+      let fuserSucceeded = true;
+      try {
+        const { stdout, stderr } = await execFileAsync('fuser', [`${port}/tcp`], { encoding: 'utf-8', timeout });
+        output = `${stdout}${stderr}`;
+      } catch (err) {
+        fuserSucceeded = false;
+        const e = err as { stdout?: string; stderr?: string };
+        output = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+      }
+      const pids = output.match(/\d+/g)?.map(Number).filter((p: number) => p > 0 && p !== port) ?? [];
       if (pids.length > 0) {
         stop({ port, method: 'fuser', pidCount: pids.length, success: true });
         return pids;
       }
-      stop({ port, method: 'fuser', pidCount: 0, success: true });
+      stop({ port, method: 'fuser', pidCount: 0, success: fuserSucceeded });
     } catch {
       stop({ port, method: 'fuser', pidCount: 0, success: false });
     }
@@ -817,10 +824,6 @@ export class ProcessManager extends EventEmitter {
     const stop = desktopTelemetry.startTimer('desktop.port.kill_verify', { pid, label });
     try {
       process.kill(pid, 0); // check alive
-      const { exec, execFile } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-      const execFileAsync = promisify(execFile);
       const timeout = 3000;
 
       if (process.platform === 'win32') {
@@ -835,10 +838,7 @@ export class ProcessManager extends EventEmitter {
           }
         } catch {
           try {
-            const { stdout } = await execAsync(
-              `wmic process where ProcessId=${pid} get Name /format:value`,
-              { encoding: 'utf-8', timeout },
-            );
+            const { stdout } = await execFileAsync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'Name', '/format:value'], { encoding: 'utf-8', timeout });
             if (!(stdout as string).trim().toLowerCase().includes('node')) {
               stop({ pid, label, verifiedNodeProcess: false, success: true });
               return;
@@ -850,7 +850,7 @@ export class ProcessManager extends EventEmitter {
         }
       } else {
         try {
-          const { stdout } = await execAsync(`ps -p ${pid} -o comm=`, { encoding: 'utf-8', timeout: 2000 });
+          const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf-8', timeout: 2000 });
           if (!(stdout as string).trim().includes('node') && !(stdout as string).trim().includes('next')) {
             stop({ pid, label, verifiedNodeProcess: false, success: true });
             return;

@@ -2151,6 +2151,12 @@ mindos onboard
 - **解决：** 把 Desktop main 里的清理命令统一到 `execFileAsync(command, args)`；launchd 先用 `id -u` argv 取 uid，再把 `gui/<uid>/com.mindos.app` 作为单个参数传给 `launchctl`；systemd inactive 用异常分支表达，不再用 shell 重定向和 `|| true`。
 - **防回归：** `packages/desktop/src/main-subprocess-contract.test.ts` 禁止 Desktop main 重新引入 cleanup shell 字符串，并断言 launchctl/pkill/systemctl 的关键调用保持 argv 形式。
 
+### Desktop 端口/PID 清理不要拼 lsof/ss/fuser/ps 字符串 (2026-05-10)
+
+- **问题：** `packages/desktop/src/process-manager.ts` 的 orphan/端口恢复路径用 `execAsync(\`lsof -ti:${port}\`)`、`execAsync(\`ss -tlnp sport = :${port}\`)`、`execAsync(\`fuser ${port}/tcp 2>&1\`)`、`execAsync(\`ps -p ${pid} -o comm=\`)`。这些值虽来自 number，但属于 Desktop 启动恢复最后防线，不应依赖 shell、重定向或平台 shell 语法。
+- **解决：** 统一使用 module-scope `execFileAsync(command, args)`；`lsof`、`ss`、`fuser`、`wmic`、`ps` 都传结构化参数。`fuser` 保留 stdout+stderr 解析，因为不同实现会把 PID 写到不同流。
+- **防回归：** `packages/desktop/src/process-manager-subprocess-contract.test.ts` 禁止 process-manager 回退到 `execAsync` / shell 字符串，并断言关键 port/PID probes 使用 argv 调用。
+
 ### Desktop 私有 Node 的 macOS quarantine 清理不能拼 shell 路径 (2026-05-10)
 
 - **问题：** `packages/desktop/src/node-bootstrap.ts` 下载私有 Node 后用 `execSync(\`xattr ... "${NODE_DIR}"\`)` 清理 quarantine。用户 home / app support 路径如果包含引号、`$` 等字符，会重新进入 shell 解析。

@@ -7,10 +7,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 
 const spawnMock = vi.fn();
+const execFileMock = vi.fn();
 const existsSyncMock = vi.fn().mockReturnValue(true);
 const readFileSyncMock = vi.fn().mockReturnValue('{}');
 
-vi.mock('child_process', () => ({ spawn: (...args: unknown[]) => spawnMock(...args) }));
+vi.mock('child_process', () => ({
+  execFile: (...args: unknown[]) => execFileMock(...args),
+  spawn: (...args: unknown[]) => spawnMock(...args),
+}));
 vi.mock('fs', () => ({
   existsSync: (...args: unknown[]) => existsSyncMock(...args),
   readFileSync: (...args: unknown[]) => readFileSyncMock(...args),
