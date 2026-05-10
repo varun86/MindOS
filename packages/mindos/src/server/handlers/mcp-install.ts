@@ -104,33 +104,62 @@ function getNestedPath(obj: Record<string, unknown>, dotPath: string): Record<st
   return current && typeof current === 'object' ? current as Record<string, unknown> : null;
 }
 
+function quotedConfigString(value: unknown): string {
+  return JSON.stringify(String(value));
+}
+
+function tomlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : quotedConfigString(key);
+}
+
+function tomlTablePath(sectionKey: string, serverName: string, ...suffixes: string[]): string {
+  return [
+    ...sectionKey.split('.').filter(Boolean).map(tomlKey),
+    tomlKey(serverName),
+    ...suffixes.map(tomlKey),
+  ].join('.');
+}
+
+function yamlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : quotedConfigString(key);
+}
+
+function isYamlMappingLine(trimmed: string, key: string): boolean {
+  return trimmed === `${key}:` || trimmed === `${yamlKey(key)}:`;
+}
+
 function buildTomlEntry(sectionKey: string, serverName: string, entry: Record<string, unknown>): string {
-  const lines: string[] = [`[${sectionKey}.${serverName}]`];
-  if (entry.type) lines.push(`type = "${entry.type}"`);
-  if (entry.command) lines.push(`command = "${entry.command}"`);
-  if (entry.url) lines.push(`url = "${entry.url}"`);
-  if (Array.isArray(entry.args)) lines.push(`args = [${entry.args.map((arg) => `"${arg}"`).join(', ')}]`);
+  const lines: string[] = [`[${tomlTablePath(sectionKey, serverName)}]`];
+  if (entry.type) lines.push(`type = ${quotedConfigString(entry.type)}`);
+  if (entry.command) lines.push(`command = ${quotedConfigString(entry.command)}`);
+  if (entry.url) lines.push(`url = ${quotedConfigString(entry.url)}`);
+  if (Array.isArray(entry.args)) lines.push(`args = [${entry.args.map(quotedConfigString).join(', ')}]`);
   if (entry.env && typeof entry.env === 'object') {
-    lines.push('', `[${sectionKey}.${serverName}.env]`);
-    for (const [key, value] of Object.entries(entry.env)) lines.push(`${key} = "${value}"`);
+    lines.push('', `[${tomlTablePath(sectionKey, serverName, 'env')}]`);
+    for (const [key, value] of Object.entries(entry.env)) lines.push(`${tomlKey(key)} = ${quotedConfigString(value)}`);
   }
   if (entry.headers && typeof entry.headers === 'object') {
-    lines.push('', `[${sectionKey}.${serverName}.headers]`);
-    for (const [key, value] of Object.entries(entry.headers)) lines.push(`${key} = "${value}"`);
+    lines.push('', `[${tomlTablePath(sectionKey, serverName, 'headers')}]`);
+    for (const [key, value] of Object.entries(entry.headers)) lines.push(`${tomlKey(key)} = ${quotedConfigString(value)}`);
   }
   return lines.join('\n');
 }
 
 function mergeTomlEntry(existing: string, sectionKey: string, serverName: string, entry: Record<string, unknown>): string {
-  const sectionHeader = `[${sectionKey}.${serverName}]`;
-  const envHeader = `[${sectionKey}.${serverName}.env]`;
-  const headersHeader = `[${sectionKey}.${serverName}.headers]`;
+  const sectionHeader = `[${tomlTablePath(sectionKey, serverName)}]`;
+  const envHeader = `[${tomlTablePath(sectionKey, serverName, 'env')}]`;
+  const headersHeader = `[${tomlTablePath(sectionKey, serverName, 'headers')}]`;
+  const legacyHeaders = new Set([
+    `[${sectionKey}.${serverName}]`,
+    `[${sectionKey}.${serverName}.env]`,
+    `[${sectionKey}.${serverName}.headers]`,
+  ]);
   const result: string[] = [];
   let skipping = false;
 
   for (const line of existing.split('\n')) {
     const trimmed = line.trim();
-    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader) {
+    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader || legacyHeaders.has(trimmed)) {
       skipping = true;
       continue;
     }
@@ -144,15 +173,20 @@ function mergeTomlEntry(existing: string, sectionKey: string, serverName: string
 }
 
 function removeTomlEntry(existing: string, sectionKey: string, serverName: string): string {
-  const sectionHeader = `[${sectionKey}.${serverName}]`;
-  const envHeader = `[${sectionKey}.${serverName}.env]`;
-  const headersHeader = `[${sectionKey}.${serverName}.headers]`;
+  const sectionHeader = `[${tomlTablePath(sectionKey, serverName)}]`;
+  const envHeader = `[${tomlTablePath(sectionKey, serverName, 'env')}]`;
+  const headersHeader = `[${tomlTablePath(sectionKey, serverName, 'headers')}]`;
+  const legacyHeaders = new Set([
+    `[${sectionKey}.${serverName}]`,
+    `[${sectionKey}.${serverName}.env]`,
+    `[${sectionKey}.${serverName}.headers]`,
+  ]);
   const result: string[] = [];
   let skipping = false;
 
   for (const line of existing.split('\n')) {
     const trimmed = line.trim();
-    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader) {
+    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader || legacyHeaders.has(trimmed)) {
       skipping = true;
       continue;
     }
@@ -169,18 +203,18 @@ function removeTomlEntry(existing: string, sectionKey: string, serverName: strin
 }
 
 function buildYamlEntry(serverName: string, entry: Record<string, unknown>): string {
-  const lines: string[] = [`  ${serverName}:`];
-  if (entry.type) lines.push(`    type: "${entry.type}"`);
-  if (entry.command) lines.push(`    command: "${entry.command}"`);
-  if (entry.url) lines.push(`    url: "${entry.url}"`);
-  if (Array.isArray(entry.args)) lines.push(`    args: [${entry.args.map((arg) => `"${arg}"`).join(', ')}]`);
+  const lines: string[] = [`  ${yamlKey(serverName)}:`];
+  if (entry.type) lines.push(`    type: ${quotedConfigString(entry.type)}`);
+  if (entry.command) lines.push(`    command: ${quotedConfigString(entry.command)}`);
+  if (entry.url) lines.push(`    url: ${quotedConfigString(entry.url)}`);
+  if (Array.isArray(entry.args)) lines.push(`    args: [${entry.args.map(quotedConfigString).join(', ')}]`);
   if (entry.env && typeof entry.env === 'object') {
     lines.push('    env:');
-    for (const [key, value] of Object.entries(entry.env)) lines.push(`      ${key}: "${value}"`);
+    for (const [key, value] of Object.entries(entry.env)) lines.push(`      ${yamlKey(key)}: ${quotedConfigString(value)}`);
   }
   if (entry.headers && typeof entry.headers === 'object') {
     lines.push('    headers:');
-    for (const [key, value] of Object.entries(entry.headers)) lines.push(`      ${key}: "${value}"`);
+    for (const [key, value] of Object.entries(entry.headers)) lines.push(`      ${yamlKey(key)}: ${quotedConfigString(value)}`);
   }
   return lines.join('\n');
 }
@@ -224,8 +258,7 @@ function mergeYamlEntry(existing: string, sectionKey: string, serverName: string
     }
     if (baseIndent < 0) baseIndent = indent;
     if (indent === baseIndent) {
-      const match = trimmed.match(/^([a-zA-Z0-9_-]+)\s*:/);
-      if (match?.[1] === serverName) {
+      if (isYamlMappingLine(trimmed, serverName)) {
         skipping = true;
         serverIndent = indent;
         continue;

@@ -74,6 +74,21 @@ describe('buildTomlEntry', () => {
     expect(result).toContain('Authorization = "Bearer tok-abc"');
   });
 
+  it('escapes TOML strings and quotes special keys', async () => {
+    const { buildTomlEntry } = await importToml();
+    const result = buildTomlEntry('mcp_servers', 'mindos.local', {
+      command: 'mindos "beta"',
+      args: ['mcp', 'line\nbreak'],
+      headers: { 'X.Token': 'Bearer "quoted"' },
+    });
+
+    expect(result).toContain('[mcp_servers."mindos.local"]');
+    expect(result).toContain('command = "mindos \\"beta\\""');
+    expect(result).toContain('args = ["mcp", "line\\nbreak"]');
+    expect(result).toContain('[mcp_servers."mindos.local".headers]');
+    expect(result).toContain('"X.Token" = "Bearer \\"quoted\\""');
+  });
+
   it('generates entry with both env and headers', async () => {
     const { buildTomlEntry } = await importToml();
     const result = buildTomlEntry('mcp_servers', 'mindos', {

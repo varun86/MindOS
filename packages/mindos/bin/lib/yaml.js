@@ -7,6 +7,19 @@
  * @module yaml
  */
 
+function yamlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function yamlKey(key) {
+  const value = String(key);
+  return /^[A-Za-z0-9_-]+$/.test(value) ? value : yamlString(value);
+}
+
+function isYamlMappingLine(trimmed, key) {
+  return trimmed === `${key}:` || trimmed === `${yamlKey(key)}:`;
+}
+
 /**
  * Generate a YAML block for an MCP server entry under a section key.
  *
@@ -28,23 +41,23 @@
  */
 export function buildYamlEntry(serverName, entry) {
   const lines = [];
-  lines.push(`  ${serverName}:`);
+  lines.push(`  ${yamlKey(serverName)}:`);
 
   // Scalar fields
-  if (entry.type != null)    lines.push(`    type: "${entry.type}"`);
-  if (entry.command != null) lines.push(`    command: "${entry.command}"`);
-  if (entry.url != null)     lines.push(`    url: "${entry.url}"`);
+  if (entry.type != null)    lines.push(`    type: ${yamlString(entry.type)}`);
+  if (entry.command != null) lines.push(`    command: ${yamlString(entry.command)}`);
+  if (entry.url != null)     lines.push(`    url: ${yamlString(entry.url)}`);
 
   // Array fields
   if (Array.isArray(entry.args)) {
-    lines.push(`    args: [${entry.args.map(a => `"${a}"`).join(', ')}]`);
+    lines.push(`    args: [${entry.args.map(yamlString).join(', ')}]`);
   }
 
   // Nested env mapping
   if (entry.env && typeof entry.env === 'object') {
     lines.push('    env:');
     for (const [k, v] of Object.entries(entry.env)) {
-      lines.push(`      ${k}: "${v}"`);
+      lines.push(`      ${yamlKey(k)}: ${yamlString(v)}`);
     }
   }
 
@@ -52,7 +65,7 @@ export function buildYamlEntry(serverName, entry) {
   if (entry.headers && typeof entry.headers === 'object') {
     lines.push('    headers:');
     for (const [k, v] of Object.entries(entry.headers)) {
-      lines.push(`      ${k}: "${v}"`);
+      lines.push(`      ${yamlKey(k)}: ${yamlString(v)}`);
     }
   }
 
@@ -136,8 +149,7 @@ export function mergeYamlEntry(existing, sectionKey, serverName, entry) {
 
     // Server name at base indent level
     if (indent === baseIndent) {
-      const match = trimmed.match(/^([a-zA-Z0-9_-]+)\s*:/);
-      if (match && match[1] === serverName) {
+      if (isYamlMappingLine(trimmed, serverName)) {
         // Start skipping this server's block
         skipping = true;
         serverIndent = indent;

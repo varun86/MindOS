@@ -1176,6 +1176,43 @@ describe('MindOS product server contract', () => {
     const copawConfig = JSON.parse(readFileSync(join(home, '.copaw', 'config.json'), 'utf-8'));
     expect(copawConfig.mcp.clients.mindos).toMatchObject({ type: 'stdio', command: 'mindos' });
 
+    const specialAgents: Record<string, MindosMcpAgentDef> = {
+      codex: {
+        name: 'Codex',
+        project: null,
+        global: '~/.codex/config.toml',
+        key: 'mcp_servers',
+        format: 'toml',
+        preferredTransport: 'http',
+      },
+      hermes: {
+        name: 'Hermes',
+        project: null,
+        global: '~/.hermes/config.yaml',
+        key: 'mcp_servers',
+        format: 'yaml',
+        preferredTransport: 'http',
+      },
+    };
+    await expect(handleMcpInstallPost({
+      agents: [
+        { key: 'codex', scope: 'global' },
+        { key: 'hermes', scope: 'global' },
+      ],
+      transport: 'http',
+      url: 'http://localhost:8781/mcp?label="main"',
+      token: 'tok"line\nnext',
+    }, { agents: specialAgents, homeDir: home })).resolves.toMatchObject({
+      status: 200,
+      body: { results: [{ agent: 'codex', status: 'ok' }, { agent: 'hermes', status: 'ok' }] },
+    });
+    const specialToml = readFileSync(join(home, '.codex', 'config.toml'), 'utf-8');
+    expect(specialToml).toContain('url = "http://localhost:8781/mcp?label=\\"main\\""');
+    expect(specialToml).toContain('Authorization = "Bearer tok\\"line\\nnext"');
+    const specialYaml = readFileSync(join(home, '.hermes', 'config.yaml'), 'utf-8');
+    expect(specialYaml).toContain('url: "http://localhost:8781/mcp?label=\\"main\\""');
+    expect(specialYaml).toContain('Authorization: "Bearer tok\\"line\\nnext"');
+
     expect(handleMcpUninstallPost({
       agents: [{ key: 'copaw', scope: 'global' }],
     }, { agents, homeDir: home })).toMatchObject({

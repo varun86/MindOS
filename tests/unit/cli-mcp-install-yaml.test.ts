@@ -89,6 +89,20 @@ describe('buildYamlEntry', () => {
     expect(result).toContain('      Authorization: "Bearer test-token"');
   });
 
+  it('escapes YAML strings and quotes special mapping keys', async () => {
+    const { buildYamlEntry } = await importYaml();
+    const result = buildYamlEntry('mindos.local', {
+      command: 'mindos "beta"',
+      args: ['mcp', 'line\nbreak'],
+      headers: { 'X.Token': 'Bearer "quoted"' },
+    });
+
+    expect(result).toContain('  "mindos.local":');
+    expect(result).toContain('    command: "mindos \\"beta\\""');
+    expect(result).toContain('    args: ["mcp", "line\\nbreak"]');
+    expect(result).toContain('      "X.Token": "Bearer \\"quoted\\""');
+  });
+
   it('generates entry with type field', async () => {
     const { buildYamlEntry } = await importYaml();
     const result = buildYamlEntry('mindos', {

@@ -3215,6 +3215,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：pre-push `turbo run test` 会覆盖 `@mindos/web` 全量测试，避免该 smoke contract 在高负载下继续随机失败。
 
+### MCP install 生成 TOML/YAML 时必须转义配置值（2026-05-10）
+
+**症状**：通过 CLI 或产品 API 安装 MCP HTTP 配置时，如果 URL、Authorization token、命令参数或 header key 含有 `"`、换行、`.` 等特殊字符，生成的 TOML/YAML 会语法损坏，甚至把一个 server 名错误拆成多层 key。
+
+**根因**：`buildTomlEntry()` / `buildYamlEntry()` 用字符串插值直接拼接 quoted value 和 mapping key，没有统一转义，也没有区分 TOML bare key 与 quoted key。
+
+**修复**：TOML/YAML 的值统一走 JSON-style quoted string；非 bare key 统一加引号。TOML table path 对 `sectionKey` 仍按点分层，但把 server name 和 env/header key 作为独立 key 格式化。
+
+**防回归**：`tests/unit/cli-mcp-install-toml.test.ts`、`tests/unit/cli-mcp-install-yaml.test.ts` 和 `packages/mindos/src/server.test.ts` 覆盖含引号、换行和点号 key 的生成结果。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

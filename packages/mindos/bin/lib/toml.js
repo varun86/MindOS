@@ -10,6 +10,23 @@
  * @module toml
  */
 
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function tomlKey(key) {
+  const value = String(key);
+  return /^[A-Za-z0-9_-]+$/.test(value) ? value : tomlString(value);
+}
+
+function tomlTablePath(sectionKey, serverName, ...suffixes) {
+  return [
+    ...String(sectionKey).split('.').filter(Boolean).map(tomlKey),
+    tomlKey(serverName),
+    ...suffixes.map(tomlKey),
+  ].join('.');
+}
+
 /**
  * Generate a TOML section string for an MCP server entry.
  *
@@ -36,31 +53,31 @@ export function buildTomlEntry(sectionKey, serverName, entry) {
   const lines = [];
 
   // Main section header
-  lines.push(`[${sectionKey}.${serverName}]`);
+  lines.push(`[${tomlTablePath(sectionKey, serverName)}]`);
 
   // Scalar + array fields (order matches TS version)
-  if (entry.type != null)    lines.push(`type = "${entry.type}"`);
-  if (entry.command != null) lines.push(`command = "${entry.command}"`);
-  if (entry.url != null)     lines.push(`url = "${entry.url}"`);
+  if (entry.type != null)    lines.push(`type = ${tomlString(entry.type)}`);
+  if (entry.command != null) lines.push(`command = ${tomlString(entry.command)}`);
+  if (entry.url != null)     lines.push(`url = ${tomlString(entry.url)}`);
   if (Array.isArray(entry.args)) {
-    lines.push(`args = [${entry.args.map(a => `"${a}"`).join(', ')}]`);
+    lines.push(`args = [${entry.args.map(tomlString).join(', ')}]`);
   }
 
   // Nested [section.server.env] sub-table
   if (entry.env && typeof entry.env === 'object') {
     lines.push('');
-    lines.push(`[${sectionKey}.${serverName}.env]`);
+    lines.push(`[${tomlTablePath(sectionKey, serverName, 'env')}]`);
     for (const [k, v] of Object.entries(entry.env)) {
-      lines.push(`${k} = "${v}"`);
+      lines.push(`${tomlKey(k)} = ${tomlString(v)}`);
     }
   }
 
   // Nested [section.server.headers] sub-table
   if (entry.headers && typeof entry.headers === 'object') {
     lines.push('');
-    lines.push(`[${sectionKey}.${serverName}.headers]`);
+    lines.push(`[${tomlTablePath(sectionKey, serverName, 'headers')}]`);
     for (const [k, v] of Object.entries(entry.headers)) {
-      lines.push(`${k} = "${v}"`);
+      lines.push(`${tomlKey(k)} = ${tomlString(v)}`);
     }
   }
 
@@ -83,9 +100,14 @@ export function buildTomlEntry(sectionKey, serverName, entry) {
  * @returns {string} Merged TOML content
  */
 export function mergeTomlEntry(existing, sectionKey, serverName, entry) {
-  const sectionHeader  = `[${sectionKey}.${serverName}]`;
-  const envHeader      = `[${sectionKey}.${serverName}.env]`;
-  const headersHeader  = `[${sectionKey}.${serverName}.headers]`;
+  const sectionHeader  = `[${tomlTablePath(sectionKey, serverName)}]`;
+  const envHeader      = `[${tomlTablePath(sectionKey, serverName, 'env')}]`;
+  const headersHeader  = `[${tomlTablePath(sectionKey, serverName, 'headers')}]`;
+  const legacyHeaders = new Set([
+    `[${sectionKey}.${serverName}]`,
+    `[${sectionKey}.${serverName}.env]`,
+    `[${sectionKey}.${serverName}.headers]`,
+  ]);
   const newBlock       = buildTomlEntry(sectionKey, serverName, entry);
 
   const lines  = existing.split('\n');
@@ -96,7 +118,7 @@ export function mergeTomlEntry(existing, sectionKey, serverName, entry) {
     const trimmed = line.trim();
 
     // Entering one of the target sections → start skipping
-    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader) {
+    if (trimmed === sectionHeader || trimmed === envHeader || trimmed === headersHeader || legacyHeaders.has(trimmed)) {
       skipping = true;
       continue;
     }
