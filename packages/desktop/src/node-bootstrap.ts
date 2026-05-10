@@ -8,11 +8,12 @@
  * Platform support: macOS (arm64/x64), Linux (x64), Windows (arm64/x64).
  */
 import { app } from 'electron';
-import { createWriteStream, existsSync, mkdirSync, chmodSync, statSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, chmodSync, statSync, type WriteStream } from 'fs';
 import { rm } from 'fs/promises';
 import { execFileSync, spawn } from 'child_process';
 import path from 'path';
 import https from 'https';
+import type { ClientRequest, IncomingMessage } from 'http';
 
 // Node.js LTS version to download (also used by prepare-mindos-runtime to bundle Node)
 export const NODE_VERSION = '22.16.0';
@@ -183,18 +184,27 @@ function downloadFile(
     let redirects = 0;
     let settled = false;
     let overallTimer: ReturnType<typeof setTimeout> | null = null;
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
+    let activeReq: ClientRequest | null = null;
+    let activeRes: IncomingMessage | null = null;
+    let activeFileStream: WriteStream | null = null;
 
-    const cleanup = (progressInterval: ReturnType<typeof setInterval> | null, res?: import('http').IncomingMessage) => {
+    const cleanup = (destroyActive: boolean) => {
       if (progressInterval) clearInterval(progressInterval);
+      progressInterval = null;
       if (overallTimer) { clearTimeout(overallTimer); overallTimer = null; }
-      // Destroy response stream to stop network I/O on timeout/error
-      if (res && !res.destroyed) res.destroy();
+      if (!destroyActive) return;
+      // Stop all active I/O on timeout/error so fallback downloads cannot race
+      // with a timed-out request still writing the same temp archive.
+      if (activeRes && !activeRes.destroyed) activeRes.destroy();
+      if (activeReq && !activeReq.destroyed) activeReq.destroy();
+      if (activeFileStream && !activeFileStream.destroyed) activeFileStream.destroy();
     };
 
-    const fail = (err: Error, res?: import('http').IncomingMessage) => {
+    const fail = (err: Error) => {
       if (settled) return;
       settled = true;
-      cleanup(null, res);
+      cleanup(true);
       reject(err);
     };
 
@@ -211,6 +221,7 @@ function downloadFile(
         return;
       }
       const req = https.get(reqUrl, (res) => {
+        activeRes = res;
         if (settled) { res.resume(); return; }
 
         // Follow redirects
@@ -222,20 +233,21 @@ function downloadFile(
 
         if (res.statusCode !== 200) {
           res.resume();
-          fail(new Error(`Download failed: HTTP ${res.statusCode}`), res);
+          fail(new Error(`Download failed: HTTP ${res.statusCode}`));
           return;
         }
 
         const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
         const fileStream = createWriteStream(dest);
+        activeFileStream = fileStream;
         let lastReportedPercent = 0;
 
-        fileStream.on('error', (err) => { cleanup(null, res); fail(err, res); });
+        fileStream.on('error', (err) => { fail(err); });
 
         res.pipe(fileStream);
 
         // Track progress via periodic stat of the file
-        const progressInterval = totalBytes > 0 ? setInterval(() => {
+        progressInterval = totalBytes > 0 ? setInterval(() => {
           if (settled) return;
           try {
             const written = statSync(dest).size;
@@ -248,19 +260,22 @@ function downloadFile(
         }, 200) : null;
 
         fileStream.on('finish', () => {
-          cleanup(progressInterval, res);
           if (settled) return;
           settled = true;
+          cleanup(false);
           onProgress?.(100);
           resolve();
         });
       });
+      activeReq = req;
       req.on('error', (err) => { fail(err); });
     };
 
     follow(url);
   });
 }
+
+export const _downloadFile_forTest = downloadFile;
 
 /** Spawn a process and wait for exit. Rejects on non-zero exit or timeout. */
 function spawnAsync(cmd: string, args: string[], timeoutMs: number): Promise<void> {

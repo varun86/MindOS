@@ -2815,6 +2815,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/desktop/src/install-cli-shim.test.ts` 断言 Windows cleanup script 包含 `taskkill`、`mindos.cmd`、PATH registry 更新和自删除逻辑，并确认没有删除 `%USERPROFILE%\MindOS\mind`。
 
+### Desktop 下载超时必须主动中断底层请求（2026-05-10）
+
+**症状**：Desktop 首次启动下载私有 Node.js 时，官方源 30s 超时后会切到 mirror。但旧实现只是 reject Promise，没有销毁仍在进行的 HTTPS request / response / file stream，慢速官方源可能继续写同一个临时 archive，和 mirror 下载互相竞争，导致解压失败或得到损坏文件。
+
+**根因**：`node-bootstrap.ts` 的 `downloadFile()` 只在拿到 response 的部分错误路径销毁 response；整体 timeout 触发时没有保存 active request/file stream 句柄，无法取消底层 I/O。
+
+**修复**：在 `downloadFile()` 中跟踪 active `ClientRequest`、`IncomingMessage` 和 `WriteStream`；任一失败或 timeout 都统一清理 timer/progress interval，并 destroy 当前网络与文件流。成功完成时只清理 timer，不中断已完成流。
+
+**防回归**：`packages/desktop/src/node-bootstrap.test.ts` mock `https.get` 并用 fake timers 触发整体 timeout，断言 active request 会被 `destroy()`，避免 fallback 下载与旧请求并发写入同一 temp 文件。
+
 ### Hook / Component 不要在 render 阶段读写 ref.current（2026-05-10）
 
 **症状**：React compiler lint 报 `react-hooks/refs`，典型位置是 hook / component 为了避免事件回调 stale closure，在组件 render 阶段直接执行 `someRef.current = value`，用 `someRef.current` 初始化 state，或在 JSX handler 中直接调用会读写 ref 的 callback。
