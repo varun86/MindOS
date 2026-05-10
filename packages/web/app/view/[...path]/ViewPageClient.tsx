@@ -280,7 +280,7 @@ export default function ViewPageClient({
       return;
     }
     // Reject path traversal and illegal filename characters
-    if (/[/\\:*?"<>|]/.test(trimmed) || trimmed.includes('..')) {
+    if (/[/\\:*?"<>|]/.test(trimmed) || trimmed.split(/[\\/]+/).includes('..')) {
       setSaveError('File name contains invalid characters');
       return;
     }

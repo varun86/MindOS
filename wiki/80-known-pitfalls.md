@@ -3063,6 +3063,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/mindos/src/server.test.ts` 覆盖 bootstrap `target_dir=..Notes` 与 `../secret`；`packages/web/__tests__/core/create-space.test.ts` 覆盖 `..Parent` 嵌套 Space 与 `../Parent` traversal。
 
+### Draft 文件名校验不要拒绝普通连续点号（2026-05-10）
+
+**症状**：新建 draft 保存为 `meeting..notes` 会在前端报 `File name contains invalid characters`，无法创建合法文件名。
+
+**根因**：`ViewPageClient` 用 `trimmed.includes('..')` 防 path traversal，但 draft 输入本身是单文件名；这种 substring 校验误伤了普通连续点号。
+
+**修复**：文件名仍禁止 `/`、`\` 和系统非法字符；traversal 校验改成只拒绝完整 `..` path segment，允许 `meeting..notes` 这类普通名称。
+
+**防回归**：`packages/web/__tests__/components/view-page-draft-name.test.tsx` 通过 jsdom 覆盖 draft 保存 `meeting..notes` 会调用 `createDraftAction('meeting..notes.md', '')`。
+
 ### 删除风险评估不要把 `..name` 当成系统路径（2026-05-10）
 
 **症状**：Desktop 与产品 CLI 的 `assessDeletionRisk()` 会把 `.mindos/..cache/runtime` 这种仍在配置目录内的路径标记为 `isSystemPath: true`，误报为系统路径风险。
