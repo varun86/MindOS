@@ -144,9 +144,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # Package for the target platform.
-      # When publishing: electron-builder --publish always uploads to a GitHub Release
-      # named after package.json version (e.g. v0.1.0). We set EP_DRAFT=false so the
-      # release is immediately visible. The finalize job renames/edits it if needed.
+      # Release uploads happen only in finalize, after runtime verification,
+      # packaged-app smoke tests, DMG validation, and notarization complete.
 
       # macOS: decode App Store Connect API Key (.p8) for notarization
       - name: Prepare Apple API Key
@@ -188,11 +187,7 @@ jobs:
             )
           fi
 
-          if [ "${{ inputs.publish }}" = "true" ]; then
-            cd packages/desktop && pnpm exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish always "${EXTRA_ARGS[@]}"
-          else
-            cd packages/desktop && pnpm exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never "${EXTRA_ARGS[@]}"
-          fi
+          cd packages/desktop && pnpm exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never "${EXTRA_ARGS[@]}"
 
       - name: Smoke packaged app
         if: matrix.platform == 'mac' || matrix.platform == 'linux'
@@ -276,22 +271,6 @@ jobs:
             echo "📎 Stapling: $(basename "$file")"
             xcrun stapler staple "$file"
             echo "  ✅ Stapled: $(basename "$file")"
-          done
-
-      # macOS: replace pre-notarization DMGs on GitHub Release with notarized+stapled versions
-      - name: Re-upload notarized DMGs to release
-        if: matrix.platform == 'mac' && inputs.sign_mac == true && inputs.publish == true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=$(cd packages/desktop && node -p "require('./package.json').version")
-          RELEASE_TAG="v${VERSION}"
-          for file in packages/desktop/dist/*.dmg; do
-            [ -f "$file" ] || continue
-            BASENAME=$(basename "$file")
-            echo "Replacing with notarized version: ${BASENAME}"
-            gh release delete-asset "$RELEASE_TAG" "$BASENAME" --yes 2>/dev/null || true
-            gh release upload "$RELEASE_TAG" "$file"
           done
 
       # Upload artifacts (always, even if not publishing)
@@ -442,25 +421,69 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EB_TAG="v${{ steps.version.outputs.version }}"
           DESIRED_TAG="${{ inputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
           if [ -z "$DESIRED_TAG" ]; then
-            DESIRED_TAG="desktop-v${{ steps.version.outputs.version }}"
+            DESIRED_TAG="desktop-v${VERSION}"
           fi
-
-          if [ "$EB_TAG" != "$DESIRED_TAG" ]; then
-            git tag "$DESIRED_TAG" 2>/dev/null || true
-            git push origin "$DESIRED_TAG" 2>/dev/null || true
-
-            if gh release view "$EB_TAG" >/dev/null 2>&1; then
-              gh release edit "$EB_TAG" \
-                --tag "$DESIRED_TAG" \
-                --title "MindOS Desktop $DESIRED_TAG" \
-                --draft=false \
-                --latest
-            fi
+          RELEASE_TITLE="MindOS Desktop v${VERSION}"
+          CORE_VERSION="$(node -p "require('./packages/mindos/package.json').version")"
+          PREVIOUS_TAG="$(gh api 'repos/GeminiLight/MindOS/releases?per_page=100' --paginate --jq ".[] | select((.tag_name | startswith(\"desktop-v\")) and .tag_name != \"${DESIRED_TAG}\") | .tag_name" | head -n 1 || true)"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG_URL="https://github.com/GeminiLight/MindOS/compare/${PREVIOUS_TAG}...${DESIRED_TAG}"
           else
-            if gh release view "$EB_TAG" >/dev/null 2>&1; then
-              gh release edit "$EB_TAG" --draft=false --latest
-            fi
+            CHANGELOG_URL="https://github.com/GeminiLight/MindOS/releases"
           fi
+
+          cat > /tmp/desktop-release-notes.md <<EOF
+          ## Downloads
+
+          | Platform | Device / CPU | Recommended file | Download |
+          |---|---|---|---|
+          | macOS | Apple Silicon (M1/M2/M3/M4) | \`MindOS-${VERSION}-arm64.dmg\` | [Download DMG](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/MindOS-${VERSION}-arm64.dmg) |
+          | macOS | Intel | \`MindOS-${VERSION}.dmg\` | [Download DMG](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/MindOS-${VERSION}.dmg) |
+          | Windows | x64 | \`MindOS-Setup-${VERSION}.exe\` | [Download EXE](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/MindOS-Setup-${VERSION}.exe) |
+          | Windows | ARM64 | \`MindOS-Setup-${VERSION}-arm64.exe\` | [Download EXE](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/MindOS-Setup-${VERSION}-arm64.exe) |
+          | Linux | x64 AppImage | \`MindOS-${VERSION}.AppImage\` | [Download AppImage](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/MindOS-${VERSION}.AppImage) |
+          | Linux | Debian / Ubuntu x64 | \`mindos-desktop_${VERSION}_amd64.deb\` | [Download DEB](https://github.com/GeminiLight/MindOS/releases/download/${DESIRED_TAG}/mindos-desktop_${VERSION}_amd64.deb) |
+
+          ## What's included
+
+          | Component | Version |
+          |---|---|
+          | MindOS Desktop | v${VERSION} |
+          | Bundled MindOS Core | v${CORE_VERSION} |
+
+          ## Notes
+
+          The \`.zip\`, \`.yml\`, \`.yaml\`, and \`.blockmap\` files are used by the auto-updater. Most users should download one of the installers above.
+
+          ## Changelog
+
+          Full changelog: ${CHANGELOG_URL}
+          EOF
+
+          git tag "$DESIRED_TAG" 2>/dev/null || true
+          git push origin "$DESIRED_TAG" 2>/dev/null || true
+
+          if gh release view "$DESIRED_TAG" >/dev/null 2>&1; then
+            gh release edit "$DESIRED_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file /tmp/desktop-release-notes.md \
+              --draft=false \
+              --latest
+          else
+            gh release create "$DESIRED_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes-file /tmp/desktop-release-notes.md \
+              --draft=false \
+              --latest
+          fi
+
+          shopt -s nullglob
+          assets=(artifacts/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No desktop artifacts downloaded; refusing to finalize release."
+            exit 1
+          fi
+          gh release upload "$DESIRED_TAG" "${assets[@]}" --clobber

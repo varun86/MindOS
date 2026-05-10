@@ -51,6 +51,9 @@ describe('Desktop release packaging contract', () => {
     expect(workflow).toContain('node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000');
     expect(workflow.indexOf('Smoke packaged app')).toBeGreaterThan(workflow.indexOf('Package (${{ matrix.platform }})'));
     expect(workflow.indexOf('Upload artifacts')).toBeGreaterThan(workflow.indexOf('Smoke packaged app'));
+    expect(workflow).toContain('electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never');
+    expect(workflow).not.toContain('--publish always');
+    expect(workflow).toContain('gh release upload "$DESIRED_TAG" "${assets[@]}" --clobber');
 
     expect(verifier).toContain('packages/web/.next/standalone/node_modules/@sinclair/typebox/package.json');
     expect(verifier).toContain("import { fileURLToPath } from 'node:url'");
@@ -66,6 +69,9 @@ describe('Desktop release packaging contract', () => {
     expect(smoke).toContain('/api/health');
     expect(smoke).toContain('APPIMAGE_EXTRACT_AND_RUN');
     expect(smoke).toContain("process.platform === 'linux' ? ['--no-sandbox'] : []");
+    expect(smoke).toContain("desktopMode: 'local'");
+    expect(smoke).toContain('setupPending: false');
+    expect(smoke).toContain("writeFileSync(join(configDir, 'config.json')");
     expect(smoke).toContain("resolve('packages/desktop/dist')");
     expect(smoke).toContain("resolve('dist')");
     expect(smoke).toContain("join(desktopDist, 'linux-unpacked', 'MindOS')");

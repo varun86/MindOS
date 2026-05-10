@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -33,6 +33,7 @@ if (args.skipIfArchMismatch && isArchMismatch(appPath)) {
 }
 
 writeFileSync(join(mindRoot, 'README.md'), '# MindOS smoke\n', 'utf-8');
+seedDesktopConfig();
 
 const executable = resolveExecutable(appPath);
 console.log(`[smoke-desktop-app] Launching ${executable}`);
@@ -119,6 +120,18 @@ function currentWebPort() {
 function appendLog(chunk) {
   log += chunk.toString();
   writeFileSync(logPath, log);
+}
+
+function seedDesktopConfig() {
+  const configDir = join(home, '.mindos');
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, 'config.json'), JSON.stringify({
+    desktopMode: 'local',
+    mindRoot,
+    setupPending: false,
+    port: webPort,
+    mcpPort: Number(args.mcpPort ?? 8781),
+  }, null, 2), 'utf-8');
 }
 
 function scanFatalLog(throwOnMatch = true) {
