@@ -108,7 +108,7 @@ export interface AgentInfo {
   hasGlobalScope: boolean;
   preferredTransport: 'stdio' | 'http';
   // Snippet generation fields
-  format: 'json' | 'toml';
+  format: 'json' | 'toml' | 'yaml';
   configKey: string;
   globalNestedKey?: string;
   globalPath: string;

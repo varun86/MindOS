@@ -57,6 +57,10 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function customAgentFormat(format: AgentInfo['format'] | undefined): FormState['format'] {
+  return format === 'toml' ? 'toml' : 'json';
+}
+
 /* ─── Component ─── */
 
 export default function CustomAgentModal({
@@ -103,7 +107,7 @@ export default function CustomAgentModal({
         baseDir: editAgent.customBaseDir || '',
         global: editAgent.globalPath || '',
         configKey: editAgent.configKey || 'mcpServers',
-        format: editAgent.format || 'json',
+        format: customAgentFormat(editAgent.format),
         preferredTransport: editAgent.preferredTransport || 'stdio',
         project: editAgent.projectPath || '',
         presenceCli: '',

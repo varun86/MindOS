@@ -14,8 +14,59 @@ export interface ConfigSnippet {
   path: string;
 }
 
+function quotedConfigString(value: unknown): string {
+  return JSON.stringify(String(value));
+}
+
+function yamlKey(key: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : quotedConfigString(key);
+}
+
+function buildNestedObject(dotPath: string, leaf: Record<string, unknown>): Record<string, unknown> {
+  const parts = dotPath.split('.').map((part) => part.trim()).filter(Boolean);
+  const root: Record<string, unknown> = {};
+  let current = root;
+  for (const part of parts) {
+    current[part] = {};
+    current = current[part] as Record<string, unknown>;
+  }
+  Object.assign(current, leaf);
+  return root;
+}
+
+function buildYamlSnippet(sectionKey: string, entry: Record<string, unknown>): string {
+  const lines = [
+    `${yamlKey(sectionKey)}:`,
+    `  mindos:`,
+  ];
+  if (entry.type) lines.push(`    type: ${quotedConfigString(entry.type)}`);
+  if (entry.command) lines.push(`    command: ${quotedConfigString(entry.command)}`);
+  if (entry.url) lines.push(`    url: ${quotedConfigString(entry.url)}`);
+  if (Array.isArray(entry.args)) {
+    lines.push(`    args: [${entry.args.map(quotedConfigString).join(', ')}]`);
+  }
+  if (entry.env && typeof entry.env === 'object') {
+    lines.push('    env:');
+    for (const [key, value] of Object.entries(entry.env)) {
+      lines.push(`      ${yamlKey(key)}: ${quotedConfigString(value)}`);
+    }
+  }
+  if (entry.headers && typeof entry.headers === 'object') {
+    lines.push('    headers:');
+    for (const [key, value] of Object.entries(entry.headers)) {
+      lines.push(`      ${yamlKey(key)}: ${quotedConfigString(value)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export function generateStdioSnippet(agent: AgentInfo): ConfigSnippet {
-  const stdioEntry: Record<string, unknown> = { type: 'stdio', command: 'mindos', args: ['mcp'] };
+  const stdioEntry: Record<string, unknown> = {
+    type: 'stdio',
+    command: 'mindos',
+    args: ['mcp'],
+    env: { MCP_TRANSPORT: 'stdio' },
+  };
 
   if (agent.format === 'toml') {
     const lines = [
@@ -30,9 +81,14 @@ export function generateStdioSnippet(agent: AgentInfo): ConfigSnippet {
     return { snippet: s, displaySnippet: s, path: agent.globalPath };
   }
 
+  if (agent.format === 'yaml') {
+    const s = buildYamlSnippet(agent.configKey, stdioEntry);
+    return { snippet: s, displaySnippet: s, path: agent.globalPath };
+  }
+
   if (agent.globalNestedKey) {
-    const s = JSON.stringify({ [agent.configKey]: { mindos: stdioEntry } }, null, 2);
-    return { snippet: s, displaySnippet: s, path: agent.projectPath ?? agent.globalPath };
+    const s = JSON.stringify(buildNestedObject(agent.globalNestedKey, { mindos: stdioEntry }), null, 2);
+    return { snippet: s, displaySnippet: s, path: agent.globalPath };
   }
 
   const s = JSON.stringify({ [agent.configKey]: { mindos: stdioEntry } }, null, 2);
@@ -69,8 +125,12 @@ export function generateHttpSnippet(
       return lines.join('\n');
     }
 
+    if (agent.format === 'yaml') {
+      return buildYamlSnippet(agent.configKey, entry);
+    }
+
     if (agent.globalNestedKey) {
-      return JSON.stringify({ [agent.configKey]: { mindos: entry } }, null, 2);
+      return JSON.stringify(buildNestedObject(agent.globalNestedKey, { mindos: entry }), null, 2);
     }
 
     return JSON.stringify({ [agent.configKey]: { mindos: entry } }, null, 2);
@@ -81,7 +141,7 @@ export function generateHttpSnippet(
     displaySnippet: buildSnippet(token ? displayEntry : httpEntry),
     path: agent.format === 'toml'
       ? agent.globalPath
-      : (agent.globalNestedKey ? (agent.projectPath ?? agent.globalPath) : agent.globalPath),
+      : agent.globalPath,
   };
 }
 

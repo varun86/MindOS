@@ -25,13 +25,13 @@ const jsonAgent: AgentInfo = {
 
 const nestedJsonAgent: AgentInfo = {
   ...jsonAgent,
-  key: 'cursor',
-  name: 'Cursor',
-  globalNestedKey: 'mcpServers',
-  configKey: 'mcpServers',
-  globalPath: '~/.cursor/mcp.json',
-  projectPath: '.cursor/mcp.json',
-  hasProjectScope: true,
+  key: 'copaw',
+  name: 'CoPaw',
+  globalNestedKey: 'mcp.clients',
+  configKey: 'mcp',
+  globalPath: '~/.copaw/config.json',
+  projectPath: null,
+  hasProjectScope: false,
 };
 
 const tomlAgent: AgentInfo = {
@@ -41,6 +41,15 @@ const tomlAgent: AgentInfo = {
   format: 'toml' as const,
   configKey: 'context_servers',
   globalPath: '~/.config/zed/settings.toml',
+};
+
+const yamlAgent: AgentInfo = {
+  ...jsonAgent,
+  key: 'hermes',
+  name: 'Hermes',
+  format: 'yaml' as const,
+  configKey: 'mcp_servers',
+  globalPath: '~/.hermes/config.yaml',
 };
 
 const mcpStatus: McpStatus = {
@@ -66,16 +75,19 @@ describe('mcp-snippets', () => {
         type: 'stdio',
         command: 'mindos',
         args: ['mcp'],
+        env: { MCP_TRANSPORT: 'stdio' },
       });
       // snippet and displaySnippet should be identical for stdio
       expect(result.snippet).toBe(result.displaySnippet);
     });
 
-    it('generates JSON snippet for nested-key agent with projectPath', () => {
+    it('generates JSON snippet for nested-key agent using the real global nested path', () => {
       const result = generateStdioSnippet(nestedJsonAgent);
-      expect(result.path).toBe('.cursor/mcp.json');
+      expect(result.path).toBe('~/.copaw/config.json');
       const parsed = JSON.parse(result.snippet);
-      expect(parsed.mcpServers.mindos.command).toBe('mindos');
+      expect(parsed.mcp.clients.mindos.command).toBe('mindos');
+      expect(parsed.mcp.clients.mindos.env.MCP_TRANSPORT).toBe('stdio');
+      expect(parsed.mcp.mindos).toBeUndefined();
     });
 
     it('generates TOML snippet for TOML-format agent', () => {
@@ -84,6 +96,18 @@ describe('mcp-snippets', () => {
       expect(result.snippet).toContain('[context_servers.mindos]');
       expect(result.snippet).toContain('command = "mindos"');
       expect(result.snippet).toContain('MCP_TRANSPORT = "stdio"');
+    });
+
+    it('generates YAML snippet for YAML-format agent', () => {
+      const result = generateStdioSnippet(yamlAgent);
+      expect(result.path).toBe('~/.hermes/config.yaml');
+      expect(result.snippet).toContain('mcp_servers:');
+      expect(result.snippet).toContain('  mindos:');
+      expect(result.snippet).toContain('    type: "stdio"');
+      expect(result.snippet).toContain('    command: "mindos"');
+      expect(result.snippet).toContain('    args: ["mcp"]');
+      expect(result.snippet).toContain('    env:');
+      expect(result.snippet).toContain('      MCP_TRANSPORT: "stdio"');
     });
   });
 
@@ -124,6 +148,20 @@ describe('mcp-snippets', () => {
       expect(result.snippet).toContain('url = "http://192.168.1.100:8781/mcp"');
       expect(result.snippet).toContain('[context_servers.mindos.headers]');
       expect(result.snippet).toContain('Authorization = "Bearer token_abc123"');
+    });
+
+    it('generates YAML HTTP snippet with masked display token', () => {
+      const result = generateHttpSnippet(
+        yamlAgent,
+        'http://192.168.1.100:8781/mcp',
+        'token_abc123',
+        'token_a••••3',
+      );
+      expect(result.path).toBe('~/.hermes/config.yaml');
+      expect(result.snippet).toContain('mcp_servers:');
+      expect(result.snippet).toContain('    url: "http://192.168.1.100:8781/mcp"');
+      expect(result.snippet).toContain('      Authorization: "Bearer token_abc123"');
+      expect(result.displaySnippet).toContain('      Authorization: "Bearer token_a••••3"');
     });
   });
 
