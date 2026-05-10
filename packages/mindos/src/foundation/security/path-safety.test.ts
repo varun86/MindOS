@@ -102,6 +102,11 @@ describe('@mindos/security', () => {
       expect(() => resolveSafe(testRoot, '\\\\server\\share\\secret.md')).toThrow();
     });
 
+    it('should throw for Windows drive-relative paths even on POSIX hosts', () => {
+      expect(() => resolveSafe(testRoot, 'C:secret.md')).toThrow();
+      expect(() => resolveSafe(testRoot, 'd:Projects/note.md')).toThrow();
+    });
+
     it('should treat backslashes as path separators for traversal checks', () => {
       expect(() => resolveSafe(testRoot, '..\\secret.md')).toThrow();
       expect(resolveSafe(testRoot, 'Projects\\note.md')).toBe(path.join(testRoot, 'Projects', 'note.md'));

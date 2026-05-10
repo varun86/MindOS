@@ -3295,6 +3295,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/web/__tests__/actions/revert-space-init-path.test.ts` 覆盖 `createFileAction('Selected', '../evil.md')` 必须失败，且不会在 vault 根目录创建 `evil.md`。
 
+### resolveSafe 必须拒绝 Windows drive-relative 路径（2026-05-10）
+
+**症状**：`resolveSafe(root, 'C:secret.md')` 在 POSIX host 上会被当成普通相对路径接受。虽然它不是 `C:\secret.md` 这种 Windows absolute path，但在 Windows 语义里属于 drive-relative / drive-prefixed 输入，不是跨平台稳定的 vault 相对路径。
+
+**根因**：安全检查只覆盖了 `path.isAbsolute()`、`path.win32.isAbsolute()` 和 traversal。`path.win32.isAbsolute('C:secret.md')` 返回 false，导致 drive-prefix 输入漏过校验。
+
+**修复**：共享 security resolver 在 normalized 前后都拒绝 `/^[A-Za-z]:/`，所有 Web wrapper、server handler、CLI helper 统一继承该行为。
+
+**防回归**：`packages/mindos/src/foundation/security/path-safety.test.ts` 覆盖 `C:secret.md` 和 `d:Projects/note.md`，要求即使在 POSIX host 上也必须抛错。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

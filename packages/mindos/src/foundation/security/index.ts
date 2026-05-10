@@ -25,6 +25,10 @@ function err<T>(error: Error): Result<T> {
  */
 const ROOT_PROTECTED_FILES = new Set(['INSTRUCTION.md']);
 
+function hasWindowsDrivePrefix(filePath: string): boolean {
+  return /^[A-Za-z]:/.test(filePath);
+}
+
 function isPathWithinRoot(resolved: string, root: string): boolean {
   const normalizedRoot = path.resolve(root);
   const normalizedResolved = path.resolve(resolved);
@@ -78,7 +82,9 @@ export function resolveSafe(root: string, filePath: string): string {
   if (
     path.isAbsolute(normalizedFilePath) ||
     path.win32.isAbsolute(filePath) ||
-    path.win32.isAbsolute(normalizedFilePath)
+    path.win32.isAbsolute(normalizedFilePath) ||
+    hasWindowsDrivePrefix(filePath) ||
+    hasWindowsDrivePrefix(normalizedFilePath)
   ) {
     throw createError(
       'VALIDATION_ERROR',
