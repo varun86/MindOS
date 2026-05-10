@@ -204,4 +204,17 @@ describe('extractTarGzJs — GNU LongLink support', () => {
     expect(readFileSync(path.join(DEST_DIR, 'lib', 'index.js'), 'utf-8')).toBe('module.exports = {};');
     expect(readFileSync(path.join(DEST_DIR, 'package.json'), 'utf-8')).toBe('{"name":"test"}');
   });
+
+  it('rejects archive entries that escape the destination directory', async () => {
+    const data = Buffer.from('owned');
+    const chunks = [
+      tarHeader('../evil.txt', data.length, '0'),
+      paddedData(data),
+      Buffer.alloc(1024),
+    ];
+    writeFileSync(TARBALL, gzipSync(Buffer.concat(chunks)));
+
+    await expect(extractTarGzJs(TARBALL, DEST_DIR)).rejects.toThrow(/outside extraction directory/);
+    expect(existsSync(path.join(TMP, 'evil.txt'))).toBe(false);
+  });
 });

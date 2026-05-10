@@ -343,8 +343,8 @@ async function extractTarGzJs(tarball: string, destDir: string): Promise<void> {
       continue;
     }
 
-    // Resolve path and apply Windows long-path prefix
-    const entryPath = winLongPath(path.join(destDir, entryName));
+    // Resolve path, reject archive traversal, then apply Windows long-path prefix.
+    const entryPath = resolveTarEntryPath(destDir, entryName);
 
     // typeflag: '5' (0x35) = directory, '0' (0x30) or 0 (NUL) = regular file
     const isDir = typeflag === 0x35 || entryName.endsWith('/');
@@ -363,6 +363,31 @@ async function extractTarGzJs(tarball: string, destDir: string): Promise<void> {
 
     offset += dataBlocks;
   }
+}
+
+function resolveTarEntryPath(destDir: string, entryName: string): string {
+  const normalizedEntryName = entryName.replace(/\\/g, '/');
+  if (
+    path.posix.isAbsolute(normalizedEntryName)
+    || path.win32.isAbsolute(entryName)
+    || path.win32.isAbsolute(normalizedEntryName)
+    || normalizedEntryName.split('/').includes('..')
+  ) {
+    throw new Error(`Tar entry outside extraction directory: ${entryName}`);
+  }
+
+  const destResolved = path.resolve(destDir);
+  const entryPath = path.resolve(destResolved, normalizedEntryName);
+  const relativeEntry = path.relative(destResolved, entryPath);
+  if (
+    relativeEntry === '..'
+    || relativeEntry.startsWith(`..${path.sep}`)
+    || path.isAbsolute(relativeEntry)
+  ) {
+    throw new Error(`Tar entry outside extraction directory: ${entryName}`);
+  }
+
+  return winLongPath(entryPath);
 }
 
 /** Decompress a .gz file into a Buffer using Node's built-in zlib. */

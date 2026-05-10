@@ -34,6 +34,16 @@
 
 **防回归**：`packages/mindos/src/server.test.ts` 覆盖 `target_dir=C:/Users/Ada` 与 `target_dir=C:\Users\Ada`；`packages/web/__tests__/api/bootstrap.test.ts` 覆盖 Web route 返回 400。
 
+### Desktop runtime tar extraction 必须防 zip-slip（2026-05-10）
+
+**症状**：Windows fallback 的纯 JS `extractTarGzJs()` 会把 archive entry name 直接 `path.join(destDir, entryName)`，恶意 tarball 里的 `../evil.txt` 可以写出 runtime extraction 目录。
+
+**根因**：系统 `tar` 通常会处理 traversal 风险，但 Windows fallback 是自写 parser，必须自己做 entry containment。只做 long-path 兼容而不校验 entry path 会形成 zip-slip。
+
+**修复**：解析 entry 前先把反斜杠规范成 `/`，拒绝 POSIX/Windows absolute path 和完整 `..` segment，再用 `path.relative(destDir, entryPath)` 确认目标仍在 extraction root 内，最后才加 Windows long-path 前缀。
+
+**防回归**：`packages/desktop/src/core-updater-tar.test.ts` 构造 `../evil.txt` tar entry，要求 extractor reject 且 extraction root 外没有落盘文件。
+
 ## v1 Monorepo Migration
 
 ### v1 迁移后不要再把顶层 `app/` / `apps/` / `desktop/` / `mobile/` 当源码入口
