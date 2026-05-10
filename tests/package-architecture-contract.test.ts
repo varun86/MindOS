@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { builtinModules } from 'node:module';
 
 const root = resolve(__dirname, '..');
+const builtins = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
 const ignoredDirs = new Set([
   'node_modules',
   '.next',
@@ -44,6 +46,14 @@ function declaredMindosDeps(relativePackageJson: string): string[] {
   return Object.keys(pkg.dependencies ?? {})
     .filter((name) => name.startsWith('@mindos/'))
     .sort();
+}
+
+function packageNameForSpecifier(specifier: string): string | null {
+  if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#')) return null;
+  if (builtins.has(specifier)) return null;
+
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 function directMindosImports(relativeDir: string): string[] {
@@ -102,6 +112,26 @@ describe('workspace package architecture contract', () => {
     for (const appDir of ['packages/web', 'packages/mobile', 'packages/desktop']) {
       expect(declaredMindosDeps(`${appDir}/package.json`), appDir).toEqual(directMindosImports(appDir));
     }
+  });
+
+  it('declares packages imported by the Web ESLint config', () => {
+    const webPkg = readJson<{
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    }>('packages/web/package.json');
+    const declared = new Set([
+      ...Object.keys(webPkg.dependencies ?? {}),
+      ...Object.keys(webPkg.devDependencies ?? {}),
+    ]);
+    const eslintConfig = readFileSync(resolve(root, 'packages/web/eslint.config.mjs'), 'utf-8');
+    const imported = new Set<string>();
+
+    for (const match of eslintConfig.matchAll(/import\s+[^'"]*['"]([^'"]+)['"]/g)) {
+      const packageName = packageNameForSpecifier(match[1]);
+      if (packageName) imported.add(packageName);
+    }
+
+    expect([...imported].filter((name) => !declared.has(name)).sort()).toEqual([]);
   });
 
   it('publishes the workspace package closure needed by the Web app fallback sources', () => {

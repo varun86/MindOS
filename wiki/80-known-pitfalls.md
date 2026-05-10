@@ -2745,6 +2745,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/test-architecture-contract.test.ts` 检查共享 ESLint 依赖和根 `eslint.config.mjs`。`pnpm run lint` 必须能完整跑完，warning 视为待清理 backlog。
 
+### Package 专属 ESLint config 不能依赖根 devDependencies（2026-05-10）
+
+**症状**：在 workspace 根目录可以跑 `pnpm --filter @mindos/web lint`，但如果只安装 Web package 的依赖或做 pruned workspace，`packages/web/eslint.config.mjs` 可能因为找不到直接 import 的插件而启动失败。
+
+**根因**：Web 的 ESLint config 直接 `import eslint-plugin-react-hooks`，但 `packages/web/package.json` 没有声明该 devDependency，只是碰巧从根目录依赖解析到了它。
+
+**修复**：直接被 `packages/web/eslint.config.mjs` import 的 bare package 必须出现在 `packages/web` 的 `dependencies` 或 `devDependencies` 中；不能依赖根 package 的提升结果。
+
+**防回归**：`tests/package-architecture-contract.test.ts` 解析 Web ESLint config 的 bare imports，并断言它们都在 `packages/web/package.json` 中声明。
+
 ### Hook / Component 不要在 render 阶段读写 ref.current（2026-05-10）
 
 **症状**：React compiler lint 报 `react-hooks/refs`，典型位置是 hook / component 为了避免事件回调 stale closure，在组件 render 阶段直接执行 `someRef.current = value`，用 `someRef.current` 初始化 state，或在 JSX handler 中直接调用会读写 ref 的 callback。
