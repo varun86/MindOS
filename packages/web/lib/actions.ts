@@ -14,6 +14,9 @@ export async function createFileAction(dirPath: string, fileName: string): Promi
   try {
     const name = fileName.trim();
     if (!name) return { success: false, error: 'File name is required' };
+    if (name.includes('/') || name.includes('\\')) {
+      return { success: false, error: 'File name must not contain path separators' };
+    }
     // Ensure extension
     const hasExt = name.endsWith('.md') || name.endsWith('.csv');
     const finalName = hasExt ? name : `${name}.md`;

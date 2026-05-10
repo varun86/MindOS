@@ -3285,6 +3285,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/web/__tests__/actions/revert-space-init-path.test.ts` 创建 `MIND_ROOT` 同名前缀 sibling 目录，验证 `revertSpaceInitAction()` 不返回 success，也不会在 sibling 写 scaffold 文件。
 
+### UI create-file action 的 fileName 必须是单段文件名（2026-05-10）
+
+**症状**：`createFileAction(dirPath, fileName)` 把 `fileName` 当成纯文件名显示给用户输入，但没有拒绝 `/` 或 `\\`。在选中 `Selected/` 时输入 `../evil.md` 会组合成 `Selected/../evil.md`，最终在 vault 根目录创建文件，绕过用户选择的目标目录。
+
+**根因**：action 层混淆了“目录路径”和“文件名”两个字段；底层 `resolveSafe()` 只保证不出 vault，不保证新文件仍在所选目录。
+
+**修复**：action 层先校验 `fileName` 不包含路径分隔符，再拼接 `dirPath/finalName`。
+
+**防回归**：`packages/web/__tests__/actions/revert-space-init-path.test.ts` 覆盖 `createFileAction('Selected', '../evil.md')` 必须失败，且不会在 vault 根目录创建 `evil.md`。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

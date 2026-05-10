@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
-import { revertSpaceInitAction } from '@/lib/actions';
+import { createFileAction, revertSpaceInitAction } from '@/lib/actions';
 import { getTestMindRoot } from '../setup';
 
 vi.mock('next/cache', () => ({
@@ -24,5 +24,17 @@ describe('revertSpaceInitAction path safety', () => {
     } finally {
       fs.rmSync(outsideDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('createFileAction path safety', () => {
+  it('rejects file names that escape the selected directory', async () => {
+    const root = getTestMindRoot();
+    fs.mkdirSync(path.join(root, 'Selected'), { recursive: true });
+
+    const result = await createFileAction('Selected', '../evil.md');
+
+    expect(result.success).toBe(false);
+    expect(fs.existsSync(path.join(root, 'evil.md'))).toBe(false);
   });
 });
