@@ -67,6 +67,11 @@ export interface AcpLaunchOptions {
   overrides?: Record<string, AcpAgentOverride>;
 }
 
+export interface TerminalSpawnSpec {
+  command: string;
+  shell: boolean;
+}
+
 /* ── State ─────────────────────────────────────────────────────────────── */
 
 const processes = new Map<string, AcpProcess>();
@@ -259,6 +264,17 @@ export function killAllAgents(): void {
   }
 }
 
+export function resolveTerminalSpawn(command: string): TerminalSpawnSpec {
+  const resolvedCommand = resolveCommandPathSync(command) ?? command;
+  const needsWindowsShell =
+    process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(resolvedCommand);
+
+  return {
+    command: resolvedCommand,
+    shell: needsWindowsShell,
+  };
+}
+
 /* ── Client Implementation ─────────────────────────────────────────────── */
 
 function createMindosClient(
@@ -356,23 +372,24 @@ function createMindosClient(
       const outputByteLimit = params.outputByteLimit ?? 1_000_000;
 
       try {
-        const child = spawn(params.command, params.args ?? [], {
+        const terminalSpawn = resolveTerminalSpawn(params.command);
+        const child = spawn(terminalSpawn.command, params.args ?? [], {
           cwd: terminalCwd,
           env: { ...process.env, ...envObj },
-          shell: true,
+          shell: terminalSpawn.shell,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-      let output = '';
-      let truncated = false;
-      const collect = (chunk: Buffer) => {
-        output += chunk.toString();
-        if (output.length > outputByteLimit) {
-          // ACP spec: truncate from the beginning, keeping most recent output
-          output = output.slice(-outputByteLimit);
-          truncated = true;
-        }
-      };
+        let output = '';
+        let truncated = false;
+        const collect = (chunk: Buffer) => {
+          output += chunk.toString();
+          if (output.length > outputByteLimit) {
+            // ACP spec: truncate from the beginning, keeping most recent output
+            output = output.slice(-outputByteLimit);
+            truncated = true;
+          }
+        };
         child.stdout?.on('data', collect);
         child.stderr?.on('data', collect);
 

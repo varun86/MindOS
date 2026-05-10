@@ -2169,6 +2169,12 @@ mindos onboard
 - **解决：** 改为 `execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })`，保留 Windows 进程树终止语义，同时避免 shell 字符串。
 - **防回归：** `packages/mindos/src/protocols/acp/subprocess.test.ts` 覆盖 Windows killAgent 行为，并禁止 subprocess 源码重新出现 `execSync(` / `taskkill /PID ${pid}`。
 
+### ACP terminal/create 不要无条件 `shell: true` (2026-05-10)
+
+- **问题：** ACP `terminal/create` 会接收 agent 传入的 `command` + `args`。如果直接 `spawn(params.command, params.args, { shell: true })`，Unix 下 `node && rm ...` 这类命令名会被 shell 解释，Windows / 空格路径也会继承 shell quoting 不确定性。
+- **解决：** 新增 `resolveTerminalSpawn()`：先用现有 `resolveCommandPathSync()` 解析可执行路径，默认 `shell: false`；只有 Windows `.cmd` / `.bat` launcher 才启用 shell 兼容。
+- **防回归：** `packages/mindos/src/protocols/acp/subprocess.test.ts` 覆盖 Unix 解析、shell metacharacter 命令名、Windows `.cmd` launcher，并禁止 `createTerminal` 回退到 `shell: true`。
+
 ### Desktop 启动清理 launchd/systemd 不要走 shell (2026-05-10)
 
 - **问题：** `packages/desktop/src/main.ts` 的历史 CLI daemon 清理用 `execAsync('launchctl ...')`、`execAsync('pkill -f "...")`、`execAsync('systemctl ... 2>/dev/null || true')`。这些路径在 Desktop 启动修复阶段执行，失败会影响用户从旧 daemon / 旧端口占用里恢复；`gui/$(id -u)` 和 `pkill -f` 字符串也会重新进入 shell。
