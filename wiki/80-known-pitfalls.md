@@ -2933,6 +2933,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/mindos/src/server.test.ts` 覆盖 Windows 解析为 `node.exe npm-cli.js install ...`，并确认非 Windows 仍保持 `npm` PATH 行为。
 
+### 可复用文件遍历 helper 必须自己做 root 边界校验（2026-05-10）
+
+**症状**：ZIP 导出入口虽然在 route 层拦截了 `..` 和绝对路径，但底层 `collectExportFiles(mindRoot, dirPath)` 直接 `path.join(mindRoot, dirPath)` 后递归遍历。其他调用方若直接复用该 helper，传入 `../outside` 会读取 MIND_ROOT 外的目录。
+
+**根因**：安全校验放在单个 API route，而不是放在实际执行文件系统遍历的 core helper。route-level 校验容易遗漏 Windows 绝对路径、反斜杠路径或未来新增调用方。
+
+**修复**：`collectExportFiles()` 先调用共享 `resolveSafe()`，再检查目录是否存在并递归遍历。
+
+**防回归**：`packages/web/__tests__/core/export.test.ts` 创建 MIND_ROOT 外的 sibling 目录，确认 traversal 在目录存在性检查前被拒绝。
+
 ### Web 全量测试中的动态 import smoke test 要给足超时预算（2026-05-10）
 
 **症状**：`@mindos/web` 全量 Vitest 并发执行时，`__tests__/core/request-scoped-tools.test.ts` 偶发在默认 5s 超时。单独运行约 0.7s 通过，但与多个 ESLint 合约测试、Next build 后续测试并发时，动态 import `@/lib/agent/tools` 会被 CPU/transform 竞争拖慢。

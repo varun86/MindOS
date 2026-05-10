@@ -3,6 +3,7 @@ import path from 'path';
 import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import remarkHtml from 'remark-html';
+import { resolveSafe } from './security';
 
 /** Convert wiki-links [[target]] → relative HTML links */
 export function convertWikiLinks(content: string, _currentPath: string): string {
@@ -89,7 +90,7 @@ function escapeHtml(str: string): string {
 
 /** Collect all exportable files in a directory tree */
 export function collectExportFiles(mindRoot: string, dirPath: string): { relativePath: string; content: string }[] {
-  const fullDir = path.join(mindRoot, dirPath);
+  const fullDir = resolveSafe(mindRoot, dirPath);
   if (!fs.existsSync(fullDir) || !fs.statSync(fullDir).isDirectory()) return [];
 
   const results: { relativePath: string; content: string }[] = [];
