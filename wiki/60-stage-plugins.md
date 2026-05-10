@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-04 | Current version: v0.6 -->
+<!-- Last verified: 2026-05-10 | Current version: v1.0.5 -->
 
 # 插件系统 (Stage: Plugins)
 

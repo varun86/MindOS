@@ -1,4 +1,4 @@
-<!-- Last verified: 2026-04-28 | Current stage: v1 release-candidate | Canonical status: wiki/reviews/v1-migration-status-2026-04-27.md -->
+<!-- Last verified: 2026-05-10 | Current stage: v1.0.5 | Canonical status: wiki/reviews/v1-migration-status-2026-04-27.md -->
 
 # MindOS 系统架构 (System Architecture)
 
@@ -62,7 +62,7 @@ mindos/
 
 **技术栈：** Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS 4 + shadcn/ui + TipTap + CodeMirror 6 + pi-agent-core 0.60.0 + pi-coding-agent 0.61.1 (session/model/auth)
 
-**API Routes (65)：**
+**API Routes (总 78，已迁移 thin-adapter 65)：**
 
 > **2026-04-10 架构优化**：关键路由已完成职责分离重构。`ask/route.ts` 从 1,524 行减少至 1,050 行 (-31%)，`file/route.ts` 从 451 行减少至 159 行 (-65%)。7 个业务逻辑模块已提取 (`lib/sse/events.ts`, `lib/agent/skill-resolver.ts`, `lib/agent/non-streaming.ts`, `lib/agent/file-context.ts`, `lib/api/request-utils.ts`, `lib/file/handlers.ts`, `lib/sync/config.ts`)。详见 `wiki/reviews/architecture-review-2026-04-10.md`。
 
