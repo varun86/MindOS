@@ -3013,6 +3013,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/web/__tests__/api/export.test.ts` 覆盖 `notes..md` 正常导出与 `../secret.md` traversal 拦截。
 
+### 自定义 Agent 目标路径不要用 `includes('..')` 判断 traversal（2026-05-10）
+
+**症状**：给自定义 Agent 复制 Skill 时，合法目录名如 `target..skills` 会返回 400 `Invalid target path`，导致用户无法使用包含连续点号的 agent skills 目录。
+
+**根因**：`handleAgentCopySkillPost()` 用 `targetPath.includes('..')` 判断路径穿越，误把文件夹名中的普通点号当成父目录段。该接口本来允许用户选择任意绝对目标目录，因此需要区分 `..` 路径段和普通文件名字符。
+
+**修复**：把 target path 校验改为按 POSIX/Windows 分隔符拆分，仅拒绝完整的 `..` segment；继续要求目标路径是绝对路径或 home-relative 路径。
+
+**防回归**：`packages/mindos/src/server.test.ts` 覆盖 `target..skills` 正常复制，以及显式 `parent/../target-skills` 仍返回 400。
+
 ### Desktop updater 路径白名单要覆盖 getRuntimePaths 全量输出（2026-05-10）
 
 **症状**：Desktop updater 下载运行时后，`getRuntimePaths()` 生成的 `tarballPath` 是 `~/.mindos/runtime-download.tar.gz`，但 `validateRuntimePath()` 会报 `SECURITY: Subdirectory not whitelisted: runtime-download.tar.gz`。

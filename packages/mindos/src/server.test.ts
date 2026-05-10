@@ -1075,7 +1075,7 @@ describe('MindOS product server contract', () => {
     const skillRoot = join(home, 'mindos-skills');
     mkdirSync(join(skillRoot, 'mindos'), { recursive: true });
     writeFileSync(join(skillRoot, 'mindos', 'SKILL.md'), '# MindOS');
-    const targetRoot = join(home, 'target-skills');
+    const targetRoot = join(home, 'target..skills');
 
     await expect(handleAgentCopySkillPost({
       skillName: '../mindos',
@@ -1086,6 +1086,17 @@ describe('MindOS product server contract', () => {
     })).resolves.toMatchObject({
       status: 400,
       body: { error: 'Invalid skill name' },
+    });
+
+    await expect(handleAgentCopySkillPost({
+      skillName: 'mindos',
+      targetPath: `${home}/parent/../target-skills`,
+    }, {
+      skillRoots: [{ path: skillRoot, source: 'builtin', origin: 'project-builtin', editable: false }],
+      homeDir: home,
+    })).resolves.toMatchObject({
+      status: 400,
+      body: { error: 'Invalid target path' },
     });
 
     await expect(handleAgentCopySkillPost({

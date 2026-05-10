@@ -148,6 +148,10 @@ function isAgentAbsoluteInputPath(input: string): boolean {
   return false;
 }
 
+function hasParentDirectorySegment(input: string): boolean {
+  return input.split(/[\\/]+/).includes('..');
+}
+
 export function validateCustomAgentInput(
   input: { name?: string; baseDir?: string; key?: string },
   existingKeys: Set<string>,
@@ -556,7 +560,7 @@ export async function handleAgentCopySkillPost(
     }
 
     const targetPath = body.targetPath.trim();
-    if (targetPath.includes('..')) return json({ error: 'Invalid target path' }, { status: 400 });
+    if (hasParentDirectorySegment(targetPath)) return json({ error: 'Invalid target path' }, { status: 400 });
     if (!isAgentAbsoluteInputPath(targetPath)) {
       return json({ error: 'Target path must be absolute (starting with / or ~/)' }, { status: 400 });
     }
