@@ -2785,6 +2785,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/workflow-migration-contract.test.ts` 检查根 `clean` 脚本不再包含 `rm -rf`，并要求 Node 清理脚本存在。
 
+### Desktop Node 探测不要把可执行路径拼进 shell 字符串（2026-05-10）
+
+**症状**：Desktop 在查找全局 `@geminilight/mindos` 时会从已发现的 Node 路径推导 `npm` 路径，再执行 `npm root -g`。如果路径来自用户环境或缓存，含空格、引号、`&`、`$()` 等字符时，shell 字符串可能解析错误；更坏情况下会形成命令注入面。
+
+**根因**：`node-detect.ts` 用 `exec()` / `promisify(exec)` 执行 `which node`、login shell fallback、`"${npmBin}" root -g`、`npm root -g`。其中 `npmBin` 是运行时推导值，不应该进入 shell 拼接。
+
+**修复**：改为 module-scope `execFileAsync(command, args)` helper，`which/where`、login shell、`npm root -g` 都传结构化 argv。Windows 的 `.cmd/.bat` npm shim 只能经 `cmd.exe` 启动时，集中做最小 quoting，并拒绝带双引号的非法参数。
+
+**防回归**：`packages/desktop/src/node-detect.test.ts` 增加 source contract，禁止 `node-detect.ts` 重新出现 `exec` import、`promisify(exec)` 和 `npmBin` / login shell 的字符串插值命令。
+
 ### Hook / Component 不要在 render 阶段读写 ref.current（2026-05-10）
 
 **症状**：React compiler lint 报 `react-hooks/refs`，典型位置是 hook / component 为了避免事件回调 stale closure，在组件 render 阶段直接执行 `someRef.current = value`，用 `someRef.current` 初始化 state，或在 JSX handler 中直接调用会读写 ref 的 callback。

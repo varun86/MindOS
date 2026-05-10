@@ -3,12 +3,12 @@
  * Extracted to avoid circular dependency between main.ts and connect-window.ts.
  *
  * KEY DESIGN: Electron packaged apps have a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
- * We CANNOT rely on `exec('npm ...')` or `exec('which node')` — they will fail.
+ * We CANNOT rely on shell-expanded commands like `npm ...` or `which node` — they will fail.
  * Instead, we use filesystem-only checks first (instant), then shell fallbacks
  * with an enriched PATH that includes the discovered node's bin directory.
  */
 import { app } from 'electron';
-import { exec, execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import path from 'path';
@@ -17,7 +17,7 @@ import { getAppConfigStore } from './app-config-store';
 
 const IS_WIN = process.platform === 'win32';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const MIN_NODE_MAJOR = 18;
 
@@ -67,15 +67,33 @@ function enrichedPath(extraBinDir?: string): string {
   return dirs.join(path.delimiter);
 }
 
-/** Run a shell command with enriched PATH */
-async function execWithPath(cmd: string, opts: { timeout?: number; cwd?: string; extraBinDir?: string } = {}): Promise<string> {
-  const { stdout } = await execAsync(cmd, {
+function quoteCmdArg(value: string): string {
+  if (value.includes('"')) {
+    throw new Error('Invalid Windows command argument: double quote is not allowed');
+  }
+  return `"${value}"`;
+}
+
+function resolveExecTarget(command: string, args: string[]): { command: string; args: string[] } {
+  if (IS_WIN && /\.(?:cmd|bat)$/i.test(command)) {
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')],
+    };
+  }
+  return { command, args };
+}
+
+/** Run an executable with enriched PATH and argv-safe arguments */
+async function execFileWithPath(command: string, args: string[], opts: { timeout?: number; cwd?: string; extraBinDir?: string } = {}): Promise<string> {
+  const target = resolveExecTarget(command, args);
+  const { stdout } = await execFileAsync(target.command, target.args, {
     timeout: opts.timeout ?? 5000,
     encoding: 'utf-8',
     cwd: opts.cwd,
     env: { ...process.env, PATH: enrichedPath(opts.extraBinDir) },
   });
-  return stdout.trim();
+  return String(stdout).trim();
 }
 
 /**
@@ -154,7 +172,7 @@ export async function getNodePath(): Promise<string | null> {
 
   // 6. `which`/`where` node with enriched PATH (fast, ~100ms + version check)
   try {
-    const raw = await execWithPath(IS_WIN ? 'where node' : 'which node', { timeout: 3000 });
+    const raw = await execFileWithPath(IS_WIN ? 'where' : 'which', ['node'], { timeout: 3000 });
     // `where` on Windows may return multiple lines; take the first match.
     const result = raw.split(/\r?\n/)[0].trim();
     if (result && existsSync(result) && checkNodeVersion(result)) {
@@ -172,10 +190,7 @@ export async function getNodePath(): Promise<string | null> {
     if (!existsSync(sh)) continue;
     try {
       const remaining = shellCeiling - (Date.now() - shellStart);
-      const result = await execWithPath(
-        `${sh} -il -c "which node" 2>/dev/null`,
-        { timeout: Math.min(1500, remaining) }
-      );
+      const result = await execFileWithPath(sh, ['-ilc', 'which node'], { timeout: Math.min(1500, remaining) });
       if (result && existsSync(result) && checkNodeVersion(result)) {
         // Cache for next startup so we skip the slow shell detection
         try { getAppConfigStore().set('cachedNodePath', result); } catch { /* best-effort */ }
@@ -199,7 +214,7 @@ export async function getMindosInstallPath(nodePath?: string | null): Promise<st
     const npmBin = getNpmPath(binDir);
     if (existsSync(npmBin)) {
       try {
-        const globalRoot = await execWithPath(`"${npmBin}" root -g`, { timeout: 5000, extraBinDir: binDir });
+        const globalRoot = await execFileWithPath(npmBin, ['root', '-g'], { timeout: 5000, extraBinDir: binDir });
         const modulePath = path.join(globalRoot, '@geminilight', 'mindos');
         if (existsSync(modulePath)) return modulePath;
       } catch { /* fall through */ }
@@ -223,7 +238,7 @@ export async function getMindosInstallPath(nodePath?: string | null): Promise<st
 
   // Strategy 3: exec npm root -g with enriched PATH (fallback)
   try {
-    const globalRoot = await execWithPath('npm root -g', { timeout: 5000, extraBinDir: binDir });
+    const globalRoot = await execFileWithPath('npm', ['root', '-g'], { timeout: 5000, extraBinDir: binDir });
     const modulePath = path.join(globalRoot, '@geminilight', 'mindos');
     if (existsSync(modulePath)) return modulePath;
   } catch { /* ignore */ }
