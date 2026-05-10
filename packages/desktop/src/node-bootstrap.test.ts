@@ -1,7 +1,8 @@
-import { readFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
-import { describe, expect, it, vi } from 'vitest';
+import os from 'os';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { _downloadFile_forTest, removeMacQuarantineAttribute } from './node-bootstrap';
 
 const httpsGetMock = vi.hoisted(() => vi.fn());
@@ -18,6 +19,10 @@ vi.mock('https', () => ({
 }));
 
 describe('node-bootstrap', () => {
+  beforeEach(() => {
+    httpsGetMock.mockReset();
+  });
+
   it('removes macOS quarantine with argv so quoted paths are safe', () => {
     const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
     const nodeDir = '/Users/test/.mindos/node "quoted" $HOME';
@@ -61,6 +66,46 @@ describe('node-bootstrap', () => {
       expect(request.destroy).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('resolves relative redirect locations during Node.js download', async () => {
+    const calls: string[] = [];
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'mindos-node-download-'));
+    const dest = path.join(tmpDir, 'node.tar.gz');
+
+    httpsGetMock.mockImplementation((reqUrl, callback) => {
+      calls.push(String(reqUrl));
+      const request = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+      process.nextTick(() => {
+        if (calls.length === 1) {
+          callback({
+            statusCode: 302,
+            headers: { location: '/mirrors/node.tar.gz' },
+            resume: vi.fn(),
+          });
+          return;
+        }
+        callback({
+          statusCode: 200,
+          headers: { 'content-length': '2' },
+          pipe: (stream: NodeJS.WritableStream) => {
+            stream.end('ok');
+            return stream;
+          },
+        });
+      });
+      return request;
+    });
+
+    try {
+      await _downloadFile_forTest('https://node.example/dist/node.tar.gz', dest);
+      expect(calls).toEqual([
+        'https://node.example/dist/node.tar.gz',
+        'https://node.example/mirrors/node.tar.gz',
+      ]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });

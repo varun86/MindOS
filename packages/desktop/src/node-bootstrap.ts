@@ -227,7 +227,8 @@ function downloadFile(
         // Follow redirects
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
-          follow(res.headers.location);
+          const nextUrl = new URL(Array.isArray(res.headers.location) ? res.headers.location[0] : res.headers.location, reqUrl).toString();
+          follow(nextUrl);
           return;
         }
 

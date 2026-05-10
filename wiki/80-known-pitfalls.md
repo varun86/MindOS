@@ -3235,6 +3235,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/desktop/src/ssh-tunnel.test.ts` 覆盖含 batch metachar 的 passphrase，确认脚本不包含 raw passphrase 或 `echo <passphrase>`，并能从 encoded command 还原原始口令。
 
+### Desktop Node bootstrap 下载重定向要解析相对 Location（2026-05-10）
+
+**症状**：Desktop 首次启动需要下载私有 Node.js runtime 时，如果 CDN / mirror 返回 `Location: /path/to/archive` 这类相对重定向，下载流程会把 `/path/to/archive` 直接传给 `https.get()`，后续请求缺少协议和 host。
+
+**根因**：`downloadFile()` follow redirect 时直接使用 `res.headers.location`，没有按当前请求 URL 解析 relative URL。
+
+**修复**：用 `new URL(location, reqUrl).toString()` 生成下一跳 URL，保留绝对 redirect 行为，同时支持根相对和路径相对 redirect。
+
+**防回归**：`packages/desktop/src/node-bootstrap.test.ts` 模拟 `302 Location: /mirrors/node.tar.gz`，确认第二次请求是 `https://node.example/mirrors/node.tar.gz`。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。
