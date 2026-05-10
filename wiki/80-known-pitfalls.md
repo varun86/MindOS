@@ -2175,6 +2175,12 @@ mindos onboard
 - **解决：** 在 npm CLI shim 侧也导出并复用 `escapeCmdSetValue()`，写入 `set` 值前按 batch 规则转义 `^`、`%`、`!`。
 - **防回归：** `tests/unit/cli-shim.test.ts` mock Windows home / platform，生成 `mindos.cmd` 后断言含特殊字符的 `CLI_PATH` 被写成字面量。
 
+### npm CLI shim 的 Windows PATH 要写 User registry (2026-05-10)
+
+- **问题：** npm CLI 的 `appendPathWindows()` 只写 `Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1`。这对 `cmd.exe`、PowerShell 7、IDE/Agent 新进程都不可靠，导致 `mindos start` 后 `mindos` 命令仍可能不在 PATH。
+- **解决：** 和 Desktop shim 对齐：优先用 `powershell.exe -NoProfile` 调用 `[Environment]::SetEnvironmentVariable('Path', ..., 'User')` 更新用户 PATH；如果 PowerShell/registry 更新失败，再降级写 profile snippet。
+- **防回归：** `tests/unit/cli-shim.test.ts` mock Windows 平台和 `child_process.execFileSync`，断言 `ensureCliShim()` 会读取并写入 User PATH registry，而不是只依赖 profile 文件。
+
 ### setup.js 首次配置流程也不要拼 shell 字符串 (2026-05-10)
 
 - **问题：** 根目录 `scripts/setup.js` 是 `mindos onboard` 的源码，但 `packages/mindos/scripts/` 是忽略的打包副本；修首次配置问题时必须改根目录源码。该脚本历史上用 shell 字符串执行 tar、npx skills、open/xdg-open/cmd.exe、`command -v`、`npm link`、`node cli.js start/restart`，路径和 URL 一旦含空格/引号就容易解析错，Windows 的 npx/npm `.cmd` shim 也不能直接交给 `execFile`。

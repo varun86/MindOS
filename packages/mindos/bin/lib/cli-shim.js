@@ -13,6 +13,7 @@ import {
   mkdirSync,
   chmodSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { resolve, delimiter } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { CLI_PATH } from './constants.js';
@@ -104,16 +105,7 @@ exit /b 127\r
   writeFileSync(shimPath(), script, 'utf-8');
 }
 
-/**
- * On Windows, add ~/.mindos/bin to user PATH via PowerShell profile (idempotent).
- * Falls back gracefully if PowerShell is not available.
- */
-function appendPathWindows() {
-  const binDir = shimDir();
-  const dirs = (process.env.PATH || '').split(delimiter);
-  if (dirs.some(d => d === binDir)) return false;
-
-  // Write a PowerShell profile snippet
+function appendPathWindowsProfileFallback(binDir) {
   try {
     const psProfileDir = resolve(home, 'Documents', 'WindowsPowerShell');
     mkdirSync(psProfileDir, { recursive: true });
@@ -131,6 +123,39 @@ function appendPathWindows() {
     }
   } catch { /* best effort */ }
   return false;
+}
+
+/**
+ * On Windows, add ~/.mindos/bin to the user PATH registry (idempotent).
+ * Falls back to a PowerShell profile snippet if registry update is unavailable.
+ */
+function appendPathWindows() {
+  const binDir = shimDir();
+  const dirs = (process.env.PATH || '').split(platform() === 'win32' ? ';' : delimiter);
+  if (dirs.some(d => d.toLowerCase() === binDir.toLowerCase())) return false;
+
+  try {
+    const psOpts = { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] };
+    const currentPath = execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      '[Environment]::GetEnvironmentVariable("Path", "User")',
+    ], psOpts).trim();
+
+    const entries = currentPath.split(';').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+    if (entries.includes(binDir.toLowerCase())) return false;
+
+    const newPath = currentPath ? `${binDir};${currentPath}` : binDir;
+    const escaped = newPath.replace(/'/g, "''");
+    execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `[Environment]::SetEnvironmentVariable('Path', '${escaped}', 'User')`,
+    ], psOpts);
+    return true;
+  } catch {
+    return appendPathWindowsProfileFallback(binDir);
+  }
 }
 
 /**
