@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import request from 'supertest'
+import net from 'node:net'
 import { ApiServer } from './server.js'
 import type { ApiConfig, ApiContext } from './types.js'
 import { ok, err } from '@geminilight/mindos/foundation'
@@ -290,6 +291,44 @@ describe('ApiServer', () => {
       const server = new ApiServer(config, mockCtx)
       const stopResult = await server.stop()
       expect(stopResult.ok).toBe(true)
+    })
+
+    it('should return an error when the configured port is already in use', async () => {
+      const blocker = net.createServer()
+      await new Promise<void>((resolve) => {
+        blocker.listen(0, '127.0.0.1', resolve)
+      })
+      const address = blocker.address()
+      if (!address || typeof address === 'string') {
+        throw new Error('Expected TCP test server address')
+      }
+
+      config.host = '127.0.0.1'
+      config.port = address.port
+      const server = new ApiServer(config, mockCtx)
+      const uncaughtErrors: unknown[] = []
+      const uncaughtHandler = (error: unknown) => {
+        uncaughtErrors.push(error)
+      }
+      process.once('uncaughtException', uncaughtHandler)
+
+      try {
+        const result = await Promise.race([
+          server.start(),
+          new Promise<Awaited<ReturnType<ApiServer['start']>>>((resolve) => {
+            setTimeout(() => resolve(err(createError('TIMEOUT', 'start timed out'))), 250)
+          }),
+        ])
+
+        expect(result.ok).toBe(false)
+        if (!result.ok) {
+          expect(result.error).toMatchObject({ code: 'INTERNAL_ERROR' })
+        }
+        expect(uncaughtErrors).toHaveLength(0)
+      } finally {
+        process.off('uncaughtException', uncaughtHandler)
+        await new Promise<void>((resolve) => blocker.close(() => resolve()))
+      }
     })
   })
 })

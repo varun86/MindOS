@@ -66,23 +66,34 @@ export class ApiServer {
   }
 
   async start(): Promise<Result<void>> {
-    try {
-      return new Promise((resolve) => {
-        this.server = this.app.listen(this.config.port, this.config.host, () => {
-          this.ctx.logger.info('API server started', {
-            host: this.config.host,
-            port: this.config.port,
-          })
-          resolve(ok(undefined))
+    return new Promise((resolve) => {
+      const server = this.app.listen(this.config.port, this.config.host)
+      this.server = server
+
+      const handleListening = () => {
+        server.off('error', handleError)
+        this.ctx.logger.info('API server started', {
+          host: this.config.host,
+          port: this.config.port,
         })
-      })
-    } catch (error) {
-      return err(
-        createError('INTERNAL_ERROR', 'Failed to start API server', {
-          cause: error as Error,
-        })
-      )
-    }
+        resolve(ok(undefined))
+      }
+
+      const handleError = (error: Error) => {
+        server.off('listening', handleListening)
+        this.server = undefined
+        resolve(
+          err(
+            createError('INTERNAL_ERROR', 'Failed to start API server', {
+              cause: error,
+            })
+          )
+        )
+      }
+
+      server.once('listening', handleListening)
+      server.once('error', handleError)
+    })
   }
 
   async stop(): Promise<Result<void>> {
@@ -91,6 +102,7 @@ export class ApiServer {
         return new Promise((resolve) => {
           this.server!.close(() => {
             this.ctx.logger.info('API server stopped')
+            this.server = undefined
             resolve(ok(undefined))
           })
         })

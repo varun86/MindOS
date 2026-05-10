@@ -3093,6 +3093,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/retrieval/api/src/server.test.ts` 的 Server Lifecycle case 固定使用 `config.port = 0`，避免和开发服务器或其他测试进程抢端口。
 
+### API server start 必须处理 listen error（2026-05-10）
+
+**症状**：当配置端口已被占用时，`ApiServer.start()` 不会返回失败 `Result`，调用方可能一直等待；底层 server 的 `error` 事件也可能变成未捕获异常。
+
+**根因**：`start()` 只在 `listen` 成功 callback 中 resolve，没有监听 HTTP server 的 `error` 事件。
+
+**修复**：`start()` 同时监听 `listening` 与 `error`：成功时返回 `ok`，失败时清理 `this.server` 并返回 `INTERNAL_ERROR`。
+
+**防回归**：`packages/retrieval/api/src/server.test.ts` 用临时 TCP server 占用 OS 分配端口，确认 `ApiServer.start()` 返回 `INTERNAL_ERROR` 且不会触发 uncaught exception。
+
 ### 删除风险评估不要把 `..name` 当成系统路径（2026-05-10）
 
 **症状**：Desktop 与产品 CLI 的 `assessDeletionRisk()` 会把 `.mindos/..cache/runtime` 这种仍在配置目录内的路径标记为 `isSystemPath: true`，误报为系统路径风险。
