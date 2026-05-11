@@ -241,6 +241,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   ];
 
   const activeTabLabel = TABS.find(t2 => t2.id === tab)?.label ?? '';
+  const desktopHeaderClass = 'h-11 border-b border-border shrink-0 flex items-center';
 
   /* ── Shared content & footer ── */
   const renderContent = () => (
@@ -405,7 +406,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       <div className="hidden md:flex flex-row h-full min-h-0">
         {/* Left sidebar — vertical tabs */}
         <div className="w-[180px] shrink-0 border-r border-border flex flex-col">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <div className={`${desktopHeaderClass} gap-2 px-4`}>
             <Settings size={15} className="text-muted-foreground" />
             <span className="text-sm font-medium text-foreground">{t.settings.title}</span>
           </div>
@@ -444,7 +445,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
         {/* Right content area */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Right header: tab title + status + close */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+          <div className={`${desktopHeaderClass} justify-between px-5`}>
             <span className="text-sm font-medium text-foreground">{activeTabLabel}</span>
             <div className="flex items-center gap-1.5">
               <div className="flex items-center gap-1.5 text-[10px]" role="status" aria-live="polite">

@@ -116,6 +116,10 @@ export async function handleSyncPost(
     const config = readConfig(services);
     const mindRoot = config.mindRoot;
 
+    if (payload.action === 'reset') {
+      return handleSyncReset(config, services);
+    }
+
     if (!mindRoot) {
       return json({ error: 'No mindRoot configured' }, { status: 400 });
     }
@@ -133,11 +137,6 @@ export async function handleSyncPost(
         config.sync = { ...(config.sync ?? {}), enabled: false };
         writeConfig(config, services);
         return json({ ok: true, enabled: false });
-      case 'reset':
-        delete config.sync;
-        writeConfig(config, services);
-        try { writeState({}, services); } catch {}
-        return json({ ok: true, enabled: false });
       case 'gitignore-get':
         return handleGitignoreGet(mindRoot);
       case 'gitignore-save':
@@ -154,6 +153,16 @@ export async function handleSyncPost(
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
+}
+
+function handleSyncReset(
+  config: MindosSyncConfig,
+  services: MindosSyncServices,
+): MindosServerResponse<{ ok: true; enabled: false } | { error: string }> {
+  delete config.sync;
+  writeConfig(config, services);
+  try { writeState({}, services); } catch {}
+  return json({ ok: true, enabled: false });
 }
 
 async function handleSyncInit(
@@ -403,11 +412,30 @@ async function runCli(args: string[], timeoutMs: number, services: MindosSyncSer
   });
 
   await new Promise<void>((resolveDone, rejectDone) => {
-    execFile(nodeBin, [cliPath, ...args], { timeout: timeoutMs }, (error, _stdout, stderr) => {
-      if (error) rejectDone(new Error(stderr?.trim() || error.message));
+    execFile(nodeBin, [cliPath, ...args], { timeout: timeoutMs, encoding: 'utf-8' }, (error, stdout, stderr) => {
+      if (error) rejectDone(new Error(formatProcessError(error, stdout, stderr)));
       else resolveDone();
     });
   });
+}
+
+function formatProcessError(
+  error: Error,
+  stdout: string | Buffer | null | undefined,
+  stderr: string | Buffer | null | undefined,
+): string {
+  const details = [
+    normalizeProcessOutput(stderr),
+    normalizeProcessOutput(stdout),
+    error.message,
+  ].filter(Boolean);
+  const message = details[0] ?? 'Command failed';
+  return message.length > 4000 ? `${message.slice(0, 4000)}...` : message;
+}
+
+function normalizeProcessOutput(value: string | Buffer | null | undefined): string {
+  if (!value) return '';
+  return value.toString().trim();
 }
 
 function resolveMindosCliPath(options: { env: Record<string, string | undefined>; runtimeRoot?: string; projectRoot?: string }): string {

@@ -41,7 +41,7 @@ export default function SkillsSection({ t }: McpSkillsSectionProps) {
 
   const fetchSkills = useCallback(async () => {
     try {
-      const data = await apiFetch<{ skills: SkillInfo[] }>('/api/skills');
+      const data = await apiFetch<{ skills: SkillInfo[] }>('/api/skills', { cache: 'no-store' });
       setSkills(data.skills);
       setLoadErrors({});
     } catch (err) {
@@ -364,7 +364,7 @@ export default function SkillsSection({ t }: McpSkillsSectionProps) {
       )}
 
       {/* Skill Search Paths */}
-      <SkillSearchPathsSection m={m} />
+      <SkillSearchPathsSection m={m} onChanged={fetchSkills} />
 
       {/* CLI install hint with agent selector */}
       <SkillCliHint
@@ -396,7 +396,13 @@ export default function SkillsSection({ t }: McpSkillsSectionProps) {
 
 /* ── Skill Search Paths ── */
 
-function SkillSearchPathsSection({ m }: { m: Record<string, any> | undefined }) {
+function SkillSearchPathsSection({
+  m,
+  onChanged,
+}: {
+  m: Record<string, any> | undefined;
+  onChanged: () => void | Promise<void>;
+}) {
   const [enableAgentsDir, setEnableAgentsDir] = useState(true);
   const [customPaths, setCustomPaths] = useState<string[]>([]);
   const [newPath, setNewPath] = useState('');
@@ -421,15 +427,20 @@ function SkillSearchPathsSection({ m }: { m: Record<string, any> | undefined }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skillPaths: { enableAgentsDir: agentsDir, custom: paths } }),
       });
+      await onChanged();
+      window.dispatchEvent(new Event('mindos:skills-changed'));
+      return true;
     } catch (err) {
       console.error('Failed to save skill paths:', err);
+      return false;
     }
   };
 
   const handleToggleAgentsDir = async () => {
+    const previous = enableAgentsDir;
     const next = !enableAgentsDir;
     setEnableAgentsDir(next);
-    await save(next, customPaths);
+    if (!(await save(next, customPaths))) setEnableAgentsDir(previous);
   };
 
   const handleAddPath = async () => {
@@ -438,13 +449,17 @@ function SkillSearchPathsSection({ m }: { m: Record<string, any> | undefined }) 
     const next = [...customPaths, trimmed];
     setCustomPaths(next);
     setNewPath('');
-    await save(enableAgentsDir, next);
+    if (!(await save(enableAgentsDir, next))) {
+      setCustomPaths(customPaths);
+      setNewPath(trimmed);
+    }
   };
 
   const handleRemovePath = async (idx: number) => {
+    const previous = customPaths;
     const next = customPaths.filter((_, i) => i !== idx);
     setCustomPaths(next);
-    await save(enableAgentsDir, next);
+    if (!(await save(enableAgentsDir, next))) setCustomPaths(previous);
   };
 
   if (!loaded) return null;

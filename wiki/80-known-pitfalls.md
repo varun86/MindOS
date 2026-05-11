@@ -155,6 +155,20 @@
 
 ## Git / 双仓同步
 
+### Git 同步失败不能被吞掉，也不能打崩后台同步（2026-05-11）
+
+**症状**：点击 Sync Now 后 UI 显示成功，但实际 `git commit` / `git push` 已失败；或者后台文件监听触发自动提交时，抛出的 Git 错误可能变成未处理异常。
+
+**根因**：手动同步和后台同步复用同一个提交/推送函数，但这两个调用方的错误语义不同。手动同步需要把失败抛到 API/UI，后台同步需要把失败写进 `sync-state.json` 并等待下一轮重试。
+
+**规则**：
+- `manualSync()` 必须在 commit / push 失败时抛错，让 `/api/sync` 返回明确错误
+- 后台 watcher 调用自动提交时必须 catch，只保留 `lastError`，不能让 daemon 崩掉
+- 所有长耗时 Git 操作必须设置 timeout，避免 UI 一直卡住
+- UI 错误提示不要 3 秒自动消失；用户需要时间复制错误和按提示修复
+
+**验证**：`pnpm exec vitest run tests/unit/cli-sync.test.ts` 覆盖 commit 失败会抛错并写入 `sync-state.json`；`pnpm --filter @geminilight/mindos test -- --runInBand src/server.test.ts` 覆盖配置损坏时仍可 reset。
+
 ### 公开仓 tag push 与 workflow_dispatch 不要双触发同一个发布
 
 **症状**：`npm run release` 后公开仓出现两个 `publish-npm` run；一个成功发布 npm，另一个因为同一版本已存在而失败。

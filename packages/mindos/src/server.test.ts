@@ -1152,9 +1152,38 @@ describe('MindOS product server contract', () => {
     });
 
     expect(res.status).toBe(200);
+    expect(res.headers?.['Cache-Control']).toBe('no-store');
     expect(res.body.skills).toEqual([
       expect.objectContaining({ name: 'custom-skill', description: 'User skill', source: 'user', enabled: true, editable: true }),
       expect.objectContaining({ name: 'mindos', description: 'Builtin skill', source: 'builtin', enabled: false, editable: false }),
+    ]);
+  });
+
+  it('lists external skill directories when entries are symlinks', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-symlinked-external-skills-'));
+    const codexSkillsRoot = join(root, 'codex-skills');
+    const agentSkillsRoot = join(root, 'agent-skills');
+    mkdirSync(codexSkillsRoot, { recursive: true });
+    mkdirSync(join(agentSkillsRoot, 'linked-skill'), { recursive: true });
+    writeFileSync(join(agentSkillsRoot, 'linked-skill', 'SKILL.md'), '---\nname: linked-skill\ndescription: Linked skill\n---\n');
+    symlinkSync(join(agentSkillsRoot, 'linked-skill'), join(codexSkillsRoot, 'linked-skill'), 'dir');
+
+    const res = handleSkillsGet({
+      disabledSkills: [],
+      skillRoots: [
+        { path: codexSkillsRoot, source: 'user', origin: 'custom', editable: true },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.skills).toEqual([
+      expect.objectContaining({
+        name: 'linked-skill',
+        description: 'Linked skill',
+        source: 'user',
+        origin: 'custom',
+        editable: true,
+      }),
     ]);
   });
 
@@ -2775,6 +2804,29 @@ describe('MindOS product server contract', () => {
       status: 400,
       body: { error: 'autoCommitInterval must be an integer between 10 and 300 seconds' },
     });
+  });
+
+  it('allows sync reset when the knowledge root is missing', async () => {
+    let config: Record<string, any> = {
+      sync: { enabled: true, provider: 'git' },
+    };
+    let state: Record<string, any> = {
+      lastError: 'Git repository not found',
+      conflicts: [{ file: 'note.md' }],
+    };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: Record<string, any>) => { config = next; },
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+    };
+
+    expect(await handleSyncPost({ action: 'reset' }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, enabled: false },
+    });
+    expect(config.sync).toBeUndefined();
+    expect(state).toEqual({});
   });
 
   it('rejects sync file operations through symlinks outside mindRoot', async () => {

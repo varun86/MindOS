@@ -66,8 +66,15 @@ function isGitRepo(dir) {
   return existsSync(resolve(dir, '.git'));
 }
 
-function gitExec(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim();
+function gitExec(args, cwd, timeoutMs = 15000) {
+  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe', timeout: timeoutMs }).trim();
+}
+
+function gitFailureMessage(prefix, err) {
+  const stderr = err?.stderr?.toString?.().trim?.() || '';
+  const stdout = err?.stdout?.toString?.().trim?.() || '';
+  const detail = stderr || stdout || err?.message || 'unknown error';
+  return `${prefix}: ${detail}`;
 }
 
 /** Check if URL is SSH format (git@host:path) */
@@ -158,37 +165,39 @@ function autoCommitAndPush(mindRoot, isSshUrl = false) {
 
   // Stage and commit any pending changes
   try {
-    execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe' });
+    execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
     const status = gitExec(['status', '--porcelain'], mindRoot);
     if (status) {
       const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      execFileSync('git', ['commit', '-m', `auto-sync: ${timestamp}`], { cwd: mindRoot, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', `auto-sync: ${timestamp}`], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
     }
   } catch (err) {
-    saveSyncState({ ...loadSyncState(), lastError: `Commit failed: ${err.message}`, lastErrorTime: new Date().toISOString() });
-    return;
+    const message = gitFailureMessage('Commit failed', err);
+    saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
+    throw new Error(message);
   }
 
   // Always try to push (even if no new commit — there may be unpushed commits from previous runs)
   try {
-    execFileSync('git', ['push', '-u', 'origin', 'HEAD'], { cwd: mindRoot, stdio: 'pipe', env: pushEnv });
+    execFileSync('git', ['push', '-u', 'origin', 'HEAD'], { cwd: mindRoot, stdio: 'pipe', env: pushEnv, timeout: 60000 });
     saveSyncState({ ...loadSyncState(), lastSync: new Date().toISOString(), lastError: null });
   } catch (err) {
-    saveSyncState({ ...loadSyncState(), lastError: `Push failed: ${err.message}`, lastErrorTime: new Date().toISOString() });
-    throw err; // Let caller know push failed
+    const message = gitFailureMessage('Push failed', err);
+    saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
+    throw new Error(message); // Let caller know push failed
   }
 }
 
 function autoPull(mindRoot, isSshUrl = false) {
   const sshEnv = isSshUrl ? getSshEnv() : {};
   try {
-    execFileSync('git', ['pull', '--rebase', '--autostash'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv } });
+    execFileSync('git', ['pull', '--rebase', '--autostash'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
     saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
   } catch {
     // rebase conflict → abort → merge
-    try { execFileSync('git', ['rebase', '--abort'], { cwd: mindRoot, stdio: 'pipe' }); } catch {}
+    try { execFileSync('git', ['rebase', '--abort'], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
     try {
-      execFileSync('git', ['pull', '--no-rebase'], { cwd: mindRoot, stdio: 'pipe' });
+      execFileSync('git', ['pull', '--no-rebase'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
       saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
     } catch {
       // merge conflict → keep both versions
@@ -203,16 +212,16 @@ function autoPull(mindRoot, isSshUrl = false) {
           } catch {
             conflictWarnings.push(file);
           }
-          try { execFileSync('git', ['checkout', '--ours', file], { cwd: mindRoot, stdio: 'pipe' }); } catch {}
+          try { execFileSync('git', ['checkout', '--ours', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
         }
-        execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe' });
+        execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
         // --no-edit avoids editor prompt for merge commit; --allow-empty handles edge case where ours == theirs
         try {
-          execFileSync('git', ['-c', 'core.editor=true', 'commit', '--no-edit'], { cwd: mindRoot, stdio: 'pipe' });
+          execFileSync('git', ['-c', 'core.editor=true', 'commit', '--no-edit'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
         } catch {
           // If merge commit fails (e.g. nothing to commit), try explicit message
           try {
-            execFileSync('git', ['commit', '-m', 'auto-sync: resolved conflicts (kept local versions)', '--allow-empty'], { cwd: mindRoot, stdio: 'pipe' });
+            execFileSync('git', ['commit', '-m', 'auto-sync: resolved conflicts (kept local versions)', '--allow-empty'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
           } catch {}
         }
       } catch (err) {
@@ -232,10 +241,11 @@ function autoPull(mindRoot, isSshUrl = false) {
 
   // Retry any pending pushes (handles previous push failures)
   try {
-    execFileSync('git', ['push', '-u', 'origin', 'HEAD'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv } });
+    execFileSync('git', ['push', '-u', 'origin', 'HEAD'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
     saveSyncState({ ...loadSyncState(), lastSync: new Date().toISOString(), lastError: null });
-  } catch {
+  } catch (err) {
     // Push failed — will be retried next cycle or by manualSync
+    saveSyncState({ ...loadSyncState(), lastError: gitFailureMessage('Push failed', err), lastErrorTime: new Date().toISOString() });
   }
 }
 
@@ -465,9 +475,12 @@ export async function startSyncDaemon(mindRoot) {
     persistent: true,
     ignoreInitial: true,
   });
+  const runBackgroundCommit = () => {
+    try { autoCommitAndPush(mindRoot, isSshUrl); } catch {}
+  };
   watcher.on('all', () => {
     clearTimeout(commitTimer);
-    commitTimer = setTimeout(() => autoCommitAndPush(mindRoot, isSshUrl), (config.autoCommitInterval || 30) * 1000);
+    commitTimer = setTimeout(runBackgroundCommit, (config.autoCommitInterval || 30) * 1000);
   });
 
   // Periodic pull

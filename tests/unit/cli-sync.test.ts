@@ -31,6 +31,7 @@ async function importSync() {
       enabled: boolean;
       provider?: string;
     };
+    manualSync: (mindRoot: string) => void;
     getSyncConflictBackupPath: (mindRoot: string, file: string) => string;
     getSyncGitignorePath: (mindRoot: string) => string;
   };
@@ -73,5 +74,29 @@ describe('mindos sync config persistence', () => {
 
     expect(() => getSyncGitignorePath(mindRoot)).toThrow('Access denied');
     expect(fs.readFileSync(path.join(outside, '.gitignore'), 'utf-8')).toBe('outside\n');
+  });
+
+  it('surfaces commit failures during manual sync', async () => {
+    const commitError = Object.assign(new Error('Command failed: git commit'), {
+      stderr: Buffer.from('fatal: unable to auto-detect email address\n'),
+      stdout: Buffer.from(''),
+    });
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'git@example.com:mind/repo.git\n';
+      if (args[0] === 'status' && args[1] === '--porcelain') return ' M note.md\n';
+      if (args[0] === 'commit') throw commitError;
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { manualSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    expect(() => manualSync(mindRoot)).toThrow('Commit failed: fatal: unable to auto-detect email address');
+    const state = JSON.parse(fs.readFileSync(path.join(mindosDir, 'sync-state.json'), 'utf-8'));
+    expect(state.lastError).toBe('Commit failed: fatal: unable to auto-detect email address');
   });
 });

@@ -55,6 +55,8 @@ base64 -i AuthKey_XXXXXXXX.p8 | tr -d '\n'  # API Key → APPLE_API_KEY_BASE64
 | `sign_mac` | true | 是否签名 + 公证 macOS 构建 |
 | `tag` | 自动 | Release tag 名称 |
 
+发布时必须传 `tag=desktop-vX.Y.Z`。Finalize 阶段会把 electron-builder 先创建的 `vX.Y.Z` release 统一改成 `desktop-vX.Y.Z`，标题固定为 `MindOS Desktop vX.Y.Z`。Release notes 使用固定模板：下载表格（系统 / CPU / 推荐文件 / 直达链接）、版本表格（Desktop 壳版本 / 内置 MindOS Core 版本）、自动更新文件说明和 changelog 链接。
+
 ### CI 流程（macOS）
 
 ```

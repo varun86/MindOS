@@ -57,4 +57,28 @@ describe('readSettings activeProvider normalization', () => {
 
     expect(settings.ai.activeProvider).toBe('p_google01');
   });
+
+  it('preserves skill search path settings when reading config', async () => {
+    fs.writeFileSync(configPath, JSON.stringify({
+      ai: {
+        activeProvider: 'p_openai01',
+        providers: [
+          { id: 'p_openai01', name: 'OpenAI', protocol: 'openai', apiKey: '', model: 'gpt-5.4', baseUrl: '' },
+        ],
+      },
+      mindRoot: '/tmp/mind',
+      skillPaths: {
+        enableAgentsDir: false,
+        custom: [' /extra-skills ', 42, '', 'C:\\Users\\Ada\\.codex\\skills'],
+      },
+    }), 'utf-8');
+
+    const { readSettings } = await import('@/lib/settings');
+    const settings = readSettings();
+
+    expect(settings.skillPaths).toEqual({
+      enableAgentsDir: false,
+      custom: ['/extra-skills', 'C:\\Users\\Ada\\.codex\\skills'],
+    });
+  });
 });

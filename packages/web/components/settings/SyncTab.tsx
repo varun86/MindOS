@@ -273,6 +273,13 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   const [toggling, setToggling] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const showSuccess = useCallback((text: string) => {
+    setMessage({ type: 'success', text });
+    setTimeout(() => {
+      setMessage(current => (current?.type === 'success' && current.text === text ? null : current));
+    }, 3000);
+  }, []);
+
   const fetchStatus = useCallback(async () => {
     try {
       const data = await apiFetch<SyncStatus>('/api/sync', { timeout: 10000 });
@@ -307,14 +314,13 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         body: JSON.stringify({ action: 'now' }),
         timeout: 120_000, // sync can take 60s+ for large repos
       });
-      setMessage({ type: 'success', text: (syncT?.syncComplete as string) ?? 'Sync complete' });
+      showSuccess((syncT?.syncComplete as string) ?? 'Sync complete');
       await fetchStatus();
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : 'Sync failed';
       setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
     } finally {
       setSyncing(false);
-      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -330,17 +336,18 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         body: JSON.stringify({ action }),
       });
       await fetchStatus();
-      setMessage({ type: 'success', text: status.enabled ? ((syncT?.autoSyncDisabled as string) ?? 'Auto-sync disabled') : ((syncT?.autoSyncEnabled as string) ?? 'Auto-sync enabled') });
-    } catch {
-      setMessage({ type: 'error', text: (syncT?.toggleFailed as string) ?? 'Failed to toggle sync' });
+      showSuccess(status.enabled ? ((syncT?.autoSyncDisabled as string) ?? 'Auto-sync disabled') : ((syncT?.autoSyncEnabled as string) ?? 'Auto-sync enabled'));
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : ((syncT?.toggleFailed as string) ?? 'Failed to toggle sync');
+      setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
     } finally {
       setToggling(false);
-      setTimeout(() => setMessage(null), 3000);
     }
   };
 
   const handleReset = async () => {
     setToggling(true);
+    setMessage(null);
     try {
       await apiFetch('/api/sync', {
         method: 'POST',
@@ -348,11 +355,27 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         body: JSON.stringify({ action: 'reset' }),
       });
       await fetchStatus();
-    } catch {
-      setMessage({ type: 'error', text: (syncT?.resetFailed as string) ?? 'Failed to reset sync configuration' });
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : ((syncT?.resetFailed as string) ?? 'Failed to reset sync configuration');
+      setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
     } finally {
       setToggling(false);
-      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  const handleUpdateIntervals = async (patch: { autoCommitInterval?: number; autoPullInterval?: number }) => {
+    setMessage(null);
+    try {
+      await apiFetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-intervals', ...patch }),
+      });
+      await fetchStatus();
+      showSuccess((syncT?.settingsSaved as string) ?? 'Sync settings saved');
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : 'Failed to update sync settings';
+      setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
     }
   };
 
@@ -434,16 +457,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
               <Select
                 size="sm"
                 value={String(status.autoCommitInterval)}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  try {
-                    const res = await fetch('/api/sync', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'update-intervals', autoCommitInterval: val }),
-                    });
-                    if (res.ok) fetchStatus();
-                  } catch {}
+                  void handleUpdateIntervals({ autoCommitInterval: val });
                 }}
               >
                 <option value="10">10s</option>
@@ -456,16 +472,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
               <Select
                 size="sm"
                 value={String(status.autoPullInterval)}
-                onChange={async (e) => {
+                onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  try {
-                    const res = await fetch('/api/sync', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'update-intervals', autoPullInterval: val }),
-                    });
-                    if (res.ok) fetchStatus();
-                  } catch {}
+                  void handleUpdateIntervals({ autoPullInterval: val });
                 }}
               >
                 <option value="60">1min</option>

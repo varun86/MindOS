@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { resolveExistingSafe } from '../../foundation/security/index.js';
-import { json, publicCacheHeaders, type MindosServerResponse } from '../response.js';
+import { json, type MindosServerResponse } from '../response.js';
 
 export type MindosSkillSource = 'builtin' | 'user';
 export type MindosSkillOrigin = 'app-builtin' | 'mindos-user' | 'mindos-global' | 'agents-global' | 'custom' | 'project-builtin';
@@ -81,7 +81,7 @@ export function handleSkillsGet(services: SkillsHandlerServices): MindosServerRe
 
   const skills = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
   return json({ skills }, {
-    headers: publicCacheHeaders(300),
+    headers: { 'Cache-Control': 'no-store' },
   });
 }
 
@@ -168,7 +168,7 @@ function readSkillsFromRoot(root: MindosSkillRoot, disabled: Set<string>): Mindo
   const skills: MindosSkillInfo[] = [];
 
   for (const entry of readdirSync(root.path, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!isSkillDirectoryEntry(root, entry)) continue;
     const skillFile = join(root.path, entry.name, 'SKILL.md');
     if (!existsSync(skillFile) || !statSync(skillFile).isFile()) continue;
     const content = readFileSync(skillFile, 'utf-8');
@@ -186,6 +186,18 @@ function readSkillsFromRoot(root: MindosSkillRoot, disabled: Set<string>): Mindo
   }
 
   return skills;
+}
+
+function isSkillDirectoryEntry(root: MindosSkillRoot, entry: import('node:fs').Dirent): boolean {
+  if (entry.isDirectory()) return true;
+  if (!entry.isSymbolicLink()) return false;
+  if (root.origin === 'mindos-user') return false;
+
+  try {
+    return statSync(join(root.path, entry.name)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function resolveUserSkillsDir(mindRoot: string): string {

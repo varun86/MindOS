@@ -104,6 +104,25 @@ export interface ServerSettings {
   // customProviders is now merged into ai.providers — kept for migration only
 }
 
+function parseSkillPathsField(raw: unknown): ServerSettings['skillPaths'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const source = raw as Record<string, unknown>;
+  const result: NonNullable<ServerSettings['skillPaths']> = {};
+
+  if (typeof source.enableAgentsDir === 'boolean') {
+    result.enableAgentsDir = source.enableAgentsDir;
+  }
+  if (Array.isArray(source.custom)) {
+    const custom = source.custom
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (custom.length > 0) result.custom = custom;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 const DEFAULTS: ServerSettings = {
   ai: {
     activeProvider: '',
@@ -281,6 +300,7 @@ export function readSettings(): ServerSettings {
       })(),
       connectionMode: inferConnectionMode(parsed),
       customAgents: Array.isArray(parsed.customAgents) ? parsed.customAgents as import('./custom-agents').CustomAgentDef[] : undefined,
+      skillPaths: parseSkillPathsField(parsed.skillPaths),
     };
 
     // Auto-persist migrated config so migration only runs once
