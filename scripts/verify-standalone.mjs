@@ -85,6 +85,17 @@ function waitHealth(timeoutMs) {
   });
 }
 
+function waitMcpAgents(timeoutMs) {
+  return waitHttpOk('/api/mcp/agents', timeoutMs, (body) => {
+    try {
+      const j = JSON.parse(body);
+      return Array.isArray(j.agents) && j.agents.length > 0;
+    } catch {
+      return false;
+    }
+  });
+}
+
 let stderr = '';
 const child = spawn(nodeBin, [serverJs], {
   cwd: appDir,
@@ -113,6 +124,7 @@ function killChild() {
 async function main() {
   try {
     await waitHealth(90_000);
+    await waitMcpAgents(30_000);
     await waitHttpOk('/', 30_000, (body) => body.includes('MindOS') || body.includes('__next'));
     console.log(`[verify-standalone] OK (port ${port})`);
     return 0;

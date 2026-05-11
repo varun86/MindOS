@@ -175,7 +175,6 @@ function pruneRuntimeNodeModules(dir) {
     'benchmark',
     'benchmarks',
     'coverage',
-    'doc',
     'docs',
     'example',
     'examples',

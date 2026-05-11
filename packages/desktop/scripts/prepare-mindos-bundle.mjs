@@ -81,19 +81,21 @@ function materializeStandalonePackageDependencies(appDir, standaloneDir) {
   const visited = new Set();
   const sourceByPackageName = new Map();
   for (const packageName of listPackageNames(nodeModulesDir)) {
+    const packageDir = path.join(nodeModulesDir, packageName);
     const sourcePackage = resolvePackageDir(appDir, packageName);
     if (existsSync(sourcePackage)) sourceByPackageName.set(packageName, sourcePackage);
-    materializePackageDependencies(appDir, standaloneDir, packageName, visited, sourceByPackageName);
+    materializePackageDependencies(appDir, standaloneDir, packageName, packageDir, sourcePackage, visited, sourceByPackageName);
   }
 }
 
-function materializePackageDependencies(appDir, standaloneDir, packageName, visited, sourceByPackageName) {
-  if (visited.has(packageName)) return;
-  visited.add(packageName);
+function materializePackageDependencies(appDir, standaloneDir, packageName, packageDir, sourcePackage, visited, sourceByPackageName) {
+  const visitKey = path.resolve(packageDir);
+  if (visited.has(visitKey)) return;
+  visited.add(visitKey);
 
-  const sourcePackage = sourceByPackageName.get(packageName) ?? resolvePackageDir(appDir, packageName);
+  sourcePackage = sourcePackage ?? sourceByPackageName.get(packageName) ?? resolvePackageDir(appDir, packageName);
   if (existsSync(sourcePackage)) sourceByPackageName.set(packageName, sourcePackage);
-  const packageJsonPath = path.join(standaloneDir, 'node_modules', packageName, 'package.json');
+  const packageJsonPath = path.join(packageDir, 'package.json');
   if (!existsSync(packageJsonPath)) return;
 
   let pkg;
@@ -104,9 +106,22 @@ function materializePackageDependencies(appDir, standaloneDir, packageName, visi
   }
 
   for (const [dependencyName, dependencyRange] of Object.entries(pkg.dependencies ?? {})) {
-    const dependencySource = materializePackage(appDir, standaloneDir, dependencyName, sourcePackage, packageName, dependencyRange);
+    const dependencySource = materializePackage(appDir, standaloneDir, dependencyName, sourcePackage, packageDir, dependencyRange);
     if (dependencySource) sourceByPackageName.set(dependencyName, dependencySource);
-    materializePackageDependencies(appDir, standaloneDir, dependencyName, visited, sourceByPackageName);
+    const nestedDependencyDir = path.join(packageDir, 'node_modules', dependencyName);
+    const topLevelDependencyDir = path.join(standaloneDir, 'node_modules', dependencyName);
+    const dependencyDir = packageAtPathSatisfies(nestedDependencyDir, dependencyRange)
+      ? nestedDependencyDir
+      : topLevelDependencyDir;
+    materializePackageDependencies(
+      appDir,
+      standaloneDir,
+      dependencyName,
+      dependencyDir,
+      dependencySource,
+      visited,
+      sourceByPackageName,
+    );
   }
 }
 
@@ -115,8 +130,7 @@ function assertStandalonePackageDependencyClosure(standaloneDir) {
   if (!existsSync(nodeModulesDir)) return;
 
   const missing = [];
-  for (const packageName of listPackageNames(nodeModulesDir)) {
-    const packageDir = path.join(nodeModulesDir, packageName);
+  for (const { name: packageName, dir: packageDir } of collectPackageEntries(nodeModulesDir)) {
     const packageJsonPath = path.join(packageDir, 'package.json');
     if (!existsSync(packageJsonPath)) continue;
 
@@ -167,6 +181,16 @@ function listPackageNames(nodeModulesDir) {
     packageNames.push(entry.name);
   }
   return packageNames;
+}
+
+function collectPackageEntries(nodeModulesDir, out = []) {
+  if (!existsSync(nodeModulesDir)) return out;
+  for (const packageName of listPackageNames(nodeModulesDir)) {
+    const packageDir = path.join(nodeModulesDir, packageName);
+    out.push({ name: packageName, dir: packageDir });
+    collectPackageEntries(path.join(packageDir, 'node_modules'), out);
+  }
+  return out;
 }
 
 function replaceSymlinksWithCopies(dir, nodeModulesRoot = dir, fallbackNodeModulesDir = null) {
@@ -315,7 +339,6 @@ function isDevOnlyDirName(name) {
     '__tests__',
     'benchmark',
     'benchmarks',
-    'doc',
     'docs',
     'example',
     'examples',
@@ -411,7 +434,7 @@ function normalizeNodeArch(arch) {
   return arch === 'arm64' ? 'arm64' : 'x64';
 }
 
-function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir, nestedUnderPackageName = null, dependencyRange = '*') {
+function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir, parentPackageDir = null, dependencyRange = '*') {
   const sourcePackage = resolvePackageDir(appDir, packageName, fromDir, dependencyRange);
   const destPackage = path.join(standaloneDir, 'node_modules', packageName);
   if (!existsSync(sourcePackage)) return null;
@@ -420,10 +443,10 @@ function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir
     copyDereferenced(sourcePackage, destPackage);
   }
 
-  if (nestedUnderPackageName) {
+  if (parentPackageDir) {
     if (packageAtPathSatisfies(destPackage, dependencyRange)) return sourcePackage;
 
-    const nestedDest = path.join(standaloneDir, 'node_modules', nestedUnderPackageName, 'node_modules', packageName);
+    const nestedDest = path.join(parentPackageDir, 'node_modules', packageName);
     if (packageAtPathSatisfies(nestedDest, dependencyRange)) return sourcePackage;
 
     rmSync(nestedDest, { recursive: true, force: true });

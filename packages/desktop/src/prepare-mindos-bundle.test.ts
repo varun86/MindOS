@@ -219,6 +219,43 @@ describe('materializeStandaloneAssets', () => {
     expect(JSON.parse(readFileSync(path.join(staleTopLevel, 'package.json'), 'utf-8')).version).toBe('1.1.14');
   });
 
+  it('materializes dependencies declared by nested package versions', () => {
+    const appDir = makeTemp('mindos-app-nested-transitive-deps-');
+    writeStandaloneApp(appDir);
+
+    const parentPackage = path.join(appDir, '.next', 'standalone', 'node_modules', 'cli-highlight');
+    const nestedChalk = path.join(parentPackage, 'node_modules', 'chalk');
+    mkdirSync(nestedChalk, { recursive: true });
+    writeFileSync(path.join(parentPackage, 'package.json'), JSON.stringify({
+      name: 'cli-highlight',
+      dependencies: { chalk: '^4.0.0' },
+    }));
+    writeFileSync(path.join(nestedChalk, 'package.json'), JSON.stringify({
+      name: 'chalk',
+      version: '4.1.2',
+      dependencies: { 'supports-color': '^7.1.0' },
+    }));
+
+    const topLevelChalk = path.join(appDir, '.next', 'standalone', 'node_modules', 'chalk');
+    mkdirSync(topLevelChalk, { recursive: true });
+    writeFileSync(path.join(topLevelChalk, 'package.json'), JSON.stringify({
+      name: 'chalk',
+      version: '5.6.2',
+    }));
+
+    const sourceSupportsColor = path.join(appDir, 'node_modules', 'supports-color');
+    mkdirSync(sourceSupportsColor, { recursive: true });
+    writeFileSync(path.join(sourceSupportsColor, 'package.json'), JSON.stringify({
+      name: 'supports-color',
+      version: '7.2.0',
+    }));
+    writeFileSync(path.join(sourceSupportsColor, 'index.js'), 'module.exports = {};');
+
+    materializeStandaloneAssets(appDir);
+
+    expect(existsSync(path.join(appDir, '.next', 'standalone', 'node_modules', 'supports-color', 'index.js'))).toBe(true);
+  });
+
   it('deduplicates nested packages when the top-level package has the same version', () => {
     const appDir = makeTemp('mindos-app-dedupe-deps-');
     writeStandaloneApp(appDir);
@@ -312,6 +349,23 @@ describe('materializeStandaloneAssets', () => {
     expect(existsSync(path.join(packageDir, 'index.d.ts'))).toBe(false);
     expect(existsSync(path.join(packageDir, 'index.js.map'))).toBe(false);
     expect(existsSync(path.join(packageDir, 'package.json'))).toBe(true);
+  });
+
+  it('keeps runtime doc directories required by packages such as yaml', () => {
+    const appDir = makeTemp('mindos-app-runtime-doc-dir-');
+    writeStandaloneApp(appDir);
+
+    const packageDir = path.join(appDir, '.next', 'standalone', 'node_modules', 'yaml');
+    mkdirSync(path.join(packageDir, 'dist', 'doc'), { recursive: true });
+    mkdirSync(path.join(packageDir, 'docs'), { recursive: true });
+    writeFileSync(path.join(packageDir, 'dist', 'doc', 'directives.js'), 'export {};');
+    writeFileSync(path.join(packageDir, 'docs', 'guide.md'), 'docs');
+    writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'yaml' }));
+
+    materializeStandaloneAssets(appDir);
+
+    expect(existsSync(path.join(packageDir, 'dist', 'doc', 'directives.js'))).toBe(true);
+    expect(existsSync(path.join(packageDir, 'docs'))).toBe(false);
   });
 
   it('does not bundle optional local embedding runtime packages by default', () => {
