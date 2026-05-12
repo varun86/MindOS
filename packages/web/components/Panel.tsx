@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect, useCallback, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronsDownUp, ChevronsUpDown, Plus, Import, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
 import type { PanelId } from './ActivityBar';
 import type { FileNode } from '@/lib/types';
 import FileTree, { setShowHiddenFiles, useShowHiddenFiles } from './FileTree';
@@ -45,7 +45,7 @@ interface PanelProps {
   onWidthCommit?: (width: number) => void;
   /** Whether panel is maximized */
   maximized?: boolean;
-  /** Callback to toggle maximize */
+  /** Callback to toggle maximize for panel variants that render maximize controls */
   onMaximize?: () => void;
   /** Callback to open import modal for a space */
   onImport?: (space?: string) => void;
@@ -63,7 +63,6 @@ export default function Panel({
   onWidthChange,
   onWidthCommit,
   maximized = false,
-  onMaximize,
   onImport,
   children,
 }: PanelProps) {
@@ -72,10 +71,12 @@ export default function Panel({
   const width = maximized ? undefined : (panelWidth ?? defaultWidth);
 
   const { t } = useLocale();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const router = useRouter();
   const pathname = usePathname();
   const isInboxActive = pathname === '/capture' || pathname === '/capture/';
+  const [refreshingTree, setRefreshingTree] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // File tree depth control: null = manual (no override), number = forced max open depth
   const [maxOpenDepth, setMaxOpenDepth] = useState<number | null>(null);
@@ -170,6 +171,25 @@ export default function Panel({
     }
   }, [dblHintSeen]);
 
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, []);
+
+  const handleRefreshFiles = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    setRefreshingTree(true);
+    startTransition(() => {
+      router.refresh();
+      window.dispatchEvent(new Event('mindos:files-changed'));
+    });
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      setRefreshingTree(false);
+    }, 450);
+  }, [router]);
+
   const handleMouseDown = useResizeDrag({
     width: panelWidth ?? defaultWidth,
     minWidth: MIN_PANEL_WIDTH,
@@ -250,6 +270,17 @@ export default function Panel({
               title={t.sidebar.importFile}
             >
               <Import size={13} />
+            </button>
+            {/* Refresh */}
+            <button
+              type="button"
+              onClick={handleRefreshFiles}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label={t.sidebar.refreshFiles}
+              aria-busy={refreshingTree}
+              title={t.sidebar.refreshFiles}
+            >
+              <RefreshCw size={13} className={refreshingTree ? 'motion-safe:animate-spin' : undefined} />
             </button>
             {/* Separator: create actions | view actions */}
             <div className="w-px h-3.5 bg-border mx-0.5" />
