@@ -58,7 +58,7 @@ export function McpTab({ t }: McpTabProps) {
           connectionMode: { cli: true, mcp: enabled },
         }),
       });
-      await mcp.refresh();
+      await mcp.refresh({ force: true });
       // Switch view to MCP tab when enabling
       if (enabled) setMode('mcp');
     } catch {
@@ -90,7 +90,7 @@ export function McpTab({ t }: McpTabProps) {
         if (s.running) {
           clearInterval(restartPollRef.current);
           setRestarting(false);
-          mcp.refresh();
+          mcp.refresh({ force: true });
         }
       } catch { /* continue polling */ }
     }, 3000);
@@ -307,4 +307,3 @@ function AuthTokenCard({ status, m }: {
 
 /* ── Shared copy-state hook for guide sub-components ── */
 import ConnectCard, { CopyButton, useCopyField } from './McpConnectGuides';
-

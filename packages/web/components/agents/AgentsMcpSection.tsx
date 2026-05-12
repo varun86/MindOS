@@ -103,7 +103,7 @@ export default function AgentsMcpSection({
       const scope = agent.scope === 'project' ? 'project' : 'global';
       const transport = agent.transport === 'http' ? 'http' : 'stdio';
       await mcp.installAgent(agent.key, { scope, transport });
-      await mcp.refresh();
+      await mcp.refresh({ force: true });
     } catch (err) {
       console.error('[mcp] reconnect failed', err);
     } finally {
@@ -115,7 +115,7 @@ export default function AgentsMcpSection({
     setBusyAction(`install:${agentKey}`);
     try {
       await mcp.installAgent(agentKey, { scope: 'global', transport: 'stdio' });
-      await mcp.refresh();
+      await mcp.refresh({ force: true });
     } catch (err) {
       console.error('[mcp] install mindos failed', err);
     } finally {
@@ -134,7 +134,7 @@ export default function AgentsMcpSection({
       const ok = await mcp.installAgent(agent.key, { scope, transport });
       results.push({ agentKey: agent.key, ok });
     }
-    await mcp.refresh();
+    await mcp.refresh({ force: true });
     const summary = summarizeMcpBulkReconnectResults(results);
     setBulkMessage(copy.bulkSummary(summary.succeeded, summary.failed));
     setBusyAction(null);
@@ -155,7 +155,7 @@ export default function AgentsMcpSection({
           </h2>
           <button
             type="button"
-            onClick={() => { setBusyAction('refresh'); void mcp.refresh().finally(() => setBusyAction(null)); }}
+            onClick={() => { setBusyAction('refresh'); void mcp.refresh({ force: true }).finally(() => setBusyAction(null)); }}
             disabled={isRefreshing}
             aria-label={copy.refresh}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-1.5 py-1 hover:bg-muted disabled:opacity-50 transition-colors duration-150"

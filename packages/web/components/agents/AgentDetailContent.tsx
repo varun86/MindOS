@@ -373,7 +373,7 @@ export default function AgentDetailContent({ agentKey }: { agentKey: string }) {
               />
             )}
             <ActionButton
-              onClick={() => void mcp.refresh()}
+              onClick={() => void mcp.refresh({ force: true })}
               disabled={false}
               busy={false}
               label={a.detail.mcpRefresh}

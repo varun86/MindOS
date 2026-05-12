@@ -39,7 +39,7 @@ export default function AgentsPanel({
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await mcp.refresh();
+    await mcp.refresh({ force: true });
     setRefreshing(false);
   };
 

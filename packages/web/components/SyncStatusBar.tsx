@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
 import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -42,51 +42,107 @@ function useTick(intervalMs: number) {
   }, [intervalMs]);
 }
 
-export function useSyncStatus() {
-  const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+type SyncStatusSnapshot = {
+  status: SyncStatus | null;
+  loaded: boolean;
+};
 
-  const fetchStatus = useCallback(async () => {
+const SYNC_STATUS_POLL_INTERVAL = 30_000;
+let syncStatusSnapshot: SyncStatusSnapshot = { status: null, loaded: false };
+let syncStatusInFlight: Promise<void> | null = null;
+let syncStatusInFlightToken: symbol | null = null;
+let syncStatusInterval: ReturnType<typeof setInterval> | undefined;
+let syncStatusSubscribers = 0;
+const syncStatusListeners = new Set<() => void>();
+
+function emitSyncStatus() {
+  for (const listener of syncStatusListeners) listener();
+}
+
+function setSyncStatusSnapshot(next: SyncStatusSnapshot) {
+  syncStatusSnapshot = next;
+  emitSyncStatus();
+}
+
+function getSyncStatusSnapshot(): SyncStatusSnapshot {
+  return syncStatusSnapshot;
+}
+
+async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
+  if (syncStatusInFlight && !opts.force) return syncStatusInFlight;
+  const requestToken = Symbol('sync-status-fetch');
+  syncStatusInFlightToken = requestToken;
+
+  const request = (async () => {
     try {
       const data = await apiFetch<SyncStatus>('/api/sync');
-      setStatus(data);
-    } catch {
-      setStatus(null);
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStatus();
-
-    const start = () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = setInterval(fetchStatus, 30_000);
-    };
-    const stop = () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
-    };
-
-    start();
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchStatus();
-        start();
-      } else {
-        stop();
+      if (syncStatusInFlightToken === requestToken) {
+        setSyncStatusSnapshot({ status: data, loaded: true });
       }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
+    } catch {
+      if (syncStatusInFlightToken === requestToken) {
+        setSyncStatusSnapshot({ status: null, loaded: true });
+      }
+    } finally {
+      if (syncStatusInFlightToken === requestToken) {
+        syncStatusInFlight = null;
+        syncStatusInFlightToken = null;
+      }
+    }
+  })();
 
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [fetchStatus]);
+  syncStatusInFlight = request;
+  return request;
+}
+
+function startSyncStatusPolling() {
+  if (syncStatusInterval) return;
+  void fetchSharedSyncStatus();
+  syncStatusInterval = setInterval(() => {
+    if (document.visibilityState === 'visible') void fetchSharedSyncStatus();
+  }, SYNC_STATUS_POLL_INTERVAL);
+}
+
+function stopSyncStatusPolling() {
+  if (!syncStatusInterval) return;
+  clearInterval(syncStatusInterval);
+  syncStatusInterval = undefined;
+}
+
+function handleSyncVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    startSyncStatusPolling();
+    void fetchSharedSyncStatus();
+  } else {
+    stopSyncStatusPolling();
+  }
+}
+
+function subscribeSyncStatus(listener: () => void) {
+  syncStatusListeners.add(listener);
+  syncStatusSubscribers += 1;
+  if (syncStatusSubscribers === 1) {
+    startSyncStatusPolling();
+    document.addEventListener('visibilitychange', handleSyncVisibilityChange);
+  }
+
+  return () => {
+    syncStatusListeners.delete(listener);
+    syncStatusSubscribers = Math.max(0, syncStatusSubscribers - 1);
+    if (syncStatusSubscribers === 0) {
+      stopSyncStatusPolling();
+      document.removeEventListener('visibilitychange', handleSyncVisibilityChange);
+    }
+  };
+}
+
+export function useSyncStatus() {
+  const { status, loaded } = useSyncExternalStore(
+    subscribeSyncStatus,
+    getSyncStatusSnapshot,
+    getSyncStatusSnapshot,
+  );
+  const fetchStatus = useCallback(() => fetchSharedSyncStatus({ force: true }), []);
 
   return { status, loaded, fetchStatus };
 }

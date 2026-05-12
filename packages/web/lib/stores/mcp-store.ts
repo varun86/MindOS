@@ -13,7 +13,7 @@ export interface McpStoreState {
   loading: boolean;
 
   /* actions */
-  refresh: () => Promise<void>;
+  refresh: (opts?: { force?: boolean }) => Promise<void>;
   toggleSkill: (name: string, enabled: boolean) => Promise<boolean>;
   installAgent: (key: string, opts?: { scope?: string; transport?: string }) => Promise<boolean>;
 
@@ -27,30 +27,55 @@ export type McpContextValue = McpStoreState;
 /* ── Abort controller for race-condition safety ── */
 
 let abortCtrl: AbortController | null = null;
+let inFlight: Promise<void> | null = null;
+let inFlightToken: symbol | null = null;
+let lastFetchedAt = 0;
 
 /* ── Store ── */
 
 const POLL_INTERVAL = 30_000;
+const FRESHNESS_WINDOW_MS = 2_000;
 
-async function fetchAll(set: (partial: Partial<McpStoreState>) => void) {
-  abortCtrl?.abort();
+async function fetchAll(set: (partial: Partial<McpStoreState>) => void, opts: { force?: boolean } = {}) {
+  const now = Date.now();
+  if (!opts.force) {
+    if (inFlight) return inFlight;
+    if (lastFetchedAt > 0 && now - lastFetchedAt < FRESHNESS_WINDOW_MS) {
+      set({ loading: false });
+      return;
+    }
+  }
+
+  if (opts.force) abortCtrl?.abort();
   const ac = new AbortController();
   abortCtrl = ac;
+  const requestToken = Symbol('mcp-fetch');
+  inFlightToken = requestToken;
 
-  try {
-    const [statusData, agentsData, skillsData] = await Promise.all([
-      apiFetch<McpStatus>('/api/mcp/status', { signal: ac.signal }),
-      apiFetch<{ agents: AgentInfo[] }>('/api/mcp/agents', { signal: ac.signal }),
-      apiFetch<{ skills: SkillInfo[] }>('/api/skills', { signal: ac.signal }),
-    ]);
-    if (!ac.signal.aborted) {
-      set({ status: statusData, agents: agentsData.agents, skills: skillsData.skills });
+  const request = (async () => {
+    try {
+      const [statusData, agentsData, skillsData] = await Promise.all([
+        apiFetch<McpStatus>('/api/mcp/status', { signal: ac.signal }),
+        apiFetch<{ agents: AgentInfo[] }>('/api/mcp/agents', { signal: ac.signal }),
+        apiFetch<{ skills: SkillInfo[] }>('/api/skills', { signal: ac.signal }),
+      ]);
+      if (!ac.signal.aborted) {
+        lastFetchedAt = Date.now();
+        set({ status: statusData, agents: agentsData.agents, skills: skillsData.skills });
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+    } finally {
+      if (!ac.signal.aborted) set({ loading: false });
+      if (inFlightToken === requestToken) {
+        inFlight = null;
+        inFlightToken = null;
+      }
     }
-  } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === 'AbortError') return;
-  } finally {
-    if (!ac.signal.aborted) set({ loading: false });
-  }
+  })();
+
+  inFlight = request;
+  return request;
 }
 
 export const useMcpStore = create<McpStoreState>((set, get) => ({
@@ -59,7 +84,7 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
   skills: [],
   loading: true,
 
-  refresh: () => fetchAll(set),
+  refresh: (opts) => fetchAll(set, opts),
 
   toggleSkill: async (name, enabled) => {
     // Optimistic update
@@ -98,7 +123,7 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
 
       const first = res.results?.[0];
       const ok = first?.ok === true || first?.status === 'ok';
-      if (ok) await fetchAll(set);
+      if (ok) await fetchAll(set, { force: true });
       return ok;
     } catch {
       return false;
