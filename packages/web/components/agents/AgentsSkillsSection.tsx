@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import Link from 'next/link';
-import { ChevronDown, ChevronRight, Search, Trash2, Zap } from 'lucide-react';
+import { Search, Trash2, Zap } from 'lucide-react';
 import { Toggle } from '@/components/settings/Primitives';
 import { apiFetch } from '@/lib/api';
 import type { McpContextValue } from '@/lib/stores/mcp-store';
@@ -30,11 +29,9 @@ import {
   aggregateCrossAgentSkills,
   buildSkillAttentionSet,
   buildUnifiedSkillList,
-  capabilityForSkill,
   createBulkUnifiedTogglePlan,
   filterUnifiedSkills,
   groupUnifiedSkills,
-  resolveAgentStatus,
   sortAgentsByStatus,
   summarizeBulkSkillToggleResults,
   type UnifiedSkillItem,
@@ -127,7 +124,6 @@ export type SkillsSectionCopy = {
 export default function AgentsSkillsSection({
   copy,
   mcp,
-  buckets,
 }: {
   copy: SkillsSectionCopy;
   mcp: McpContextValue;
@@ -141,6 +137,7 @@ export default function AgentsSkillsSection({
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [detailSkill, setDetailSkill] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query);
 
   const crossAgentSkills = useMemo(() => aggregateCrossAgentSkills(mcp.agents), [mcp.agents]);
   const sortedAgents = useMemo(() => sortAgentsByStatus(mcp.agents), [mcp.agents]);
@@ -156,8 +153,8 @@ export default function AgentsSkillsSection({
   const nativeCount = useMemo(() => unified.filter((s) => s.kind === 'native').length, [unified]);
 
   const filtered = useMemo(
-    () => filterUnifiedSkills(unified, { query, source, status, capability }),
-    [unified, query, source, status, capability],
+    () => filterUnifiedSkills(unified, { query: deferredQuery, source, status, capability }),
+    [unified, deferredQuery, source, status, capability],
   );
   const grouped = useMemo(() => groupUnifiedSkills(filtered), [filtered]);
 
@@ -288,7 +285,7 @@ export default function AgentsSkillsSection({
           agents={sortedAgents}
           skills={mcp.skills}
           crossAgentSkills={crossAgentSkills}
-          query={query}
+          query={deferredQuery}
           onToggleSkill={mcp.toggleSkill}
           onOpenDetail={setDetailSkill}
         />
@@ -652,4 +649,3 @@ function VirtualizedSkillList({
     />
   );
 }
-

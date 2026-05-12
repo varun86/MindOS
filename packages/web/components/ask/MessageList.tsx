@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, memo, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, memo, useState, useCallback, useMemo, type CSSProperties } from 'react';
 import { Sparkles, Loader2, AlertCircle, Wrench, WifiOff, Zap, Copy, Check, ArrowDown, FolderInput, Search, PenLine, Lightbulb, FileText, Paperclip, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,6 +13,11 @@ import { SaveMessageButton } from './SaveSessionInline';
 import UserMessageActions from './UserMessageActions';
 
 const SKILL_PREFIX_RE = /^Use the skill ([^:]+):\s*/;
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const MESSAGE_ROW_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '0 96px',
+};
 
 function CopyMessageButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -37,14 +42,21 @@ function CopyMessageButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
-function UserMessageContent({ content, skillName, images, attachedFiles, uploadedFileNames }: { content: string; skillName?: string; images?: ImagePart[]; attachedFiles?: string[]; uploadedFileNames?: string[] }) {
-  const resolved = skillName ?? content.match(SKILL_PREFIX_RE)?.[1];
-  const prefixMatch = content.match(SKILL_PREFIX_RE);
-  const rest = prefixMatch ? content.slice(prefixMatch[0].length) : content;
+const UserMessageContent = memo(function UserMessageContent({ content, skillName, images, attachedFiles, uploadedFileNames }: { content: string; skillName?: string; images?: ImagePart[]; attachedFiles?: string[]; uploadedFileNames?: string[] }) {
+  const { resolved, rest } = useMemo(() => {
+    const prefixMatch = content.match(SKILL_PREFIX_RE);
+    return {
+      resolved: skillName ?? prefixMatch?.[1],
+      rest: prefixMatch ? content.slice(prefixMatch[0].length) : content,
+    };
+  }, [content, skillName]);
 
-  // Deduplicate: uploaded files already shown shouldn't repeat as attached
-  const uploadedSet = new Set(uploadedFileNames ?? []);
-  const dedupedAttached = attachedFiles?.filter(fp => !uploadedSet.has(fp.split('/').pop() ?? fp));
+  const dedupedAttached = useMemo(() => {
+    if (!attachedFiles || attachedFiles.length === 0) return attachedFiles;
+    if (!uploadedFileNames || uploadedFileNames.length === 0) return attachedFiles;
+    const uploadedSet = new Set(uploadedFileNames);
+    return attachedFiles.filter(fp => !uploadedSet.has(fp.split('/').pop() ?? fp));
+  }, [attachedFiles, uploadedFileNames]);
   const hasContext = (dedupedAttached && dedupedAttached.length > 0)
     || (uploadedFileNames && uploadedFileNames.length > 0);
 
@@ -55,6 +67,8 @@ function UserMessageContent({ content, skillName, images, attachedFiles, uploade
         <div className={`flex flex-wrap gap-1.5${content ? ' mb-2' : ''}`}>
           {images.map((img, idx) => (
             img.data ? (
+              // Data URL previews are local session images; next/image cannot optimize them.
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={idx}
                 src={`data:${img.mimeType};base64,${img.data}`}
@@ -106,9 +120,9 @@ function UserMessageContent({ content, skillName, images, attachedFiles, uploade
       )}
     </>
   );
-}
+});
 
-function AssistantAgentBadge({ agentName }: { agentName?: string }) {
+const AssistantAgentBadge = memo(function AssistantAgentBadge({ agentName }: { agentName?: string }) {
   if (!agentName) return null;
   return (
     <div className="mb-2 inline-flex items-center gap-1 rounded-full border border-[var(--amber)]/15 bg-[var(--amber)]/8 px-2 py-0.5 text-[10px] font-medium tracking-wide text-[var(--amber)]">
@@ -116,9 +130,9 @@ function AssistantAgentBadge({ agentName }: { agentName?: string }) {
       <span>{agentName}</span>
     </div>
   );
-}
+});
 
-function AssistantMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+const AssistantMessage = memo(function AssistantMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
   const cleaned = stripThinkingTags(content);
   if (!cleaned && !isStreaming) return null;
   return (
@@ -135,15 +149,15 @@ function AssistantMessage({ content, isStreaming }: { content: string; isStreami
       prose-strong:text-foreground prose-strong:font-semibold
       prose-table:text-xs prose-th:py-1.5 prose-td:py-1
     ">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleaned}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS}>{cleaned}</ReactMarkdown>
       {isStreaming && (
         <span className="inline-block w-1.5 h-3.5 bg-[var(--amber)] ml-0.5 align-middle animate-pulse rounded-full" />
       )}
     </div>
   );
-}
+});
 
-function AssistantMessageWithParts({ message, isStreaming }: { message: Message; isStreaming: boolean }) {
+const AssistantMessageWithParts = memo(function AssistantMessageWithParts({ message, isStreaming }: { message: Message; isStreaming: boolean }) {
   const parts = message.parts;
   if (!parts || parts.length === 0) {
     // Fallback to plain text rendering
@@ -182,9 +196,9 @@ function AssistantMessageWithParts({ message, isStreaming }: { message: Message;
       )}
     </div>
   );
-}
+});
 
-function StepCounter({ parts }: { parts: Message['parts'] }) {
+const StepCounter = memo(function StepCounter({ parts }: { parts: Message['parts'] }) {
   if (!parts) return null;
   const toolCalls = parts.filter(p => p.type === 'tool-call');
   if (toolCalls.length === 0) return null;
@@ -196,7 +210,7 @@ function StepCounter({ parts }: { parts: Message['parts'] }) {
       <span className="font-medium">Step {toolCalls.length}{toolLabel ? ` — ${toolLabel}` : ''}</span>
     </div>
   );
-}
+});
 
 interface MessageListProps {
   messages: Message[];
@@ -218,6 +232,116 @@ interface MessageListProps {
     regenerateMessage?: string;
   };
 }
+
+const MessageRow = memo(function MessageRow({
+  message,
+  index,
+  messageCount,
+  isLoading,
+  loadingPhase,
+  lastUserMessageIndex,
+  onEditMessage,
+  onResendMessage,
+  labels,
+}: {
+  message: Message;
+  index: number;
+  messageCount: number;
+  isLoading: boolean;
+  loadingPhase: MessageListProps['loadingPhase'];
+  lastUserMessageIndex: number;
+  onEditMessage?: (index: number) => void;
+  onResendMessage?: (index: number) => void;
+  labels: MessageListProps['labels'];
+}) {
+  const isLastMessage = index === messageCount - 1;
+  const isStreamingLast = isLoading && isLastMessage;
+  const cleanedAssistantContent = useMemo(
+    () => message.role === 'assistant' ? stripThinkingTags(message.content) : '',
+    [message.content, message.role],
+  );
+
+  return (
+    <div style={MESSAGE_ROW_STYLE} className={`flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      {message.role === 'assistant' && (
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-[var(--amber)]/8"
+        >
+          <Sparkles size={13} className="text-[var(--amber)]" />
+        </div>
+      )}
+      {message.role === 'user' ? (
+        <div
+          className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-lg text-sm leading-relaxed whitespace-pre-wrap bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm shadow-[var(--amber)]/10"
+        >
+          <UserMessageContent content={message.content} skillName={message.skillName} images={message.images} attachedFiles={message.attachedFiles} uploadedFileNames={message.uploadedFileNames} />
+          <UserMessageActions
+            content={message.content}
+            isLastUserMessage={index === lastUserMessageIndex}
+            isLoading={isLoading}
+            onEdit={onEditMessage ? () => onEditMessage(index) : undefined}
+            onResend={onResendMessage ? () => onResendMessage(index) : undefined}
+            labels={{
+              copy: labels.copyMessage ?? 'Copy',
+              edit: labels.editMessage ?? 'Edit',
+              regenerate: labels.regenerateMessage ?? 'Regenerate',
+            }}
+          />
+        </div>
+      ) : message.content.startsWith('__error__') ? (
+        <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-bl-md border border-error/30 bg-error/10 text-sm shadow-sm">
+          <AssistantAgentBadge agentName={message.agentName} />
+          <div className="flex items-start gap-2.5 text-error">
+            <AlertCircle size={15} className="shrink-0 mt-0.5" />
+            <span className="leading-relaxed font-medium">{message.content.slice(9)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-lg bg-card border border-border/30 shadow-sm text-foreground text-sm">
+          <AssistantAgentBadge agentName={message.agentName} />
+          {(message.parts && message.parts.length > 0) || cleanedAssistantContent ? (
+            <>
+              <AssistantMessageWithParts message={message} isStreaming={isStreamingLast} />
+              {isStreamingLast && (
+                <StepCounter parts={message.parts} />
+              )}
+              {!isStreamingLast && cleanedAssistantContent && (
+                <div className="absolute -bottom-1 right-1 z-10 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                  <SaveMessageButton text={message.content} />
+                  <CopyMessageButton text={cleanedAssistantContent} label={labels.copyMessage} />
+                </div>
+              )}
+            </>
+          ) : isStreamingLast ? (
+            <div className="flex items-center gap-2.5 py-1">
+              {loadingPhase === 'reconnecting' ? (
+                <WifiOff size={14} className="text-[var(--amber)] animate-pulse" />
+              ) : (
+                <Loader2 size={14} className="animate-spin text-[var(--amber)]" />
+              )}
+              <span className="text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                {loadingPhase === 'reconnecting'
+                  ? (labels.reconnecting ?? 'Reconnecting...')
+                  : loadingPhase === 'connecting'
+                    ? labels.connecting
+                    : loadingPhase === 'thinking'
+                      ? labels.thinking
+                      : labels.generating}
+                <span className="inline-flex gap-0.5">
+                  <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:0ms]"></span>
+                  <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:150ms]"></span>
+                  <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:300ms]"></span>
+                </span>
+                </span>
+              </span>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+});
 
 export default memo(function MessageList({
   messages,
@@ -375,84 +499,18 @@ export default memo(function MessageList({
         </div>
       )}
       {messages.map((m, i) => (
-        <div key={i} className={`flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-          {m.role === 'assistant' && (
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-[var(--amber)]/8"
-            >
-              <Sparkles size={13} className="text-[var(--amber)]" />
-            </div>
-          )}
-          {m.role === 'user' ? (
-            <div
-              className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-lg text-sm leading-relaxed whitespace-pre-wrap bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm shadow-[var(--amber)]/10"
-            >
-              <UserMessageContent content={m.content} skillName={m.skillName} images={m.images} attachedFiles={m.attachedFiles} uploadedFileNames={m.uploadedFileNames} />
-              <UserMessageActions
-                content={m.content}
-                isLastUserMessage={i === lastUserMessageIndex}
-                isLoading={isLoading}
-                onEdit={onEditMessage ? () => onEditMessage(i) : undefined}
-                onResend={onResendMessage ? () => onResendMessage(i) : undefined}
-                labels={{
-                  copy: labels.copyMessage ?? 'Copy',
-                  edit: labels.editMessage ?? 'Edit',
-                  regenerate: labels.regenerateMessage ?? 'Regenerate',
-                }}
-              />
-            </div>
-          ) : m.content.startsWith('__error__') ? (
-            <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-bl-md border border-error/30 bg-error/10 text-sm shadow-sm">
-              <AssistantAgentBadge agentName={m.agentName} />
-              <div className="flex items-start gap-2.5 text-error">
-                <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                <span className="leading-relaxed font-medium">{m.content.slice(9)}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-lg bg-card border border-border/30 shadow-sm text-foreground text-sm">
-              <AssistantAgentBadge agentName={m.agentName} />
-              {(m.parts && m.parts.length > 0) || stripThinkingTags(m.content) ? (
-                <>
-                  <AssistantMessageWithParts message={m} isStreaming={isLoading && i === messages.length - 1} />
-                  {isLoading && i === messages.length - 1 && (
-                    <StepCounter parts={m.parts} />
-                  )}
-                  {!(isLoading && i === messages.length - 1) && stripThinkingTags(m.content) && (
-                    <div className="absolute -bottom-1 right-1 z-10 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                      <SaveMessageButton text={m.content} />
-                      <CopyMessageButton text={stripThinkingTags(m.content)} label={labels.copyMessage} />
-                    </div>
-                  )}
-                </>
-              ) : isLoading && i === messages.length - 1 ? (
-                <div className="flex items-center gap-2.5 py-1">
-                  {loadingPhase === 'reconnecting' ? (
-                    <WifiOff size={14} className="text-[var(--amber)] animate-pulse" />
-                  ) : (
-                    <Loader2 size={14} className="animate-spin text-[var(--amber)]" />
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                    {loadingPhase === 'reconnecting'
-                      ? (labels.reconnecting ?? 'Reconnecting...')
-                      : loadingPhase === 'connecting'
-                        ? labels.connecting
-                        : loadingPhase === 'thinking'
-                          ? labels.thinking
-                          : labels.generating}
-                    <span className="inline-flex gap-0.5">
-                      <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:0ms]"></span>
-                      <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:150ms]"></span>
-                      <span className="w-1 h-1 rounded-full bg-[var(--amber)] animate-bounce [animation-delay:300ms]"></span>
-                    </span>
-                    </span>
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
+        <MessageRow
+          key={`${m.timestamp ?? i}:${m.role}:${i}`}
+          message={m}
+          index={i}
+          messageCount={messages.length}
+          isLoading={isLoading}
+          loadingPhase={loadingPhase}
+          lastUserMessageIndex={lastUserMessageIndex}
+          onEditMessage={onEditMessage}
+          onResendMessage={onResendMessage}
+          labels={labels}
+        />
       ))}
       <div ref={endRef} />
 

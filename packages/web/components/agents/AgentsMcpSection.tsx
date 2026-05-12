@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { RefreshCw, Search, Server } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -83,18 +83,19 @@ export default function AgentsMcpSection({
   const [transportFilter, setTransportFilter] = useState<AgentTransportFilter>('all');
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query);
 
   const sortedAgents = useMemo(() => sortAgentsByStatus(mcp.agents), [mcp.agents]);
   const filteredAgents = useMemo(
-    () => sortAgentsByStatus(filterAgentsForMcpWorkspace(mcp.agents, { query, status: statusFilter, transport: transportFilter })),
-    [mcp.agents, query, statusFilter, transportFilter],
+    () => sortAgentsByStatus(filterAgentsForMcpWorkspace(mcp.agents, { query: deferredQuery, status: statusFilter, transport: transportFilter })),
+    [mcp.agents, deferredQuery, statusFilter, transportFilter],
   );
   const crossAgentServers = useMemo(() => aggregateCrossAgentMcpServers(mcp.agents), [mcp.agents]);
   const filteredServers = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     if (!q) return crossAgentServers;
     return crossAgentServers.filter((srv) => srv.serverName.toLowerCase().includes(q));
-  }, [crossAgentServers, query]);
+  }, [crossAgentServers, deferredQuery]);
 
   async function handleReconnect(agent: (typeof mcp.agents)[number]) {
     setBusyAction(`reconnect:${agent.key}`);
@@ -391,9 +392,11 @@ function ByServerView({
   const [hintMessage, setHintMessage] = useState<string | null>(null);
   const [reconnectingServer, setReconnectingServer] = useState<string | null>(null);
   const [reconnectMsg, setReconnectMsg] = useState<Record<string, string>>({});
+  const agentsByName = useMemo(() => new Map(allAgents.map((agent) => [agent.name, agent])), [allAgents]);
+  const allAgentPickerOptions = useMemo(() => allAgents.map((agent) => ({ key: agent.key, name: agent.name })), [allAgents]);
 
   const handleAddAgent = useCallback(
-    async (agentKey: string, _serverName: string) => {
+    async (agentKey: string) => {
       setPickerServer(null);
       await onInstallMindos(agentKey);
     },
@@ -464,10 +467,11 @@ function ByServerView({
         )}
         {servers.map((srv) => {
           const agentDetails = srv.agents
-            .map((name) => allAgents.find((a) => a.name === name))
+            .map((name) => agentsByName.get(name))
             .filter(Boolean) as typeof allAgents;
-          const orphanNames = srv.agents.filter((name) => !agentDetails.some((a) => a.name === name));
-          const availableToAdd = allAgents.filter((a) => !srv.agents.includes(a.name));
+          const serverAgentNames = new Set(srv.agents);
+          const orphanNames = srv.agents.filter((name) => !agentsByName.has(name));
+          const availableToAdd = allAgentPickerOptions.filter((a) => !serverAgentNames.has(a.name));
 
           const connectedCount = agentDetails.filter((a) => resolveAgentStatus(a) === 'connected').length;
           const detectedCount = agentDetails.filter((a) => resolveAgentStatus(a) === 'detected').length;
@@ -505,9 +509,9 @@ function ByServerView({
                     />
                     <AgentPickerPopover
                       open={pickerServer === srv.serverName}
-                      agents={availableToAdd.map((a) => ({ key: a.key, name: a.name }))}
+                      agents={availableToAdd}
                       emptyLabel={copy.noAvailableAgents}
-                      onSelect={(key) => void handleAddAgent(key, srv.serverName)}
+                      onSelect={(key) => void handleAddAgent(key)}
                       onClose={() => setPickerServer(null)}
                     />
                   </div>

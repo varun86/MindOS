@@ -15,7 +15,6 @@ import type { SlashItem } from '@/hooks/useSlashCommand';
 import MessageList from '@/components/ask/MessageList';
 import MentionPopover from '@/components/ask/MentionPopover';
 import SlashCommandPopover from '@/components/ask/SlashCommandPopover';
-import SessionHistory from '@/components/ask/SessionHistory';
 import SessionHistoryPanel from '@/components/ask/SessionHistoryPanel';
 import AskHeader from '@/components/ask/AskHeader';
 import FileChip from '@/components/ask/FileChip';
@@ -633,23 +632,25 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
 
   /** Edit: pre-fill composer with the user message content, truncate history after it */
   const handleEditMessage = useCallback((index: number) => {
-    const msg = session.messages[index];
+    const currentSession = sessionRef.current;
+    const msg = currentSession.messages[index];
     if (!msg || msg.role !== 'user') return;
     // Truncate: keep messages up to (not including) the edited message
-    session.setMessages(session.messages.slice(0, index));
+    currentSession.setMessages(currentSession.messages.slice(0, index));
     setInput(msg.content);
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, [session]);
+  }, []);
 
   /** Resend / Regenerate: truncate after user message, auto-submit same content */
   const handleResendMessage = useCallback((index: number) => {
-    const msg = session.messages[index];
+    const currentSession = sessionRef.current;
+    const msg = currentSession.messages[index];
     if (!msg || msg.role !== 'user') return;
     // Truncate: keep messages up to (not including) the user message
-    session.setMessages(session.messages.slice(0, index));
+    currentSession.setMessages(currentSession.messages.slice(0, index));
     setInput(msg.content);
     pendingAutoSubmitRef.current = true;
-  }, [session]);
+  }, []);
 
   const handleProviderChange = useCallback((p: ProviderId | `p_${string}` | null) => {
     setProviderOverride(p);

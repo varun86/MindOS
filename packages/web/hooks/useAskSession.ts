@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { AgentIdentity, Message, ChatSession } from '@/lib/types';
-import { apiFetch } from '@/lib/api';
 import { bindSessionAgent } from '@/lib/ask-agent';
 
 const MAX_SESSIONS = 30;
@@ -283,12 +282,15 @@ export function useAskSession(currentFile?: string) {
   }, [currentFile, sessions]);
 
   /** Sessions sorted: pinned first, then by updatedAt desc */
-  const sortedSessions = [...sessions].sort((a, b) => {
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
     return b.updatedAt - a.updatedAt;
-  });
-  const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
+  }), [sessions]);
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, sessions],
+  );
 
   return {
     messages,
