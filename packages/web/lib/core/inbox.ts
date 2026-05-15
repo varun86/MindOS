@@ -113,9 +113,21 @@ export function listInboxFiles(mindRoot: string): InboxFileInfo[] {
 
 function decodeContent(encoding: string | undefined, content: string): string {
   if (encoding === 'base64') {
-    return Buffer.from(content, 'base64').toString('utf-8');
+    return decodeBase64Buffer(content).toString('utf-8');
   }
   return content;
+}
+
+function decodeBase64Buffer(content: string): Buffer {
+  const normalized = content.replace(/\s/g, '');
+  if (
+    normalized.length % 4 === 1 ||
+    /[^A-Za-z0-9+/=]/.test(normalized) ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalized)
+  ) {
+    throw new Error('Invalid base64 content');
+  }
+  return Buffer.from(normalized, 'base64');
 }
 
 function resolveUniqueName(inboxDir: string, targetName: string): string {
@@ -171,6 +183,14 @@ export function deleteFromInbox(mindRoot: string, names: string[]): InboxDeleteR
 }
 
 const PROCESSED_DIR = '.processed';
+
+const BINARY_IMPORT_EXTENSIONS = new Set([
+  '.pdf',
+  '.doc', '.docx', '.docm',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif',
+]);
 
 export interface InboxArchiveResult {
   archived: Array<{ original: string; archivedPath: string }>;
@@ -291,6 +311,23 @@ export function saveToInbox(mindRoot: string, files: InboxSaveInput[], source?: 
 
     try {
       const sanitized = sanitizeFileName(file.name);
+      if (BINARY_IMPORT_EXTENSIONS.has(ext)) {
+        if (file.encoding !== 'base64') {
+          skipped.push({ name: file.name, reason: `Binary format requires base64 encoding: ${ext}` });
+          continue;
+        }
+        const rawBuffer = decodeBase64Buffer(file.content);
+        const uniqueName = resolveUniqueName(inboxDir, sanitized);
+
+        const targetPath = `${INBOX_DIR}/${uniqueName}`;
+        resolveSafe(mindRoot, targetPath);
+
+        const absPath = path.join(inboxDir, uniqueName);
+        fs.writeFileSync(absPath, rawBuffer);
+        saved.push({ original: file.name, path: targetPath });
+        continue;
+      }
+
       const raw = decodeContent(file.encoding, file.content);
       const { content, targetName } = convertToMarkdown(sanitized, raw);
       const uniqueName = resolveUniqueName(inboxDir, targetName);

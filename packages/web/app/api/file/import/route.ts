@@ -22,6 +22,8 @@ const BINARY_EXTENSIONS = new Set([
   '.mp4', '.webm', '.mov', '.mkv',
   '.pdf',
   '.doc', '.docx', '.docm',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
 ]);
 
 function isBinaryFile(name: string): boolean {

@@ -15,8 +15,17 @@ const PROCESSED_DIR = '.processed';
 const AGING_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
 const ALLOWED_IMPORT_EXTENSIONS = new Set([
-  '.txt', '.md', '.markdown', '.csv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.pdf',
+  '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.pdf',
+  '.doc', '.docx', '.docm', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif',
+]);
+
+const BINARY_IMPORT_EXTENSIONS = new Set([
+  '.pdf',
   '.doc', '.docx', '.docm',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif',
 ]);
 
 const INBOX_INSTRUCTION = `# Inbox Instruction Set
@@ -198,6 +207,20 @@ export function saveToInbox(mindRoot: string, files: InboxSaveInput[], source?: 
 
     try {
       const sanitized = sanitizeFileName(file.name);
+      if (BINARY_IMPORT_EXTENSIONS.has(ext)) {
+        if (file.encoding !== 'base64') {
+          skipped.push({ name: file.name, reason: `Binary format requires base64 encoding: ${ext}` });
+          continue;
+        }
+        const rawBuffer = decodeBase64Buffer(file.content);
+        const uniqueName = resolveUniqueName(inboxDir, sanitized);
+        const targetPath = `${INBOX_DIR}/${uniqueName}`;
+        resolveSafe(mindRoot, targetPath);
+        writeFileSync(join(inboxDir, uniqueName), rawBuffer);
+        saved.push({ original: file.name, path: targetPath });
+        continue;
+      }
+
       const raw = decodeContent(file.encoding, file.content);
       const converted = convertToMarkdown(sanitized, raw);
       const uniqueName = resolveUniqueName(inboxDir, converted.targetName);
@@ -328,7 +351,7 @@ function convertToMarkdown(fileName: string, rawContent: string): { content: str
   const stem = basename(fileName, ext) || 'note';
   const title = titleFromFileName(fileName);
 
-  if (ext === '.md' || ext === '.markdown' || ext === '.csv' || ext === '.json') {
+  if (ext === '.md' || ext === '.markdown' || ext === '.csv' || ext === '.tsv' || ext === '.json') {
     return { content: rawContent, targetName: sanitizeFileName(fileName) };
   }
 

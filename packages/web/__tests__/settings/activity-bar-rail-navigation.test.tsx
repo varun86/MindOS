@@ -12,6 +12,7 @@ vi.mock('@/lib/stores/locale-store', () => ({
     t: {
       sidebar: {
         files: 'Files',
+        capture: 'Capture',
         searchTitle: 'Search',
         echo: 'Echo',
         agents: 'Agents',
@@ -170,6 +171,78 @@ describe('ActivityBar rail navigation', () => {
     // On /wiki with files already active, should toggle off
     expect(mockPanelChange).toHaveBeenCalledWith(null);
     expect(mockRouterPush).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('clicking Capture opens the Inbox workbench as a first-class rail destination', async () => {
+    mockPathname = '/wiki';
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="files"
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    expect(captureButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+    });
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/capture');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not keep Files highlighted on the Capture route', async () => {
+    mockPathname = '/capture';
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="files"
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const filesButton = host.querySelector('[data-walkthrough="files-panel"]');
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+
+    expect(filesButton?.getAttribute('aria-pressed')).toBe('false');
+    expect(captureButton?.getAttribute('aria-pressed')).toBe('true');
 
     await act(async () => {
       root.unmount();

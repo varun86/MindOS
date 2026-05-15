@@ -13,6 +13,7 @@ import {
 import { effectiveSopRoot } from '@/lib/settings';
 import { invalidateCache } from '@/lib/fs';
 import { handleRouteErrorSimple } from '@/lib/errors';
+import { expandInboxDocumentCaptures } from '@/lib/core/inbox-document-capture';
 import { toNextResponse } from '../_mindos-adapter';
 
 export function GET() {
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = handleInboxPost(body, { mindRoot: effectiveMindRoot() });
+    const expandedBody = await expandInboxPostBody(body);
+    const response = handleInboxPost(expandedBody, { mindRoot: effectiveMindRoot() });
     if (hasSavedFiles(response.body)) {
       refreshKnowledgeViews();
     }
@@ -40,6 +42,16 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return handleRouteErrorSimple(err);
   }
+}
+
+async function expandInboxPostBody(body: unknown): Promise<unknown> {
+  if (!body || typeof body !== 'object' || !Array.isArray((body as { files?: unknown }).files)) {
+    return body;
+  }
+
+  const reqBody = body as { files: Array<{ name: string; content: string; encoding?: string }> };
+  const expanded = await expandInboxDocumentCaptures(reqBody.files);
+  return { ...reqBody, files: expanded.files };
 }
 
 export async function DELETE(req: NextRequest) {

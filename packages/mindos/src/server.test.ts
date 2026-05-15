@@ -2464,10 +2464,22 @@ describe('MindOS product server contract', () => {
     });
     expect(existsSync(join(root, 'Inbox', 'broken.md'))).toBe(false);
 
+    const pdfBytes = Buffer.from('%PDF original bytes');
+    const savedBinary = handleInboxPost({
+      files: [{ name: 'source.pdf', content: pdfBytes.toString('base64'), encoding: 'base64' }],
+    }, { mindRoot: root });
+    expect(savedBinary.status).toBe(200);
+    expect(savedBinary.body).toMatchObject({
+      saved: [{ original: 'source.pdf', path: 'Inbox/source.pdf' }],
+      skipped: [],
+    });
+    expect(readFileSync(join(root, 'Inbox', 'source.pdf'))).toEqual(pdfBytes);
+
     const listed = handleInboxGet({ mindRoot: root });
-    expect(listed.body.files).toEqual([
+    expect(listed.body.files).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'todo.md', path: 'Inbox/todo.md' }),
-    ]);
+      expect.objectContaining({ name: 'source.pdf', path: 'Inbox/source.pdf' }),
+    ]));
 
     const archived = handleInboxDelete({ names: ['todo.md'] }, { mindRoot: root });
     expect(archived.status).toBe(200);

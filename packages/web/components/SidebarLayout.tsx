@@ -33,6 +33,8 @@ import { useAskPanel } from '@/hooks/useAskPanel';
 import { useAiOrganize } from '@/hooks/useAiOrganize';
 import { toast } from '@/lib/toast';
 import { quickDropToInbox } from '@/lib/inbox-upload';
+import { isAiReadableCaptureName } from '@/lib/capture-formats';
+import { checkAiAvailable } from '@/lib/space-ai-init';
 import type { Tab } from './settings/types';
 import { RIGHT_AGENT_DETAIL_PANEL } from '@/lib/config/panel-sizes';
 
@@ -252,8 +254,17 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       organizedFileNamesRef.current = files.map(f => f.name);
 
       (async () => {
+        const aiReady = await checkAiAvailable();
+        if (!aiReady) {
+          organizedFileNamesRef.current = [];
+          toast.error(t.inbox.organizeNoAi, 5000);
+          window.dispatchEvent(new Event('mindos:organize-done'));
+          return;
+        }
+
         const attachments: Array<{ name: string; content: string }> = [];
         for (const f of files) {
+          if (!isAiReadableCaptureName(f.name)) continue;
           try {
             const res = await fetch(`/api/file?path=${encodeURIComponent(f.path)}`);
             if (res.ok) {
@@ -347,6 +358,14 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       lp.setActivePanel('echo');
     }
   }, [pathname, lp.setActivePanel]);
+
+  // Capture is a first-class workbench, not a sub-view of the Files panel.
+  // If the user lands there from a persisted Files state, remove the stale left panel.
+  useEffect(() => {
+    if (pathname?.startsWith('/capture') && lp.activePanel === 'files') {
+      lp.setActivePanel(null);
+    }
+  }, [pathname, lp.activePanel, lp.setActivePanel]);
 
   const handleAgentDetailWidthCommit = useCallback((w: number) => {
     setAgentDetailWidth(w);

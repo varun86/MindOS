@@ -22,13 +22,18 @@ import {
   ArrowLeft,
   History,
   Link2,
-  Globe,
+  BookOpen,
+  ListChecks,
+  Archive,
+  ArrowRight,
+  Paperclip,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath } from '@/lib/utils';
 import { quickDropToInbox, clipUrlToInbox, looksLikeUrl, extractUrlFromDrop, dragContainsUrl } from '@/lib/inbox-upload';
 import { loadHistory, type OrganizeHistoryEntry, type OrganizeSource } from '@/lib/organize-history';
+import { CAPTURE_ACCEPT, CAPTURE_FORMAT_CHIPS } from '@/lib/capture-formats';
 
 interface InboxFile {
   name: string;
@@ -39,6 +44,8 @@ interface InboxFile {
 }
 
 const HISTORY_VISIBLE = 5;
+
+type CaptureIntent = 'source' | 'note' | 'judgment' | 'reflect';
 
 const EXT_STYLES: Record<string, { bg: string; text: string }> = {
   md:   { bg: 'bg-blue-500/10',    text: 'text-blue-500/70' },
@@ -66,11 +73,13 @@ export default function InboxView() {
   const [organizing, setOrganizing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [history, setHistory] = useState<OrganizeHistoryEntry[]>([]);
-  const [clipUrl, setClipUrl] = useState('');
-  const [clipping, setClipping] = useState(false);
-  const [dragIsUrl, setDragIsUrl] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [selectedIntent, setSelectedIntent] = useState<CaptureIntent>('source');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingUrls, setPendingUrls] = useState<string[]>([]);
+  const [savingText, setSavingText] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const clipInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
   const fetchInbox = useCallback(async () => {
@@ -147,44 +156,116 @@ export default function InboxView() {
     }
   }, [t]);
 
-  const handleUpload = useCallback((selected: FileList | null) => {
+  const addPendingFiles = useCallback((selected: FileList | File[] | null) => {
     if (!selected || selected.length === 0) return;
-    quickDropToInbox(Array.from(selected), t);
+    setPendingFiles(prev => {
+      const existing = new Set(prev.map(file => `${file.name}:${file.size}:${file.lastModified}`));
+      const next = [...prev];
+      for (const file of Array.from(selected)) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (!existing.has(key)) next.push(file);
+      }
+      return next;
+    });
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [t]);
+  }, []);
 
-  const handleClipUrl = useCallback(async (url: string) => {
+  const addPendingUrl = useCallback((url: string) => {
     const trimmed = url.trim();
-    if (!trimmed || !looksLikeUrl(trimmed)) return;
-    setClipping(true);
+    if (!looksLikeUrl(trimmed)) return false;
+    setPendingUrls(prev => prev.includes(trimmed) ? prev : [...prev, trimmed]);
+    return true;
+  }, []);
+
+  const handleCapture = useCallback(async () => {
+    const content = draftText.trim();
+    if ((!content && pendingFiles.length === 0 && pendingUrls.length === 0) || savingText) return;
+    setSavingText(true);
     try {
-      await clipUrlToInbox(trimmed, t);
-      setClipUrl('');
+      if (content) {
+        const name = buildCaptureFileName(content, selectedIntent);
+        const res = await fetch('/api/inbox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: 'text',
+            captureIntent: selectedIntent,
+            files: [{ name, content, encoding: 'text' }],
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to save text');
+      }
+      for (const url of pendingUrls) {
+        await clipUrlToInbox(url, t);
+      }
+      if (pendingFiles.length > 0) {
+        await quickDropToInbox(pendingFiles, t);
+      }
+      setDraftText('');
+      setPendingUrls([]);
+      setPendingFiles([]);
+      await fetchInbox();
+      window.dispatchEvent(new Event('mindos:inbox-updated'));
+      if (content && pendingUrls.length === 0 && pendingFiles.length === 0) {
+        toast.success(t.inbox.textSaved, 3000);
+      }
+    } catch {
+      toast.error(t.inbox.saveFailed, 4000);
     } finally {
-      setClipping(false);
+      setSavingText(false);
     }
-  }, [t]);
+  }, [draftText, pendingFiles, pendingUrls, selectedIntent, savingText, fetchInbox, t]);
+
+  const handleComposerPaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = e.clipboardData.files;
+    if (files.length > 0) {
+      e.preventDefault();
+      addPendingFiles(files);
+      return;
+    }
+    const pasted = e.clipboardData.getData('text/plain').trim();
+    if (pasted && looksLikeUrl(pasted)) {
+      e.preventDefault();
+      addPendingUrl(pasted);
+    }
+  }, [addPendingFiles, addPendingUrl]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current = 0;
     setDragOver(false);
-    setDragIsUrl(false);
 
     const droppedUrl = extractUrlFromDrop(e.nativeEvent);
     if (droppedUrl) {
-      handleClipUrl(droppedUrl);
+      addPendingUrl(droppedUrl);
       return;
     }
 
     if (e.dataTransfer.files.length > 0) {
-      quickDropToInbox(Array.from(e.dataTransfer.files), t);
+      addPendingFiles(Array.from(e.dataTransfer.files));
     }
-  }, [t, handleClipUrl]);
+  }, [addPendingFiles, addPendingUrl]);
 
   const agingCount = useMemo(() => files.filter(f => f.isAging).length, [files]);
   const hasFiles = files.length > 0;
+  const selectedFile = useMemo(
+    () => files.find(f => f.path === selectedPath) ?? files[0] ?? null,
+    [files, selectedPath],
+  );
+  const selectedUnderstanding = useMemo(
+    () => selectedFile ? buildUnderstanding(selectedFile, t.inbox, selectedIntent) : null,
+    [selectedFile, selectedIntent, t],
+  );
+  const intentOptions = useMemo(() => getIntentOptions(t.inbox), [t]);
+  const selectedIntentOption = intentOptions.find(intent => intent.id === selectedIntent) ?? intentOptions[0];
+  const suggestedIntent = useMemo(
+    () => inferSuggestedIntent(draftText, pendingUrls, pendingFiles),
+    [draftText, pendingUrls, pendingFiles],
+  );
+  const suggestedIntentOption = intentOptions.find(intent => intent.id === suggestedIntent) ?? intentOptions[0];
+  const hasPendingCapture = draftText.trim().length > 0 || pendingFiles.length > 0 || pendingUrls.length > 0;
+  const textWordCount = countWords(draftText);
   const visibleHistory = useMemo(() => history.slice(0, HISTORY_VISIBLE), [history]);
   const [animateList, setAnimateList] = useState(true);
   const prevFileCountRef = useRef(0);
@@ -192,6 +273,13 @@ export default function InboxView() {
     if (prevFileCountRef.current > 0 && files.length > 0) setAnimateList(false);
     prevFileCountRef.current = files.length;
   }, [files.length]);
+
+  useEffect(() => {
+    if (!selectedPath && files[0]) setSelectedPath(files[0].path);
+    if (selectedPath && !files.some(f => f.path === selectedPath)) {
+      setSelectedPath(files[0]?.path ?? null);
+    }
+  }, [files, selectedPath]);
 
   if (loading) {
     return (
@@ -222,9 +310,9 @@ export default function InboxView() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.csv,.json,.yaml,.yml,.xml,.html,.htm,.pdf,.doc,.docx,.docm"
+        accept={CAPTURE_ACCEPT}
         className="hidden"
-        onChange={(e) => handleUpload(e.target.files)}
+        onChange={(e) => addPendingFiles(e.target.files)}
       />
 
       {/* ─── Sticky Top Bar ─── */}
@@ -292,217 +380,385 @@ export default function InboxView() {
 
       {/* ─── Main Content ─── */}
       <div className="flex-1 px-4 md:px-6 py-6">
-        <div className="max-w-[780px] mx-auto">
-
-          {/* ─── Unified capture card: drop zone + URL clip ─── */}
-          <div
-            className={`rounded-xl border overflow-hidden transition-all duration-200 mb-6 ${
-              dragOver
-                ? 'border-[var(--amber)] bg-[var(--amber-subtle)] shadow-[inset_0_0_0_1px_var(--amber)]'
-                : 'border-border/50 bg-card/30'
-            }`}
-            onDragEnter={(e) => {
-              const hasFiles = e.dataTransfer.types.includes('Files');
-              const hasUrl = dragContainsUrl(e.nativeEvent);
-              if (!hasFiles && !hasUrl) return;
-              e.preventDefault();
-              e.stopPropagation();
-              dragCounterRef.current++;
-              if (dragCounterRef.current === 1) {
-                setDragOver(true);
-                setDragIsUrl(hasUrl && !hasFiles);
-              }
-            }}
-            onDragOver={(e) => {
-              const hasFiles = e.dataTransfer.types.includes('Files');
-              const hasUrl = dragContainsUrl(e.nativeEvent);
-              if (!hasFiles && !hasUrl) return;
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDragLeave={(e) => {
-              e.stopPropagation();
-              dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-              if (dragCounterRef.current === 0) {
-                setDragOver(false);
-                setDragIsUrl(false);
-              }
-            }}
-            onDrop={handleDrop}
-          >
-            {/* File drop zone */}
-            <div
-              className={`cursor-pointer transition-colors duration-150 ${
-                hasFiles ? 'px-4 py-3.5' : 'px-4 py-10'
-              } ${!dragOver ? 'hover:bg-muted/[0.06]' : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={t.inbox.uploadButton}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
-            >
-              {dragOver && dragIsUrl ? (
-                <div className="flex items-center justify-center gap-2.5 text-center py-1">
-                  <Globe size={22} className="shrink-0 text-[var(--amber)] animate-pulse" />
-                  <p className="text-sm font-medium text-[var(--amber)]">
-                    {t.inbox.dropUrlOverlay}
-                  </p>
-                </div>
-              ) : hasFiles ? (
-                <div className="flex items-center justify-center gap-2 text-center">
-                  <FolderInput size={15} className={`shrink-0 ${dragOver ? 'text-[var(--amber)]' : 'text-muted-foreground/30'}`} />
-                  <p className="text-xs text-muted-foreground/50">
-                    {t.inbox.dropFilesOrLinks}{' '}
-                    <span className="text-[var(--amber)]/70 hover:text-[var(--amber)] hover:underline">{t.fileImport.dropzoneCompactButton}</span>
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-3 text-center">
-                  <div className={`flex items-center justify-center w-14 h-14 rounded-2xl transition-colors duration-200 ${
-                    dragOver ? 'bg-[var(--amber)]/15' : 'bg-[var(--amber-subtle)]'
-                  }`}>
-                    <FolderInput size={26} className={`transition-colors duration-200 ${dragOver ? 'text-[var(--amber)]' : 'text-[var(--amber)]/35'}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground/70">
-                      {t.inbox.emptyTitle}
-                    </p>
-                    <p className="text-xs text-muted-foreground/50 mt-1.5 max-w-[280px] mx-auto leading-relaxed">
-                      {t.inbox.emptyDesc}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {['md', 'txt', 'pdf', 'csv', 'json'].map(e => {
-                      const s = EXT_STYLES[e] ?? { bg: 'bg-muted/50', text: 'text-muted-foreground/50' };
-                      return <span key={e} className={`text-2xs font-mono px-1.5 py-px rounded ${s.bg} ${s.text}`}>.{e}</span>;
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="border-t border-border/20 mx-4" />
-
-            {/* URL clip input */}
-            <div
-              className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 focus-within:bg-muted/[0.06]"
-              onClick={(e) => { e.stopPropagation(); clipInputRef.current?.focus(); }}
-            >
-              <div className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors duration-150 ${
-                clipping
-                  ? 'bg-[var(--amber)]/15'
-                  : clipUrl
-                    ? 'bg-[var(--amber)]/10'
-                    : 'bg-muted/50'
-              }`}>
-                {clipping ? (
-                  <Loader2 size={13} className="text-[var(--amber)] animate-spin" />
-                ) : (
-                  <Link2 size={13} className={`transition-colors duration-150 ${clipUrl ? 'text-[var(--amber)]' : 'text-muted-foreground/40'}`} />
-                )}
-              </div>
-              <input
-                ref={clipInputRef}
-                type="url"
-                value={clipUrl}
-                onChange={(e) => setClipUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !clipping) {
-                    e.preventDefault();
-                    handleClipUrl(clipUrl);
-                  }
-                }}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData.getData('text/plain').trim();
-                  if (pasted && looksLikeUrl(pasted) && !clipUrl) {
-                    e.preventDefault();
-                    setClipUrl(pasted);
-                    setTimeout(() => handleClipUrl(pasted), 50);
-                  }
-                }}
-                placeholder={t.inbox.clipUrlPlaceholder}
-                disabled={clipping}
-                className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 outline-none disabled:opacity-50"
-              />
-              {clipUrl && !clipping && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); handleClipUrl(clipUrl); }}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--amber)]/10 text-[var(--amber)] hover:bg-[var(--amber)]/20 transition-all duration-150 ease-out cursor-pointer"
-                >
-                  <Globe size={12} />
-                  {t.inbox.clipButton}
-                </button>
-              )}
-              {clipping && (
-                <span className="shrink-0 text-xs text-[var(--amber)]/70 tabular-nums">
-                  {t.inbox.clipping}
-                </span>
-              )}
+        <div className="mx-auto max-w-[1180px] space-y-5">
+          <div className="max-w-2xl">
+            <div>
+              <p className="text-2xs font-medium uppercase tracking-wider text-[var(--amber)]/80">
+                Capture now, organize later
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-foreground">
+                {t.inbox.quickCaptureTitle}
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                {t.inbox.subtitle}
+              </p>
             </div>
           </div>
 
-          {/* ─── File List ─── */}
-          {hasFiles && (
-            <div className="mb-8">
-              <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/50">
-                {files.map((file, idx) => (
-                  <InboxFileRow
-                    key={file.path}
-                    file={file}
-                    index={idx}
-                    animate={animateList}
-                    onDelete={handleDeleteFile}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_360px]">
+            <div className="space-y-5">
+              <div
+                className={`overflow-hidden rounded-xl border bg-card/40 shadow-sm transition-all duration-200 ${
+                  dragOver
+                    ? 'border-[var(--amber)] bg-[var(--amber-subtle)] shadow-[inset_0_0_0_1px_var(--amber)]'
+                    : 'border-border/60'
+                }`}
+                onDragEnter={(e) => {
+                  const hasDroppedFiles = e.dataTransfer.types.includes('Files');
+                  const hasUrl = dragContainsUrl(e.nativeEvent);
+                  if (!hasDroppedFiles && !hasUrl) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dragCounterRef.current++;
+                  if (dragCounterRef.current === 1) {
+                    setDragOver(true);
+                  }
+                }}
+                onDragOver={(e) => {
+                  const hasDroppedFiles = e.dataTransfer.types.includes('Files');
+                  const hasUrl = dragContainsUrl(e.nativeEvent);
+                  if (!hasDroppedFiles && !hasUrl) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDragLeave={(e) => {
+                  e.stopPropagation();
+                  dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+                  if (dragCounterRef.current === 0) {
+                    setDragOver(false);
+                  }
+                }}
+                onDrop={handleDrop}
+              >
+                <div className="p-4">
+                  <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <BookOpen size={15} className="text-[var(--amber)]" />
+                        <h3 className="text-sm font-semibold text-foreground">{t.inbox.quickCaptureTitle}</h3>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                          {selectedIntentOption.title}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {t.inbox.composerHint}
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-md bg-[var(--amber-subtle)] px-2 py-1 text-2xs font-medium text-[var(--amber)]">
+                      {t.inbox.densityTitle}: {selectedIntentOption.density}
+                    </span>
+                  </div>
 
-          {/* ─── History Section ─── */}
-          {visibleHistory.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <History size={12} className="text-muted-foreground/40" />
-                <span className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider">
-                  {t.importHistory.title}
-                </span>
-                {history.length > HISTORY_VISIBLE && (
-                  <Link
-                    href="/capture/history"
-                    className="ml-auto text-2xs text-muted-foreground/50 hover:text-[var(--amber)] transition-colors"
+                  <div
+                    className={`rounded-xl border bg-background transition-colors ${
+                      dragOver
+                        ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
+                        : 'border-border/70'
+                    }`}
                   >
-                    {t.inbox.viewAllHistory(history.length)}
-                  </Link>
+                    <div className="flex flex-col gap-2 border-b border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <FolderInput size={14} className="text-[var(--amber)]" />
+                        <span className="text-xs font-semibold text-foreground">{t.inbox.composerTitle}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label
+                          htmlFor="capture-next-action"
+                          className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55"
+                        >
+                          {t.inbox.nextActionTitle}
+                        </label>
+                        <select
+                          id="capture-next-action"
+                          value={selectedIntent}
+                          onChange={(e) => setSelectedIntent(e.target.value as CaptureIntent)}
+                          className="h-8 rounded-md border border-border bg-card px-2 pr-7 text-xs font-medium text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {intentOptions.map(intent => (
+                            <option key={intent.id} value={intent.id}>
+                              {intent.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-3 py-2 text-2xs text-muted-foreground/60">
+                      <span>{t.inbox.suggestedAction(suggestedIntentOption.title)}</span>
+                      <span>{t.inbox.densityTitle}: {selectedIntentOption.density}</span>
+                      <span className="hidden sm:inline">{t.inbox.composerPlaceholder}</span>
+                    </div>
+
+                    <textarea
+                      value={draftText}
+                      onChange={(e) => setDraftText(e.target.value)}
+                      onPaste={handleComposerPaste}
+                      placeholder={t.inbox.composerPlaceholder}
+                      className="min-h-[180px] w-full resize-y bg-transparent px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/35 focus-visible:ring-0"
+                    />
+
+                    {(draftText.trim() || pendingUrls.length > 0 || pendingFiles.length > 0) && (
+                      <div className="flex flex-wrap gap-1.5 border-t border-border/40 px-3 py-2">
+                        {draftText.trim() && (
+                          <CaptureChip
+                            icon={<FileText size={12} />}
+                            label={t.inbox.signalText}
+                            detail={t.inbox.pendingText(textWordCount)}
+                            onRemove={() => setDraftText('')}
+                          />
+                        )}
+                        {pendingUrls.map(url => (
+                          <CaptureChip
+                            key={url}
+                            icon={<Link2 size={12} />}
+                            label={t.inbox.pendingUrl}
+                            detail={shortenUrl(url)}
+                            onRemove={() => setPendingUrls(prev => prev.filter(item => item !== url))}
+                          />
+                        ))}
+                        {pendingFiles.map(file => (
+                          <CaptureChip
+                            key={`${file.name}:${file.size}:${file.lastModified}`}
+                            icon={<Paperclip size={12} />}
+                            label={t.inbox.pendingFile}
+                            detail={`${file.name} · ${formatSize(file.size)}`}
+                            onRemove={() => setPendingFiles(prev => prev.filter(item => item !== file))}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="rounded px-1.5 py-px text-2xs font-medium text-muted-foreground/55">
+                          {t.inbox.composerDetected}
+                        </span>
+                        {CAPTURE_FORMAT_CHIPS.map(format => (
+                          <span key={format.kind} className="rounded bg-muted/50 px-1.5 py-px text-2xs font-medium text-muted-foreground/60" title={format.examples}>
+                            {format.label}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {hasPendingCapture && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftText('');
+                              setPendingFiles([]);
+                              setPendingUrls([]);
+                            }}
+                            className="rounded-lg px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {t.inbox.clearComposer}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <Paperclip size={13} />
+                          {t.inbox.attachButton}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCapture}
+                          disabled={!hasPendingCapture || savingText}
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {savingText ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+                          {savingText ? t.inbox.savingText : t.inbox.captureButton}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <section className="rounded-xl border border-border/60 bg-card/40 shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <ListChecks size={15} className="text-[var(--amber)]" />
+                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.queueTitle}</h3>
+                    {hasFiles && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                        {t.inbox.fileCount(files.length)}
+                      </span>
+                    )}
+                  </div>
+                  {hasFiles && (
+                    <button
+                      type="button"
+                      onClick={handleOrganize}
+                      disabled={organizing}
+                      className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      {organizing ? t.inbox.organizing : t.inbox.organizeButton}
+                    </button>
+                  )}
+                </div>
+                {hasFiles ? (
+                  <div className="divide-y divide-border/50">
+                    {files.map((file, idx) => (
+                      <InboxFileRow
+                        key={file.path}
+                        file={file}
+                        index={idx}
+                        animate={animateList}
+                        selected={selectedFile?.path === file.path}
+                        onSelect={() => setSelectedPath(file.path)}
+                        onDelete={handleDeleteFile}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-foreground/70">{t.inbox.queueEmptyTitle}</p>
+                    <p className="mt-1 text-xs text-muted-foreground/55">{t.inbox.queueEmptyDesc}</p>
+                  </div>
                 )}
-              </div>
-              <div className="space-y-2">
-                {visibleHistory.map((entry) => (
-                  <HistoryRow key={entry.id} entry={entry} />
-                ))}
-              </div>
-            </div>
-          )}
+              </section>
 
-          {/* ─── Tip: when files exist but no history yet ─── */}
-          {hasFiles && visibleHistory.length === 0 && (
-            <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg bg-[var(--amber-subtle)]/50 border border-[var(--amber)]/10 animate-[fadeSlideUp_0.22s_ease_both]">
-              <Sparkles size={14} className="text-[var(--amber)]/60 shrink-0 mt-0.5" />
-              <p className="text-xs text-foreground/60 leading-relaxed">
-                {t.inbox.viewOrganizeTip}
-              </p>
+              {visibleHistory.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <History size={12} className="text-muted-foreground/40" />
+                    <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/50">
+                      {t.importHistory.title}
+                    </span>
+                    {history.length > HISTORY_VISIBLE && (
+                      <Link
+                        href="/capture/history"
+                        className="ml-auto text-2xs text-muted-foreground/50 transition-colors hover:text-[var(--amber)]"
+                      >
+                        {t.inbox.viewAllHistory(history.length)}
+                      </Link>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {visibleHistory.map((entry) => (
+                      <HistoryRow key={entry.id} entry={entry} />
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
-          )}
 
-          {/* ─── Empty + No History — additional guidance ─── */}
-          {!hasFiles && visibleHistory.length === 0 && (
-            <div className="flex flex-col items-center gap-1.5 py-2 text-center">
-              <p className="text-2xs text-muted-foreground/30">
-                {t.inbox.viewEmptyGuide}
-              </p>
-            </div>
-          )}
+            <aside className="xl:sticky xl:top-[70px] xl:self-start">
+              <section className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
+                <div className="border-b border-border/50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <ListChecks size={15} className="text-[var(--amber)]" />
+                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.understandingTitle}</h3>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
+                    {t.inbox.understandingEmptyDesc}
+                  </p>
+                </div>
+
+                {selectedFile && selectedUnderstanding ? (
+                  <div className="space-y-4 p-4">
+                    <div>
+                      <p className="truncate text-sm font-medium text-foreground" title={selectedFile.name}>
+                        {selectedFile.name}
+                      </p>
+                      <p className="mt-1 text-2xs text-muted-foreground">
+                        {formatSize(selectedFile.size)} · {formatRelativeTime(selectedFile.modifiedAt, t.home.relativeTime)}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <UnderstandingRow label={t.inbox.suggestedType} value={selectedUnderstanding.type} />
+                      <UnderstandingRow label={t.inbox.suggestedTarget} value={selectedUnderstanding.target} />
+                      <UnderstandingRow label={t.inbox.densityTitle} value={selectedUnderstanding.density} />
+                    </div>
+
+                    <div className="rounded-lg bg-muted/35 p-3">
+                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.suggestedReason}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-foreground/75">
+                        {selectedUnderstanding.reason}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.relatedSignals}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedUnderstanding.signals.map(signal => (
+                          <span key={signal} className="rounded-md border border-border/60 bg-background px-2 py-1 text-2xs text-muted-foreground">
+                            {signal}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
+                      <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.lifecycleTitle}
+                      </p>
+                      <div className="grid grid-cols-4 gap-1 text-center text-[10px] text-muted-foreground">
+                        {[t.inbox.lifecycleCaptured, t.inbox.lifecycleParsed, t.inbox.lifecycleProposed, t.inbox.lifecycleMerged].map((stage, idx) => (
+                          <div key={stage} className="min-w-0">
+                            <div className={`mx-auto mb-1 h-1.5 rounded-full ${
+                              idx < 2 ? 'bg-[var(--amber)]' : 'bg-muted'
+                            }`} />
+                            <span className="block truncate">{stage}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-t border-border/50 pt-4">
+                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.routeTitle}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOrganize}
+                        disabled={organizing}
+                        className="flex w-full items-center justify-between rounded-lg bg-[var(--amber)] px-3 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span className="flex items-center gap-2">
+                          {organizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                          {organizing ? t.inbox.organizing : t.inbox.actionMerge}
+                        </span>
+                        <ArrowRight size={14} />
+                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/view/${encodePath(selectedFile.path)}`)}
+                          className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t.inbox.actionOpen}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFile(selectedFile.name)}
+                          className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t.inbox.actionRemove}
+                        </button>
+                      </div>
+                      <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                        {t.inbox.actionExtractRule} · {t.inbox.actionExtractRuleSoon}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 text-center">
+                    <p className="text-sm font-medium text-foreground/70">{t.inbox.understandingEmptyTitle}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground/55">{t.inbox.understandingEmptyDesc}</p>
+                  </div>
+                )}
+              </section>
+            </aside>
+          </div>
         </div>
       </div>
     </div>
@@ -511,7 +767,21 @@ export default function InboxView() {
 
 /* ─── File Row ─── */
 
-function InboxFileRow({ file, onDelete, index, animate }: { file: InboxFile; onDelete: (name: string) => void; index: number; animate: boolean }) {
+function InboxFileRow({
+  file,
+  onDelete,
+  index,
+  animate,
+  selected,
+  onSelect,
+}: {
+  file: InboxFile;
+  onDelete: (name: string) => void;
+  index: number;
+  animate: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const { t } = useLocale();
   const router = useRouter();
   const ext = getFileExt(file.name);
@@ -534,12 +804,16 @@ function InboxFileRow({ file, onDelete, index, animate }: { file: InboxFile; onD
       <div
         role="button"
         tabIndex={0}
-        onClick={() => router.push(`/view/${encodePath(file.path)}`)}
-        onKeyDown={(e) => { if (e.key === 'Enter') router.push(`/view/${encodePath(file.path)}`); }}
+        onClick={onSelect}
+        onKeyDown={(e) => { if (e.key === 'Enter') onSelect(); }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-        className={`flex items-center gap-3 px-4 py-3 bg-card hover:bg-accent transition-colors duration-100 cursor-pointer group${animate ? ' animate-[fadeSlideUp_0.22s_ease_both]' : ''}`}
+        aria-pressed={selected}
+        className={`group flex items-center gap-3 px-4 py-3 transition-colors duration-100 cursor-pointer ${
+          selected ? 'bg-[var(--amber-subtle)]/70' : 'bg-card hover:bg-accent'
+        }${animate ? ' animate-[fadeSlideUp_0.22s_ease_both]' : ''}`}
         style={animate ? { animationDelay: `${index * 30}ms` } : undefined}
       >
+        <span className={`h-8 w-[2px] rounded-full ${selected ? 'bg-[var(--amber)]' : 'bg-transparent'}`} />
         {/* File icon */}
         <FileIcon size={15} className={`shrink-0 ${iconColor}`} />
 
@@ -566,6 +840,15 @@ function InboxFileRow({ file, onDelete, index, animate }: { file: InboxFile; onD
             <span className="text-2xs text-muted-foreground/40 tabular-nums">{age}</span>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/view/${encodePath(file.path)}`); }}
+          className="hidden items-center justify-center rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground group-hover:flex"
+          title={t.inbox.openFile}
+        >
+          {t.inbox.openFile}
+        </button>
 
         {/* Hover: delete */}
         <button
@@ -721,6 +1004,254 @@ function HistoryRow({ entry }: { entry: OrganizeHistoryEntry }) {
 }
 
 /* ─── Helpers ─── */
+
+function UnderstandingRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background px-3 py-2">
+      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function CaptureChip({
+  icon,
+  label,
+  detail,
+  onRemove,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2 py-1 text-2xs text-muted-foreground">
+      <span className="shrink-0 text-[var(--amber)]">{icon}</span>
+      <span className="shrink-0 font-medium text-foreground/75">{label}</span>
+      <span className="min-w-0 truncate">{detail}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="-mr-0.5 ml-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Remove ${label}`}
+      >
+        <X size={10} />
+      </button>
+    </span>
+  );
+}
+
+interface CaptureIntentOption {
+  id: CaptureIntent;
+  title: string;
+  desc: string;
+  action: string;
+  density: string;
+}
+
+function getIntentOptions(labels: InboxUnderstandingLabels): CaptureIntentOption[] {
+  return [
+    {
+      id: 'source',
+      title: labels.intentSourceTitle,
+      desc: labels.intentSourceDesc,
+      action: labels.intentSourceAction,
+      density: labels.typeRawNote,
+    },
+    {
+      id: 'note',
+      title: labels.intentNoteTitle,
+      desc: labels.intentNoteDesc,
+      action: labels.intentNoteAction,
+      density: labels.typeDocument,
+    },
+    {
+      id: 'judgment',
+      title: labels.intentJudgmentTitle,
+      desc: labels.intentJudgmentDesc,
+      action: labels.intentJudgmentAction,
+      density: labels.typeDecision,
+    },
+    {
+      id: 'reflect',
+      title: labels.intentReflectTitle,
+      desc: labels.intentReflectDesc,
+      action: labels.intentReflectAction,
+      density: labels.targetDecisions,
+    },
+  ];
+}
+
+function inferSuggestedIntent(
+  text: string,
+  urls: string[],
+  files: File[],
+): CaptureIntent {
+  const lower = text.toLowerCase();
+  const wordCount = countWords(text);
+  const fileNames = files.map(file => file.name.toLowerCase()).join(' ');
+
+  if (/decision|rule|preference|principle|judgment|sop|should|must|判断|决策|规则|偏好|原则|方法|以后|不要|必须/.test(lower)) {
+    return 'judgment';
+  }
+  if (/reflect|reflection|why|pattern|blind spot|growth|lesson|复盘|反思|成长|盲区|模式|我发现/.test(lower)) {
+    return 'reflect';
+  }
+  if (urls.length > 0 || wordCount > 80 || /\.(pdf|docx?|md|html?)\b/.test(fileNames)) {
+    return 'note';
+  }
+  return 'source';
+}
+
+type InboxUnderstandingLabels = {
+  nextActionTitle: string;
+  suggestedAction: (action: string) => string;
+  intentSourceTitle: string;
+  intentSourceDesc: string;
+  intentSourceAction: string;
+  intentNoteTitle: string;
+  intentNoteDesc: string;
+  intentNoteAction: string;
+  intentJudgmentTitle: string;
+  intentJudgmentDesc: string;
+  intentJudgmentAction: string;
+  intentReflectTitle: string;
+  intentReflectDesc: string;
+  intentReflectAction: string;
+  typeArticle: string;
+  typeMeeting: string;
+  typeDecision: string;
+  typeData: string;
+  typeDocument: string;
+  typeRawNote: string;
+  targetResearch: string;
+  targetMeetings: string;
+  targetDecisions: string;
+  targetData: string;
+  targetInboxReview: string;
+  reasonArticle: string;
+  reasonMeeting: string;
+  reasonDecision: string;
+  reasonData: string;
+  reasonDocument: string;
+  reasonRawNote: string;
+};
+
+function buildUnderstanding(file: InboxFile, labels: InboxUnderstandingLabels, intent: CaptureIntent): {
+  type: string;
+  target: string;
+  reason: string;
+  signals: string[];
+  density: string;
+} {
+  const ext = getFileExt(file.name);
+  const lower = file.name.toLowerCase();
+  const intentOption = getIntentOptions(labels).find(option => option.id === intent);
+  const density = intentOption?.density ?? labels.typeRawNote;
+  const signals = [
+    ext ? `.${ext}` : 'no extension',
+    file.isAging ? 'aged 7+ days' : 'fresh capture',
+    intentOption?.title ?? labels.intentSourceTitle,
+  ];
+
+  if (looksLikeCapturedArticle(lower)) {
+    return {
+      type: labels.typeArticle,
+      target: labels.targetResearch,
+      reason: labels.reasonArticle,
+      signals: [...signals, 'external source'],
+      density,
+    };
+  }
+  if (/meeting|interview|访谈|会议|notes?/.test(lower)) {
+    return {
+      type: labels.typeMeeting,
+      target: labels.targetMeetings,
+      reason: labels.reasonMeeting,
+      signals: [...signals, 'discussion record'],
+      density,
+    };
+  }
+  if (/decision|adr|rule|preference|判断|决策|规则|偏好/.test(lower)) {
+    return {
+      type: labels.typeDecision,
+      target: labels.targetDecisions,
+      reason: labels.reasonDecision,
+      signals: [...signals, 'judgment candidate'],
+      density,
+    };
+  }
+  if (ext === 'csv' || ext === 'json' || ext === 'yaml' || ext === 'yml') {
+    return {
+      type: labels.typeData,
+      target: labels.targetData,
+      reason: labels.reasonData,
+      signals: [...signals, 'structured'],
+      density,
+    };
+  }
+  if (ext === 'pdf' || ext === 'docx' || ext === 'doc' || ext === 'docm') {
+    return {
+      type: labels.typeDocument,
+      target: labels.targetResearch,
+      reason: labels.reasonDocument,
+      signals: [...signals, 'long-form'],
+      density,
+    };
+  }
+  return {
+    type: labels.typeRawNote,
+    target: labels.targetInboxReview,
+    reason: labels.reasonRawNote,
+    signals,
+    density,
+  };
+}
+
+function looksLikeCapturedArticle(lowerName: string): boolean {
+  return /article|url|web|clip|wechat|公众号|mp.weixin|小红书|link|reference|ref/.test(lowerName);
+}
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  const cjk = trimmed.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
+  const words = trimmed
+    .replace(/[\u4e00-\u9fff]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return cjk + words;
+}
+
+function shortenUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/\/$/, '');
+    const label = `${parsed.hostname}${path}`;
+    return label.length > 42 ? `${label.slice(0, 39)}...` : label;
+  } catch {
+    return url.length > 42 ? `${url.slice(0, 39)}...` : url;
+  }
+}
+
+function buildCaptureFileName(content: string, intent: CaptureIntent): string {
+  const firstLine = content.split(/\r?\n/).find(line => line.trim())?.trim() ?? 'capture';
+  const clean = firstLine
+    .replace(/^#+\s*/, '')
+    .replace(/[`*_~[\]()#>]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fff-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48);
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, '')
+    .replace('T', '-');
+  return `capture-${intent}-${timestamp}-${clean || 'note'}.md`;
+}
 
 function getSourceBadge(source?: OrganizeSource): { label: string; className: string } | null {
   switch (source) {

@@ -1,5 +1,6 @@
 import { toast } from '@/lib/toast';
 import type { useLocale } from '@/lib/stores/locale-store';
+import { isBinaryCaptureName } from '@/lib/capture-formats';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
 
@@ -110,8 +111,7 @@ export async function quickDropToInbox(
     }
     try {
       const lowerName = file.name.toLowerCase();
-      const isWord = lowerName.endsWith('.doc') || lowerName.endsWith('.docx') || lowerName.endsWith('.docm');
-      if (lowerName.endsWith('.pdf') || isWord) {
+      if (isBinaryCaptureName(lowerName)) {
         const buf = await file.arrayBuffer();
         payload.push({ name: file.name, content: await arrayBufferToBase64(buf), encoding: 'base64' });
       } else {
@@ -255,7 +255,7 @@ export async function quickDropToDirectory(
   const BINARY_EXTS = new Set([
     'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico',
     'mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac', 'mp4', 'webm', 'mov', 'mkv',
-    'doc', 'docx', 'docm',
+    'doc', 'docx', 'docm', 'xls', 'xlsx', 'ppt', 'pptx',
   ]);
 
   for (const file of files) {

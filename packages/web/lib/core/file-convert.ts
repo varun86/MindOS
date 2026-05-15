@@ -1,8 +1,9 @@
 import path from 'path';
 
 export const ALLOWED_IMPORT_EXTENSIONS = new Set([
-  '.txt', '.md', '.markdown', '.csv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.pdf',
-  '.doc', '.docx', '.docm',
+  '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.xml', '.html', '.htm', '.pdf',
+  '.doc', '.docx', '.docm', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif',
 ]);
 
 export interface ConvertResult {
@@ -57,7 +58,7 @@ export function convertToMarkdown(fileName: string, rawContent: string): Convert
     return { content: rawContent, originalName, targetName: sanitizeFileName(fileName) };
   }
 
-  if (ext === '.csv' || ext === '.json') {
+  if (ext === '.csv' || ext === '.tsv' || ext === '.json') {
     return { content: rawContent, originalName, targetName: sanitizeFileName(fileName) };
   }
 

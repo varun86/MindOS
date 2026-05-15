@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useState, useEffect, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { FolderTree, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap } from 'lucide-react';
+import { FolderTree, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { DOT_COLORS, getStatusLevel } from './SyncStatusBar';
 import type { SyncStatus } from './settings/types';
@@ -112,6 +112,8 @@ export default function ActivityBar({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const isHome = pathname === '/';
+  const isCapture = pathname === '/capture' || pathname?.startsWith('/capture/');
+  const isFilesRoute = pathname === '/wiki' || pathname?.startsWith('/wiki/') || pathname?.startsWith('/view/');
 
   // Update badge: Desktop → electron-updater IPC; Browser → npm registry check
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -235,7 +237,18 @@ export default function ActivityBar({
 
         {/* ── Middle: Core panel toggles ── */}
         <div className={`flex flex-col ${expanded ? 'px-1.5' : 'items-center'} gap-1 py-2`}>
-          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={!isHome && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced(onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
+          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced(onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
+          <RailButton
+            icon={<Inbox size={18} />}
+            label={t.sidebar.capture}
+            active={isCapture}
+            expanded={expanded}
+            onClick={() => debounced(() => {
+              onPanelChange(null);
+              router.push('/capture');
+            })}
+            walkthroughId="capture-page"
+          />
           {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} onClick={() => onEchoClick ? debounced(onEchoClick) : toggle('echo')} walkthroughId="echo-panel" />}
           <RailButton icon={<Search size={18} />} label={t.sidebar.searchTitle} shortcut="⌘K" active={activePanel === 'search'} expanded={expanded} onClick={() => toggle('search')} />
           <RailButton
