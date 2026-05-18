@@ -27,6 +27,9 @@ import {
   Archive,
   ArrowRight,
   Paperclip,
+  ShieldCheck,
+  Undo2,
+  Eye,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -34,6 +37,9 @@ import { encodePath } from '@/lib/utils';
 import { quickDropToInbox, clipUrlToInbox, looksLikeUrl, extractUrlFromDrop, dragContainsUrl } from '@/lib/inbox-upload';
 import { loadHistory, type OrganizeHistoryEntry, type OrganizeSource } from '@/lib/organize-history';
 import { CAPTURE_ACCEPT, CAPTURE_FORMAT_CHIPS } from '@/lib/capture-formats';
+import CustomSelect from '@/components/CustomSelect';
+import ProviderModelCapsule, { getPersistedProviderModel, type ProviderSelection } from '@/components/ask/ProviderModelCapsule';
+import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
 
 interface InboxFile {
   name: string;
@@ -44,8 +50,10 @@ interface InboxFile {
 }
 
 const HISTORY_VISIBLE = 5;
+const INBOX_PROVIDER_MODEL_STORAGE_KEY = 'mindos-inbox-provider-model';
 
 type CaptureIntent = 'source' | 'note' | 'judgment' | 'reflect';
+type InboxViewMode = 'capture' | 'queue' | 'history';
 
 const EXT_STYLES: Record<string, { bg: string; text: string }> = {
   md:   { bg: 'bg-blue-500/10',    text: 'text-blue-500/70' },
@@ -65,12 +73,17 @@ function getFileBaseName(name: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+function getInitialInboxViewMode(): InboxViewMode {
+  if (typeof window === 'undefined') return 'capture';
+  const hash = window.location.hash.replace('#', '');
+  return hash === 'queue' || hash === 'history' ? hash : 'capture';
+}
+
 export default function InboxView() {
   const { t } = useLocale();
   const router = useRouter();
   const [files, setFiles] = useState<InboxFile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [organizing, setOrganizing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [history, setHistory] = useState<OrganizeHistoryEntry[]>([]);
   const [draftText, setDraftText] = useState('');
@@ -79,8 +92,18 @@ export default function InboxView() {
   const [pendingUrls, setPendingUrls] = useState<string[]>([]);
   const [savingText, setSavingText] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<InboxViewMode>(() => getInitialInboxViewMode());
+  const [providerOverride, setProviderOverride] = useState<ProviderSelection>(
+    () => getPersistedProviderModel(INBOX_PROVIDER_MODEL_STORAGE_KEY).provider,
+  );
+  const [modelOverride, setModelOverride] = useState<string | null>(
+    () => getPersistedProviderModel(INBOX_PROVIDER_MODEL_STORAGE_KEY).model,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const inboxOrganize = useInboxOrganize();
+  const organizing = inboxOrganize.isOrganizing;
+  const queueViewActive = activeView === 'queue';
 
   const fetchInbox = useCallback(async () => {
     try {
@@ -112,7 +135,7 @@ export default function InboxView() {
     fetchInbox();
     refreshHistory();
 
-    const onOrganizeDone = () => { setOrganizing(false); debouncedRefresh(); };
+    const onOrganizeDone = () => { debouncedRefresh(); };
     const resetDrag = () => { dragCounterRef.current = 0; setDragOver(false); };
 
     window.addEventListener('mindos:files-changed', debouncedRefresh);
@@ -134,11 +157,11 @@ export default function InboxView() {
 
   const handleOrganize = useCallback(() => {
     if (files.length === 0 || organizing) return;
-    setOrganizing(true);
-    window.dispatchEvent(
-      new CustomEvent('mindos:inbox-organize', { detail: { files } }),
-    );
-  }, [files, organizing]);
+    void inboxOrganize.requestInboxOrganize(files, {
+      providerOverride,
+      modelOverride,
+    });
+  }, [files, inboxOrganize, modelOverride, organizing, providerOverride]);
 
   const handleDeleteFile = useCallback(async (name: string) => {
     try {
@@ -258,12 +281,22 @@ export default function InboxView() {
     [selectedFile, selectedIntent, t],
   );
   const intentOptions = useMemo(() => getIntentOptions(t.inbox), [t]);
+  const intentSelectOptions = useMemo(() => intentOptions.map(intent => ({
+    value: intent.id,
+    label: intent.title,
+    suffix: (
+      <span className="hidden sm:inline text-[10px] text-muted-foreground/55">
+        {intent.density}
+      </span>
+    ),
+  })), [intentOptions]);
   const selectedIntentOption = intentOptions.find(intent => intent.id === selectedIntent) ?? intentOptions[0];
   const suggestedIntent = useMemo(
     () => inferSuggestedIntent(draftText, pendingUrls, pendingFiles),
     [draftText, pendingUrls, pendingFiles],
   );
   const suggestedIntentOption = intentOptions.find(intent => intent.id === suggestedIntent) ?? intentOptions[0];
+  const showSuggestedIntent = suggestedIntent !== selectedIntent;
   const hasPendingCapture = draftText.trim().length > 0 || pendingFiles.length > 0 || pendingUrls.length > 0;
   const textWordCount = countWords(draftText);
   const visibleHistory = useMemo(() => history.slice(0, HISTORY_VISIBLE), [history]);
@@ -280,6 +313,21 @@ export default function InboxView() {
       setSelectedPath(files[0]?.path ?? null);
     }
   }, [files, selectedPath]);
+
+  useEffect(() => {
+    const syncHash = () => setActiveView(getInitialInboxViewMode());
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
+
+  const switchView = useCallback((view: InboxViewMode) => {
+    setActiveView(view);
+    if (typeof window === 'undefined') return;
+    const nextUrl = view === 'capture'
+      ? window.location.pathname
+      : `${window.location.pathname}#${view}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, []);
 
   if (loading) {
     return (
@@ -350,6 +398,23 @@ export default function InboxView() {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {queueViewActive && (
+              <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2 py-1">
+                <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+                  {t.inbox.modelTitle}
+                </span>
+                <ProviderModelCapsule
+                  providerValue={providerOverride}
+                  onProviderChange={setProviderOverride}
+                  modelValue={modelOverride}
+                  onModelChange={setModelOverride}
+                  disabled={organizing}
+                  storageKey={INBOX_PROVIDER_MODEL_STORAGE_KEY}
+                  systemLabel={t.inbox.modelFollowSystem}
+                  emptyLabel={t.inbox.modelNoProvider}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -359,7 +424,7 @@ export default function InboxView() {
               <Upload size={13} />
               <span className="hidden sm:inline">{t.inbox.uploadButton}</span>
             </button>
-            {hasFiles && (
+            {queueViewActive && hasFiles && (
               <button
                 onClick={handleOrganize}
                 disabled={organizing}
@@ -380,23 +445,47 @@ export default function InboxView() {
 
       {/* ─── Main Content ─── */}
       <div className="flex-1 px-4 md:px-6 py-6">
-        <div className="mx-auto max-w-[1180px] space-y-5">
+        <div className="mx-auto max-w-[1320px] space-y-5">
           <div className="max-w-2xl">
             <div>
               <p className="text-2xs font-medium uppercase tracking-wider text-[var(--amber)]/80">
                 Capture now, organize later
               </p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-foreground">
-                {t.inbox.quickCaptureTitle}
+                {t.inbox.capturePageTitle}
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                {t.inbox.subtitle}
+                {t.inbox.capturePageSubtitle}
               </p>
             </div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_360px]">
+          <div className="flex flex-wrap gap-2">
+            <InboxViewTab
+              active={activeView === 'capture'}
+              icon={BookOpen}
+              label={t.inbox.viewCapture}
+              onClick={() => switchView('capture')}
+            />
+            <InboxViewTab
+              active={activeView === 'queue'}
+              icon={ListChecks}
+              label={t.inbox.viewQueue}
+              count={files.length}
+              onClick={() => switchView('queue')}
+            />
+            <InboxViewTab
+              active={activeView === 'history'}
+              icon={History}
+              label={t.inbox.viewHistory}
+              count={history.length}
+              onClick={() => switchView('history')}
+            />
+          </div>
+
+          <div className={activeView === 'queue' ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]' : 'max-w-[760px]'}>
             <div className="space-y-5">
+              {activeView === 'capture' && (
               <div
                 className={`overflow-hidden rounded-xl border bg-card/40 shadow-sm transition-all duration-200 ${
                   dragOver
@@ -444,9 +533,6 @@ export default function InboxView() {
                         {t.inbox.composerHint}
                       </p>
                     </div>
-                    <span className="w-fit rounded-md bg-[var(--amber-subtle)] px-2 py-1 text-2xs font-medium text-[var(--amber)]">
-                      {t.inbox.densityTitle}: {selectedIntentOption.density}
-                    </span>
                   </div>
 
                   <div
@@ -468,25 +554,20 @@ export default function InboxView() {
                         >
                           {t.inbox.nextActionTitle}
                         </label>
-                        <select
-                          id="capture-next-action"
-                          value={selectedIntent}
-                          onChange={(e) => setSelectedIntent(e.target.value as CaptureIntent)}
-                          className="h-8 rounded-md border border-border bg-card px-2 pr-7 text-xs font-medium text-foreground outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {intentOptions.map(intent => (
-                            <option key={intent.id} value={intent.id}>
-                              {intent.title}
-                            </option>
-                          ))}
-                        </select>
+                        <div id="capture-next-action" className="min-w-[156px]">
+                          <CustomSelect
+                            value={selectedIntent}
+                            onChange={(value) => setSelectedIntent(value as CaptureIntent)}
+                            options={intentSelectOptions}
+                            size="sm"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-3 py-2 text-2xs text-muted-foreground/60">
-                      <span>{t.inbox.suggestedAction(suggestedIntentOption.title)}</span>
-                      <span>{t.inbox.densityTitle}: {selectedIntentOption.density}</span>
-                      <span className="hidden sm:inline">{t.inbox.composerPlaceholder}</span>
+                      {showSuggestedIntent && <span>{t.inbox.suggestedAction(suggestedIntentOption.title)}</span>}
+                      <span>{t.inbox.captureNoAiHint}</span>
                     </div>
 
                     <textarea
@@ -575,6 +656,87 @@ export default function InboxView() {
                   </div>
                 </div>
               </div>
+              )}
+
+              {activeView === 'queue' && (
+              <>
+              <section className="overflow-hidden rounded-xl border border-border/60 bg-card/40 shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Eye size={15} className="text-[var(--amber)]" />
+                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.currentItemTitle}</h3>
+                  </div>
+                  {selectedFile && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                      {selectedUnderstanding?.type ?? t.inbox.typeRawNote}
+                    </span>
+                  )}
+                </div>
+
+                {selectedFile && selectedUnderstanding ? (
+                  <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="space-y-4 p-4">
+                      <div>
+                        <p className="truncate text-sm font-medium text-foreground" title={selectedFile.name}>
+                          {selectedFile.name}
+                        </p>
+                        <p className="mt-1 text-2xs text-muted-foreground">
+                          {formatSize(selectedFile.size)} · {formatRelativeTime(selectedFile.modifiedAt, t.home.relativeTime)}
+                        </p>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <UnderstandingRow label={t.inbox.suggestedType} value={selectedUnderstanding.type} />
+                        <UnderstandingRow label={t.inbox.suggestedTarget} value={selectedUnderstanding.target} />
+                        <UnderstandingRow label={t.inbox.densityTitle} value={selectedUnderstanding.density} />
+                      </div>
+
+                      <div className="rounded-lg bg-muted/35 p-3">
+                        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                          {t.inbox.suggestedReason}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-foreground/75">
+                          {selectedUnderstanding.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/50 bg-background/55 p-4 lg:border-l lg:border-t-0">
+                      <p className="mb-3 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.safeOrganizeTitle}
+                      </p>
+                      <div className="space-y-2">
+                        <SafetyStep icon={Eye} label={t.inbox.reviewBeforeWrite} detail={t.inbox.reviewBeforeWriteDesc} />
+                        <SafetyStep icon={Archive} label={t.inbox.keepRawSource} detail={t.inbox.keepRawSourceDesc} />
+                        <SafetyStep icon={Undo2} label={t.inbox.undoRecord} detail={t.inbox.undoRecordDesc} />
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/view/${encodePath(selectedFile.path)}`)}
+                          className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t.inbox.actionOpen}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleOrganize}
+                          disabled={organizing}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                          {organizing ? t.inbox.organizing : t.inbox.actionMerge}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-sm font-medium text-foreground/70">{t.inbox.currentItemEmptyTitle}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground/55">{t.inbox.currentItemEmptyDesc}</p>
+                  </div>
+                )}
+              </section>
 
               <section className="rounded-xl border border-border/60 bg-card/40 shadow-sm">
                 <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
@@ -620,8 +782,10 @@ export default function InboxView() {
                   </div>
                 )}
               </section>
+              </>
+              )}
 
-              {visibleHistory.length > 0 && (
+              {activeView === 'history' && (
                 <section>
                   <div className="mb-3 flex items-center gap-2">
                     <History size={12} className="text-muted-foreground/40" />
@@ -637,16 +801,111 @@ export default function InboxView() {
                       </Link>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    {visibleHistory.map((entry) => (
-                      <HistoryRow key={entry.id} entry={entry} />
-                    ))}
-                  </div>
+                  {visibleHistory.length > 0 ? (
+                    <div className="space-y-2">
+                      {visibleHistory.map((entry) => (
+                        <HistoryRow key={entry.id} entry={entry} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-10 text-center">
+                      <p className="text-sm font-medium text-foreground/70">{t.importHistory.emptyTitle}</p>
+                      <p className="mt-1 text-xs text-muted-foreground/55">{t.importHistory.emptyDesc}</p>
+                    </div>
+                  )}
                 </section>
               )}
             </div>
 
-            <aside className="xl:sticky xl:top-[70px] xl:self-start">
+            {activeView === 'queue' && (
+            <aside className="lg:sticky lg:top-[70px] lg:self-start">
+              <section className="mb-4 overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
+                <div className="border-b border-border/50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={15} className="text-[var(--amber)]" />
+                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.aiRouteTitle}</h3>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
+                    {t.inbox.modelHint}
+                  </p>
+                </div>
+                <div className="space-y-3 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                      {t.inbox.modelTitle}
+                    </span>
+                    <ProviderModelCapsule
+                      providerValue={providerOverride}
+                      onProviderChange={setProviderOverride}
+                      modelValue={modelOverride}
+                      onModelChange={setModelOverride}
+                      disabled={organizing}
+                      storageKey={INBOX_PROVIDER_MODEL_STORAGE_KEY}
+                      systemLabel={t.inbox.modelFollowSystem}
+                      emptyLabel={t.inbox.modelNoProvider}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <MiniMetric label={t.inbox.pendingSequenceTitle} value={String(files.length)} />
+                    <MiniMetric label={t.inbox.recentProcessedTitle} value={String(history.length)} />
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
+                    <div className="mb-2 flex items-center gap-2">
+                      <ShieldCheck size={13} className="text-[var(--amber)]" />
+                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                        {t.inbox.safeOrganizeTitle}
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      {[t.inbox.reviewBeforeWrite, t.inbox.keepRawSource, t.inbox.undoRecord].map(item => (
+                        <div key={item} className="flex items-center gap-2 text-xs text-foreground/75">
+                          <Check size={11} className="shrink-0 text-success/70" />
+                          <span>{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {(hasFiles || visibleHistory.length > 0) && (
+                <section className="mb-4 overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
+                  <div className="border-b border-border/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <ListChecks size={15} className="text-[var(--amber)]" />
+                      <h3 className="text-sm font-semibold text-foreground">{t.inbox.queueSidebarTitle}</h3>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-border/40">
+                    {files.slice(0, 4).map((file, idx) => (
+                      <button
+                        key={file.path}
+                        type="button"
+                        onClick={() => setSelectedPath(file.path)}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="w-5 shrink-0 text-2xs tabular-nums text-muted-foreground/45">
+                          {String(idx + 1).padStart(2, '0')}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-foreground/80">{file.name}</span>
+                      </button>
+                    ))}
+                    {visibleHistory.slice(0, 3).map(entry => (
+                      <Link
+                        key={entry.id}
+                        href="/capture/history"
+                        className="flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
+                      >
+                        <Check size={12} className="shrink-0 text-success/70" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {entry.sourceFiles.length === 1 ? entry.sourceFiles[0] : t.importHistory.nFiles(entry.sourceFiles.length)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <section className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
                 <div className="border-b border-border/50 px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -758,6 +1017,7 @@ export default function InboxView() {
                 )}
               </section>
             </aside>
+            )}
           </div>
         </div>
       </div>
@@ -1005,11 +1265,75 @@ function HistoryRow({ entry }: { entry: OrganizeHistoryEntry }) {
 
 /* ─── Helpers ─── */
 
+function InboxViewTab({
+  active,
+  icon: Icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
+        active
+          ? 'border-[var(--amber)]/45 bg-[var(--amber-subtle)] text-foreground'
+          : 'border-border/60 bg-card/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      <Icon size={13} className={active ? 'text-[var(--amber)]' : 'text-muted-foreground/55'} />
+      <span>{label}</span>
+      {typeof count === 'number' && count > 0 && (
+        <span className="rounded-full bg-background px-1.5 py-px text-2xs text-muted-foreground">
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function SafetyStep({
+  icon: Icon,
+  label,
+  detail,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <div className="flex gap-2 rounded-lg border border-border/60 bg-card px-3 py-2">
+      <Icon size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" />
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground/60">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function UnderstandingRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border/60 bg-background px-3 py-2">
       <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-background px-3 py-2">
+      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</p>
     </div>
   );
 }

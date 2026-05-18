@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Settings, Menu, X, FolderInput } from 'lucide-react';
 import ActivityBar, { type PanelId } from './ActivityBar';
-import Panel from './Panel';
+import Panel, { PANEL_WIDTH } from './Panel';
 import FileTree from './FileTree';
 import Logo from './Logo';
 import AskFab from './AskFab';
@@ -31,16 +31,16 @@ import '@/lib/renderers/index'; // client-side renderer registration source of t
 import { useLeftPanel } from '@/hooks/useLeftPanel';
 import { useAskPanel } from '@/hooks/useAskPanel';
 import { useAiOrganize } from '@/hooks/useAiOrganize';
-import { toast } from '@/lib/toast';
+import { useInboxOrganizeController } from '@/hooks/useInboxOrganizeController';
+import { InboxOrganizeProvider } from '@/components/inbox/InboxOrganizeContext';
 import { quickDropToInbox } from '@/lib/inbox-upload';
-import { isAiReadableCaptureName } from '@/lib/capture-formats';
-import { checkAiAvailable } from '@/lib/space-ai-init';
 import type { Tab } from './settings/types';
 import { RIGHT_AGENT_DETAIL_PANEL } from '@/lib/config/panel-sizes';
 
 const noop = () => {};
 
 const SearchPanel = dynamic(() => import('./panels/SearchPanel'), { ssr: false });
+const CapturePanel = dynamic(() => import('./panels/CapturePanel'), { ssr: false });
 const AgentsPanel = dynamic(() => import('./panels/AgentsPanel'), { ssr: false });
 const DiscoverPanel = dynamic(() => import('./panels/DiscoverPanel'), { ssr: false });
 const EchoPanel = dynamic(() => import('./panels/EchoPanel'), { ssr: false });
@@ -101,7 +101,6 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   // ── AI Organize (lifted from ImportModal so toast shares state) ──
   const aiOrganize = useAiOrganize();
   const [organizeToastVisible, setOrganizeToastVisible] = useState(false);
-  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
 
   // Show toast whenever organize is active
   useEffect(() => {
@@ -121,7 +120,6 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   }, [aiOrganize]);
 
   const handleHistoryUpdate = useCallback(() => {
-    setHistoryRefreshToken(t => t + 1);
     window.dispatchEvent(new Event('mindos:organize-history-update'));
   }, []);
 
@@ -150,6 +148,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   const [mobileAskOpen, setMobileAskOpen] = useState(false);
 
   const { t } = useLocale();
+  const inboxOrganize = useInboxOrganizeController({ aiOrganize, labels: t.inbox });
   const router = useRouter();
   const pathname = usePathname();
   const dirPaths = useMemo(() => {
@@ -188,9 +187,16 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  const routePanel = pathname?.startsWith('/capture') ? 'capture' : null;
+  const activeLeftPanel = routePanel ?? lp.activePanel;
   const agentsContentActive = pathname?.startsWith('/agents');
-  const railActivePanel = lp.activePanel ?? (agentsContentActive ? 'agents' : null);
-  const agentDockOpen = agentDetailKey !== null && lp.activePanel === 'agents';
+  const railActivePanel = activeLeftPanel ?? (agentsContentActive ? 'agents' : null);
+  const agentDockOpen = agentDetailKey !== null && activeLeftPanel === 'agents';
+  const routeControlledPanel = activeLeftPanel !== lp.activePanel;
+  const panelOpen = activeLeftPanel !== null;
+  const effectivePanelWidth = activeLeftPanel
+    ? (routeControlledPanel ? PANEL_WIDTH[activeLeftPanel] : lp.effectivePanelWidth)
+    : lp.effectivePanelWidth;
   const [mountedPanels, setMountedPanels] = useState<Set<PanelId>>(() => new Set());
   const [rightAskMounted, setRightAskMounted] = useState(false);
   const [rightAgentDetailMounted, setRightAgentDetailMounted] = useState(false);
@@ -201,7 +207,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   const [importMounted, setImportMounted] = useState(false);
 
   useEffect(() => {
-    const active = lp.activePanel;
+    const active = activeLeftPanel;
     if (!active || active === 'files') return;
     setMountedPanels((prev) => {
       if (prev.has(active)) return prev;
@@ -209,7 +215,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       next.add(active);
       return next;
     });
-  }, [lp.activePanel]);
+  }, [activeLeftPanel]);
 
   useEffect(() => { if (ap.askPanelOpen) setRightAskMounted(true); }, [ap.askPanelOpen]);
   useEffect(() => { if (agentDockOpen) setRightAgentDetailMounted(true); }, [agentDockOpen]);
@@ -220,8 +226,8 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   useEffect(() => { if (importModalOpen) setImportMounted(true); }, [importModalOpen]);
 
   const isPanelMounted = useCallback(
-    (panel: PanelId) => lp.activePanel === panel || mountedPanels.has(panel),
-    [lp.activePanel, mountedPanels],
+    (panel: PanelId) => activeLeftPanel === panel || mountedPanels.has(panel),
+    [activeLeftPanel, mountedPanels],
   );
 
   // ── Event listeners ──
@@ -243,84 +249,29 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
     return () => window.removeEventListener('mindos:open-import', handler);
   }, [handleOpenImport]);
 
-  // ── Inbox: batch AI organize from InboxSection ──
-  const organizedFileNamesRef = useRef<string[]>([]);
   useEffect(() => {
     const handler = (e: Event) => {
       const files = (e as CustomEvent).detail?.files as Array<{ name: string; path: string }> | undefined;
-      if (!files || files.length === 0 || aiOrganize.phase === 'organizing') return;
-
-      const prompt = t.inbox.organizePrompt(files.map(f => f.name));
-      organizedFileNamesRef.current = files.map(f => f.name);
-
-      (async () => {
-        const aiReady = await checkAiAvailable();
-        if (!aiReady) {
-          organizedFileNamesRef.current = [];
-          toast.error(t.inbox.organizeNoAi, 5000);
-          window.dispatchEvent(new Event('mindos:organize-done'));
-          return;
-        }
-
-        const attachments: Array<{ name: string; content: string }> = [];
-        for (const f of files) {
-          if (!isAiReadableCaptureName(f.name)) continue;
-          try {
-            const res = await fetch(`/api/file?path=${encodeURIComponent(f.path)}`);
-            if (res.ok) {
-              const data = await res.json();
-              attachments.push({ name: f.name, content: data.content ?? '' });
-            }
-          } catch { /* skip unreadable files */ }
-        }
-        if (attachments.length > 0) {
-          aiOrganize.start(attachments, prompt, 'inbox-organize');
-        } else {
-          toast.error(t.inbox.organizeFailed, 4000);
-          window.dispatchEvent(new Event('mindos:organize-done'));
-        }
-      })();
+      if (!files || files.length === 0) return;
+      void inboxOrganize.requestInboxOrganize(files, {
+        providerOverride: (e as CustomEvent).detail?.providerOverride,
+        modelOverride: (e as CustomEvent).detail?.modelOverride,
+      });
     };
     window.addEventListener('mindos:inbox-organize', handler);
     return () => window.removeEventListener('mindos:inbox-organize', handler);
-  }, [aiOrganize, t]);
+  }, [inboxOrganize]);
 
   // ── Session/Message: AI organize conversation content ──
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { content: string; name: string } | undefined;
-      if (!detail?.content || aiOrganize.phase === 'organizing') return;
-
-      const attachment = { name: detail.name, content: detail.content };
-      const prompt = `Organize this conversation into well-structured notes in my knowledge base. Extract key insights, decisions, action items, and important details. Create appropriate files with clear titles. Write in the same language as the content.`;
-      aiOrganize.start([attachment], prompt, 'conversation');
+      if (!detail?.content) return;
+      inboxOrganize.requestConversationOrganize(detail);
     };
     window.addEventListener('mindos:session-organize', handler);
     return () => window.removeEventListener('mindos:session-organize', handler);
-  }, [aiOrganize]);
-
-  // Notify InboxSection when organize finishes + clean up source inbox files
-  useEffect(() => {
-    if (aiOrganize.phase === 'done') {
-      const hasSuccessfulChanges = aiOrganize.changes.some(c => c.ok);
-      const names = organizedFileNamesRef.current;
-      if (hasSuccessfulChanges && names.length > 0) {
-        fetch('/api/inbox', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names }),
-        })
-          .then(() => {
-            window.dispatchEvent(new Event('mindos:inbox-updated'));
-          })
-          .catch(() => { /* best-effort cleanup */ });
-        organizedFileNamesRef.current = [];
-      }
-      window.dispatchEvent(new Event('mindos:organize-done'));
-    } else if (aiOrganize.phase === 'error') {
-      window.dispatchEvent(new Event('mindos:organize-done'));
-    }
-  }, [aiOrganize.phase, aiOrganize.changes]);
+  }, [inboxOrganize]);
 
   // Listen for cross-component "open panel" events (e.g. GuideCard → Agents)
   useEffect(() => {
@@ -359,11 +310,11 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
     }
   }, [pathname, lp.setActivePanel]);
 
-  // Capture is a first-class workbench, not a sub-view of the Files panel.
-  // If the user lands there from a persisted Files state, remove the stale left panel.
+  // Capture is a first-class workbench with its own rail panel.
+  // Keep deep links and reloads aligned with the Capture panel instead of Files.
   useEffect(() => {
-    if (pathname?.startsWith('/capture') && lp.activePanel === 'files') {
-      lp.setActivePanel(null);
+    if (pathname?.startsWith('/capture') && lp.activePanel !== 'capture') {
+      lp.setActivePanel('capture');
     }
   }, [pathname, lp.activePanel, lp.setActivePanel]);
 
@@ -524,7 +475,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   const handleMobileNavigate = useCallback(() => setMobileOpen(false), []);
 
   return (
-    <>
+    <InboxOrganizeProvider value={inboxOrganize}>
       <McpStoreInit />
       <WalkthroughInit />
       {/* Skip link */}
@@ -541,7 +492,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
         onPanelChange={lp.setActivePanel}
         onEchoClick={() => {
           exitAskMaximized();
-          const wasActive = lp.activePanel === 'echo';
+          const wasActive = activeLeftPanel === 'echo';
           const onEchoRoute = pathname?.startsWith('/echo');
           if (!wasActive) {
             lp.setActivePanel('echo');
@@ -554,7 +505,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
         }}
         onAgentsClick={() => {
           exitAskMaximized();
-          const wasActive = lp.activePanel === 'agents';
+          const wasActive = activeLeftPanel === 'agents';
           const onAgentsRoute = pathname?.startsWith('/agents');
           if (!wasActive) {
             lp.setActivePanel('agents');
@@ -568,7 +519,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
         }}
         onDiscoverClick={() => {
           exitAskMaximized();
-          const wasActive = lp.activePanel === 'discover';
+          const wasActive = activeLeftPanel === 'discover';
           const onDiscoverRoute = pathname?.startsWith('/explore');
           if (!wasActive) {
             lp.setActivePanel('discover');
@@ -582,7 +533,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
         onSpacesClick={() => {
           exitAskMaximized();
           const isHome = pathname === '/';
-          const wasActive = lp.activePanel === 'files';
+          const wasActive = activeLeftPanel === 'files';
           const onFilesRoute = pathname === '/wiki' || pathname?.startsWith('/view/') || pathname?.startsWith('/wiki/');
           // On homepage, always navigate to /wiki (don't toggle off)
           if (isHome || !wasActive) {
@@ -602,12 +553,12 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       />
 
       <Panel
-        activePanel={lp.activePanel}
+        activePanel={activeLeftPanel}
         fileTree={fileTree}
         onNavigate={noop}
         onOpenSyncSettings={openSyncSettings}
         railWidth={lp.railWidth}
-        panelWidth={lp.panelWidth ?? undefined}
+        panelWidth={routeControlledPanel ? undefined : (lp.panelWidth ?? undefined)}
         onWidthChange={lp.handlePanelWidthChange}
         onWidthCommit={lp.handlePanelWidthCommit}
         maximized={lp.panelMaximized}
@@ -615,19 +566,24 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
         onImport={handleOpenImport}
       >
         {isPanelMounted('echo') && (
-          <div className={`flex flex-col h-full ${lp.activePanel === 'echo' ? '' : 'hidden'}`}>
-            <EchoPanel active={lp.activePanel === 'echo'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'echo' ? '' : 'hidden'}`}>
+            <EchoPanel active={activeLeftPanel === 'echo'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
+          </div>
+        )}
+        {isPanelMounted('capture') && (
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'capture' ? '' : 'hidden'}`}>
+            <CapturePanel />
           </div>
         )}
         {isPanelMounted('search') && (
-          <div className={`flex flex-col h-full ${lp.activePanel === 'search' ? '' : 'hidden'}`}>
-            <SearchPanel active={lp.activePanel === 'search'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'search' ? '' : 'hidden'}`}>
+            <SearchPanel active={activeLeftPanel === 'search'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
           </div>
         )}
         {isPanelMounted('agents') && (
-          <div className={`flex flex-col h-full ${lp.activePanel === 'agents' ? '' : 'hidden'}`}>
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'agents' ? '' : 'hidden'}`}>
             <AgentsPanel
-              active={lp.activePanel === 'agents'}
+              active={activeLeftPanel === 'agents'}
               maximized={lp.panelMaximized}
               onMaximize={lp.handlePanelMaximize}
               selectedAgentKey={agentDockOpen ? agentDetailKey : null}
@@ -635,13 +591,13 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
           </div>
         )}
         {isPanelMounted('discover') && (
-          <div className={`flex flex-col h-full ${lp.activePanel === 'discover' ? '' : 'hidden'}`}>
-            <DiscoverPanel active={lp.activePanel === 'discover'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'discover' ? '' : 'hidden'}`}>
+            <DiscoverPanel active={activeLeftPanel === 'discover'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
           </div>
         )}
         {isPanelMounted('workflows') && (
-          <div className={`flex flex-col h-full ${lp.activePanel === 'workflows' ? '' : 'hidden'}`}>
-            <WorkflowsPanel active={lp.activePanel === 'workflows'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'workflows' ? '' : 'hidden'}`}>
+            <WorkflowsPanel active={activeLeftPanel === 'workflows'} maximized={lp.panelMaximized} onMaximize={lp.handlePanelMaximize} />
           </div>
         )}
       </Panel>
@@ -662,7 +618,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
           onModeSwitch={ap.handleAskModeSwitch}
           maximized={ap.askMaximized}
           onMaximize={ap.toggleAskMaximized}
-          sidebarOffset={lp.panelOpen ? lp.railWidth + lp.effectivePanelWidth : lp.railWidth}
+          sidebarOffset={panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}
         />
       )}
 
@@ -816,16 +772,16 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       <style>{`
         @media (min-width: 768px) {
           :root {
-            --right-panel-width: ${ap.askMaximized ? `calc(100vw - ${lp.panelOpen ? lp.railWidth + lp.effectivePanelWidth : lp.railWidth}px)` : `${ap.askPanelOpen ? ap.askPanelWidth : 0}px`};
+            --right-panel-width: ${ap.askMaximized ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${ap.askPanelOpen ? ap.askPanelWidth : 0}px`};
             --right-agent-detail-width: ${agentDockOpen ? agentDetailWidth : 0}px;
           }
           #main-content {
-            padding-left: ${lp.panelOpen && lp.panelMaximized ? '100vw' : `${lp.panelOpen ? lp.railWidth + lp.effectivePanelWidth : lp.railWidth}px`} !important;
+            padding-left: ${panelOpen && lp.panelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`} !important;
             padding-right: calc(var(--right-panel-width) + var(--right-agent-detail-width) + var(--toc-extra-right, 0px)) !important;
             padding-top: 0;
           }
         }
       `}</style>
-    </>
+    </InboxOrganizeProvider>
   );
 }

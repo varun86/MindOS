@@ -9,7 +9,7 @@ import type { SyncStatus } from './settings/types';
 import Logo from './Logo';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 
-export type PanelId = 'files' | 'search' | 'echo' | 'agents' | 'discover' | 'workflows';
+export type PanelId = 'files' | 'capture' | 'search' | 'echo' | 'agents' | 'discover' | 'workflows';
 
 export const RAIL_WIDTH_COLLAPSED = 48;
 export const RAIL_WIDTH_EXPANDED = 180;
@@ -109,7 +109,7 @@ export default function ActivityBar({
   const syncBtnRef = useRef<HTMLButtonElement>(null);
   const { t } = useLocale();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const router = useRouter();
   const isHome = pathname === '/';
   const isCapture = pathname === '/capture' || pathname?.startsWith('/capture/');
@@ -237,18 +237,18 @@ export default function ActivityBar({
 
         {/* ── Middle: Core panel toggles ── */}
         <div className={`flex flex-col ${expanded ? 'px-1.5' : 'items-center'} gap-1 py-2`}>
-          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced(onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
           <RailButton
             icon={<Inbox size={18} />}
             label={t.sidebar.capture}
             active={isCapture}
             expanded={expanded}
             onClick={() => debounced(() => {
-              onPanelChange(null);
+              onPanelChange('capture');
               router.push('/capture');
             })}
             walkthroughId="capture-page"
           />
+          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced(onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
           {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} onClick={() => onEchoClick ? debounced(onEchoClick) : toggle('echo')} walkthroughId="echo-panel" />}
           <RailButton icon={<Search size={18} />} label={t.sidebar.searchTitle} shortcut="⌘K" active={activePanel === 'search'} expanded={expanded} onClick={() => toggle('search')} />
           <RailButton

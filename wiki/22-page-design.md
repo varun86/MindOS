@@ -103,7 +103,8 @@ Drawer (triggered by ☰):
 | `/agents/[agentKey]` | 智能体详情 | `app/agents/[agentKey]/page.tsx` | Skill 管理 + MCP 状态 + Runtime 诊断 |
 | `/trash` | 回收站 | `app/trash/page.tsx` | 已删除文件恢复/永久删除 |
 | `/wiki` | Wiki 入口 | `app/wiki/page.tsx` | 项目 Wiki 浏览 |
-| `/inbox/history` | Inbox 历史 | `app/inbox/history/page.tsx` | Web Clipper 收件记录 |
+| `/capture` | Inbox | `app/capture/page.tsx` | 默认只展示捕获框；Queue / History 通过页内 segment 延后展开，避免队列和 AI 面板挤占捕获动作 |
+| `/capture/history` / `/inbox/history` | Inbox 历史 | `app/capture/history/page.tsx` / `app/inbox/history/page.tsx` | 已处理记录与撤销记录 |
 | `/changelog` | 更新日志 | `app/changelog/page.tsx` | 版本变更日志浏览 + 搜索 |
 | `/changes` | 变更记录 (重定向) | `app/changes/page.tsx` | → 重定向到 `/changelog` |
 

@@ -1,7 +1,7 @@
 import InboxView from '@/components/InboxView';
 
 export const metadata = {
-  title: 'Capture',
+  title: 'Inbox',
 };
 
 export default function CapturePage() {

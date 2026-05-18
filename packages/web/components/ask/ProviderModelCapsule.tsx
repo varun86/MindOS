@@ -13,7 +13,7 @@ import { type Provider, isProviderEntryId, findProvider } from '@/lib/custom-end
 
 const STORAGE_KEY = 'mindos-provider-model';
 
-type ProviderSelection = ProviderId | `p_${string}` | null;
+export type ProviderSelection = ProviderId | `p_${string}` | null;
 
 interface ProviderModelCapsuleProps {
   providerValue: ProviderSelection;
@@ -21,6 +21,9 @@ interface ProviderModelCapsuleProps {
   modelValue: string | null;
   onModelChange: (model: string | null) => void;
   disabled?: boolean;
+  storageKey?: string;
+  systemLabel?: string;
+  emptyLabel?: string;
 }
 
 interface SettingsData {
@@ -33,13 +36,15 @@ interface SettingsData {
 
 /* ── Persistence ── */
 
-export function getPersistedProviderModel(): { provider: ProviderSelection; model: string | null } {
+export function getPersistedProviderModel(storageKey = STORAGE_KEY): { provider: ProviderSelection; model: string | null } {
   if (typeof window === 'undefined') return { provider: null, model: null };
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) {
-      const old = localStorage.getItem('mindos-provider-override');
-      if (old && (isProviderId(old) || isProviderEntryId(old))) return { provider: old as ProviderSelection, model: null };
+      if (storageKey === STORAGE_KEY) {
+        const old = localStorage.getItem('mindos-provider-override');
+        if (old && (isProviderId(old) || isProviderEntryId(old))) return { provider: old as ProviderSelection, model: null };
+      }
       return { provider: null, model: null };
     }
     const parsed = JSON.parse(raw);
@@ -50,10 +55,10 @@ export function getPersistedProviderModel(): { provider: ProviderSelection; mode
   } catch { return { provider: null, model: null }; }
 }
 
-function persistProviderModel(provider: ProviderSelection, model: string | null): void {
+function persistProviderModel(provider: ProviderSelection, model: string | null, storageKey = STORAGE_KEY): void {
   try {
-    if (provider || model) localStorage.setItem(STORAGE_KEY, JSON.stringify({ provider, model }));
-    else localStorage.removeItem(STORAGE_KEY);
+    if (provider || model) localStorage.setItem(storageKey, JSON.stringify({ provider, model }));
+    else localStorage.removeItem(storageKey);
     localStorage.removeItem('mindos-provider-override');
   } catch {}
 }
@@ -67,7 +72,7 @@ function getConfiguredProviders(data: SettingsData): string[] {
 /* ── Component ── */
 
 export default function ProviderModelCapsule({
-  providerValue, onProviderChange, modelValue, onModelChange, disabled = false,
+  providerValue, onProviderChange, modelValue, onModelChange, disabled = false, storageKey = STORAGE_KEY, systemLabel, emptyLabel,
 }: ProviderModelCapsuleProps) {
   const { t, locale } = useLocale();
   const [open, setOpen] = useState(false);
@@ -143,9 +148,9 @@ export default function ProviderModelCapsule({
     if (providerValue && !configuredProviders.includes(providerValue)) {
       onProviderChange(null);
       onModelChange(null);
-      persistProviderModel(null, null);
+      persistProviderModel(null, null, storageKey);
     }
-  }, [configuredProviders, onModelChange, onProviderChange, providerValue, settingsData]);
+  }, [configuredProviders, onModelChange, onProviderChange, providerValue, settingsData, storageKey]);
 
   // Resolve active display
   const activeProvider = providerValue ?? defaultProvider;
@@ -340,16 +345,16 @@ export default function ProviderModelCapsule({
   const handleSelectProvider = useCallback((provider: ProviderSelection) => {
     onProviderChange(provider);
     onModelChange(null);
-    persistProviderModel(provider, null);
+    persistProviderModel(provider, null, storageKey);
     setOpen(false); setHoveredProvider(null); setModelSearch('');
-  }, [onModelChange, onProviderChange]);
+  }, [onModelChange, onProviderChange, storageKey]);
 
   const handleSelectModel = useCallback((provider: ProviderSelection, model: string) => {
     onProviderChange(provider);
     onModelChange(model);
-    persistProviderModel(provider, model);
+    persistProviderModel(provider, model, storageKey);
     setOpen(false); setHoveredProvider(null); setModelSearch('');
-  }, [onModelChange, onProviderChange]);
+  }, [onModelChange, onProviderChange, storageKey]);
 
   /* ── Filtered models ── */
   const filteredModels = useMemo(() => {
@@ -375,13 +380,27 @@ export default function ProviderModelCapsule({
   }, [modelHighlight]);
 
   /* ── Guards ── */
-  if (!settingsData || configuredProviders.length === 0) return null;
+  if (!settingsData || configuredProviders.length === 0) {
+    if (!emptyLabel) return null;
+    return (
+      <button
+        type="button"
+        disabled
+        className="relative z-10 inline-flex min-h-6 items-center gap-1 rounded-full border border-border/50 bg-muted/35 px-2.5 py-0.5 text-2xs font-medium text-muted-foreground/70 disabled:cursor-not-allowed"
+      >
+        <Cpu size={11} className="shrink-0" />
+        <span className="truncate">{settingsData ? emptyLabel : (systemLabel ?? 'Model')}</span>
+      </button>
+    );
+  }
 
   const modelShort = (displayModel || '').length > 20
     ? (displayModel || '').slice(0, 18) + '…' : displayModel;
+  const hasModelOverride = !!(modelValue && modelValue !== defaultModel);
   // Capsule shows the user-given provider name, truncated if too long.
   // Only falls back to protocol shortLabel if the provider has no custom name.
   const providerDisplay = (() => {
+    if (!providerValue && !hasModelOverride && systemLabel) return systemLabel;
     const name = activeEntry?.name || '';
     if (name && name.length > 12) return name.slice(0, 10) + '…';
     if (name) return name;
@@ -389,7 +408,6 @@ export default function ProviderModelCapsule({
   })();
   const capsuleTooltip = `${displayName} · ${displayModel}`;
   const providerIds = configuredProviders;
-  const hasModelOverride = !!(modelValue && modelValue !== defaultModel);
 
   /* ── Render: flyout (right panel) — positioned absolutely via portal ── */
   const renderFlyout = () => {
@@ -498,6 +516,25 @@ export default function ProviderModelCapsule({
         className="w-[260px] rounded-lg border border-border bg-card shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
         style={{ maxHeight: '70vh', overflowY: 'auto' }}
       >
+        <button
+          type="button"
+          role="option"
+          aria-selected={!providerValue && !modelValue}
+          onClick={() => handleSelectProvider(null)}
+          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/60"
+        >
+          <Cpu size={11} className="shrink-0 text-muted-foreground" />
+          <span className="shrink-0 font-medium text-foreground">
+            {systemLabel ?? t.ask?.providerDefault ?? 'Default'}
+          </span>
+          {defaultModel && (
+            <span className="min-w-0 truncate rounded bg-muted/70 px-1.5 py-px text-[10px] font-mono leading-tight text-muted-foreground">
+              {defaultModel}
+            </span>
+          )}
+          {!providerValue && !modelValue && <Check size={11} className="shrink-0 ml-auto text-[var(--amber)]" />}
+        </button>
+        <div className="my-0.5 border-t border-border/50" />
         {providerIds.map((id) => {
           const entry = findProvider(settingsData?.ai?.providers ?? [], id);
           if (!entry) return null;
@@ -505,7 +542,7 @@ export default function ProviderModelCapsule({
           const provName = entry.name || (locale === 'zh' ? preset?.nameZh : preset?.name) || id;
           const provModel = modelValue && providerValue === id ? modelValue
             : entry.model || preset?.defaultModel || '';
-          const isSelected = providerValue === id || (!providerValue && defaultProvider === id);
+          const isSelected = providerValue === id;
           const isHovered = hoveredProvider === id;
           const canExpand = canProviderExpand(id);
 

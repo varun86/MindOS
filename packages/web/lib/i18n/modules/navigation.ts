@@ -27,7 +27,7 @@ export const navigationEn = {
     newFile: 'New file',
     newSpace: 'New Space',
     more: 'More',
-    capture: 'Capture',
+    capture: 'Inbox',
     showHiddenFiles: 'Show hidden files',
     sync: {
       synced: 'Synced',
@@ -114,7 +114,7 @@ export const navigationZh = {
     newFile: '新建文件',
     newSpace: '新建空间',
     more: '更多',
-    capture: '暂存台',
+    capture: 'Inbox',
     showHiddenFiles: '显示隐藏文件',
     sync: {
       synced: '已同步',

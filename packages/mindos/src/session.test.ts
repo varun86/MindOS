@@ -810,7 +810,7 @@ describe('MindOS session event contract', () => {
           return messages.map((message, index) => ({ index, message }));
         },
         createAgentSession: async (config) => {
-          calls.push(`agent:${config.cwd}:${config.thinkingLevel}:${config.tools.length}`);
+          calls.push(`agent:${config.cwd}:${config.thinkingLevel}:${config.tools.length}:${config.customTools?.length ?? 0}`);
           return { session };
         },
         setKbMode: (mode) => calls.push(`kb:${mode}`),
@@ -837,7 +837,7 @@ describe('MindOS session event contract', () => {
       'resource.reload',
       'resource.reload',
       'resource.reload',
-      'agent:/repo:medium:1',
+      'agent:/repo:medium:1:1',
       'session.newSession',
     ]);
   });

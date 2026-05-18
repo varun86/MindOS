@@ -897,6 +897,7 @@ export type MindosPiRuntimeCreateAgentSessionConfig = {
   sessionManager: unknown;
   settingsManager: unknown;
   tools: unknown[];
+  customTools?: unknown[];
 };
 
 export type MindosPiAgentSessionWithHistory = MindosPiAgentSessionAdapter & {
@@ -1060,6 +1061,7 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     sessionManager: options.services.createSessionManager(),
     settingsManager,
     tools: options.mode === 'agent' ? [options.bashTool] : [],
+    customTools: options.requestTools,
   });
 
   await session.newSession({

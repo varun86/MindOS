@@ -28,6 +28,7 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath } from '@/lib/utils';
 import { quickDropToInbox, clipUrlToInbox, looksLikeUrl, extractUrlFromDrop, dragContainsUrl } from '@/lib/inbox-upload';
 import { loadHistory, type OrganizeHistoryEntry, type OrganizeSource } from '@/lib/organize-history';
+import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
 
 interface InboxFile {
   name: string;
@@ -57,15 +58,16 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clipInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
-  const isOrganizing = externalOrganizing || organizing;
+  const inboxOrganize = useInboxOrganize();
+  const isOrganizing = externalOrganizing || inboxOrganize.isOrganizing || organizing;
 
   const handleOrganize = useCallback(() => {
     if (files.length === 0 || isOrganizing) return;
     setOrganizing(true);
-    window.dispatchEvent(
-      new CustomEvent('mindos:inbox-organize', { detail: { files } }),
-    );
-  }, [files, isOrganizing]);
+    void inboxOrganize.requestInboxOrganize(files).then((result) => {
+      if (!result.started) setOrganizing(false);
+    });
+  }, [files, inboxOrganize, isOrganizing]);
 
   const handleDeleteFile = useCallback(async (name: string) => {
     try {

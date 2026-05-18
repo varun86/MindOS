@@ -12,7 +12,7 @@ vi.mock('@/lib/stores/locale-store', () => ({
     t: {
       sidebar: {
         files: 'Files',
-        capture: 'Capture',
+        capture: 'Inbox',
         searchTitle: 'Search',
         echo: 'Echo',
         agents: 'Agents',
@@ -177,8 +177,9 @@ describe('ActivityBar rail navigation', () => {
     });
   });
 
-  it('clicking Capture opens the Inbox workbench as a first-class rail destination', async () => {
+  it('clicking Inbox opens the Inbox workbench as a first-class rail destination', async () => {
     mockPathname = '/wiki';
+    const mockPanelChange = vi.fn();
 
     const ActivityBar = (await import('@/components/ActivityBar')).default;
 
@@ -190,7 +191,7 @@ describe('ActivityBar rail navigation', () => {
       root.render(
         <ActivityBar
           activePanel="files"
-          onPanelChange={vi.fn()}
+          onPanelChange={mockPanelChange}
           syncStatus={null}
           expanded
           onExpandedChange={vi.fn()}
@@ -209,13 +210,51 @@ describe('ActivityBar rail navigation', () => {
     });
 
     expect(mockRouterPush).toHaveBeenCalledWith('/capture');
+    expect(mockPanelChange).toHaveBeenCalledWith('capture');
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it('does not keep Files highlighted on the Capture route', async () => {
+  it('places Inbox above Files in the rail', async () => {
+    mockPathname = '/capture';
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    const filesButton = host.querySelector('[data-walkthrough="files-panel"]');
+
+    expect(captureButton).not.toBeNull();
+    expect(filesButton).not.toBeNull();
+    expect(
+      captureButton!.compareDocumentPosition(filesButton!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not keep Files highlighted on the Inbox route', async () => {
     mockPathname = '/capture';
 
     const ActivityBar = (await import('@/components/ActivityBar')).default;

@@ -9,6 +9,7 @@ import type { PanelId } from '@/components/ActivityBar';
 
 export const DEFAULT_LEFT_PANEL_WIDTH: Record<PanelId, number> = {
   files: 280,
+  capture: 300,
   search: 320,
   echo: 340,
   agents: 300,

@@ -135,6 +135,16 @@
 
 **验证**：发布前用全新 `/tmp` 安装 tarball，真实运行 `mindos start`，确认首页 `/` 返回 200；再用真实浏览器/Playwright 打开首页，要求无 4xx/5xx responses、无 console error，并用 token 调 `/api/files` / `/api/file` / `/api/search`。
 
+### Capture AI organize 不能只测 SSE，要验证工具真实落盘（2026-05-16）
+
+**症状**：暂存台 AI 整理的 `/api/ask mode=organize` 返回 200，SSE 里也有 `tool_start`，但知识库没有新增/更新文件；进一步看 stream 才发现 `list_files` / `create_file` 返回 `Tool ... not found`。
+
+**根因**：Web runtime 从 `@geminilight/mindos/session` 读取构建后的 `dist/session.js`。只改 `packages/mindos/src/session/index.ts` 而没有重建产品包时，Next 仍使用旧 dist；同时仅依赖 Pi extension 加载 KB tools 容易出现“模型被 prompt 引导调用工具，但 AgentSession active registry 没有这些工具”的假可用。
+
+**修复**：创建 Pi AgentSession 时把按 mode 过滤后的 `requestTools` 作为 `customTools` 注入，确保 chat/organize/agent 的 KB tools 进入 active tool registry；修改 `packages/mindos/src` 后必须跑 `pnpm --filter @geminilight/mindos build` 更新 dist。
+
+**验证**：除了前端 hook/component 测试，还要用临时 `HOME` + 临时 `mindRoot` 跑真实 `/api/ask mode=organize` smoke：上传一段带唯一 marker 的内容，要求 AI 在子目录创建 Markdown 文件，最后用 `find` / `rg` 验证目标文件和 marker 真实落盘，且 SSE 中 `create_file` 的 `tool_end.isError` 为 `false`。
+
 ### v1 workspace 构建不能在 `packages/web` 内直接跑 npm install
 
 **症状**：根目录 `pnpm build` 在 `@geminilight/mindos` 的 web build 阶段失败，错误类似 `Unsupported URL Type "workspace:"`。

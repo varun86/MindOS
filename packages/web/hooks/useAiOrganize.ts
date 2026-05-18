@@ -238,6 +238,31 @@ export async function consumeOrganizeStream(
 // Hook
 // ---------------------------------------------------------------------------
 
+export interface AiOrganizeRunOptions {
+  providerOverride?: string | null;
+  modelOverride?: string | null;
+}
+
+function describeAskRequestError(status: number, message: string): string {
+  const detail = message.trim() || `Request failed (${status})`;
+  if (status === 401 || status === 403) {
+    return `AI provider rejected the request (${status}). Check the selected API key/provider. ${detail}`;
+  }
+  if (status === 404) {
+    return `AI endpoint or selected model was not found (${status}). Check the selected provider/model. ${detail}`;
+  }
+  if (status === 408 || status === 504) {
+    return `AI organize timed out (${status}). Try fewer files or a faster model. ${detail}`;
+  }
+  if (status === 429) {
+    return `AI provider rate limit reached (${status}). Wait a moment or switch models. ${detail}`;
+  }
+  if (status >= 500) {
+    return `AI provider/server failed (${status}). ${detail}`;
+  }
+  return detail;
+}
+
 export function useAiOrganize() {
   const [phase, setPhase] = useState<OrganizePhase>('idle');
   const [changes, setChanges] = useState<OrganizeFileChange[]>([]);
@@ -255,7 +280,12 @@ export function useAiOrganize() {
   const startTimeRef = useRef<number>(0);
   const [durationMs, setDurationMs] = useState<number>(0);
 
-  const start = useCallback(async (files: LocalAttachment[], prompt: string, organizeSource: OrganizeSource = 'upload') => {
+  const start = useCallback(async (
+    files: LocalAttachment[],
+    prompt: string,
+    organizeSource: OrganizeSource = 'upload',
+    options: AiOrganizeRunOptions = {},
+  ) => {
     setPhase('organizing');
     setChanges([]);
     setCurrentTool(null);
@@ -284,15 +314,19 @@ export function useAiOrganize() {
     }));
 
     try {
+      const requestBody: Record<string, unknown> = {
+        messages,
+        uploadedFiles: truncatedFiles,
+        maxSteps: 15,
+        mode: 'organize',
+      };
+      if (options.providerOverride) requestBody.providerOverride = options.providerOverride;
+      if (options.modelOverride) requestBody.modelOverride = options.modelOverride;
+
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages,
-          uploadedFiles: truncatedFiles,
-          maxSteps: 15,
-          mode: 'organize',
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -304,7 +338,7 @@ export function useAiOrganize() {
           else if (typeof errBody?.error === 'object' && errBody.error?.message) errorMsg = errBody.error.message;
           else if (errBody?.message) errorMsg = errBody.message as string;
         } catch {}
-        throw new Error(errorMsg);
+        throw new Error(describeAskRequestError(res.status, errorMsg));
       }
 
       if (!res.body) throw new Error('No response body');
@@ -340,7 +374,10 @@ export function useAiOrganize() {
       if ((err as Error).name === 'AbortError') {
         setPhase('idle');
       } else {
-        setError((err as Error).message);
+        const message = err instanceof TypeError
+          ? 'Could not reach the AI endpoint. Check network connectivity and provider settings.'
+          : (err as Error).message;
+        setError(message);
         setPhase('error');
       }
     } finally {
