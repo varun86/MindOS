@@ -124,6 +124,29 @@ describe('materializeStandaloneAssets', () => {
     expect(readFileSync(path.join(materializedDependency, 'build', 'index.mjs'), 'utf-8')).toBe('export const Type = {};');
   });
 
+  it('materializes explicit runtime dependency seeds even when Next did not trace them', () => {
+    const appDir = makeTemp('mindos-app-runtime-seeds-');
+    writeStandaloneApp(appDir);
+
+    const tracedDependency = path.join(appDir, '.next', 'standalone', 'node_modules', '@sinclair', 'typebox');
+    rmSync(tracedDependency, { recursive: true, force: true });
+
+    const fallbackDependency = path.join(appDir, 'node_modules', '@sinclair', 'typebox');
+    mkdirSync(path.join(fallbackDependency, 'build'), { recursive: true });
+    writeFileSync(path.join(fallbackDependency, 'package.json'), JSON.stringify({
+      name: '@sinclair/typebox',
+      version: '0.34.41',
+    }));
+    writeFileSync(path.join(fallbackDependency, 'build', 'index.mjs'), 'export const Type = {};');
+
+    materializeStandaloneAssets(appDir, {
+      runtimeDependencySeeds: ['@sinclair/typebox'],
+    });
+
+    expect(existsSync(path.join(tracedDependency, 'package.json'))).toBe(true);
+    expect(readFileSync(path.join(tracedDependency, 'build', 'index.mjs'), 'utf-8')).toBe('export const Type = {};');
+  });
+
   it('materializes transitive dependencies introduced by Next runtime packages', () => {
     const appDir = makeTemp('mindos-app-next-runtime-transitive-deps-');
     writeStandaloneApp(appDir);

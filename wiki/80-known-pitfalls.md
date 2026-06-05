@@ -4040,6 +4040,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/platform-runtime-package-contract.test.ts` 覆盖 `scripts/build-platform-packages.mjs` 不得重新写入平台包 `bin` 字段，并覆盖 release smoke 必须隔离 optional registry 包。
 
+### Desktop/runtime archive 不能只信 Next standalone trace（2026-06-06）
+
+**症状**：`Build Desktop` workflow 在所有平台的 `Verify bundled runtime` 步骤失败，报 `missing runtime file: packages/web/.next/standalone/node_modules/@sinclair/typebox/package.json`。同一版本的 npm 本地 package smoke 能过，因为 npm `_standalone` 路径另有显式 runtime dependency seed。
+
+**根因**：Next standalone trace 不一定会把外部 agent/runtime 包的业务依赖完整追进去。之前只有 `scripts/prepare-standalone.mjs` 会显式补 `@sinclair/typebox` 等 seed；Desktop 的 `prepare-mindos-runtime.mjs` 和 `scripts/build-runtime-archive.sh` 走另一条打包路径，导致 Desktop/runtime-latest 和 npm runtime 闭包漂移。
+
+**修复**：在 `packages/desktop/scripts/prepare-mindos-bundle.mjs` 维护 Desktop/runtime 共用的 `RUNTIME_DEPENDENCY_SEEDS`，`prepare-mindos-runtime.mjs` 和 `build-runtime-archive.sh` 都必须先调用 `materializeStandaloneAssets(..., { runtimeDependencySeeds: RUNTIME_DEPENDENCY_SEEDS })`，再拷贝/发布 runtime。
+
+**防回归**：`packages/desktop/src/prepare-mindos-bundle.test.ts` 覆盖 seed 缺失时要从 app `node_modules` 补进 standalone；`tests/desktop-release-contract.test.ts` 和 `tests/runtime-manifest-contract.test.ts` 覆盖 Desktop 与 runtime archive 发布路径必须接入 seed。
+
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 
 **症状**：GitHub Actions 在发版或构建 Desktop/Mobile 时直接失败，常见报错是 `cd app: No such file or directory`、`cd mcp: No such file or directory`、`cd desktop: No such file or directory`。

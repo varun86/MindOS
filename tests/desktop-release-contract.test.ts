@@ -30,6 +30,7 @@ describe('Desktop release packaging contract', () => {
     expect(updater).toContain("autoUpdater.channel = 'latest-arm64'");
     expect(runtimePrep).toContain('targetNodePlatform');
     expect(runtimePrep).toContain('targetNodeArch');
+    expect(runtimePrep).toContain('RUNTIME_DEPENDENCY_SEEDS');
     expect(runtimePrep).toContain('platform: `${targetNodePlatform}-${targetNodeArch}`');
     expect(runtimePrep).not.toContain("spawnSync('tar', ['xzf', tmpFile");
     expect(runtimePrep).toContain('extractTarGzSafe(tmpFile, nodeDest, 1)');

@@ -72,6 +72,7 @@ describe('runtime artifact manifest contract', () => {
   it('keeps every runtime packaging path on the shared manifest writer', () => {
     expect(read('scripts/build-platform-packages.mjs')).toContain("from './runtime-manifest.mjs'");
     expect(read('scripts/build-runtime-archive.sh')).toContain('node scripts/runtime-manifest.mjs');
+    expect(read('scripts/build-runtime-archive.sh')).toContain('RUNTIME_DEPENDENCY_SEEDS');
     expect(read('packages/desktop/scripts/prepare-mindos-runtime.mjs')).toContain("../../../scripts/runtime-manifest.mjs");
   });
 });

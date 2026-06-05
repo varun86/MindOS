@@ -23,6 +23,9 @@ rm -rf "$WORK"
 echo "📦 Building MindOS runtime v${VERSION}..."
 
 # ── Web server (standalone Next.js) ──
+echo "  Materializing standalone runtime dependencies..."
+node -e "import('./packages/desktop/scripts/prepare-mindos-bundle.mjs').then((m) => m.materializeStandaloneAssets('packages/web', { runtimeDependencySeeds: m.RUNTIME_DEPENDENCY_SEEDS }))"
+
 echo "  Copying standalone..."
 mkdir -p "$WORK/packages/web/.next"
 # Copy the entire standalone tree (server.js + node_modules + .next/server + .next/static + public)

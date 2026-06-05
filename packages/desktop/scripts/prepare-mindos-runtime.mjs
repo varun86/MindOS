@@ -14,7 +14,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, read
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { gunzipSync } from 'zlib';
-import { copyAppForBundledRuntime, materializeStandaloneAssets } from './prepare-mindos-bundle.mjs';
+import { RUNTIME_DEPENDENCY_SEEDS, copyAppForBundledRuntime, materializeStandaloneAssets } from './prepare-mindos-bundle.mjs';
 import { writeRuntimeManifest } from '../../../scripts/runtime-manifest.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +49,7 @@ try {
   materializeStandaloneAssets(appDir, {
     targetPlatform: targetNodePlatform,
     targetArch: targetNodeArch,
+    runtimeDependencySeeds: RUNTIME_DEPENDENCY_SEEDS,
     bundleLocalEmbeddingRuntime: process.env.MINDOS_BUNDLE_LOCAL_EMBEDDING_RUNTIME === '1',
   });
 } catch (e) {

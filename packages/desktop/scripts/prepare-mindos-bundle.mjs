@@ -18,6 +18,10 @@ import path from 'path';
 import { createRequire } from 'module';
 import { assertStandaloneAppFiles } from './runtime-health-contract.mjs';
 
+export const RUNTIME_DEPENDENCY_SEEDS = [
+  '@sinclair/typebox',
+];
+
 export function materializeStandaloneAssets(appDir, options = {}) {
   const standaloneDir = path.join(appDir, '.next', 'standalone');
   const serverJs = path.join(standaloneDir, 'server.js');
@@ -44,6 +48,7 @@ export function materializeStandaloneAssets(appDir, options = {}) {
 
   materializeStandaloneNodeModules(appDir, standaloneDir);
   materializeNextServerLib(appDir, standaloneDir);
+  materializeRuntimeDependencySeeds(appDir, standaloneDir, options.runtimeDependencySeeds ?? []);
   materializeStandalonePackageDependencies(appDir, standaloneDir);
   pruneNextProductionServerPayload(standaloneDir);
   pruneRedundantNestedPackages(standaloneDir);
@@ -59,6 +64,26 @@ export function materializeStandaloneAssets(appDir, options = {}) {
   assertStandalonePackageDependencyClosure(standaloneDir);
   pruneStandaloneBuildJunk(standaloneDir);
   assertStandaloneAppFiles(appDir, 'prepare-mindos-bundle');
+}
+
+function materializeRuntimeDependencySeeds(appDir, standaloneDir, seeds) {
+  const nodeModulesDir = path.join(standaloneDir, 'node_modules');
+  if (!existsSync(nodeModulesDir) || seeds.length === 0) return;
+
+  const missing = [];
+  for (const packageName of seeds) {
+    materializePackage(appDir, standaloneDir, packageName);
+    if (!existsSync(path.join(nodeModulesDir, packageName, 'package.json'))) {
+      missing.push(packageName);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      '[prepare-mindos-bundle] Runtime dependency seed(s) missing from standalone bundle:\n'
+      + missing.map((item) => `  - ${item}`).join('\n')
+    );
+  }
 }
 
 function pruneStandaloneBuildJunk(standaloneDir) {
