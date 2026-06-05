@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CORS_HEADERS,
   createDefaultMindosHttpServices,
@@ -47,6 +47,8 @@ import {
   handleImConfigDelete,
   handleImConfigGet,
   handleImConfigPut,
+  handleImFeishuOAuthCallbackGet,
+  handleImFeishuOAuthGet,
   handleImFeishuLongConnectionDelete,
   handleImFeishuLongConnectionGet,
   handleImFeishuLongConnectionPost,
@@ -855,6 +857,20 @@ describe('MindOS product server contract', () => {
         runtimeRoot: '/runtime',
         homeDir: root,
         readSettings: () => ({ mindRoot: root }),
+        documentExtraction: {
+          extractPdf: async () => ({ text: 'PDF text', pages: 1 }),
+          extractDocx: async () => ({
+            text: 'Word text',
+            markdown: 'Word text',
+            extracted: true,
+            pages: 1,
+            chars: 9,
+            truncated: false,
+            charsTruncated: 0,
+            imageCount: 0,
+            hasCharts: false,
+          }),
+        },
       }),
     });
     await new Promise<void>((resolve) => app.server.listen(0, '127.0.0.1', resolve));
@@ -911,6 +927,20 @@ describe('MindOS product server contract', () => {
       })).json()).toMatchObject({ dirs: ['Inbox', 'Space'] });
       expect(await (await fetch(`${base}/api/file?path=Space/note.md`)).json()).toEqual({ content: 'hello' });
       expect(await (await fetch(`${base}/api/file/raw?path=image.png`)).arrayBuffer()).toHaveProperty('byteLength', 3);
+      expect(await (await fetch(`${base}/api/extract-pdf`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'paper.pdf',
+          dataBase64: Buffer.from('%PDF-1.4').toString('base64'),
+        }),
+      })).json()).toMatchObject({ name: 'paper.pdf', extracted: 'success', text: 'PDF text' });
+      expect(await (await fetch(`${base}/api/extract-docx`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'brief.docx',
+          dataBase64: Buffer.from('docx').toString('base64'),
+        }),
+      })).json()).toMatchObject({ name: 'brief.docx', extracted: true, text: 'Word text' });
       expect((await fetch(`${base}/missing`)).status).toBe(404);
     } finally {
       await new Promise<void>((resolve, reject) => app.server.close((error) => error ? reject(error) : resolve()));
@@ -3135,6 +3165,39 @@ describe('MindOS product server contract', () => {
     });
   });
 
+  it('reports connected Feishu OAuth identity in IM status', async () => {
+    await expect(handleImStatusGet({
+      configPath: join(mkdtempSync(join(tmpdir(), 'mindos-im-status-')), 'im.json'),
+      hasAnyIMConfig: () => true,
+      listConfiguredIM: async () => [
+        { platform: 'feishu', connected: true, botName: 'MindOS', capabilities: ['text'] },
+      ],
+      getPlatformConfig: () => ({
+        app_id: 'cli_app',
+        app_secret: 'secret',
+        oauth: {
+          status: 'connected',
+          expires_at: '2026-06-05T02:00:00.000Z',
+          user: { name: 'MindOS User', open_id: 'ou_123' },
+        },
+      }),
+    })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        platforms: [
+          {
+            platform: 'feishu',
+            oauth: {
+              state: 'connected',
+              expiresAt: '2026-06-05T02:00:00.000Z',
+              user: { name: 'MindOS User', open_id: 'ou_123' },
+            },
+          },
+        ],
+      },
+    });
+  });
+
   it('sends IM test messages with product validation and normalized errors', async () => {
     const calls: any[] = [];
     const services = {
@@ -3226,6 +3289,204 @@ describe('MindOS product server contract', () => {
       status: 422,
       body: { ok: false, error: 'Feishu is not configured. Save App ID and App Secret first.' },
     });
+  });
+
+  it('creates a Feishu OAuth authorization URL only after app credentials are saved', () => {
+    let config: any = { providers: {} };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: any) => { config = next; },
+      createState: () => 'state_123',
+      now: () => new Date('2026-06-05T00:00:00.000Z'),
+    };
+
+    expect(handleImFeishuOAuthGet(new URLSearchParams(''), services)).toMatchObject({
+      status: 422,
+      body: {
+        ok: false,
+        mode: 'setup_required',
+        error: 'Save Feishu App ID and App Secret before OAuth authorization.',
+      },
+    });
+
+    config = { providers: { feishu: { app_id: 'cli_app_123', app_secret: 'secret' } } };
+    expect(handleImFeishuOAuthGet(new URLSearchParams('redirect_uri=https://mindos.example/api/im/feishu/oauth/callback&scope=contact:contact'), services)).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        mode: 'oauth',
+        state: 'state_123',
+        redirectUri: 'https://mindos.example/api/im/feishu/oauth/callback',
+        scopes: ['contact:contact'],
+      },
+    });
+    expect((config.providers.feishu.oauth.pending.expires_at as string)).toBe('2026-06-05T00:10:00.000Z');
+    expect(config.providers.feishu.oauth.pending.state).toBe('state_123');
+    expect(config.providers.feishu.oauth.pending.redirect_uri).toBe('https://mindos.example/api/im/feishu/oauth/callback');
+  });
+
+  it('rejects Feishu OAuth callbacks with invalid state', async () => {
+    const config: any = {
+      providers: {
+        feishu: {
+          app_id: 'cli_app',
+          app_secret: 'secret',
+          oauth: {
+            pending: {
+              state: 'expected',
+              redirect_uri: 'https://mindos.example/api/im/feishu/oauth/callback',
+              expires_at: '2026-06-05T00:10:00.000Z',
+            },
+          },
+        },
+      },
+    };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: any) => { Object.assign(config, next); },
+      now: () => new Date('2026-06-05T00:00:00.000Z'),
+      exchangeCode: async () => ({ access_token: 'should_not_be_used' }),
+    };
+
+    await expect(handleImFeishuOAuthCallbackGet(new URLSearchParams('code=abc&state=wrong'), services)).resolves.toMatchObject({
+      status: 400,
+      body: { ok: false, error: 'Invalid Feishu OAuth state. Start authorization again from MindOS.' },
+    });
+    expect(config.providers.feishu.oauth.status).toBeUndefined();
+  });
+
+  it('stores Feishu OAuth user identity and token metadata after a valid callback', async () => {
+    let config: any = {
+      providers: {
+        feishu: {
+          app_id: 'cli_app',
+          app_secret: 'secret',
+          oauth: {
+            pending: {
+              state: 'expected',
+              redirect_uri: 'https://mindos.example/api/im/feishu/oauth/callback',
+              expires_at: '2026-06-05T00:10:00.000Z',
+            },
+          },
+        },
+      },
+    };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: any) => { config = next; },
+      now: () => new Date('2026-06-05T00:00:00.000Z'),
+      exchangeCode: async (input: any) => {
+        expect(input).toMatchObject({
+          appId: 'cli_app',
+          appSecret: 'secret',
+          code: 'auth_code',
+        });
+        return {
+          access_token: 'u-token',
+          refresh_token: 'r-token',
+          expires_in: 7200,
+          name: 'MindOS User',
+          open_id: 'ou_123',
+          union_id: 'on_123',
+        };
+      },
+    };
+
+    await expect(handleImFeishuOAuthCallbackGet(new URLSearchParams('code=auth_code&state=expected'), services)).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        platform: 'feishu',
+        user: { name: 'MindOS User', open_id: 'ou_123', union_id: 'on_123' },
+      },
+    });
+    expect(config.providers.feishu.oauth).toMatchObject({
+      status: 'connected',
+      user_access_token: 'u-token',
+      refresh_token: 'r-token',
+      expires_at: '2026-06-05T02:00:00.000Z',
+      user: { name: 'MindOS User', open_id: 'ou_123', union_id: 'on_123' },
+    });
+    expect(config.providers.feishu.oauth.pending).toBeUndefined();
+  });
+
+  it('exchanges Feishu OAuth callbacks with the current token API and user info API', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === 'https://open.feishu.cn/open-apis/authen/v2/oauth/token') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          grant_type: 'authorization_code',
+          client_id: 'cli_app',
+          client_secret: 'secret',
+          code: 'auth_code',
+        });
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            access_token: 'u-token',
+            refresh_token: 'r-token',
+            expires_in: 7200,
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url === 'https://open.feishu.cn/open-apis/authen/v1/user_info') {
+        expect(init?.method).toBe('GET');
+        expect(init?.headers).toMatchObject({
+          Authorization: 'Bearer u-token',
+        });
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            name: 'MindOS User',
+            open_id: 'ou_123',
+            union_id: 'on_123',
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`Unexpected Feishu URL: ${url}`);
+    }) as unknown as typeof fetch;
+    globalThis.fetch = fetchMock;
+
+    let config: any = {
+      providers: {
+        feishu: {
+          app_id: 'cli_app',
+          app_secret: 'secret',
+          oauth: {
+            pending: {
+              state: 'expected',
+              redirect_uri: 'https://mindos.example/api/im/feishu/oauth/callback',
+              expires_at: '2026-06-05T00:10:00.000Z',
+            },
+          },
+        },
+      },
+    };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: any) => { config = next; },
+      now: () => new Date('2026-06-05T00:00:00.000Z'),
+    };
+
+    try {
+      await expect(handleImFeishuOAuthCallbackGet(new URLSearchParams('code=auth_code&state=expected'), services)).resolves.toMatchObject({
+        status: 200,
+        body: {
+          ok: true,
+          platform: 'feishu',
+          user: { name: 'MindOS User', open_id: 'ou_123', union_id: 'on_123' },
+        },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(config.providers.feishu.oauth).toMatchObject({
+        user_access_token: 'u-token',
+        refresh_token: 'r-token',
+        user: { name: 'MindOS User', open_id: 'ou_123', union_id: 'on_123' },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('handles monitoring snapshots without Web dependencies', () => {

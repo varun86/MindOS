@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // Mock pi-ai complete
-vi.mock('@mariozechner/pi-ai', () => ({
+vi.mock('@earendil-works/pi-ai', () => ({
   complete: vi.fn(),
   getModel: vi.fn(),
 }));
@@ -18,7 +18,7 @@ vi.mock('@/lib/agent/model', () => ({
 }));
 
 import { POST } from '../../app/api/settings/test-key/route';
-import { complete } from '@mariozechner/pi-ai';
+import { complete } from '@earendil-works/pi-ai';
 import { getModelConfig } from '@/lib/agent/model';
 
 function makeReq(body: Record<string, unknown>) {

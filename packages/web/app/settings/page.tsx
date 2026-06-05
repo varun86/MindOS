@@ -1,4 +1,4 @@
-import { readSettings } from '@/lib/settings';
+import { readSetupPending } from '@/lib/setup-state';
 import SettingsContent from '@/components/settings/SettingsContent';
 import ClientRedirect from '@/components/ClientRedirect';
 import type { Tab } from '@/components/settings/types';
@@ -25,8 +25,7 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const settings = readSettings();
-  if (settings.setupPending) return <ClientRedirect href="/setup" label="Opening setup..." />;
+  if (readSetupPending()) return <ClientRedirect href="/setup" label="Opening setup..." />;
 
   const params = await searchParams;
   const initialTab = parseSettingsTab(params.tab);

@@ -228,7 +228,7 @@ export default function Panel({
                     setNewPopover(v => !v);
                   });
                 }}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
                 aria-label={t.sidebar.new}
                 title={t.sidebar.new}
               >
@@ -265,7 +265,7 @@ export default function Panel({
             <button
               type="button"
               onClick={() => onImport?.()}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
               aria-label={t.sidebar.importFile}
               title={t.sidebar.importFile}
             >
@@ -275,7 +275,7 @@ export default function Panel({
             <button
               type="button"
               onClick={handleRefreshFiles}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
               aria-label={t.sidebar.refreshFiles}
               aria-busy={refreshingTree}
               title={t.sidebar.refreshFiles}
@@ -291,7 +291,7 @@ export default function Panel({
                 return Math.max(-1, current - 1);
               })}
               onDoubleClick={() => { setMaxOpenDepth(-1); markDblHintSeen(); }}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
               aria-label={t.sidebar.collapseLevel}
               title={dblHintSeen ? t.sidebar.collapseLevel : (t.sidebar.collapseLevelHint ?? t.sidebar.collapseLevel)}
             >
@@ -306,7 +306,7 @@ export default function Panel({
                 return next;
               })}
               onDoubleClick={() => { setMaxOpenDepth(null); markDblHintSeen(); }}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
               aria-label={t.sidebar.expandLevel}
               title={dblHintSeen ? t.sidebar.expandLevel : (t.sidebar.expandLevelHint ?? t.sidebar.expandLevel)}
             >
@@ -325,7 +325,7 @@ export default function Panel({
                     setMorePopover(v => !v);
                   });
                 }}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
                 aria-label={t.sidebar.more}
                 title={t.sidebar.more}
               >

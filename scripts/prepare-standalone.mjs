@@ -21,7 +21,10 @@ const standaloneServerJs = resolve(standaloneAppDir, 'server.js');
 const productRoot = resolve(root, 'packages', 'mindos');
 const destDir = resolve(productRoot, '_standalone');
 const runtimeDependencySeeds = [
-  '@mariozechner/pi-coding-agent',
+  'pdfjs-dist',
+  'mammoth',
+  'word-extractor',
+  '@earendil-works/pi-coding-agent',
   '@sinclair/typebox',
   'partial-json',
   'ajv',
@@ -64,6 +67,8 @@ const removedRuntimeEntries = pruneRuntimeNodeModules(publishableNodeModules);
 if (removedRuntimeEntries > 0) {
   console.log(`[prepare-standalone] Pruned ${removedRuntimeEntries} dev-only runtime dependency file(s)/dir(s)`);
 }
+
+verifyDocumentExtractionRuntime(destDir, publishableNodeModules);
 
 const removedPackageLocks = prunePackageLocks(destDir);
 if (removedPackageLocks > 0) {
@@ -139,7 +144,6 @@ function pruneStandalonePayload(dir) {
     'components',
     'hooks',
     'lib',
-    'scripts',
     'styles',
     'types',
     'eslint.config.mjs',
@@ -331,4 +335,23 @@ function findPackageRoot(startPath, packageName) {
 function shouldCopyRuntimePackageEntry(src) {
   const name = src.split('/').pop();
   return name !== 'node_modules' && name !== '.cache' && name !== '.turbo';
+}
+
+function verifyDocumentExtractionRuntime(standaloneDir, standaloneNodeModules) {
+  const required = [
+    resolve(standaloneDir, 'scripts', 'extract-pdf.cjs'),
+    resolve(standaloneNodeModules, 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'),
+    resolve(standaloneNodeModules, 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+    resolve(standaloneDir, 'scripts', 'extract-docx.cjs'),
+    resolve(standaloneNodeModules, 'mammoth', 'package.json'),
+    resolve(standaloneNodeModules, 'word-extractor', 'package.json'),
+  ];
+  const missing = required.filter((file) => !existsSync(file));
+  if (missing.length > 0) {
+    console.error(
+      '[prepare-standalone] FAILED: document extraction runtime is incomplete:\n'
+      + missing.map((file) => `  missing ${file}`).join('\n')
+    );
+    process.exit(1);
+  }
 }

@@ -17,6 +17,7 @@ export default function RecentActivityFeed() {
   const [ops, setOps] = useState<AgentOp[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const copy = t.agentsContent?.overview;
 
   useEffect(() => {
     let cancelled = false;
@@ -46,18 +47,25 @@ export default function RecentActivityFeed() {
   const hiddenCount = meaningful.length - VISIBLE_OPS;
 
   if (loading) return (
-    <section className="animate-pulse" aria-label="Recent Activity">
-      <div className="h-4 w-36 bg-muted rounded mb-3" />
-      <div className="space-y-2">
-        <div className="h-10 bg-muted/50 rounded-lg" />
-        <div className="h-10 bg-muted/50 rounded-lg" />
+    <section aria-label="Recent Activity" aria-busy="true">
+      <div className="mb-3 flex items-center gap-2.5">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
+          <Activity size={13} />
+        </div>
+        <h2 className="text-[13px] font-semibold tracking-wide text-foreground">
+          {copy?.recentActivity ?? 'Recent Activity'}
+        </h2>
+      </div>
+      <div className="rounded-xl border border-border bg-card p-3">
+        <div className="space-y-2 animate-pulse">
+          <div className="h-8 rounded-lg bg-muted/45" />
+          <div className="h-8 rounded-lg bg-muted/35" />
+        </div>
       </div>
     </section>
   );
 
   if (ops.length === 0) return null;
-
-  const copy = t.agentsContent?.overview;
 
   return (
     <section aria-label="Recent Activity">

@@ -102,7 +102,7 @@ describe('mindos update root resolution', () => {
     fs.rmSync(path.join(fakeInstallRoot, 'packages'), { recursive: true, force: true });
     fs.rmSync(path.join(fakeInstallRoot, '_standalone'), { recursive: true, force: true });
     fs.writeFileSync(path.join(fakeInstallRoot, 'bin', 'mindos-shim.cjs'), '#!/usr/bin/env node\nprocess.exit(0)\n', { mode: 0o755 });
-    fs.rmSync(path.join(fakeBinDir, 'mindos'), { force: true });
+    try { fs.unlinkSync(path.join(fakeBinDir, 'mindos')); } catch {}
     fs.symlinkSync(path.join(fakeInstallRoot, 'bin', 'mindos-shim.cjs'), path.join(fakeBinDir, 'mindos'));
 
     const stdout = execFileSync(process.execPath, [CLI, 'update'], {

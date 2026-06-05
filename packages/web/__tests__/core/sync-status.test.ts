@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { timeAgo } from '@/components/settings/SyncTab';
-import { getStatusLevel } from '@/components/SyncStatusBar';
+import { getStatusLevel, getSyncLabel } from '@/components/SyncStatusBar';
 import type { SyncStatus } from '@/components/settings/types';
 
 /* ------------------------------------------------------------------ */
@@ -117,5 +117,27 @@ describe('getStatusLevel', () => {
 
   it('returns "synced" when conflicts is empty array', () => {
     expect(getStatusLevel({ ...base, conflicts: [] }, false)).toBe('synced');
+  });
+});
+
+describe('getSyncLabel', () => {
+  it('uses user-facing language for pending local changes', () => {
+    const label = getSyncLabel('unpushed', { ...base, unpushed: '3' });
+
+    expect(label.label).toBe('3 changes to upload');
+    expect(label.tooltip).toContain('Run Sync now');
+  });
+
+  it('uses recovery language for conflicts', () => {
+    const label = getSyncLabel('conflicts', {
+      ...base,
+      conflicts: [
+        { file: 'a.md', time: '2026-01-01T00:00:00Z' },
+        { file: 'b.md', time: '2026-01-01T00:00:00Z' },
+      ],
+    });
+
+    expect(label.label).toBe('Resolve 2 conflicts');
+    expect(label.tooltip).toContain('Open Settings > Sync');
   });
 });

@@ -1,11 +1,4 @@
-import {
-  getModel as piGetModel,
-  getModels as piGetModels,
-  getEnvApiKey as piGetEnvApiKey,
-  type Model,
-  type KnownProvider,
-} from '@mariozechner/pi-ai';
-import { buildMindosCompatEndpointCandidates } from '@geminilight/mindos/session';
+type KnownProvider = string;
 
 /**
  * MindOS-supported provider IDs.
@@ -323,6 +316,41 @@ const EXTRA_ENV_KEYS: Partial<Record<ProviderId, string>> = {
   deepseek: 'DEEPSEEK_API_KEY',
 };
 
+const DEFAULT_API_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
+  anthropic: 'anthropic-messages',
+  openai: 'openai-completions',
+  google: 'gemini',
+  groq: 'openai-completions',
+  xai: 'openai-completions',
+  openrouter: 'openai-completions',
+  mistral: 'openai-completions',
+  deepseek: 'openai-completions',
+  zai: 'openai-completions',
+  'zai-cn': 'openai-completions',
+  'kimi-coding': 'anthropic-messages',
+  cerebras: 'openai-completions',
+  minimax: 'anthropic-messages',
+  'minimax-cn': 'anthropic-messages',
+  huggingface: 'openai-completions',
+  ollama: 'openai-completions',
+  'lm-studio': 'openai-completions',
+  vllm: 'openai-completions',
+};
+
+type PiAiRuntime = {
+  getModels?: (provider: KnownProvider) => Array<{ baseUrl?: string; api?: string }>;
+  getEnvApiKey?: (provider: KnownProvider) => string | undefined;
+};
+
+function loadPiAiRuntime(): PiAiRuntime | null {
+  try {
+    const requireFn = (0, eval)('require') as NodeRequire;
+    return requireFn('@earendil-works/pi-ai') as PiAiRuntime;
+  } catch {
+    return null;
+  }
+}
+
 export function getApiKeyEnvVar(id: ProviderId): string | undefined {
   if (EXTRA_ENV_KEYS[id]) return EXTRA_ENV_KEYS[id];
   return piEnvVarName(toPiProvider(id));
@@ -331,7 +359,7 @@ export function getApiKeyEnvVar(id: ProviderId): string | undefined {
 /** Read the actual API key from env for a provider */
 export function getApiKeyFromEnv(id: ProviderId): string | undefined {
   if (id === 'deepseek') return process.env.DEEPSEEK_API_KEY;
-  return piGetEnvApiKey(toPiProvider(id) as KnownProvider);
+  return loadPiAiRuntime()?.getEnvApiKey?.(toPiProvider(id) as KnownProvider);
 }
 
 /**
@@ -342,8 +370,8 @@ export function getDefaultBaseUrl(id: ProviderId): string {
   const preset = PROVIDER_PRESETS[id];
   if (preset.fixedBaseUrl) return preset.fixedBaseUrl;
   try {
-    const models = piGetModels(toPiProvider(id) as any);
-    return models[0]?.baseUrl ?? '';
+    const models = loadPiAiRuntime()?.getModels?.(toPiProvider(id) as KnownProvider);
+    return models?.[0]?.baseUrl ?? '';
   } catch {
     return '';
   }
@@ -355,16 +383,16 @@ export function getDefaultBaseUrl(id: ProviderId): string {
  */
 export function getDefaultApi(id: ProviderId): string {
   try {
-    const models = piGetModels(toPiProvider(id) as any);
-    return models[0]?.api ?? 'openai-completions';
+    const models = loadPiAiRuntime()?.getModels?.(toPiProvider(id) as KnownProvider);
+    return models?.[0]?.api ?? DEFAULT_API_BY_PROVIDER[id] ?? 'openai-completions';
   } catch {
-    return 'openai-completions';
+    return DEFAULT_API_BY_PROVIDER[id] ?? 'openai-completions';
   }
 }
 
 /** Return the effective API type used by a provider (openai-completions, anthropic-messages, etc.). */
 export function getProviderApiType(id: ProviderId): string {
-  return getDefaultApi(id);
+  return DEFAULT_API_BY_PROVIDER[id] ?? getDefaultApi(id);
 }
 
 /**
@@ -382,7 +410,22 @@ export function getProviderApiType(id: ProviderId): string {
  * a conservative fallback.
  */
 export function buildCompatEndpointCandidates(baseUrl: string, path: string, apiType: string): string[] {
-  return buildMindosCompatEndpointCandidates(baseUrl, path, apiType);
+  const base = baseUrl.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const hasVersionPrefix = /\/v\d+(?:$|\/)/.test(base);
+  const candidates = new Set<string>();
+
+  candidates.add(`${base}${cleanPath}`);
+
+  if (!hasVersionPrefix && (
+    apiType === 'openai-completions'
+    || apiType === 'openai-responses'
+    || apiType === 'anthropic-messages'
+  )) {
+    candidates.add(`${base}/v1${cleanPath}`);
+  }
+
+  return Array.from(candidates);
 }
 
 // ---------------------------------------------------------------------------

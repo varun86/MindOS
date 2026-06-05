@@ -63,6 +63,24 @@
         }
       ]
     },
+    "docx-runtime": {
+      "description": "Word document extraction entrypoint and parser runtime",
+      "required": true,
+      "files": [
+        {
+          "path": "packages/web/.next/standalone/scripts/extract-docx.cjs",
+          "type": "file"
+        },
+        {
+          "path": "packages/web/.next/standalone/node_modules/mammoth/package.json",
+          "type": "file"
+        },
+        {
+          "path": "packages/web/.next/standalone/node_modules/word-extractor/package.json",
+          "type": "file"
+        }
+      ]
+    },
     "mcp-dist": {
       "description": "Built MCP bundle for packaged and archived runtimes",
       "required": true,
@@ -112,7 +130,8 @@
     "standaloneAppRequiredFeatures": [
       "web-standalone",
       "critical-routes",
-      "pdf-runtime"
+      "pdf-runtime",
+      "docx-runtime"
     ],
     "bundledRuntimeRequiredFiles": [
       {
@@ -124,6 +143,7 @@
       "web-standalone",
       "critical-routes",
       "pdf-runtime",
+      "docx-runtime",
       "mcp-dist",
       "cli-runtime"
     ],
@@ -137,6 +157,7 @@
       "web-standalone",
       "critical-routes",
       "pdf-runtime",
+      "docx-runtime",
       "mcp-dist",
       "cli-runtime",
       "skills-data"

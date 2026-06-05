@@ -6,7 +6,7 @@
 // Loaded BEFORE pi-web-access so this tool takes priority. pi-web-access's
 // fetch_content, code_search, get_search_content remain unaffected.
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from '@sinclair/typebox';
 import { webSearch, formatSearchResults } from './web-search';
 import { readSettings } from '../settings';
@@ -30,7 +30,7 @@ export default function webSearchExtension(pi: ExtensionAPI) {
         description: 'Number of results to return (default: 5)' 
       })),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId: string, params: unknown) {
       const { query, numResults } = params as { query: string; numResults?: number };
       if (!query.trim()) {
         return { content: [{ type: 'text' as const, text: 'Error: query cannot be empty.' }], details: undefined };

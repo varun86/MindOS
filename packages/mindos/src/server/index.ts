@@ -93,6 +93,22 @@ export {
 } from './handlers/files.js';
 
 export {
+  EXTRACT_PDF_MAX_BODY_BYTES,
+  handleExtractPdfPost,
+  type ExtractPdfPayload,
+  type ExtractPdfResult,
+  type ExtractPdfServices,
+} from './handlers/extract-pdf.js';
+
+export {
+  EXTRACT_DOCX_MAX_BODY_BYTES,
+  handleExtractDocxPost,
+  type ExtractDocxPayload,
+  type ExtractDocxResult,
+  type ExtractDocxServices,
+} from './handlers/extract-docx.js';
+
+export {
   INBOX_DIR,
   archiveFromInbox,
   ensureInboxSpace,
@@ -203,6 +219,15 @@ export {
   type FeishuLongConnectionStatus,
   type ImFeishuLongConnectionServices,
 } from './handlers/im-feishu-long-connection.js';
+
+export {
+  handleImFeishuOAuthCallbackGet,
+  handleImFeishuOAuthGet,
+  type FeishuOAuthExchangeInput,
+  type FeishuOAuthExchangeResult,
+  type FeishuOAuthUser,
+  type ImFeishuOAuthServices,
+} from './handlers/im-feishu-oauth.js';
 
 export {
   handleImStatusGet,

@@ -66,10 +66,34 @@ export interface FeishuConversationConfig {
   allow_group_mentions?: boolean;
 }
 
+export interface FeishuOAuthConfig {
+  status?: 'connected';
+  connected_at?: string;
+  user_access_token?: string;
+  refresh_token?: string;
+  expires_at?: string;
+  pending?: {
+    state: string;
+    redirect_uri: string;
+    scopes?: string[];
+    expires_at: string;
+  };
+  user?: {
+    name?: string;
+    en_name?: string;
+    avatar_url?: string;
+    open_id?: string;
+    union_id?: string;
+    user_id?: string;
+    email?: string;
+  };
+}
+
 export interface FeishuConfig {
   app_id: string;
   app_secret: string;
   conversation?: FeishuConversationConfig;
+  oauth?: FeishuOAuthConfig;
 }
 
 export interface DiscordConfig {
@@ -263,4 +287,3 @@ export interface FeishuWebhookDispatchResult {
   status: number;
   body: Record<string, unknown>;
 }
-

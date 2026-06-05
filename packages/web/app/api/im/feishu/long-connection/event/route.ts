@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { handleFeishuMessageReceiveEvent } from '@/lib/im/webhook/feishu';
+import { handleFeishuMessageReceiveEvent } from '@/lib/im/webhook/feishu-event';
 import type { FeishuSdkMessageEvent } from '@/lib/im/types';
 
 export async function POST(req: NextRequest) {

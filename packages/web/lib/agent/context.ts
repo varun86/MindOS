@@ -4,9 +4,9 @@
  * All operations are request-scoped (no persistence to frontend session).
  * Uses pi-ai types (AgentMessage from pi-agent-core, complete from pi-ai).
  */
-import { complete, type Model } from '@mariozechner/pi-ai';
-import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import type { ToolResultMessage, AssistantMessage, UserMessage } from '@mariozechner/pi-ai';
+import { complete, type Model } from '@earendil-works/pi-ai';
+import type { AgentMessage } from '@earendil-works/pi-agent-core';
+import type { ToolResultMessage, AssistantMessage, UserMessage } from '@earendil-works/pi-ai';
 import { countCjkChars } from '@/lib/core/cjk';
 
 const DEV = process.env.NODE_ENV === 'development';

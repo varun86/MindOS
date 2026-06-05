@@ -3,6 +3,10 @@ import path from 'path';
 import Fuse, { FuseResultMatch } from 'fuse.js';
 import { MindOSError, ErrorCodes } from '@/lib/errors';
 import {
+  resolveExistingSafe,
+  resolveSafe,
+} from './core/security';
+import {
   readFile as coreReadFile,
   writeFile as coreWriteFile,
   createFile as coreCreateFile,
@@ -12,36 +16,44 @@ import {
   renameFile as coreRenameFile,
   renameSpaceDirectory as coreRenameSpaceDirectory,
   moveFile as coreMoveFile,
+} from './core/fs-ops';
+import {
   readLines as coreReadLines,
   insertLines as coreInsertLines,
   updateLines as coreUpdateLines,
   appendToFile as coreAppendToFile,
   insertAfterHeading as coreInsertAfterHeading,
   updateSection as coreUpdateSection,
+} from './core/lines';
+import {
   appendCsvRow as coreAppendCsvRow,
+} from './core/csv';
+import {
   findBacklinks as coreFindBacklinks,
+} from './core/backlinks';
+import {
   isGitRepo as coreIsGitRepo,
   gitLog as coreGitLog,
   gitShowFile as coreGitShowFile,
-  invalidateSearchIndex,
-  updateSearchIndexFile,
-  addSearchIndexFile,
-  removeSearchIndexFile,
+} from './core/git';
+import {
   LinkIndex,
+} from './core/link-index';
+import {
   summarizeTopLevelSpaces,
+} from './core/list-spaces';
+import {
   appendContentChange as coreAppendContentChange,
   listContentChanges as coreListContentChanges,
   markContentChangesSeen as coreMarkContentChangesSeen,
   getContentChangeSummary as coreGetContentChangeSummary,
-  resolveExistingSafe,
-  resolveSafe,
-} from './core';
-import type { MindSpaceSummary } from './core';
-import type { ContentChangeEvent, ContentChangeInput, ContentChangeSummary } from './core';
+} from './core/content-changes';
+import type { MindSpaceSummary } from './core/list-spaces';
+import type { ContentChangeEvent, ContentChangeInput, ContentChangeSummary } from './core/content-changes';
 import { FileNode, SpacePreview } from './core/types';
 import { SearchMatch } from './types';
 import type { SearchPrewarmResponse } from './types';
-import { effectiveSopRoot } from './settings';
+import { effectiveMindRoot } from './mind-root';
 import { extractPdfText } from './core/pdf-text';
 import { telemetry } from './telemetry';
 
@@ -49,7 +61,7 @@ import { telemetry } from './telemetry';
 
 /** Resolved MIND_ROOT — respects settings file override, then env var, then default */
 export function getMindRoot(): string {
-  return effectiveSopRoot();
+  return effectiveMindRoot();
 }
 
 const IGNORED_DIRS = new Set(['.git', 'node_modules', 'app', '.next', '.DS_Store', '.media', 'mcp']);
@@ -66,6 +78,7 @@ const SYSTEM_FILES = new Set(['INSTRUCTION.md', 'README.md', 'CONFIG.json', 'CHA
 interface FileTreeCache {
   tree: FileNode[];
   allFiles: string[];
+  fileSignature: string;
   timestamp: number;
 }
 
@@ -73,6 +86,27 @@ let _cache: FileTreeCache | null = null;
 const CACHE_TTL_MS = 30_000; // 30 seconds (file watcher still invalidates immediately on changes)
 
 let _treeVersion = 0;
+
+function invalidateSearchIndexLazy(): void {
+  // Intentionally no-op here. `fs.ts` is imported by app/layout for the file
+  // tree; pulling core/search from this boundary also pulls embedding/provider
+  // code into ordinary page renders. The app-level Fuse index is invalidated
+  // via `_searchIndex = null`; core search rebuilds from source when used.
+}
+
+function updateSearchIndexFileLazy(mindRoot: string, filePath: string): void {
+  void mindRoot;
+  void filePath;
+}
+
+function addSearchIndexFileLazy(mindRoot: string, filePath: string): void {
+  void mindRoot;
+  void filePath;
+}
+
+function removeSearchIndexFileLazy(filePath: string): void {
+  void filePath;
+}
 
 function buildCache(root: string): FileTreeCache {
   const stop = telemetry.startTimer('tree.cache.build');
@@ -89,14 +123,32 @@ function buildCache(root: string): FileTreeCache {
     }
   }
   collect(tree);
+  const fileSignature = buildFileSignature(root, allFiles);
   stop({ fileCount: allFiles.length, directoryCount });
-  return { tree, allFiles, timestamp: Date.now() };
+  return { tree, allFiles, fileSignature, timestamp: Date.now() };
 }
 
-function sameFileList(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every(p => set.has(p));
+function buildFileSignature(root: string, allFiles: string[]): string {
+  return allFiles.map((filePath) => {
+    try {
+      const stat = fs.statSync(path.join(root, filePath));
+      return JSON.stringify([filePath, stat.size, stat.mtimeMs]);
+    } catch {
+      return JSON.stringify([filePath, 'missing']);
+    }
+  }).join('\n');
+}
+
+function refreshExpiredCache(): FileTreeCache {
+  const next = buildCache(getMindRoot());
+  if (_cache && _cache.fileSignature !== next.fileSignature) {
+    _treeVersion++;
+    _searchIndex = null;
+    invalidateSearchIndexLazy();
+    _linkIndex.invalidate();
+  }
+  _cache = next;
+  return _cache;
 }
 
 /** Monotonically increasing counter — bumped on every file mutation so the
@@ -106,14 +158,9 @@ export function getTreeVersion(): number {
     // Cache was invalidated (by watcher or explicit invalidateCache) — rebuild.
     // _treeVersion was already bumped by the invalidator, no need to bump again.
     _cache = buildCache(getMindRoot());
-    _searchIndex = null;
   } else if (!isCacheValid()) {
-    // Cache expired by TTL — rebuild and check if files actually changed
-    const next = buildCache(getMindRoot());
-    const changed = !sameFileList(_cache.allFiles, next.allFiles);
-    _cache = next;
-    _searchIndex = null;
-    if (changed) _treeVersion++;
+    // Cache expired by TTL — rebuild and check if files actually changed.
+    refreshExpiredCache();
   }
   return _treeVersion;
 }
@@ -139,7 +186,7 @@ export function invalidateCache(): void {
   _cache = null;
   _searchIndex = null;
   _treeVersion++;
-  invalidateSearchIndex();
+  invalidateSearchIndexLazy();
   _linkIndex.invalidate();
 }
 
@@ -152,7 +199,7 @@ function invalidateCacheForFile(filePath: string): void {
   _cache = null;
   _searchIndex = null;
   _treeVersion++;
-  updateSearchIndexFile(getMindRoot(), filePath);
+  updateSearchIndexFileLazy(getMindRoot(), filePath);
   if (_linkIndex.isBuilt()) _linkIndex.updateFile(getMindRoot(), filePath);
 }
 
@@ -164,7 +211,7 @@ function invalidateCacheForNewFile(filePath: string): void {
   _cache = null;
   _searchIndex = null;
   _treeVersion++;
-  addSearchIndexFile(getMindRoot(), filePath);
+  addSearchIndexFileLazy(getMindRoot(), filePath);
   if (_linkIndex.isBuilt()) _linkIndex.updateFile(getMindRoot(), filePath);
 }
 
@@ -176,14 +223,17 @@ function invalidateCacheForDeletedFile(filePath: string): void {
   _cache = null;
   _searchIndex = null;
   _treeVersion++;
-  removeSearchIndexFile(filePath);
+  removeSearchIndexFileLazy(filePath);
   if (_linkIndex.isBuilt()) _linkIndex.removeFile(filePath);
 }
 
 function ensureCache(): FileTreeCache {
   if (isCacheValid()) return _cache!;
-  const root = getMindRoot();
-  _cache = buildCache(root);
+  if (_cache) {
+    refreshExpiredCache();
+  } else {
+    _cache = buildCache(getMindRoot());
+  }
   // Lazily start the file watcher on first cache build
   if (!_watcher) startFileWatcher();
   return _cache;
@@ -216,7 +266,10 @@ export function startFileWatcher(): void {
       if (_watchDebounce) clearTimeout(_watchDebounce);
       _watchDebounce = setTimeout(() => {
         _cache = null; // Invalidate tree cache — next read will rebuild
+        _searchIndex = null;
         _treeVersion++; // Bump version so polling clients detect the change
+        invalidateSearchIndexLazy();
+        _linkIndex.invalidate();
         _watchDebounce = null;
       }, 500);
     });
@@ -240,18 +293,24 @@ export function stopFileWatcher(): void {
 
 const SPACE_PREVIEW_MAX_LINES = 3;
 
-function extractBodyLines(filePath: string, maxLines: number): string[] {
+function readPreviewSource(filePath: string): string | null {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const bodyLines: string[] = [];
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      bodyLines.push(trimmed);
-      if (bodyLines.length >= maxLines) break;
-    }
-    return bodyLines;
-  } catch { return []; }
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function extractBodyLines(content: string | null, maxLines: number): string[] {
+  if (content === null) return [];
+  const bodyLines: string[] = [];
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    bodyLines.push(trimmed);
+    if (bodyLines.length >= maxLines) break;
+  }
+  return bodyLines;
 }
 
 const TEMPLATE_MARKERS = [
@@ -261,30 +320,29 @@ const TEMPLATE_MARKERS = [
   '(Add usage guidelines for this space.)',
 ];
 
-function isTemplateContent(filePath: string): boolean {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return TEMPLATE_MARKERS.some(m => content.includes(m));
-  } catch { return false; }
+function isTemplateContent(content: string | null): boolean {
+  if (content === null) return false;
+  return TEMPLATE_MARKERS.some(m => content.includes(m));
 }
 
 function buildSpacePreview(dirAbsPath: string) {
   const instructionPath = path.join(dirAbsPath, 'INSTRUCTION.md');
   const readmePath = path.join(dirAbsPath, 'README.md');
-  const readmeTemplate = isTemplateContent(readmePath);
+  const instructionContent = readPreviewSource(instructionPath);
+  const readmeContent = readPreviewSource(readmePath);
+  const readmeTemplate = isTemplateContent(readmeContent);
 
   // Parse lastCompiled from README footer comment
   let lastCompiled: string | undefined;
-  try {
-    const readmeContent = fs.readFileSync(readmePath, 'utf-8');
+  if (readmeContent) {
     const match = readmeContent.match(/<!-- mindos:compiled (\S+) files:\d+ -->/);
     if (match) lastCompiled = match[1];
-  } catch { /* no README */ }
+  }
 
   return {
-    instructionLines: extractBodyLines(instructionPath, SPACE_PREVIEW_MAX_LINES),
-    readmeLines: extractBodyLines(readmePath, SPACE_PREVIEW_MAX_LINES),
-    isTemplate: isTemplateContent(instructionPath) && readmeTemplate,
+    instructionLines: extractBodyLines(instructionContent, SPACE_PREVIEW_MAX_LINES),
+    readmeLines: extractBodyLines(readmeContent, SPACE_PREVIEW_MAX_LINES),
+    isTemplate: isTemplateContent(instructionContent) && readmeTemplate,
     readmeIsTemplate: readmeTemplate,
     lastCompiled,
   };
@@ -673,6 +731,7 @@ interface SearchIndex {
   fuse: InstanceType<typeof Fuse<SearchDocument>>;
   documents: SearchDocument[];
   timestamp: number;
+  treeVersion: number;
 }
 
 interface SearchDocument {
@@ -683,10 +742,18 @@ interface SearchDocument {
 
 let _searchIndex: SearchIndex | null = null;
 
+function getValidSearchIndex(): SearchIndex | null {
+  ensureCache();
+  return _searchIndex !== null && _searchIndex.treeVersion === _treeVersion
+    ? _searchIndex
+    : null;
+}
+
 function getSearchIndex(): SearchIndex {
-  if (_searchIndex && isCacheValid()) {
-    telemetry.track('search.ui.index.cache_hit', { documentCount: _searchIndex.documents.length });
-    return _searchIndex;
+  const cached = getValidSearchIndex();
+  if (cached) {
+    telemetry.track('search.ui.index.cache_hit', { documentCount: cached.documents.length });
+    return cached;
   }
 
   const stop = telemetry.startTimer('search.ui.index.build');
@@ -728,16 +795,17 @@ function getSearchIndex(): SearchIndex {
     useExtendedSearch: true,
   });
 
-  _searchIndex = { fuse, documents, timestamp: Date.now() };
+  _searchIndex = { fuse, documents, timestamp: Date.now(), treeVersion: _treeVersion };
   stop({ fileCount: allFiles.length, documentCount: documents.length });
   return _searchIndex;
 }
 
 /** Full-text search across all files using Fuse.js fuzzy matching. */
 export function prewarmSearchIndex(): SearchPrewarmResponse {
-  if (_searchIndex && isCacheValid()) {
-    telemetry.track('search.ui.prewarm', { cacheState: 'hit', documentCount: _searchIndex.documents.length });
-    return { warmed: true, cacheState: 'hit', documentCount: _searchIndex.documents.length };
+  const cached = getValidSearchIndex();
+  if (cached) {
+    telemetry.track('search.ui.prewarm', { cacheState: 'hit', documentCount: cached.documents.length });
+    return { warmed: true, cacheState: 'hit', documentCount: cached.documents.length };
   }
 
   const index = getSearchIndex();

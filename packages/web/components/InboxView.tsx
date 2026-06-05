@@ -27,16 +27,13 @@ import {
   Archive,
   ArrowRight,
   Paperclip,
-  ShieldCheck,
-  Undo2,
-  Eye,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath } from '@/lib/utils';
 import { quickDropToInbox, clipUrlToInbox, looksLikeUrl, extractUrlFromDrop, dragContainsUrl } from '@/lib/inbox-upload';
 import { loadHistory, type OrganizeHistoryEntry, type OrganizeSource } from '@/lib/organize-history';
-import { CAPTURE_ACCEPT, CAPTURE_FORMAT_CHIPS } from '@/lib/capture-formats';
+import { CAPTURE_ACCEPT } from '@/lib/capture-formats';
 import CustomSelect from '@/components/CustomSelect';
 import ProviderModelCapsule, { getPersistedProviderModel, type ProviderSelection } from '@/components/ask/ProviderModelCapsule';
 import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
@@ -110,7 +107,10 @@ export default function InboxView() {
       const res = await fetch('/api/inbox');
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data.files)) setFiles(data.files);
+      if (Array.isArray(data.files)) {
+        setFiles(data.files);
+        window.dispatchEvent(new CustomEvent('mindos:inbox-files', { detail: data.files }));
+      }
     } catch (err) {
       console.warn('[InboxView] fetch failed:', err);
     } finally {
@@ -284,13 +284,7 @@ export default function InboxView() {
   const intentSelectOptions = useMemo(() => intentOptions.map(intent => ({
     value: intent.id,
     label: intent.title,
-    suffix: (
-      <span className="hidden sm:inline text-[10px] text-muted-foreground/55">
-        {intent.density}
-      </span>
-    ),
   })), [intentOptions]);
-  const selectedIntentOption = intentOptions.find(intent => intent.id === selectedIntent) ?? intentOptions[0];
   const suggestedIntent = useMemo(
     () => inferSuggestedIntent(draftText, pendingUrls, pendingFiles),
     [draftText, pendingUrls, pendingFiles],
@@ -328,6 +322,17 @@ export default function InboxView() {
       : `${window.location.pathname}#${view}`;
     window.history.replaceState(null, '', nextUrl);
   }, []);
+  const pageTitle = activeView === 'capture'
+    ? t.inbox.capturePageTitle
+    : activeView === 'queue'
+      ? t.inbox.reviewPageTitle
+      : t.inbox.donePageTitle;
+  const pageSubtitle = activeView === 'capture'
+    ? t.inbox.capturePageSubtitle
+    : activeView === 'queue'
+      ? t.inbox.reviewPageSubtitle
+      : t.inbox.donePageSubtitle;
+  const reviewAllLabel = t.inbox.reviewAllWithAgent(files.length);
 
   if (loading) {
     return (
@@ -386,10 +391,10 @@ export default function InboxView() {
                 {t.inbox.title}
               </h1>
               {hasFiles && (
-                <span className="text-2xs text-muted-foreground/60 leading-tight shrink-0">
+                <span className="hidden sm:inline text-2xs text-muted-foreground/60 leading-tight shrink-0">
                   {t.inbox.fileCount(files.length)}
                   {agingCount > 0 && (
-                    <span className="text-[var(--amber)]/70"> · {agingCount} {t.inbox.agingHint}</span>
+                    <span className="text-[var(--amber)]/70"> · {agingCount} {t.inbox.agingCountLabel}</span>
                   )}
                 </span>
               )}
@@ -398,23 +403,6 @@ export default function InboxView() {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2 shrink-0">
-            {queueViewActive && (
-              <div className="hidden md:flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-2 py-1">
-                <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
-                  {t.inbox.modelTitle}
-                </span>
-                <ProviderModelCapsule
-                  providerValue={providerOverride}
-                  onProviderChange={setProviderOverride}
-                  modelValue={modelOverride}
-                  onModelChange={setModelOverride}
-                  disabled={organizing}
-                  storageKey={INBOX_PROVIDER_MODEL_STORAGE_KEY}
-                  systemLabel={t.inbox.modelFollowSystem}
-                  emptyLabel={t.inbox.modelNoProvider}
-                />
-              </div>
-            )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -428,15 +416,16 @@ export default function InboxView() {
               <button
                 onClick={handleOrganize}
                 disabled={organizing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all bg-[var(--amber)] text-[var(--amber-foreground)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={organizing ? t.inbox.organizing : t.inbox.organizeButton}
+                aria-label={organizing ? t.inbox.organizing : reviewAllLabel}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all bg-[var(--amber)] text-[var(--amber-foreground)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed lg:hidden"
+                title={organizing ? t.inbox.organizing : reviewAllLabel}
               >
                 {organizing ? (
                   <Loader2 size={13} className="animate-spin" />
                 ) : (
                   <Sparkles size={13} />
                 )}
-                <span>{organizing ? t.inbox.organizing : t.inbox.organizeButton}</span>
+                <span className="hidden min-[380px]:inline">{organizing ? t.inbox.organizing : reviewAllLabel}</span>
               </button>
             )}
           </div>
@@ -449,13 +438,13 @@ export default function InboxView() {
           <div className="max-w-2xl">
             <div>
               <p className="text-2xs font-medium uppercase tracking-wider text-[var(--amber)]/80">
-                Capture now, organize later
+                {t.inbox.title}
               </p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-foreground">
-                {t.inbox.capturePageTitle}
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+                {pageTitle}
               </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                {t.inbox.capturePageSubtitle}
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                {pageSubtitle}
               </p>
             </div>
           </div>
@@ -487,10 +476,10 @@ export default function InboxView() {
             <div className="space-y-5">
               {activeView === 'capture' && (
               <div
-                className={`overflow-hidden rounded-xl border bg-card/40 shadow-sm transition-all duration-200 ${
+                className={`rounded-xl transition-all duration-200 ${
                   dragOver
-                    ? 'border-[var(--amber)] bg-[var(--amber-subtle)] shadow-[inset_0_0_0_1px_var(--amber)]'
-                    : 'border-border/60'
+                    ? 'border border-[var(--amber)] bg-[var(--amber-subtle)] p-3 shadow-[inset_0_0_0_1px_var(--amber)]'
+                    : ''
                 }`}
                 onDragEnter={(e) => {
                   const hasDroppedFiles = e.dataTransfer.types.includes('Files');
@@ -519,27 +508,12 @@ export default function InboxView() {
                 }}
                 onDrop={handleDrop}
               >
-                <div className="p-4">
-                  <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <BookOpen size={15} className="text-[var(--amber)]" />
-                        <h3 className="text-sm font-semibold text-foreground">{t.inbox.quickCaptureTitle}</h3>
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                          {selectedIntentOption.title}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        {t.inbox.composerHint}
-                      </p>
-                    </div>
-                  </div>
-
+                <div>
                   <div
-                    className={`rounded-xl border bg-background transition-colors ${
+                    className={`rounded-xl border shadow-sm transition-colors ${
                       dragOver
                         ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
-                        : 'border-border/70'
+                        : 'border-border/60 bg-card/45'
                     }`}
                   >
                     <div className="flex flex-col gap-2 border-b border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
@@ -565,17 +539,12 @@ export default function InboxView() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-3 py-2 text-2xs text-muted-foreground/60">
-                      {showSuggestedIntent && <span>{t.inbox.suggestedAction(suggestedIntentOption.title)}</span>}
-                      <span>{t.inbox.captureNoAiHint}</span>
-                    </div>
-
                     <textarea
                       value={draftText}
                       onChange={(e) => setDraftText(e.target.value)}
                       onPaste={handleComposerPaste}
                       placeholder={t.inbox.composerPlaceholder}
-                      className="min-h-[180px] w-full resize-y bg-transparent px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/35 focus-visible:ring-0"
+                      className="min-h-[220px] w-full resize-y bg-transparent px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/35 focus-visible:ring-0 max-sm:min-h-[180px]"
                     />
 
                     {(draftText.trim() || pendingUrls.length > 0 || pendingFiles.length > 0) && (
@@ -610,15 +579,16 @@ export default function InboxView() {
                     )}
 
                     <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="rounded px-1.5 py-px text-2xs font-medium text-muted-foreground/55">
-                          {t.inbox.composerDetected}
-                        </span>
-                        {CAPTURE_FORMAT_CHIPS.map(format => (
-                          <span key={format.kind} className="rounded bg-muted/50 px-1.5 py-px text-2xs font-medium text-muted-foreground/60" title={format.examples}>
-                            {format.label}
-                          </span>
-                        ))}
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground/55">
+                        <span>{t.inbox.captureInputKinds}</span>
+                        <span className="text-muted-foreground/25">·</span>
+                        <span>{t.inbox.captureNoAiHint}</span>
+                        {showSuggestedIntent && (
+                          <>
+                            <span className="text-muted-foreground/25">·</span>
+                            <span>{t.inbox.suggestedAction(suggestedIntentOption.title)}</span>
+                          </>
+                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {hasPendingCapture && (
@@ -660,84 +630,6 @@ export default function InboxView() {
 
               {activeView === 'queue' && (
               <>
-              <section className="overflow-hidden rounded-xl border border-border/60 bg-card/40 shadow-sm">
-                <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Eye size={15} className="text-[var(--amber)]" />
-                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.currentItemTitle}</h3>
-                  </div>
-                  {selectedFile && (
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                      {selectedUnderstanding?.type ?? t.inbox.typeRawNote}
-                    </span>
-                  )}
-                </div>
-
-                {selectedFile && selectedUnderstanding ? (
-                  <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
-                    <div className="space-y-4 p-4">
-                      <div>
-                        <p className="truncate text-sm font-medium text-foreground" title={selectedFile.name}>
-                          {selectedFile.name}
-                        </p>
-                        <p className="mt-1 text-2xs text-muted-foreground">
-                          {formatSize(selectedFile.size)} · {formatRelativeTime(selectedFile.modifiedAt, t.home.relativeTime)}
-                        </p>
-                      </div>
-
-                      <div className="grid gap-2 sm:grid-cols-3">
-                        <UnderstandingRow label={t.inbox.suggestedType} value={selectedUnderstanding.type} />
-                        <UnderstandingRow label={t.inbox.suggestedTarget} value={selectedUnderstanding.target} />
-                        <UnderstandingRow label={t.inbox.densityTitle} value={selectedUnderstanding.density} />
-                      </div>
-
-                      <div className="rounded-lg bg-muted/35 p-3">
-                        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                          {t.inbox.suggestedReason}
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-foreground/75">
-                          {selectedUnderstanding.reason}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border/50 bg-background/55 p-4 lg:border-l lg:border-t-0">
-                      <p className="mb-3 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {t.inbox.safeOrganizeTitle}
-                      </p>
-                      <div className="space-y-2">
-                        <SafetyStep icon={Eye} label={t.inbox.reviewBeforeWrite} detail={t.inbox.reviewBeforeWriteDesc} />
-                        <SafetyStep icon={Archive} label={t.inbox.keepRawSource} detail={t.inbox.keepRawSourceDesc} />
-                        <SafetyStep icon={Undo2} label={t.inbox.undoRecord} detail={t.inbox.undoRecordDesc} />
-                      </div>
-                      <div className="mt-4 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/view/${encodePath(selectedFile.path)}`)}
-                          className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {t.inbox.actionOpen}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleOrganize}
-                          disabled={organizing}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                          {organizing ? t.inbox.organizing : t.inbox.actionMerge}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-foreground/70">{t.inbox.currentItemEmptyTitle}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground/55">{t.inbox.currentItemEmptyDesc}</p>
-                  </div>
-                )}
-              </section>
-
               <section className="rounded-xl border border-border/60 bg-card/40 shadow-sm">
                 <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -749,17 +641,6 @@ export default function InboxView() {
                       </span>
                     )}
                   </div>
-                  {hasFiles && (
-                    <button
-                      type="button"
-                      onClick={handleOrganize}
-                      disabled={organizing}
-                      className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                      {organizing ? t.inbox.organizing : t.inbox.organizeButton}
-                    </button>
-                  )}
                 </div>
                 {hasFiles ? (
                   <div className="divide-y divide-border/50">
@@ -790,7 +671,7 @@ export default function InboxView() {
                   <div className="mb-3 flex items-center gap-2">
                     <History size={12} className="text-muted-foreground/40" />
                     <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/50">
-                      {t.importHistory.title}
+                      {t.inbox.doneSectionTitle}
                     </span>
                     {history.length > HISTORY_VISIBLE && (
                       <Link
@@ -809,8 +690,8 @@ export default function InboxView() {
                     </div>
                   ) : (
                     <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-10 text-center">
-                      <p className="text-sm font-medium text-foreground/70">{t.importHistory.emptyTitle}</p>
-                      <p className="mt-1 text-xs text-muted-foreground/55">{t.importHistory.emptyDesc}</p>
+                      <p className="text-sm font-medium text-foreground/70">{t.inbox.doneEmptyTitle}</p>
+                      <p className="mt-1 text-xs text-muted-foreground/55">{t.inbox.doneEmptyDesc}</p>
                     </div>
                   )}
                 </section>
@@ -819,163 +700,99 @@ export default function InboxView() {
 
             {activeView === 'queue' && (
             <aside className="lg:sticky lg:top-[70px] lg:self-start">
-              <section className="mb-4 overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
+              <section className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
                 <div className="border-b border-border/50 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={15} className="text-[var(--amber)]" />
-                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.aiRouteTitle}</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={15} className="text-[var(--amber)]" />
+                      <h3 className="text-sm font-semibold text-foreground">{t.inbox.aiRouteTitle}</h3>
+                    </div>
+                    <span className="rounded-full bg-[var(--amber-subtle)] px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-[var(--amber)]">
+                      {t.inbox.agentPresetLabel}
+                    </span>
                   </div>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
                     {t.inbox.modelHint}
                   </p>
                 </div>
-                <div className="space-y-3 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                      {t.inbox.modelTitle}
-                    </span>
-                    <ProviderModelCapsule
-                      providerValue={providerOverride}
-                      onProviderChange={setProviderOverride}
-                      modelValue={modelOverride}
-                      onModelChange={setModelOverride}
-                      disabled={organizing}
-                      storageKey={INBOX_PROVIDER_MODEL_STORAGE_KEY}
-                      systemLabel={t.inbox.modelFollowSystem}
-                      emptyLabel={t.inbox.modelNoProvider}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <MiniMetric label={t.inbox.pendingSequenceTitle} value={String(files.length)} />
-                    <MiniMetric label={t.inbox.recentProcessedTitle} value={String(history.length)} />
-                  </div>
-                  <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
-                    <div className="mb-2 flex items-center gap-2">
-                      <ShieldCheck size={13} className="text-[var(--amber)]" />
-                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {t.inbox.safeOrganizeTitle}
-                      </p>
-                    </div>
-                    <div className="space-y-1.5">
-                      {[t.inbox.reviewBeforeWrite, t.inbox.keepRawSource, t.inbox.undoRecord].map(item => (
-                        <div key={item} className="flex items-center gap-2 text-xs text-foreground/75">
-                          <Check size={11} className="shrink-0 text-success/70" />
-                          <span>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {(hasFiles || visibleHistory.length > 0) && (
-                <section className="mb-4 overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
-                  <div className="border-b border-border/50 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <ListChecks size={15} className="text-[var(--amber)]" />
-                      <h3 className="text-sm font-semibold text-foreground">{t.inbox.queueSidebarTitle}</h3>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-border/40">
-                    {files.slice(0, 4).map((file, idx) => (
-                      <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => setSelectedPath(file.path)}
-                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <span className="w-5 shrink-0 text-2xs tabular-nums text-muted-foreground/45">
-                          {String(idx + 1).padStart(2, '0')}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-xs text-foreground/80">{file.name}</span>
-                      </button>
-                    ))}
-                    {visibleHistory.slice(0, 3).map(entry => (
-                      <Link
-                        key={entry.id}
-                        href="/capture/history"
-                        className="flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
-                      >
-                        <Check size={12} className="shrink-0 text-success/70" />
-                        <span className="min-w-0 flex-1 truncate">
-                          {entry.sourceFiles.length === 1 ? entry.sourceFiles[0] : t.importHistory.nFiles(entry.sourceFiles.length)}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <section className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
-                <div className="border-b border-border/50 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <ListChecks size={15} className="text-[var(--amber)]" />
-                    <h3 className="text-sm font-semibold text-foreground">{t.inbox.understandingTitle}</h3>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
-                    {t.inbox.understandingEmptyDesc}
-                  </p>
-                </div>
 
                 {selectedFile && selectedUnderstanding ? (
-                  <div className="space-y-4 p-4">
-                    <div>
-                      <p className="truncate text-sm font-medium text-foreground" title={selectedFile.name}>
+                  <div className="space-y-0">
+                    <div className="border-b border-border/45 px-4 py-3">
+                      <div>
+                        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+                          {t.inbox.agentScopeTitle}
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          {t.inbox.agentScopeAllPending(files.length)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="px-4 py-4">
+                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+                        {t.inbox.understandingTitle}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-medium text-foreground" title={selectedFile.name}>
                         {selectedFile.name}
                       </p>
-                      <p className="mt-1 text-2xs text-muted-foreground">
+                      <p className="mt-1 text-2xs text-muted-foreground/60">
                         {formatSize(selectedFile.size)} · {formatRelativeTime(selectedFile.modifiedAt, t.home.relativeTime)}
                       </p>
                     </div>
 
-                    <div className="grid gap-2">
-                      <UnderstandingRow label={t.inbox.suggestedType} value={selectedUnderstanding.type} />
-                      <UnderstandingRow label={t.inbox.suggestedTarget} value={selectedUnderstanding.target} />
-                      <UnderstandingRow label={t.inbox.densityTitle} value={selectedUnderstanding.density} />
+                    <div className="border-y border-border/45">
+                      <ReviewFactRow label={t.inbox.suggestedType} value={selectedUnderstanding.type} />
+                      <ReviewFactRow label={t.inbox.suggestedTarget} value={selectedUnderstanding.target} />
+                      <ReviewFactRow label={t.inbox.densityTitle} value={selectedUnderstanding.density} />
                     </div>
 
-                    <div className="rounded-lg bg-muted/35 p-3">
-                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {t.inbox.suggestedReason}
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed text-foreground/75">
-                        {selectedUnderstanding.reason}
-                      </p>
-                    </div>
+                    <div className="px-4 py-4">
+                      <div className="rounded-lg bg-muted/30 px-3 py-2.5">
+                        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+                          {t.inbox.suggestedReason}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-foreground/75">
+                          {selectedUnderstanding.reason}
+                        </p>
+                      </div>
 
-                    <div>
-                      <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
+                      <p className="mb-2 mt-4 text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
                         {t.inbox.relatedSignals}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedUnderstanding.signals.map(signal => (
-                          <span key={signal} className="rounded-md border border-border/60 bg-background px-2 py-1 text-2xs text-muted-foreground">
+                          <span key={signal} className="rounded-md bg-muted/45 px-2 py-1 text-2xs text-muted-foreground">
                             {signal}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
-                      <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {t.inbox.lifecycleTitle}
-                      </p>
-                      <div className="grid grid-cols-4 gap-1 text-center text-[10px] text-muted-foreground">
-                        {[t.inbox.lifecycleCaptured, t.inbox.lifecycleParsed, t.inbox.lifecycleProposed, t.inbox.lifecycleMerged].map((stage, idx) => (
-                          <div key={stage} className="min-w-0">
-                            <div className={`mx-auto mb-1 h-1.5 rounded-full ${
-                              idx < 2 ? 'bg-[var(--amber)]' : 'bg-muted'
-                            }`} />
-                            <span className="block truncate">{stage}</span>
-                          </div>
+                    <div className="space-y-3 border-t border-border/45 px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+                          {t.inbox.modelTitle}
+                        </span>
+                        <ProviderModelCapsule
+                          providerValue={providerOverride}
+                          onProviderChange={setProviderOverride}
+                          modelValue={modelOverride}
+                          onModelChange={setModelOverride}
+                          disabled={organizing}
+                          storageKey={INBOX_PROVIDER_MODEL_STORAGE_KEY}
+                          systemLabel={t.inbox.modelFollowSystem}
+                          emptyLabel={t.inbox.modelNoProvider}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[t.inbox.reviewBeforeWrite, t.inbox.keepRawSource, t.inbox.undoRecord].map(item => (
+                          <span key={item} className="inline-flex items-center gap-1.5 rounded-md bg-background px-2 py-1 text-2xs text-muted-foreground">
+                            <Check size={10} className="text-success/70" />
+                            {item}
+                          </span>
                         ))}
                       </div>
-                    </div>
-
-                    <div className="space-y-2 border-t border-border/50 pt-4">
-                      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">
-                        {t.inbox.routeTitle}
-                      </p>
                       <button
                         type="button"
                         onClick={handleOrganize}
@@ -984,11 +801,11 @@ export default function InboxView() {
                       >
                         <span className="flex items-center gap-2">
                           {organizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                          {organizing ? t.inbox.organizing : t.inbox.actionMerge}
+                          {organizing ? t.inbox.organizing : reviewAllLabel}
                         </span>
                         <ArrowRight size={14} />
                       </button>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => router.push(`/view/${encodePath(selectedFile.path)}`)}
@@ -1004,13 +821,10 @@ export default function InboxView() {
                           {t.inbox.actionRemove}
                         </button>
                       </div>
-                      <div className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                        {t.inbox.actionExtractRule} · {t.inbox.actionExtractRuleSoon}
-                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 text-center">
+                  <div className="p-8 text-center">
                     <p className="text-sm font-medium text-foreground/70">{t.inbox.understandingEmptyTitle}</p>
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground/55">{t.inbox.understandingEmptyDesc}</p>
                   </div>
@@ -1065,10 +879,16 @@ function InboxFileRow({
         role="button"
         tabIndex={0}
         onClick={onSelect}
-        onKeyDown={(e) => { if (e.key === 'Enter') onSelect(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
         aria-pressed={selected}
-        className={`group flex items-center gap-3 px-4 py-3 transition-colors duration-100 cursor-pointer ${
+        aria-label={file.name}
+        className={`group flex items-center gap-3 px-4 py-3 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
           selected ? 'bg-[var(--amber-subtle)]/70' : 'bg-card hover:bg-accent'
         }${animate ? ' animate-[fadeSlideUp_0.22s_ease_both]' : ''}`}
         style={animate ? { animationDelay: `${index * 30}ms` } : undefined}
@@ -1104,7 +924,7 @@ function InboxFileRow({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/view/${encodePath(file.path)}`); }}
-          className="hidden items-center justify-center rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground group-hover:flex"
+          className={`${selected ? 'hidden md:flex' : 'hidden md:group-hover:flex md:group-focus:flex'} items-center justify-center rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
           title={t.inbox.openFile}
         >
           {t.inbox.openFile}
@@ -1114,7 +934,7 @@ function InboxFileRow({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(file.name); }}
-          className="hidden group-hover:flex items-center justify-center w-7 h-7 rounded-md shrink-0 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+          className={`${selected ? 'hidden md:flex' : 'hidden md:group-hover:flex md:group-focus:flex'} items-center justify-center w-7 h-7 rounded-md shrink-0 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring`}
           title={t.inbox.removeFile}
         >
           <X size={14} />
@@ -1300,40 +1120,11 @@ function InboxViewTab({
   );
 }
 
-function SafetyStep({
-  icon: Icon,
-  label,
-  detail,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  detail: string;
-}) {
+function ReviewFactRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-2 rounded-lg border border-border/60 bg-card px-3 py-2">
-      <Icon size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" />
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-foreground">{label}</p>
-        <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground/60">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function UnderstandingRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-background px-3 py-2">
-      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">{label}</p>
-      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function MiniMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-background px-3 py-2">
-      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</p>
+    <div className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-3 border-b border-border/35 px-4 py-2.5 last:border-b-0">
+      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/50">{label}</p>
+      <p className="min-w-0 text-sm font-medium leading-snug text-foreground">{value}</p>
     </div>
   );
 }

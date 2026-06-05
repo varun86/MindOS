@@ -161,9 +161,6 @@ function writePlatformPackageJson(packageDir, target, targetBuildBinary = buildB
     license: productPkg.license ?? 'MIT',
     os: [target.os],
     cpu: [target.cpu],
-    bin: {
-      mindos: targetBuildBinary ? `bin/${binaryName(target)}` : 'bin/cli.js',
-    },
     files: fallbackRuntime || !targetBuildBinary
       ? [
         'bin/',

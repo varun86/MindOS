@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
-  Globe, GitBranch, Loader2, AlertTriangle, Check,
-  ChevronDown, ChevronRight, Eye, EyeOff, CheckCircle2, AlertCircle,
+  GitBranch, Loader2, Check,
+  Eye, EyeOff, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import type { Messages } from '@/lib/i18n';
 import { apiFetch } from '@/lib/api';
 import { Input, Field, SettingCard, PrimaryButton } from './Primitives';
-import { timeAgo, getSyncErrorHint } from './SyncTab';
+import { getSyncErrorHint } from './SyncTab';
 
 function isValidGitUrl(url: string): 'https' | 'ssh' | false {
   if (/^https:\/\/.+/.test(url)) return 'https';
@@ -32,6 +32,11 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
   const urlType = remoteUrl.trim() ? isValidGitUrl(remoteUrl.trim()) : null;
   const isValid = urlType === 'https' || urlType === 'ssh';
   const showTokenField = urlType === 'https';
+  const disabledReason = !remoteUrl.trim()
+    ? ((syncT?.connectNeedsUrl as string) ?? 'Paste a remote URL to continue')
+    : !isValid
+      ? ((syncT?.connectFixUrl as string) ?? 'Fix the Git URL to continue')
+      : '';
 
   const handleConnect = async () => {
     setConnectStep(0);
@@ -85,6 +90,24 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         title={(syncT?.emptyTitle as string) ?? 'Cross-device Sync'}
         description={(syncT?.emptyDesc as string) ?? 'Automatically sync your knowledge base across devices via Git.'}
       >
+        <div className="rounded-lg border border-border/50 bg-muted/20 p-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">
+            {(syncT?.setupIntroTitle as string) ?? 'Start with a private Git repository'}
+          </p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {[
+              (syncT?.setupStepRepo as string) ?? 'Create an empty private repo',
+              (syncT?.setupStepUrl as string) ?? 'Paste its SSH or HTTPS URL',
+              (syncT?.setupStepToken as string) ?? 'HTTPS needs a token for private repos',
+            ].map((item) => (
+              <div key={item} className="flex items-start gap-1.5">
+                <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-success/70" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Git Remote URL */}
         <Field
           label={(syncT?.remoteUrl as string) ?? 'Git Remote URL'}
@@ -130,7 +153,8 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors"
+                className="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={showToken ? ((syncT?.hideToken as string) ?? 'Hide token') : ((syncT?.showToken as string) ?? 'Show token')}
               >
                 {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
@@ -162,13 +186,18 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
 
         {/* Connect button + progress */}
         {!connecting && connectStep !== 4 && (
-          <PrimaryButton
-            onClick={handleConnect}
-            disabled={!isValid}
-            className="flex items-center gap-2"
-          >
-            {(syncT?.connectButton as string) ?? 'Connect & Start Sync'}
-          </PrimaryButton>
+          <div className="flex flex-wrap items-center gap-3">
+            <PrimaryButton
+              onClick={handleConnect}
+              disabled={!isValid}
+              className="flex min-h-9 items-center gap-2"
+            >
+              {(syncT?.connectButton as string) ?? 'Connect & Start Sync'}
+            </PrimaryButton>
+            {disabledReason && (
+              <span className="text-xs text-muted-foreground">{disabledReason}</span>
+            )}
+          </div>
         )}
 
         {(connecting || connectStep === 4) && (
@@ -230,4 +259,3 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
 }
 
 /* ── Main SyncTab ──────────────────────────────────────────────── */
-

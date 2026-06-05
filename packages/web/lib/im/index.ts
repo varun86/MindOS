@@ -5,8 +5,8 @@
 // When no IM platforms are configured (~/.mindos/im.json empty or missing),
 // the extension silently does nothing — no tools, no commands.
 
-import type { ExtensionAPI, ToolDefinition } from '@mariozechner/pi-coding-agent';
-import type { AgentToolResult } from '@mariozechner/pi-agent-core';
+import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import { Type, type TSchema } from '@sinclair/typebox';
 import { hasAnyIMConfig, getConfiguredPlatforms } from './config';
 import { sendIMMessage, listConfiguredIM } from './executor';
@@ -107,7 +107,7 @@ export default function imExtension(pi: ExtensionAPI) {
 
   pi.registerCommand('im', {
     description: 'Show configured IM platforms and their status',
-    handler: async (_args: string, ctx) => {
+    handler: async (_args: string, ctx: { ui: { notify(message: string, level?: string): void } }) => {
       const results = await listConfiguredIM();
       if (results.length === 0) {
         ctx.ui.notify('No IM platforms configured. Edit ~/.mindos/im.json to add platforms.', 'info');

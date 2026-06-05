@@ -1,5 +1,6 @@
 import type { FeishuConfig, FeishuWebhookDispatchResult } from './types';
-import { buildFeishuWebhookStatus, handleFeishuMessageReceiveEvent } from './webhook/feishu';
+import { buildFeishuWebhookStatus } from './webhook/feishu-status';
+import { handleFeishuMessageReceiveEvent } from './webhook/feishu-event';
 
 type FeishuHeaders = Record<string, string>;
 type FeishuBody = Record<string, unknown>;

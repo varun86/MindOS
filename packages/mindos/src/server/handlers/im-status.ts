@@ -13,12 +13,27 @@ export type ImWebhookStatus = {
   lastError?: string;
 };
 
+export type ImOAuthStatus = {
+  state: 'disconnected' | 'pending' | 'connected';
+  expiresAt?: string;
+  user?: {
+    name?: string;
+    en_name?: string;
+    avatar_url?: string;
+    open_id?: string;
+    union_id?: string;
+    user_id?: string;
+    email?: string;
+  };
+};
+
 export type ImStatusPlatform = {
   platform: ImPlatform;
   connected: boolean;
   botName?: string;
   capabilities: string[];
   webhook?: ImWebhookStatus;
+  oauth?: ImOAuthStatus;
 };
 
 export type ImStatusConfig = {
@@ -31,6 +46,7 @@ export type ImStatusServices = {
   listConfiguredIM?(): Promise<ImStatusPlatform[]>;
   getPlatformConfig?(platform: ImPlatform): unknown;
   buildFeishuWebhookStatus?(config: unknown): ImWebhookStatus;
+  buildFeishuOAuthStatus?(config: unknown): ImOAuthStatus;
 };
 
 const DEFAULT_IM_CONFIG_PATH = join(homedir(), '.mindos', 'im.json');
@@ -73,11 +89,13 @@ export async function handleImStatusGet(
     const platforms = await listConfiguredIM();
     const getPlatformConfig = services.getPlatformConfig ?? ((platform: ImPlatform) => readConfig(services).providers[platform]);
     const buildFeishuWebhookStatus = services.buildFeishuWebhookStatus ?? defaultBuildFeishuWebhookStatus;
+    const buildFeishuOAuthStatus = services.buildFeishuOAuthStatus ?? defaultBuildFeishuOAuthStatus;
     const feishuConfig = getPlatformConfig('feishu');
     const feishuWebhook = buildFeishuWebhookStatus(feishuConfig);
+    const feishuOAuth = buildFeishuOAuthStatus(feishuConfig);
     const enriched = platforms.map((platform) => (
       platform.platform === 'feishu'
-        ? { ...platform, webhook: feishuWebhook }
+        ? { ...platform, webhook: feishuWebhook, oauth: feishuOAuth }
         : platform
     ));
 
@@ -99,6 +117,40 @@ export function handleImWebhookStatusGet(
   const getPlatformConfig = services.getPlatformConfig ?? ((name: ImPlatform) => readConfig(services).providers[name]);
   const buildFeishuWebhookStatus = services.buildFeishuWebhookStatus ?? defaultBuildFeishuWebhookStatus;
   return json({ status: buildFeishuWebhookStatus(getPlatformConfig('feishu')) });
+}
+
+function defaultBuildFeishuOAuthStatus(config: unknown): ImOAuthStatus {
+  const feishuConfig = config && typeof config === 'object' ? config as Record<string, any> : undefined;
+  const oauth = feishuConfig?.oauth && typeof feishuConfig.oauth === 'object'
+    ? feishuConfig.oauth as Record<string, any>
+    : undefined;
+
+  if (!oauth) return { state: 'disconnected' };
+  if (oauth.status === 'connected') {
+    return {
+      state: 'connected',
+      expiresAt: typeof oauth.expires_at === 'string' ? oauth.expires_at : undefined,
+      user: pickOAuthUser(oauth.user),
+    };
+  }
+  if (oauth.pending && typeof oauth.pending === 'object') {
+    return {
+      state: 'pending',
+      expiresAt: typeof oauth.pending.expires_at === 'string' ? oauth.pending.expires_at : undefined,
+    };
+  }
+  return { state: 'disconnected' };
+}
+
+function pickOAuthUser(raw: unknown): ImOAuthStatus['user'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const source = raw as Record<string, unknown>;
+  const user: NonNullable<ImOAuthStatus['user']> = {};
+  for (const key of ['name', 'en_name', 'avatar_url', 'open_id', 'union_id', 'user_id', 'email'] as const) {
+    const value = source[key];
+    if (typeof value === 'string' && value) user[key] = value;
+  }
+  return Object.keys(user).length > 0 ? user : undefined;
 }
 
 function defaultListConfiguredIM(services: ImStatusServices): ImStatusPlatform[] {

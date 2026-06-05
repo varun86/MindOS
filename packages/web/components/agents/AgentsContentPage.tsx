@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Activity, Bot, Cable, MessageSquare, Network, Sparkles, TerminalSquare, Wrench } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
 import { useMcpData } from '@/lib/stores/mcp-store';
@@ -16,13 +18,26 @@ import {
 import AgentsOverviewSection from './AgentsOverviewSection';
 import AgentsMcpSection from './AgentsMcpSection';
 import AgentsSkillsSection from './AgentsSkillsSection';
+import AgentsPresetsSection from './AgentsPresetsSection';
 import AgentsPanelA2aTab from './AgentsPanelA2aTab';
 import AgentsPanelSessionsTab from './AgentsPanelSessionsTab';
 import AgentActivitySection from './AgentActivitySection';
 import AgentsContentChannels from './AgentsContentChannels';
 import CustomAgentModal from './CustomAgentModal';
 import { ConfirmDialog } from './AgentsPrimitives';
+import { BUILTIN_AGENT_PRESETS } from './builtin-agent-presets';
 import type { AgentInfo } from '@/components/settings/types';
+
+const DEFAULT_AGENT_NAV_HINTS = {
+  overview: 'Health',
+  presets: 'Built-ins',
+  mcp: 'Protocol',
+  skills: 'Capabilities',
+  channels: 'Messaging',
+  network: 'Remote',
+  sessions: 'Runs',
+  activity: 'Audit',
+} as const;
 
 export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) {
   const { t } = useLocale();
@@ -62,6 +77,12 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
         subtitle: a.skills.capabilityGroups,
       };
     }
+    if (tab === 'presets') {
+      return {
+        title: a.presets.title,
+        subtitle: a.presets.subtitle,
+      };
+    }
     if (tab === 'mcp') {
       return {
         title: a.navMcp,
@@ -97,7 +118,7 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
   const [customModalOpen, setCustomModalOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<AgentInfo | null>(null);
   const [removeAgent, setRemoveAgent] = useState<AgentInfo | null>(null);
-  const [removing, setRemoving] = useState(false);
+  const [, setRemoving] = useState(false);
 
   const handleAddCustomAgent = useCallback(() => {
     setEditingAgent(null);
@@ -155,6 +176,17 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{pageHeader.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{pageHeader.subtitle}</p>
+          <AgentsPageNav
+            tab={tab}
+            copy={a}
+            connectedCount={buckets.connected.length}
+            detectedCount={buckets.detected.length}
+            enabledSkillCount={enabledSkillCount}
+            mcpRunning={!!mcp.status?.running}
+            mcpPort={mcp.status?.port ?? null}
+            presetCount={BUILTIN_AGENT_PRESETS.length}
+            a2aCount={a2a.agents.length}
+          />
         </header>
       )}
 
@@ -194,6 +226,10 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
 
       {tab === 'skills' && (
         <AgentsSkillsSection copy={a.skills} mcp={mcp} buckets={buckets} />
+      )}
+
+      {tab === 'presets' && (
+        <AgentsPresetsSection copy={a.presets} />
       )}
 
       {tab === 'a2a' && (
@@ -239,6 +275,149 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
         variant="destructive"
       />
     </div>
+  );
+}
+
+function AgentsPageNav({
+  tab,
+  copy,
+  connectedCount,
+  detectedCount,
+  enabledSkillCount,
+  mcpRunning,
+  mcpPort,
+  presetCount,
+  a2aCount,
+}: {
+  tab: AgentsDashboardTab;
+  copy: ReturnType<typeof useLocale>['t']['agentsContent'];
+  connectedCount: number;
+  detectedCount: number;
+  enabledSkillCount: number;
+  mcpRunning: boolean;
+  mcpPort: number | null;
+  presetCount: number;
+  a2aCount: number;
+}) {
+  const navHints = copy.navHints ?? DEFAULT_AGENT_NAV_HINTS;
+  const navItems: Array<{
+    id: AgentsDashboardTab;
+    href: string;
+    label: string;
+    hint: string;
+    icon: React.ReactNode;
+    badge?: string;
+    tone?: 'ok' | 'warn' | 'neutral';
+  }> = [
+    {
+      id: 'overview',
+      href: '/agents',
+      label: copy.navOverview,
+      hint: navHints.overview,
+      icon: <Bot size={14} />,
+      badge: connectedCount > 0 ? `${connectedCount}` : undefined,
+      tone: detectedCount > 0 ? 'warn' : 'ok',
+    },
+    {
+      id: 'presets',
+      href: '/agents?tab=presets',
+      label: copy.navPresets,
+      hint: navHints.presets,
+      icon: <Sparkles size={14} />,
+      badge: `${presetCount}`,
+      tone: 'neutral',
+    },
+    {
+      id: 'mcp',
+      href: '/agents?tab=mcp',
+      label: copy.navMcp,
+      hint: navHints.mcp,
+      icon: <Cable size={14} />,
+      badge: mcpRunning && mcpPort ? `:${mcpPort}` : copy.navBadgeOff,
+      tone: mcpRunning ? 'ok' : 'warn',
+    },
+    {
+      id: 'skills',
+      href: '/agents?tab=skills',
+      label: copy.navSkills,
+      hint: navHints.skills,
+      icon: <Wrench size={14} />,
+      badge: `${enabledSkillCount}`,
+      tone: 'ok',
+    },
+    {
+      id: 'channels',
+      href: '/agents?tab=channels',
+      label: copy.navChannels,
+      hint: navHints.channels,
+      icon: <MessageSquare size={14} />,
+      tone: 'neutral',
+    },
+    {
+      id: 'a2a',
+      href: '/agents?tab=a2a',
+      label: copy.navNetwork,
+      hint: navHints.network,
+      icon: <Network size={14} />,
+      badge: a2aCount > 0 ? `${a2aCount}` : undefined,
+      tone: 'neutral',
+    },
+    {
+      id: 'sessions',
+      href: '/agents?tab=sessions',
+      label: copy.navSessions,
+      hint: navHints.sessions,
+      icon: <TerminalSquare size={14} />,
+      tone: 'neutral',
+    },
+    {
+      id: 'activity',
+      href: '/agents?tab=activity',
+      label: copy.navActivity,
+      hint: navHints.activity,
+      icon: <Activity size={14} />,
+      tone: 'neutral',
+    },
+  ];
+
+  return (
+    <nav aria-label={copy.navAriaLabel} className="mt-5 overflow-x-auto pb-1">
+      <div className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm lg:grid lg:w-auto lg:grid-cols-8">
+        {navItems.map(item => (
+          <Link
+            key={item.id}
+            href={item.href}
+            aria-current={tab === item.id ? 'page' : undefined}
+            className={`group min-h-[68px] w-[104px] shrink-0 border-r border-border/45 px-2.5 py-2.5 transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-[112px] lg:w-auto lg:px-3 lg:py-3 ${
+              tab === item.id
+                ? 'bg-[var(--amber)]/[0.08] text-foreground'
+                : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
+            }`}
+          >
+            <span className="flex items-center justify-between gap-2">
+              <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${
+                tab === item.id ? 'bg-[var(--amber)] text-[var(--amber-foreground)]' : 'bg-background text-muted-foreground group-hover:text-foreground'
+              }`}>
+                {item.icon}
+              </span>
+              {item.badge ? (
+                <span className={`rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums ${
+                  item.tone === 'ok'
+                    ? 'bg-success/10 text-success'
+                    : item.tone === 'warn'
+                      ? 'bg-[var(--amber)]/10 text-[var(--amber-text)]'
+                      : 'bg-muted text-muted-foreground'
+                }`}>
+                  {item.badge}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-2 block text-xs font-medium text-foreground">{item.label}</span>
+            <span className="mt-0.5 block truncate text-2xs text-muted-foreground/65 lg:block">{item.hint}</span>
+          </Link>
+        ))}
+      </div>
+    </nav>
   );
 }
 

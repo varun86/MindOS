@@ -2,13 +2,13 @@
  * Tests for built-in pi-subagents extension support.
  *
  * Verifies that MindOS correctly bundles and loads pi-subagents as a default
- * extension, providing subagent tools (subagent, subagent_status) to the Agent.
+ * extension, providing the subagent control tool to the Agent.
  */
 
 import { describe, expect, it, beforeAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { DefaultResourceLoader, SettingsManager } from '@mariozechner/pi-coding-agent';
+import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -18,12 +18,18 @@ describe('pi-subagents built-in extension', () => {
       const pkgPath = path.join(PROJECT_ROOT, 'package.json');
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 
+      expect(pkg.dependencies).not.toHaveProperty('@mariozechner/pi-agent-core');
+      expect(pkg.dependencies).not.toHaveProperty('@mariozechner/pi-ai');
+      expect(pkg.dependencies).not.toHaveProperty('@mariozechner/pi-coding-agent');
+      expect(pkg.dependencies).toHaveProperty('@earendil-works/pi-agent-core');
+      expect(pkg.dependencies).toHaveProperty('@earendil-works/pi-ai');
+      expect(pkg.dependencies).toHaveProperty('@earendil-works/pi-coding-agent');
       expect(pkg.dependencies).toHaveProperty('pi-subagents');
       expect(pkg.dependencies['pi-subagents']).toMatch(/^\^?0\.\d+\.\d+$/);
     });
 
     it('pi-subagents is installed in node_modules', () => {
-      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'index.ts');
+      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
       expect(fs.existsSync(indexPath)).toBe(true);
     });
 
@@ -47,7 +53,7 @@ describe('pi-subagents built-in extension', () => {
 
     it('runtime adapter includes pi-subagents in additionalExtensionPaths', () => {
       expect(runtimeAdapterContent).toContain('pi-subagents');
-      expect(runtimeAdapterContent).toContain("path.join(webAppDir, 'node_modules', 'pi-subagents', 'index.ts')");
+      expect(runtimeAdapterContent).toContain("path.join(webAppDir, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts')");
     });
 
     it('runtime adapter preserves the built-in schedule-prompt extension from the legacy app', () => {
@@ -67,7 +73,7 @@ describe('pi-subagents built-in extension', () => {
 
   describe('extension exports', () => {
     it('pi-subagents index.ts is valid TypeScript with default export', async () => {
-      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'index.ts');
+      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
       const content = fs.readFileSync(indexPath, 'utf-8');
 
       // Extension should have a default export function
@@ -75,7 +81,7 @@ describe('pi-subagents built-in extension', () => {
     });
 
     it('pi-subagents registers subagent tool via pi.registerTool', async () => {
-      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'index.ts');
+      const indexPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
       const content = fs.readFileSync(indexPath, 'utf-8');
 
       // Should call pi.registerTool with the subagent tool
@@ -89,13 +95,14 @@ describe('pi-subagents built-in extension', () => {
     it('DefaultResourceLoader loads pi-subagents and exposes subagent tools', async () => {
       // This test mirrors the actual loading path used by /api/ask
       const settingsManager = SettingsManager.inMemory();
-      const piSubagentsPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'index.ts');
+      const piSubagentsPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
 
       const loader = new DefaultResourceLoader({
         cwd: PROJECT_ROOT,
+        agentDir: path.join(PROJECT_ROOT, '.pi-test'),
         settingsManager,
-        systemPromptOverride: () => '',
-        appendSystemPromptOverride: () => [],
+        systemPrompt: '',
+        appendSystemPrompt: [],
         additionalSkillPaths: [],
         additionalExtensionPaths: [piSubagentsPath],
       });
@@ -113,18 +120,18 @@ describe('pi-subagents built-in extension', () => {
       // Verify tools are registered
       const toolNames = [...subagentsExt!.tools.keys()];
       expect(toolNames).toContain('subagent');
-      expect(toolNames).toContain('subagent_status');
     });
 
     it('subagent tool is registered and available', async () => {
       const settingsManager = SettingsManager.inMemory();
-      const piSubagentsPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'index.ts');
+      const piSubagentsPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
 
       const loader = new DefaultResourceLoader({
         cwd: PROJECT_ROOT,
+        agentDir: path.join(PROJECT_ROOT, '.pi-test'),
         settingsManager,
-        systemPromptOverride: () => '',
-        appendSystemPromptOverride: () => [],
+        systemPrompt: '',
+        appendSystemPrompt: [],
         additionalSkillPaths: [],
         additionalExtensionPaths: [piSubagentsPath],
       });
@@ -139,14 +146,11 @@ describe('pi-subagents built-in extension', () => {
 
       // Both tools should be registered in the tools Map
       const subagentTool = subagentsExt!.tools.get('subagent');
-      const statusTool = subagentsExt!.tools.get('subagent_status');
 
       expect(subagentTool).toBeDefined();
-      expect(statusTool).toBeDefined();
 
-      // The tool objects exist - the actual structure depends on pi-coding-agent internals
-      // What matters is that the extension successfully registered both tools
-      expect(subagentsExt!.tools.size).toBeGreaterThanOrEqual(2);
+      // pi-subagents 0.28 folds status checks into subagent({ action: "status" }).
+      expect(subagentsExt!.tools.size).toBeGreaterThanOrEqual(1);
     });
   });
 });

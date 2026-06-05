@@ -28,6 +28,19 @@ export type PlatformStatus = {
   connected: boolean;
   botName?: string;
   capabilities: string[];
+  oauth?: {
+    state: 'disconnected' | 'pending' | 'connected';
+    expiresAt?: string;
+    user?: {
+      name?: string;
+      en_name?: string;
+      avatar_url?: string;
+      open_id?: string;
+      union_id?: string;
+      user_id?: string;
+      email?: string;
+    };
+  };
   webhook?: {
     state: 'disabled' | 'pending' | 'ready' | 'error';
     transport?: 'webhook' | 'long_connection';

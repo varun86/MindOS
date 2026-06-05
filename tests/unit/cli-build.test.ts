@@ -72,7 +72,9 @@ async function importBuild() {
     cleanNextDir: () => void;
     clearBuildLock: () => void;
     ensureAppDeps: () => void;
+    hasPrebuiltStandalone: () => boolean;
     hasPrebuiltStaticWeb: () => boolean;
+    hasDocumentExtractionRuntime: () => boolean;
   };
 }
 
@@ -108,9 +110,90 @@ describe('needsBuild', () => {
     fs.mkdirSync(path.dirname(staticWebIndex), { recursive: true });
     fs.writeFileSync(staticWebIndex, '<html></html>', 'utf-8');
     fs.writeFileSync(staticWebStamp, '0.5.12', 'utf-8');
+    fs.mkdirSync(path.join(appDir, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'scripts', 'extract-pdf.cjs'), '');
+    fs.writeFileSync(path.join(appDir, 'scripts', 'extract-docx.cjs'), '');
+    fs.mkdirSync(path.join(appDir, 'node_modules', 'pdfjs-dist', 'legacy', 'build'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'), '');
+    fs.writeFileSync(path.join(appDir, 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'), '');
+    fs.mkdirSync(path.join(appDir, 'node_modules', 'mammoth'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'node_modules', 'mammoth', 'package.json'), '{}');
+    fs.mkdirSync(path.join(appDir, 'node_modules', 'word-extractor'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'node_modules', 'word-extractor', 'package.json'), '{}');
     const { hasPrebuiltStaticWeb, needsBuild } = await importBuild();
     expect(hasPrebuiltStaticWeb()).toBe(true);
     expect(needsBuild()).toBe(false);
+  });
+
+  it('requires a build when static Web exists but the server extractor runtime is incomplete', async () => {
+    fs.mkdirSync(path.dirname(staticWebIndex), { recursive: true });
+    fs.writeFileSync(staticWebIndex, '<html></html>', 'utf-8');
+    fs.writeFileSync(staticWebStamp, '0.5.12', 'utf-8');
+    const standalone = path.join(tempDir, '_standalone');
+    fs.mkdirSync(path.join(standalone, '__next', 'server', 'app'), { recursive: true });
+    fs.writeFileSync(path.join(standalone, 'server.js'), '');
+    fs.writeFileSync(path.join(standalone, '.mindos-build-version'), '0.5.12', 'utf-8');
+    fs.writeFileSync(path.join(standalone, '__next', 'server', 'app-paths-manifest.json'), '{}');
+    fs.writeFileSync(path.join(standalone, '__next', 'server', 'app', 'page.js'), '');
+
+    const { hasPrebuiltStaticWeb, hasPrebuiltStandalone, hasDocumentExtractionRuntime, needsBuild } = await importBuild();
+
+    expect(hasPrebuiltStaticWeb()).toBe(true);
+    expect(hasPrebuiltStandalone()).toBe(false);
+    expect(hasDocumentExtractionRuntime()).toBe(false);
+    expect(needsBuild()).toBe(true);
+  });
+});
+
+// ── hasPrebuiltStandalone ───────────────────────────────────────────────────
+
+describe('hasPrebuiltStandalone', () => {
+  function writeMinimalStandalone(options: { includePdfRuntime?: boolean; includeDocxRuntime?: boolean } = {}) {
+    const standalone = path.join(tempDir, '_standalone');
+    fs.mkdirSync(path.join(standalone, '__next', 'server', 'app'), { recursive: true });
+    fs.writeFileSync(path.join(standalone, 'server.js'), '');
+    fs.writeFileSync(path.join(standalone, '.mindos-build-version'), '0.5.12', 'utf-8');
+    fs.writeFileSync(path.join(standalone, '__next', 'server', 'app-paths-manifest.json'), '{}');
+    fs.writeFileSync(path.join(standalone, '__next', 'server', 'app', 'page.js'), '');
+    if (options.includePdfRuntime) {
+      fs.mkdirSync(path.join(standalone, 'scripts'), { recursive: true });
+      fs.writeFileSync(path.join(standalone, 'scripts', 'extract-pdf.cjs'), '');
+      fs.mkdirSync(path.join(standalone, '__node_modules', 'pdfjs-dist', 'legacy', 'build'), { recursive: true });
+      fs.writeFileSync(path.join(standalone, '__node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'), '');
+      fs.writeFileSync(path.join(standalone, '__node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'), '');
+    }
+    if (options.includeDocxRuntime) {
+      fs.mkdirSync(path.join(standalone, 'scripts'), { recursive: true });
+      fs.writeFileSync(path.join(standalone, 'scripts', 'extract-docx.cjs'), '');
+      fs.mkdirSync(path.join(standalone, '__node_modules', 'mammoth'), { recursive: true });
+      fs.writeFileSync(path.join(standalone, '__node_modules', 'mammoth', 'package.json'), '{}');
+      fs.mkdirSync(path.join(standalone, '__node_modules', 'word-extractor'), { recursive: true });
+      fs.writeFileSync(path.join(standalone, '__node_modules', 'word-extractor', 'package.json'), '{}');
+    }
+  }
+
+  it('rejects a prebuilt standalone runtime when pdfjs-dist is missing', async () => {
+    writeMinimalStandalone();
+
+    const { hasPrebuiltStandalone } = await importBuild();
+
+    expect(hasPrebuiltStandalone()).toBe(false);
+  });
+
+  it('rejects a prebuilt standalone runtime when DOCX extractor runtime is missing', async () => {
+    writeMinimalStandalone({ includePdfRuntime: true });
+
+    const { hasPrebuiltStandalone } = await importBuild();
+
+    expect(hasPrebuiltStandalone()).toBe(false);
+  });
+
+  it('accepts a prebuilt standalone runtime when the PDF extractor runtime is present', async () => {
+    writeMinimalStandalone({ includePdfRuntime: true, includeDocxRuntime: true });
+
+    const { hasPrebuiltStandalone } = await importBuild();
+
+    expect(hasPrebuiltStandalone()).toBe(true);
   });
 });
 

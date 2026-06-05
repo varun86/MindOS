@@ -7,7 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { complete } from '@mariozechner/pi-ai';
+import { complete } from '@earendil-works/pi-ai';
 import { getModelConfig } from '@/lib/agent/model';
 import { effectiveAiConfig } from '@/lib/settings';
 import { getMindRoot, collectAllFiles, invalidateCache } from '@/lib/fs';

@@ -100,6 +100,8 @@ describe('OpenCode-style platform runtime packages', () => {
     expect(script).toContain("key: 'windows-arm64'");
     expect(script).toContain('binary: false');
     expect(script).toContain("'bin/cli.js'");
+    expect(script).not.toContain('bin: {');
+    expect(script).not.toContain('mindos: targetBuildBinary');
   });
 
   it('verifies npm release tarballs include runtime-critical assets', () => {
@@ -113,6 +115,8 @@ describe('OpenCode-style platform runtime packages', () => {
     expect(workflow).toContain('Published platform package missing $f');
     expect(release).toContain('dist/index.js dist/protocols/acp/index.js dist/protocols/mcp-server/index.cjs');
     expect(release).not.toContain('dist/foundation.js dist/protocols/acp/index.js');
+    expect(release).toContain('--omit=optional');
+    expect(release).toContain('npm rebuild --bin-links');
   });
 
   it('documents the migration plan and acceptance criteria', () => {

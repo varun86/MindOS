@@ -56,14 +56,9 @@ export async function register() {
         // skill-check not available or failed — silently skip
       }
     });
-    // Feishu long connection: auto-start WSClient if configured
-    process.nextTick(async () => {
-      try {
-        const { autoStartFeishuWSIfNeeded } = await import('@/lib/im/feishu-ws-client');
-        await autoStartFeishuWSIfNeeded();
-      } catch {
-        // Feishu WS not configured or failed — silently skip
-      }
-    });
+    // Feishu long connection intentionally does not auto-start here.
+    // The WS client pulls in the headless Agent runtime; importing it from
+    // instrumentation makes ordinary page renders compile the Pi runtime too.
+    // Start/stop remains available through /api/im/feishu/long-connection.
   }
 }

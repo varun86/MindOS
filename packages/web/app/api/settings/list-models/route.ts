@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { getModels as piGetModels } from '@mariozechner/pi-ai';
+import { getModels as piGetModels } from '@earendil-works/pi-ai';
 import {
   handleSettingsListModelsPost,
   type SettingsListModelsServices,

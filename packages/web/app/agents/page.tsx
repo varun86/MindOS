@@ -1,4 +1,4 @@
-import { readSettings } from '@/lib/settings';
+import { readSetupPending } from '@/lib/setup-state';
 import AgentsContentPage from '@/components/agents/AgentsContentPage';
 import { parseAgentsTab } from '@/components/agents/agents-content-model';
 import ClientRedirect from '@/components/ClientRedirect';
@@ -10,8 +10,7 @@ export default async function AgentsPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const settings = readSettings();
-  if (settings.setupPending) return <ClientRedirect href="/setup" label="Opening setup..." />;
+  if (readSetupPending()) return <ClientRedirect href="/setup" label="Opening setup..." />;
 
   const params = await searchParams;
   const tab = parseAgentsTab(params.tab);

@@ -25,6 +25,21 @@ describe('icon button hit areas', () => {
     expect(source).not.toContain('className={`flex items-center gap-1 px-2 py-1 rounded text-[11px]');
   });
 
+  it('keeps side panel header tool buttons on full 32px hit targets', () => {
+    const panelHeaderSource = readSource('components/panels/PanelHeader.tsx');
+    const filesPanelSource = readSource('components/Panel.tsx');
+    const agentsPanelSource = readSource('components/panels/AgentsPanel.tsx');
+
+    expect(panelHeaderSource).toContain('inline-flex h-8 w-8');
+    expect(panelHeaderSource).not.toContain('className="p-1 rounded hover:bg-muted');
+
+    expect(filesPanelSource).toContain('inline-flex h-8 w-8');
+    expect(filesPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
+
+    expect(agentsPanelSource).toContain('inline-flex h-8 w-8');
+    expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
+  });
+
   it('keeps chat hover actions responsive and clickable beyond the icon glyph', () => {
     const actionsSource = readSource('components/ask/UserMessageActions.tsx');
     const messageListSource = readSource('components/ask/MessageList.tsx');

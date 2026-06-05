@@ -1,4 +1,6 @@
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 import { NextRequest } from 'next/server';
 import { handleMcpStatus } from '@geminilight/mindos/server';
 import { readSettings } from '@/lib/settings';

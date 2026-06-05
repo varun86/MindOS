@@ -83,7 +83,7 @@ describe('OpenCode client and runtime boundary contract', () => {
         ...(pkg.devDependencies ?? {}),
       };
 
-      expect(deps, manifest).not.toHaveProperty('@mariozechner/pi-coding-agent');
+      expect(deps, manifest).not.toHaveProperty('@earendil-works/pi-coding-agent');
       expect(deps, manifest).not.toHaveProperty('@mindos/search');
       expect(deps, manifest).not.toHaveProperty('@mindos/vector');
       expect(deps, manifest).not.toHaveProperty('@mindos/indexer');
@@ -94,6 +94,7 @@ describe('OpenCode client and runtime boundary contract', () => {
   it('keeps client source from importing product internals directly', () => {
     const forbidden = [
       /@mariozechner\/pi-coding-agent/,
+      /@earendil-works\/pi-coding-agent/,
       /@geminilight\/mindos\/protocols/,
       /@geminilight\/mindos\/session(\/|['"])/,
       /@geminilight\/mindos\/agent(\/|['"])/,

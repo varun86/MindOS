@@ -1,4 +1,4 @@
-import { getModel as piGetModel, type Model } from '@mariozechner/pi-ai';
+import { getModel as piGetModel, type Model } from '@earendil-works/pi-ai';
 import { effectiveAiConfig } from '@/lib/settings';
 import { type ProviderId, getPreset, toPiProvider, getDefaultApi, getDefaultBaseUrl } from './providers';
 

@@ -9,6 +9,7 @@ const projectDir = path.resolve(__dirname);
 const inNodeModules = projectDir.includes('node_modules');
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   transpilePackages: [
     'github-slugger',
     // Self-reference: ensures the SWC loader compiles our own TypeScript
@@ -17,7 +18,7 @@ const nextConfig: NextConfig = {
   ],
   serverExternalPackages: [
     'chokidar', 'openai', 'discord.js',
-    '@mariozechner/pi-ai', '@mariozechner/pi-agent-core', '@mariozechner/pi-coding-agent', 'pi-mcp-adapter',
+    'pi-mcp-adapter',
     // Heavy packages excluded from bundle — dynamically imported at runtime.
     '@huggingface/transformers', 'onnxruntime-web',
     'sharp', '@img/sharp-linux-x64', '@img/sharp-darwin-arm64', '@img/sharp-win32-x64',
@@ -48,6 +49,8 @@ const nextConfig: NextConfig = {
     // extract-docx.cjs is spawned at runtime for .doc/.docx/.docm files
     '/api/extract-docx': [
       './scripts/extract-docx.cjs',
+      './node_modules/mammoth/**',
+      './node_modules/word-extractor/**',
     ],
   },
   turbopack: {
@@ -79,7 +82,7 @@ const nextConfig: NextConfig = {
       (warning: { message?: string; module?: { resource?: string } }) => {
         const resource = warning.module?.resource ?? '';
         return warning.message === 'Critical dependency: the request of a dependency is an expression'
-          && resource.includes('@mariozechner')
+          && resource.includes('@earendil-works')
           && resource.includes('pi-ai')
           && resource.includes('openai-codex-responses');
       },

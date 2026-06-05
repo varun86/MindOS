@@ -192,7 +192,8 @@ describe('OpenCode architecture alignment', () => {
     expect(askRoute).toContain('buildMindosAskSystemPrompt');
     expect(askRoute).toContain("from '@geminilight/mindos/session/pi-coding-agent'");
     expect(askRoute).toContain('createMindosPiCodingAgentRuntime');
-    expect(piRuntimeAdapter).toContain("from '@mariozechner/pi-coding-agent'");
+    expect(piRuntimeAdapter).toContain("from '@earendil-works/pi-coding-agent'");
+    expect(piRuntimeAdapter).not.toContain("from '@mariozechner/pi-coding-agent'");
     expect(piRuntimeAdapter).toContain('createMindosPiAgentRuntime');
     expect(piRuntimeAdapter).toContain('compactMindosPromptForTokenBudget');
     expect(existsSync(resolve(root, 'packages/web/lib/agent/mindos-pi-runtime-adapter.ts'))).toBe(false);

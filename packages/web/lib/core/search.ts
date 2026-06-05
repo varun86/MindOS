@@ -6,13 +6,30 @@ import { readFile } from './fs-ops';
 import { resolveExistingSafe } from './security';
 import { SearchIndex } from './search-index';
 import type { SearchResult, SearchOptions } from './types';
-import { updateEmbeddingFile, removeEmbeddingFile, invalidateEmbeddingIndex } from './hybrid-search';
 import { telemetry } from '../telemetry';
 /**
  * Module-level search index singleton.
  * Lazily built on first search, invalidated by `invalidateSearchIndex()`.
  */
 const searchIndex = new SearchIndex();
+
+function invalidateEmbeddingIndexLazy(): void {
+  void import('./hybrid-search')
+    .then(({ invalidateEmbeddingIndex }) => invalidateEmbeddingIndex())
+    .catch(() => {});
+}
+
+function updateEmbeddingFileLazy(mindRoot: string, filePath: string): void {
+  void import('./hybrid-search')
+    .then(({ updateEmbeddingFile }) => updateEmbeddingFile(mindRoot, filePath))
+    .catch(() => {});
+}
+
+function removeEmbeddingFileLazy(filePath: string): void {
+  void import('./hybrid-search')
+    .then(({ removeEmbeddingFile }) => removeEmbeddingFile(filePath))
+    .catch(() => {});
+}
 
 /** Path to ~/.mindos/ for index persistence. */
 function getMindosDir(): string {
@@ -22,7 +39,7 @@ function getMindosDir(): string {
 /** Invalidate the core search index. Called from `lib/fs.ts` on write operations. */
 export function invalidateSearchIndex(): void {
   searchIndex.invalidate();
-  invalidateEmbeddingIndex();
+  invalidateEmbeddingIndexLazy();
 }
 
 /** Incrementally update a single file in the search index (after write/edit). */
@@ -31,7 +48,7 @@ export function updateSearchIndexFile(mindRoot: string, filePath: string): void 
   searchIndex.updateFile(mindRoot, filePath);
   schedulePersist();
   // Also update embedding index (async, non-blocking)
-  updateEmbeddingFile(mindRoot, filePath);
+  updateEmbeddingFileLazy(mindRoot, filePath);
 }
 
 /** Incrementally add a new file to the search index (after create). */
@@ -40,7 +57,7 @@ export function addSearchIndexFile(mindRoot: string, filePath: string): void {
   searchIndex.addFile(mindRoot, filePath);
   schedulePersist();
   // Also update embedding index (async, non-blocking)
-  updateEmbeddingFile(mindRoot, filePath);
+  updateEmbeddingFileLazy(mindRoot, filePath);
 }
 
 /** Incrementally remove a file from the search index (after delete). */
@@ -48,7 +65,7 @@ export function removeSearchIndexFile(filePath: string): void {
   if (!searchIndex.isBuilt()) return;
   searchIndex.removeFile(filePath);
   schedulePersist();
-  removeEmbeddingFile(filePath);
+  removeEmbeddingFileLazy(filePath);
 }
 
 /** Debounced persist — writes index to disk 5s after last write operation. */

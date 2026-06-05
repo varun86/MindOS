@@ -148,6 +148,8 @@ describe('product npm publish contract', () => {
     const prepareStandalone = readText('scripts/prepare-standalone.mjs');
     const buildLib = readText('packages/mindos/bin/lib/build.js');
     const startCommand = readText('packages/mindos/bin/commands/start.js');
+    const nextConfig = readText('packages/web/next.config.ts');
+    const runtimeHealthContract = readText('packages/desktop/runtime-health-contract.json');
 
     expect(prepareStandalone).toContain('dereference: true');
     expect(prepareStandalone).toContain('__node_modules');
@@ -157,7 +159,12 @@ describe('product npm publish contract', () => {
     expect(prepareStandalone).toContain('pruneStandalonePayload');
     expect(prepareStandalone).toContain('pruneRuntimeNodeModules');
     expect(prepareStandalone).toContain('copyRuntimeDependencyClosure');
-    expect(prepareStandalone).toContain("'@mariozechner/pi-coding-agent'");
+    expect(prepareStandalone).toContain('extract-pdf.cjs');
+    expect(prepareStandalone).toContain('extract-docx.cjs');
+    expect(prepareStandalone).toContain("'pdfjs-dist'");
+    expect(prepareStandalone).toContain("'mammoth'");
+    expect(prepareStandalone).toContain("'word-extractor'");
+    expect(prepareStandalone).toContain("'@earendil-works/pi-coding-agent'");
     expect(prepareStandalone).toContain("'@sinclair/typebox'");
     expect(prepareStandalone).toContain("'partial-json'");
     expect(prepareStandalone).toContain("'openai'");
@@ -165,7 +172,13 @@ describe('product npm publish contract', () => {
     expect(prepareStandalone).toContain('tsconfig.tsbuildinfo');
     expect(prepareStandalone).toContain("'.map'");
     expect(prepareStandalone).toContain("'@types'");
+    expect(prepareStandalone).not.toContain("    'scripts',\n    'styles',");
     expect(buildLib).toContain('__next');
+    expect(buildLib).toContain('pdfjs-dist');
+    expect(buildLib).toContain('word-extractor');
+    expect(nextConfig).toContain('./node_modules/mammoth/**');
+    expect(nextConfig).toContain('./node_modules/word-extractor/**');
+    expect(runtimeHealthContract).toContain('"docx-runtime"');
     expect(startCommand).toContain('__next');
     expect(prepareStandalone).not.toContain('rm -rf _standalone/node_modules');
     expect(existsSync(resolve(root, 'packages/web/.npmignore'))).toBe(true);

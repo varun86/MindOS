@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkTempMindRoot, cleanupMindRoot, seedFile } from './helpers';
 import fs from 'fs';
 import path from 'path';
@@ -79,6 +79,27 @@ describe('space-aware file tree', () => {
         'Personal learning notes.',
         'Some structure info.',
       ]);
+    });
+
+    it('reads each preview source file only once per space', async () => {
+      seedFile(mindRoot, 'Notes/INSTRUCTION.md', '# Notes Instruction\n\n- Rule 1');
+      seedFile(mindRoot, 'Notes/README.md', '# Notes\n\nPersonal learning notes.');
+      seedFile(mindRoot, 'Notes/file.md', 'content');
+      const instructionPath = path.join(mindRoot, 'Notes', 'INSTRUCTION.md');
+      const readmePath = path.join(mindRoot, 'Notes', 'README.md');
+      const readSpy = vi.spyOn(fs, 'readFileSync');
+
+      try {
+        const { buildFileTreeForTest } = await import('@/lib/fs');
+        const tree = buildFileTreeForTest(mindRoot);
+        const notes = tree.find(n => n.name === 'Notes');
+
+        expect(notes!.spacePreview).toBeDefined();
+        expect(readSpy.mock.calls.filter(([filePath]) => String(filePath) === instructionPath)).toHaveLength(1);
+        expect(readSpy.mock.calls.filter(([filePath]) => String(filePath) === readmePath)).toHaveLength(1);
+      } finally {
+        readSpy.mockRestore();
+      }
     });
 
     it('returns empty arrays when files are empty', async () => {

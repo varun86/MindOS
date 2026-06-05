@@ -76,6 +76,7 @@ export default function AgentsPanel({
 
   const hubCopy = {
     navOverview: p.navOverview,
+    navPresets: p.navPresets,
     navMcp: p.navMcp,
     navSkills: p.navSkills,
     navChannels: p.channels,
@@ -109,7 +110,7 @@ export default function AgentsPanel({
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
             aria-label={p.refresh}
             title={p.refresh}
             type="button"

@@ -10,7 +10,6 @@ import { searchFiles as bm25Search } from './search';
 import { EmbeddingIndex } from './embedding-index';
 import { getEmbeddingConfig } from './embedding-provider';
 import { readFile } from './fs-ops';
-import { effectiveSopRoot } from '@/lib/settings';
 import type { SearchResult, SearchOptions } from './types';
 
 /** Module-level embedding index singleton — lazily initialized. */

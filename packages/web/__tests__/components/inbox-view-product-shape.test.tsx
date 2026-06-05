@@ -41,6 +41,13 @@ describe('InboxView product shape', () => {
             modifiedAt: new Date().toISOString(),
             isAging: false,
           },
+          {
+            name: 'wechat-capture.txt',
+            path: 'Inbox/wechat-capture.txt',
+            size: 1024,
+            modifiedAt: new Date().toISOString(),
+            isAging: false,
+          },
         ],
       }),
     }));
@@ -58,26 +65,28 @@ describe('InboxView product shape', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('Capture to Inbox');
     expect(host.textContent).toContain('New capture');
+    expect(host.textContent).toContain('Paste, drop, or attach. Review later.');
+    expect(host.textContent).not.toContain('CaptureSave only');
     expect(host.textContent).not.toContain('Capture anythingCapture anything');
-    expect(host.querySelector('textarea')?.getAttribute('placeholder')).toContain('Paste or drop anything here');
+    expect(host.querySelector('textarea')?.getAttribute('placeholder')).toContain('Paste a note, link');
     expect(host.textContent).toContain('Attach');
-    expect(host.textContent).toContain('Capture to Inbox');
+    expect(host.textContent).toContain('Save to Inbox');
     expect(host.textContent).toContain('Next action');
     expect(host.textContent).toContain('Save only');
     expect(host.textContent).not.toContain('Suggested: Save only');
     expect(host.textContent).not.toContain('Choose intent');
-    expect(host.textContent).toContain('AI stays off during capture');
-    expect(host.textContent).toContain('Detected');
-    expect(host.textContent).toContain('Documents');
-    expect(host.textContent).toContain('Tables');
-    expect(host.textContent).toContain('Screenshots');
-    expect(host.textContent).not.toContain('Inbox Queue');
-    expect(host.textContent).not.toContain('Triage plan');
-    expect(host.textContent).not.toContain('Run AI Organize');
+    expect(host.textContent).toContain('Text, links, files');
+    expect(host.textContent).toContain('AI waits for Review');
+    expect(host.textContent).not.toContain('Detected');
+    expect(host.textContent).not.toContain('Documents');
+    expect(host.textContent).not.toContain('Tables');
+    expect(host.textContent).not.toContain('Screenshots');
+    expect(host.textContent).not.toContain('Review queue');
+    expect(host.textContent).not.toContain('Routing hints');
+    expect(host.textContent).not.toContain('Review with Agent');
     expect(Array.from(host.querySelectorAll('button'))
-      .some(button => button.textContent?.trim() === 'AI Organize')).toBe(false);
+      .some(button => button.textContent?.trim() === 'Review with Agent')).toBe(false);
     expect(host.textContent).not.toContain('agent-memory-notes');
     expect(host.textContent).not.toContain('Capture sources');
     expect(host.textContent).not.toContain('WeChat');
@@ -89,7 +98,7 @@ describe('InboxView product shape', () => {
     });
   });
 
-  it('moves queue, current item, and AI routing behind the Queue tab', async () => {
+  it('moves review, selected item hints, and the Inbox Agent behind the Review tab', async () => {
     const InboxView = (await import('@/components/InboxView')).default;
 
     const host = document.createElement('div');
@@ -102,7 +111,7 @@ describe('InboxView product shape', () => {
     });
 
     const queueTab = Array.from(host.querySelectorAll('button'))
-      .find(button => button.textContent?.includes('Queue'));
+      .find(button => button.textContent?.includes('Review'));
     expect(queueTab).not.toBeNull();
 
     await act(async () => {
@@ -110,15 +119,50 @@ describe('InboxView product shape', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('Inbox Queue');
-    expect(host.textContent).toContain('Triage plan');
-    expect(host.textContent).toContain('Run AI Organize');
+    expect(host.textContent).toContain('Review queue');
+    expect(host.textContent).toContain('Review pending captures with the Inbox Agent.');
+    expect(host.textContent).toContain('Scope');
+    expect(host.textContent).toContain('2 pending items');
+    expect(host.textContent).toContain('Item preview');
+    expect(host.textContent).toContain('Review 2 with Agent');
     expect(Array.from(host.querySelectorAll('button'))
-      .some(button => button.textContent?.trim() === 'AI Organize')).toBe(true);
+      .some(button => button.textContent?.trim().includes('Review 2 with Agent'))).toBe(true);
     expect(host.textContent).toContain('agent-memory-notes');
-    expect(host.textContent).toContain('Current item');
+    expect(host.textContent).not.toContain('Current item');
     expect(host.textContent).toContain('Review before write');
-    expect(host.textContent).toContain('Undo record');
+    expect(host.textContent).toContain('Undo history');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('uses Inbox Agent language in the Done tab instead of old import wording', async () => {
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const doneTab = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Done'));
+    expect(doneTab).not.toBeNull();
+
+    await act(async () => {
+      doneTab!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('Recent Agent runs and undo records.');
+    expect(host.textContent).toContain('Agent runs');
+    expect(host.textContent).toContain('No completed runs yet');
+    expect(host.textContent).not.toContain('Import History');
+    expect(host.textContent).not.toContain('AI organize results will appear here');
 
     await act(async () => {
       root.unmount();
@@ -180,7 +224,7 @@ describe('InboxView product shape', () => {
     });
 
     const saveButton = Array.from(host.querySelectorAll('button'))
-      .find(button => button.textContent?.includes('Capture to Inbox'));
+      .find(button => button.textContent?.includes('Save to Inbox'));
     expect(saveButton).not.toBeNull();
 
     await act(async () => {
@@ -277,7 +321,7 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('example.com/article');
 
     const captureButton = Array.from(host.querySelectorAll('button'))
-      .find(button => button.textContent?.includes('Capture to Inbox'));
+      .find(button => button.textContent?.includes('Save to Inbox'));
     expect(captureButton).not.toBeNull();
 
     await act(async () => {
@@ -294,4 +338,5 @@ describe('InboxView product shape', () => {
       root.unmount();
     });
   });
+
 });

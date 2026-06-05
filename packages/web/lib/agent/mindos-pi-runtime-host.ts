@@ -1,4 +1,5 @@
 import path from 'path';
+import os from 'os';
 import type {
   MindosAskMode,
   MindosExecutableTool,
@@ -38,16 +39,17 @@ export function getMindosWebPiRuntimePaths(input: {
   projectRoot: string;
   mindRoot: string;
   serverSettings: WebServerSettings;
-}): { additionalSkillPaths: string[]; additionalExtensionPaths: string[] } {
+}): { agentDir: string; additionalSkillPaths: string[]; additionalExtensionPaths: string[] } {
   const webAppDir = path.join(input.projectRoot, 'packages', 'web');
   return {
+    agentDir: path.join(os.homedir(), '.pi'),
     additionalSkillPaths: getSkillSearchPaths(input.projectRoot, input.mindRoot, input.serverSettings as any),
     additionalExtensionPaths: [
       ...scanExtensionPaths(),
       path.join(webAppDir, 'lib', 'agent', 'kb-extension.ts'),
       path.join(webAppDir, 'node_modules', 'pi-mcp-adapter', 'index.ts'),
       path.join(webAppDir, 'lib', 'im', 'index.ts'),
-      path.join(webAppDir, 'node_modules', 'pi-subagents', 'index.ts'),
+      path.join(webAppDir, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts'),
       path.join(webAppDir, 'lib', 'agent', 'web-search-extension.ts'),
       path.join(webAppDir, 'node_modules', 'pi-web-access', 'index.ts'),
       path.join(webAppDir, 'lib', 'schedule-prompt', 'index.ts'),

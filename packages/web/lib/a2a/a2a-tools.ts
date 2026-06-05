@@ -4,7 +4,6 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
-import type { AgentTool } from '@mariozechner/pi-agent-core';
 import {
   discoverAgent,
   discoverAgents,
@@ -17,6 +16,14 @@ import { createPlan, executePlan } from './orchestrator';
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }], details: {} };
 }
+
+type MindosAgentTool = {
+  name: string;
+  label: string;
+  description: string;
+  parameters: unknown;
+  execute: (...args: any[]) => Promise<ReturnType<typeof textResult>>;
+};
 
 /* ── Parameter Schemas ─────────────────────────────────────────────────── */
 
@@ -50,7 +57,7 @@ const OrchestrateParams = Type.Object({
 /* ── Tool Implementations ──────────────────────────────────────────────── */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const a2aTools: AgentTool<any>[] = [
+export const a2aTools: MindosAgentTool[] = [
   {
     name: 'list_remote_agents',
     label: 'List Remote Agents',

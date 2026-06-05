@@ -2,12 +2,12 @@ import {
   AuthStorage,
   convertToLlm,
   createAgentSession,
+  createBashTool,
   DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
   SettingsManager,
-  bashTool,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import { compactMindosPromptForTokenBudget } from '../agent/index.js';
 import {
   createMindosPiAgentRuntime,
@@ -40,7 +40,7 @@ export function createMindosPiCodingAgentRuntimeServices(
   return {
     ...hostServices,
     createAuthStorage: () => AuthStorage.create(),
-    createModelRegistry: (authStorage) => new ModelRegistry(authStorage as any),
+    createModelRegistry: (authStorage) => ModelRegistry.create(authStorage as any),
     createSettingsManager: (settings) => SettingsManager.inMemory(settings as any),
     createSessionManager: () => SessionManager.inMemory(),
     createResourceLoader: (config) => new DefaultResourceLoader(config as any) as any,
@@ -55,7 +55,7 @@ export async function createMindosPiCodingAgentRuntime(
 ) {
   return createMindosPiAgentRuntime({
     ...options,
-    bashTool,
+    bashTool: createBashTool(options.projectRoot),
     services: createMindosPiCodingAgentRuntimeServices(options.hostServices),
   });
 }

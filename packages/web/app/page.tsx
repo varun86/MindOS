@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { readSettings } from '@/lib/settings';
+import { readSetupPending } from '@/lib/setup-state';
 import { getRecentlyModified, getFileContent, getFileTree, getMindRoot } from '@/lib/fs';
 import { resolveExistingSafe } from '@/lib/core/security';
 import { getAllRenderers } from '@/lib/renderers/registry';
@@ -67,8 +67,7 @@ function getExistingFiles(paths: string[]): string[] {
 }
 
 export default function HomePage() {
-  const settings = readSettings();
-  if (settings.setupPending) return <ClientRedirect href="/setup" label="Opening setup..." />;
+  if (readSetupPending()) return <ClientRedirect href="/setup" label="Opening setup..." />;
 
   let recent: { path: string; mtime: number }[] = [];
   try {

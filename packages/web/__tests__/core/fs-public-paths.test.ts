@@ -44,7 +44,7 @@ describe('web fs public directory helpers', () => {
       expect(getDirEntries('linked-outside')).toEqual([]);
       expect(getSpacePreview('linked-outside')).toBeNull();
     } finally {
-      fs.rmSync(linkPath, { force: true });
+      try { fs.unlinkSync(linkPath); } catch {}
       fs.rmSync(outside, { recursive: true, force: true });
     }
   });

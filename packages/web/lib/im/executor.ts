@@ -9,6 +9,7 @@ import { retryDelay, sleep } from '@/lib/agent/reconnect';
 import { recordActivity } from './activity';
 
 const MAX_RETRIES = 3;
+const IM_STATUS_VERIFY_TIMEOUT_MS = 3000;
 
 // ─── Adapter Cache + Hot-Reload ───────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export async function listConfiguredIM(): Promise<Array<{
     let botName: string | undefined;
     try {
       const adapter = await getAdapter(platform);
-      connected = await adapter.verify();
+      connected = await verifyWithTimeout(adapter);
       // Platform-specific bot name extraction
       if (platform === 'telegram' && 'getBotInfo' in adapter) {
         const info = (adapter as { getBotInfo(): { username: string } | null }).getBotInfo();
@@ -193,6 +194,20 @@ export async function disposeAllAdapters(): Promise<void> {
 }
 
 // ─── Retry Logic (reuses MindOS existing retry utilities) ─────────────────────
+
+async function verifyWithTimeout(adapter: IMAdapter): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      adapter.verify(),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), IM_STATUS_VERIFY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 async function sendWithRetry(
   adapter: IMAdapter,

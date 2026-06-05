@@ -8,6 +8,7 @@ import {
   filterAgentsForMcpWorkspace,
   filterSkillsForAgentDetail,
   filterSkillsForWorkspace,
+  parseAgentsTab,
   resolveMatrixAgents,
   summarizeMcpBulkReconnectResults,
   summarizeBulkSkillToggleResults,
@@ -45,6 +46,14 @@ const agents: AgentInfo[] = [
     globalPath: '/tmp/ghost.json',
   },
 ];
+
+describe('parseAgentsTab', () => {
+  it('accepts presets and falls back for unknown tabs', () => {
+    expect(parseAgentsTab('presets')).toBe('presets');
+    expect(parseAgentsTab('unknown')).toBe('overview');
+    expect(parseAgentsTab(undefined)).toBe('overview');
+  });
+});
 
 describe('filterSkillsForWorkspace', () => {
   it('filters by query + source + status on normal path', () => {

@@ -108,6 +108,13 @@ describe('Agents content dashboard', () => {
     const a = messages.en.agentsContent;
 
     expect(html).toContain(a.title);
+    expect(html).toContain(a.navAriaLabel);
+    expect(html).toContain(a.navHints.overview);
+    expect(html).toContain(a.navHints.presets);
+    expect(html).toContain(a.navHints.mcp);
+    expect(html).toContain(a.navHints.skills);
+    expect(html).toContain('/agents?tab=presets');
+    expect(html).toContain('/agents?tab=channels');
     expect(html).toContain(a.workspacePulse.connected);
     expect(html).toContain(a.workspacePulse.enabledSkills);
     expect(html).toContain(a.overview.usagePulse);
@@ -152,6 +159,28 @@ describe('Agents content dashboard', () => {
     // Skill names (e.g. 'custom-routing', 'mindos') are inside Virtuoso which
     // doesn't inflate items in renderToStaticMarkup (no viewport/scroll height).
     // Skill rendering is validated via Virtuoso's data prop, not DOM assertion.
+  });
+
+  it('renders built-in agent presets with scalable sections and run panel', () => {
+    const html = renderToStaticMarkup(<AgentsContentPage tab="presets" />);
+    const a = messages.en.agentsContent;
+
+    expect(html).toContain(a.presets.title);
+    expect(html).toContain(a.presets.presetRail);
+    expect(html).toContain(a.presets.libraryHint);
+    expect(html).toContain('Inbox Agent');
+    expect(html).toContain('Open Inbox review');
+    expect(html).toContain('/capture#queue');
+    expect(html).toContain(a.presets.overviewSection);
+    expect(html).toContain(a.presets.promptSection);
+    expect(html).toContain(a.presets.resourcesSection);
+    expect(html).toContain(a.presets.launchTitle);
+    expect(html).toContain(a.presets.contractTitle);
+    expect(html).toContain(a.presets.runMode);
+    expect(html).toContain(a.presets.triggersTitle);
+    expect(html).toContain(a.presets.guardrailsTitle);
+    expect(html).not.toContain(a.presets.promptTitle);
+    expect(html).not.toContain('read_inbox');
   });
 });
 

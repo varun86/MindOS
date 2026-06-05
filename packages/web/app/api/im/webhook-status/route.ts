@@ -1,6 +1,6 @@
 import { handleImWebhookStatusGet, type ImStatusServices } from '@geminilight/mindos/server';
 import { getPlatformConfig } from '@/lib/im/config';
-import { buildFeishuWebhookStatus } from '@/lib/im/webhook/feishu';
+import { buildFeishuWebhookStatus } from '@/lib/im/webhook/feishu-status';
 import { toNextResponse } from '../../_mindos-adapter';
 
 const services: ImStatusServices = {

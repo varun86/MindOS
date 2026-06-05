@@ -142,6 +142,9 @@ export async function isLocalModelDownloaded(modelId?: string): Promise<boolean>
 let _localPipeline: any = null;
 let _localModelId: string | null = null;
 let _loadingPromise: Promise<any> | null = null;
+let _localPipelineIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+export const LOCAL_PIPELINE_IDLE_TTL_MS = 10 * 60 * 1000;
 
 const DOWNLOAD_MAX_RETRIES = 2;
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for model download
@@ -300,7 +303,10 @@ function isRetryableError(err: any): boolean {
 
 async function loadLocalPipeline(modelId: string): Promise<any> {
   // Return existing if same model
-  if (_localPipeline && _localModelId === modelId) return _localPipeline;
+  if (_localPipeline && _localModelId === modelId) {
+    scheduleLocalPipelineRelease();
+    return _localPipeline;
+  }
 
   // Wait for any in-progress load
   if (_loadingPromise && _localModelId === modelId) return _loadingPromise;
@@ -336,6 +342,7 @@ async function loadLocalPipeline(modelId: string): Promise<any> {
         
         // Wait with timeout monitoring
         _localPipeline = await downloadPromise;
+        scheduleLocalPipelineRelease();
         
         if (timer) clearTimeout(timer);
         console.log(`[embedding] Successfully loaded pipeline for ${modelId}`);
@@ -375,6 +382,24 @@ async function loadLocalPipeline(modelId: string): Promise<any> {
   })();
 
   return _loadingPromise;
+}
+
+export function releaseLocalEmbeddingPipeline(): void {
+  if (_localPipelineIdleTimer) {
+    clearTimeout(_localPipelineIdleTimer);
+    _localPipelineIdleTimer = null;
+  }
+  _localPipeline = null;
+  _localModelId = null;
+  _loadingPromise = null;
+}
+
+function scheduleLocalPipelineRelease(): void {
+  if (_localPipelineIdleTimer) clearTimeout(_localPipelineIdleTimer);
+  _localPipelineIdleTimer = setTimeout(() => {
+    releaseLocalEmbeddingPipeline();
+  }, LOCAL_PIPELINE_IDLE_TTL_MS);
+  _localPipelineIdleTimer.unref?.();
 }
 
 async function loadTransformersModule({ installIfMissing }: { installIfMissing: boolean }): Promise<any> {
@@ -426,15 +451,19 @@ async function getLocalEmbeddings(modelId: string, texts: string[]): Promise<Flo
 
   const results: Float32Array[] = [];
 
-  for (let i = 0; i < texts.length; i += LOCAL_BATCH_SIZE) {
-    const batch = texts.slice(i, i + LOCAL_BATCH_SIZE);
+  try {
+    for (let i = 0; i < texts.length; i += LOCAL_BATCH_SIZE) {
+      const batch = texts.slice(i, i + LOCAL_BATCH_SIZE);
 
-    for (const text of batch) {
-      const output = await pipe(text, { pooling: 'mean', normalize: true });
-      // output is a Tensor — extract the Float32Array
-      const data = output.data;
-      results.push(new Float32Array(data));
+      for (const text of batch) {
+        const output = await pipe(text, { pooling: 'mean', normalize: true });
+        // output is a Tensor — extract the Float32Array
+        const data = output.data;
+        results.push(new Float32Array(data));
+      }
     }
+  } finally {
+    scheduleLocalPipelineRelease();
   }
 
   return results;

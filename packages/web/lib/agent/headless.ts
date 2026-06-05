@@ -90,6 +90,7 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
     providerOverride: options.providerOverride,
     modelOverride: typeof options.modelOverride === 'string' ? options.modelOverride : undefined,
     projectRoot,
+    agentDir: runtimePaths.agentDir,
     mindRoot,
     agentConfig,
     serverSettings,

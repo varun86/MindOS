@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import nextConfig from '../next.config';
+
+function collectRouteFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const entryPath = resolve(dir, entry);
+    if (statSync(entryPath).isDirectory()) return collectRouteFiles(entryPath);
+    return entry === 'route.ts' ? [entryPath] : [];
+  });
+}
 
 describe('next config warning hygiene', () => {
   it('keeps tracing and Turbopack roots aligned with the app standalone layout', () => {
@@ -73,11 +81,29 @@ describe('next config warning hygiene', () => {
 
     expect(ignoreWarning({
       message: 'Critical dependency: the request of a dependency is an expression',
-      module: { resource: '/repo/node_modules/@mariozechner/pi-ai/dist/providers/openai-codex-responses.js' },
+      module: { resource: '/repo/node_modules/@earendil-works/pi-ai/dist/providers/openai-codex-responses.js' },
     })).toBe(true);
     expect(ignoreWarning({
       message: 'Critical dependency: the request of a dependency is an expression',
       module: { resource: '/repo/node_modules/some-other-package/index.js' },
     })).toBe(false);
+  });
+
+  it('keeps Earendil PI packages bundled so Next resolves their package exports', () => {
+    expect(nextConfig.serverExternalPackages).not.toContain('@earendil-works/pi-ai');
+    expect(nextConfig.serverExternalPackages).not.toContain('@earendil-works/pi-agent-core');
+    expect(nextConfig.serverExternalPackages).not.toContain('@earendil-works/pi-coding-agent');
+  });
+
+  it('marks API routes that import Node-only modules as nodejs runtime routes', () => {
+    const appRoot = resolve(__dirname, '..');
+    const apiRoot = resolve(appRoot, 'app/api');
+    const nodeOnlyImport = /from ['"](?:node:)?(?:fs|os|path|stream|child_process|crypto)['"]|import\s+[^;]+from ['"](?:node:)?(?:fs|os|path|stream|child_process|crypto)['"]/;
+    const missingRuntime = collectRouteFiles(apiRoot).filter((routeFile) => {
+      const source = readFileSync(routeFile, 'utf-8');
+      return nodeOnlyImport.test(source) && !source.includes("export const runtime = 'nodejs'");
+    });
+
+    expect(missingRuntime.map(file => file.replace(`${appRoot}/`, ''))).toEqual([]);
   });
 });

@@ -48,6 +48,14 @@ vi.mock('@/lib/stores/locale-store', () => ({
           conversationGroupMentions: 'Only reply when mentioned in groups',
           conversationSaved: 'Conversation settings saved',
           conversationSave: 'Save conversation settings',
+          feishuOAuthTitle: 'Feishu authorization',
+          feishuOAuthHint: 'Let a user authorize Feishu from MindOS instead of copying IDs by hand.',
+          feishuOAuthConnected: 'Authorized as',
+          feishuOAuthDisconnected: 'Not authorized yet',
+          feishuOAuthAuthorize: 'Authorize with Feishu',
+          feishuOAuthOpening: 'Opening...',
+          feishuOAuthSetupRequired: 'Save App ID and App Secret first.',
+          feishuOAuthOpened: 'Feishu authorization opened.',
           workInMindosHint: 'Use Ask in MindOS to work with the agent.',
           useCasesTitle: 'What you can receive',
           statusSummaryTitle: 'Status summary',
@@ -152,6 +160,79 @@ describe('AgentsContentChannelDetail redesign', () => {
     // Test send + Settings (collapsed)
     expect(host.textContent).toContain('Send sample notification');
     expect(host.textContent).toContain('Settings');
+
+    await act(async () => { root.unmount(); });
+  });
+
+  it('renders a friendly Feishu authorization action for connected credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/im/status')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            platforms: [{
+              platform: 'feishu',
+              connected: true,
+              botName: 'MindOS Bot',
+              capabilities: ['text', 'markdown'],
+              oauth: { state: 'disconnected' },
+              webhook: { state: 'disabled', transport: 'long_connection' },
+            }],
+          }),
+        });
+      }
+      if (url.includes('/api/im/activity')) {
+        return Promise.resolve({ ok: true, json: async () => ({ activities: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => { root.render(<AgentsContentChannelDetail platformId="feishu" />); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(host.textContent).toContain('Feishu authorization');
+    expect(host.textContent).toContain('Not authorized yet');
+    expect(host.textContent).toContain('Authorize with Feishu');
+
+    await act(async () => { root.unmount(); });
+  });
+
+  it('shows Feishu authorization when credentials exist but verification is disconnected', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/im/status')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            platforms: [{
+              platform: 'feishu',
+              connected: false,
+              capabilities: ['text', 'markdown'],
+              oauth: { state: 'disconnected' },
+              webhook: { state: 'disabled', transport: 'webhook' },
+            }],
+          }),
+        });
+      }
+      if (url.includes('/api/im/activity')) {
+        return Promise.resolve({ ok: true, json: async () => ({ activities: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => { root.render(<AgentsContentChannelDetail platformId="feishu" />); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(host.textContent).toContain('Setup Guide');
+    expect(host.textContent).toContain('Feishu authorization');
+    expect(host.textContent).toContain('Authorize with Feishu');
 
     await act(async () => { root.unmount(); });
   });

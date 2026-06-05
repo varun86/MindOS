@@ -31,6 +31,8 @@ describe('Product server extraction contract', () => {
     expect(http).toContain('createServer');
     expect(http).toContain('/api/recent-files');
     expect(http).toContain('/api/file');
+    expect(http).toContain('/api/extract-pdf');
+    expect(http).toContain('/api/extract-docx');
     expect(http).toContain('/api/ask');
     expect(http).toContain('/api/a2a');
     expect(http).toContain('/api/a2a/agents');
@@ -62,6 +64,8 @@ describe('Product server extraction contract', () => {
     expect(http).toContain('/api/im/status');
     expect(http).toContain('/api/im/test');
     expect(http).toContain('/api/im/webhook-status');
+    expect(http).toContain('/api/im/feishu/oauth');
+    expect(http).toContain('/api/im/feishu/oauth/callback');
     expect(http).toContain('/api/im/feishu/long-connection');
     expect(http).toContain('/api/monitoring');
     expect(http).toContain('/api/update-status');
@@ -89,6 +93,10 @@ describe('Product server extraction contract', () => {
     expect(contract).toContain("path: '/api/recent-files'");
     expect(contract).toContain("id: 'file.read'");
     expect(contract).toContain("path: '/api/file'");
+    expect(contract).toContain("id: 'extract-pdf'");
+    expect(contract).toContain("path: '/api/extract-pdf'");
+    expect(contract).toContain("id: 'extract-docx'");
+    expect(contract).toContain("path: '/api/extract-docx'");
     expect(contract).toContain("id: 'ask.stream'");
     expect(contract).toContain("path: '/api/ask'");
     expect(contract).toContain("id: 'a2a'");
@@ -145,6 +153,10 @@ describe('Product server extraction contract', () => {
     expect(contract).toContain("path: '/api/im/test'");
     expect(contract).toContain("id: 'im.webhook-status'");
     expect(contract).toContain("path: '/api/im/webhook-status'");
+    expect(contract).toContain("id: 'im.feishu.oauth'");
+    expect(contract).toContain("path: '/api/im/feishu/oauth'");
+    expect(contract).toContain("id: 'im.feishu.oauth.callback'");
+    expect(contract).toContain("path: '/api/im/feishu/oauth/callback'");
     expect(contract).toContain("id: 'im.feishu.long-connection'");
     expect(contract).toContain("path: '/api/im/feishu/long-connection'");
     expect(contract).toContain("id: 'monitoring'");
@@ -202,6 +214,8 @@ describe('Product server extraction contract', () => {
       'packages/web/app/api/files/route.ts',
       'packages/web/app/api/recent-files/route.ts',
       'packages/web/app/api/file/route.ts',
+      'packages/web/app/api/extract-pdf/route.ts',
+      'packages/web/app/api/extract-docx/route.ts',
       'packages/web/app/api/file/raw/route.ts',
       'packages/web/app/api/a2a/route.ts',
       'packages/web/app/api/a2a/agents/route.ts',
@@ -232,6 +246,8 @@ describe('Product server extraction contract', () => {
       'packages/web/app/api/im/status/route.ts',
       'packages/web/app/api/im/test/route.ts',
       'packages/web/app/api/im/webhook-status/route.ts',
+      'packages/web/app/api/im/feishu/oauth/route.ts',
+      'packages/web/app/api/im/feishu/oauth/callback/route.ts',
       'packages/web/app/api/im/feishu/long-connection/route.ts',
       'packages/web/app/api/monitoring/route.ts',
       'packages/web/app/api/update-status/route.ts',

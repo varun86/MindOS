@@ -769,6 +769,7 @@ describe('MindOS session event contract', () => {
       providerOverride: 'openai',
       modelOverride: 'gpt-test',
       projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
       mindRoot: '/mind',
       agentConfig: { enableThinking: true, thinkingBudget: 3000, contextStrategy: 'off' },
       serverSettings: { disabledSkills: ['disabled-skill'] },
@@ -799,7 +800,7 @@ describe('MindOS session event contract', () => {
         createSessionManager: () => ({ sessionManager: true }),
         createResourceLoader: (config) => {
           calls.push(`loader:${config.cwd}:${config.additionalSkillPaths.join(',')}:${config.additionalExtensionPaths.join(',')}`);
-          capturedSystemPrompt = config.systemPromptOverride();
+          capturedSystemPrompt = config.systemPrompt;
           expect(config.skillsOverride({
             skills: [{ name: 'mindos' }, { name: 'third-party' }],
           }).skills).toEqual([{ name: 'third-party' }]);

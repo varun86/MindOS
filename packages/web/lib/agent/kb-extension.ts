@@ -8,8 +8,8 @@
 // Mode-based filtering (chat/organize/agent) is controlled by setKbMode() which
 // must be called before resourceLoader.reload().
 
-import type { ExtensionAPI, ToolDefinition } from '@mariozechner/pi-coding-agent';
-import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { TSchema } from '@sinclair/typebox';
 import { knowledgeBaseTools, WRITE_TOOLS, CHAT_TOOL_NAMES, ORGANIZE_TOOL_NAMES } from './tools';
 import { a2aTools } from '@/lib/a2a/a2a-tools';

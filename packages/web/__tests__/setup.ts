@@ -3,6 +3,11 @@ import os from 'os';
 import path from 'path';
 import { vi, beforeEach, afterEach } from 'vitest';
 
+type TestGlobal = typeof globalThis & {
+  DataTransfer: typeof DataTransfer;
+  DragEvent: typeof DragEvent;
+};
+
 // --- JSDOM polyfills ---
 
 // JSDOM doesn't implement scrollIntoView
@@ -37,7 +42,7 @@ if (typeof globalThis.DataTransfer === 'undefined') {
     }
     setDragImage() {}
   }
-  (globalThis as any).DataTransfer = DataTransferPolyfill;
+  (globalThis as TestGlobal).DataTransfer = DataTransferPolyfill as typeof DataTransfer;
 }
 
 // JSDOM doesn't implement DragEvent
@@ -49,7 +54,7 @@ if (typeof globalThis.DragEvent === 'undefined' && typeof globalThis.MouseEvent 
       this.dataTransfer = init?.dataTransfer ?? null;
     }
   }
-  (globalThis as any).DragEvent = DragEventPolyfill;
+  (globalThis as TestGlobal).DragEvent = DragEventPolyfill as typeof DragEvent;
 }
 
 // Temp MIND_ROOT for each test
@@ -89,6 +94,10 @@ vi.mock('@/lib/settings', () => ({
     model: 'claude-sonnet-4-6',
     baseUrl: '',
   }),
+}));
+
+vi.mock('@/lib/mind-root', () => ({
+  effectiveMindRoot: () => state.root,
 }));
 
 beforeEach(() => {

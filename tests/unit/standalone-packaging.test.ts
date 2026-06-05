@@ -67,9 +67,12 @@ describe('standalone runtime packaging', () => {
     writeFile(join(app, '.next', 'standalone', '.next', 'server', 'app', 'changelog', 'page.js'));
     writeFile(join(app, '.next', 'standalone', '.next', 'server', 'app', 'setup', 'page.js'));
     writeFile(join(app, '.next', 'standalone', 'scripts', 'extract-pdf.cjs'));
+    writeFile(join(app, '.next', 'standalone', 'scripts', 'extract-docx.cjs'));
     writeFile(join(app, '.next', 'standalone', 'node_modules', 'next', 'dist', 'server', 'next.js'), '');
     writeFile(join(app, '.next', 'standalone', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'));
     writeFile(join(app, '.next', 'standalone', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'));
+    writeFile(join(app, '.next', 'standalone', 'node_modules', 'mammoth', 'package.json'), '{"name":"mammoth","version":"1.0.0"}');
+    writeFile(join(app, '.next', 'standalone', 'node_modules', 'word-extractor', 'package.json'), '{"name":"word-extractor","version":"1.0.0"}');
     writeFile(join(app, '.next', 'static', 'placeholder'));
     writeFile(
       join(app, 'node_modules', 'next', 'package.json'),

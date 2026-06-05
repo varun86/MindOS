@@ -19,16 +19,12 @@ import { execInheritedFile as runFile, formatManualCdCommand, npmInstall } from 
 import { safeRmSync, assertNotSymlink } from './safe-rm.js';
 
 export function needsBuild() {
-  if (hasPrebuiltStaticWeb()) return false;
+  if (hasPrebuiltStaticWeb() && hasDocumentExtractionRuntime()) return false;
 
   // Prefer prebuilt standalone shipped with the npm package.
   // If _standalone/server.js exists and its version stamp matches, skip build entirely.
   if (existsSync(STANDALONE_SERVER)) {
-    try {
-      const builtVersion = readFileSync(STANDALONE_STAMP, 'utf-8').trim();
-      const currentVersion = JSON.parse(readFileSync(PRODUCT_PACKAGE_JSON, 'utf-8')).version;
-      if (builtVersion === currentVersion) return false;
-    } catch { /* stamp unreadable — fall through to legacy check */ }
+    if (hasPrebuiltStandalone()) return false;
   }
 
   // Fallback: check local packages/web/.next/ build (for dev installs or after `mindos build`)
@@ -187,6 +183,45 @@ function standaloneServerDir() {
   return resolve(nextDir, 'server');
 }
 
+function standaloneRootDir() {
+  return resolve(PACKAGE_ROOT, '_standalone');
+}
+
+function standaloneNodeModulesDir() {
+  const standaloneRoot = standaloneRootDir();
+  const runtimeNodeModules = resolve(standaloneRoot, 'node_modules');
+  const publishableNodeModules = resolve(standaloneRoot, '__node_modules');
+  return existsSync(runtimeNodeModules) ? runtimeNodeModules : publishableNodeModules;
+}
+
+function hasPrebuiltDocumentExtractionRuntime() {
+  const standaloneRoot = standaloneRootDir();
+  const nodeModules = standaloneNodeModulesDir();
+  const required = [
+    resolve(standaloneRoot, 'scripts', 'extract-pdf.cjs'),
+    resolve(nodeModules, 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'),
+    resolve(nodeModules, 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+    resolve(standaloneRoot, 'scripts', 'extract-docx.cjs'),
+    resolve(nodeModules, 'mammoth', 'package.json'),
+    resolve(nodeModules, 'word-extractor', 'package.json'),
+  ];
+  return required.every((file) => existsSync(file));
+}
+
+export function hasDocumentExtractionRuntime() {
+  if (hasPrebuiltDocumentExtractionRuntime()) return true;
+
+  const required = [
+    resolve(WEB_APP_DIR, 'scripts', 'extract-pdf.cjs'),
+    resolve(WEB_APP_DIR, 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs'),
+    resolve(WEB_APP_DIR, 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+    resolve(WEB_APP_DIR, 'scripts', 'extract-docx.cjs'),
+    resolve(WEB_APP_DIR, 'node_modules', 'mammoth', 'package.json'),
+    resolve(WEB_APP_DIR, 'node_modules', 'word-extractor', 'package.json'),
+  ];
+  return required.every((file) => existsSync(file));
+}
+
 /** Critical packages that must exist after dependency install for the app to work. */
 const CRITICAL_DEPS = ['next', 'react', 'react-dom'];
 
@@ -213,6 +248,7 @@ export function hasPrebuiltStandalone() {
   const serverDir = standaloneServerDir();
   if (!existsSync(resolve(serverDir, 'app-paths-manifest.json'))) return false;
   if (!existsSync(resolve(serverDir, 'app', 'page.js'))) return false;
+  if (!hasPrebuiltDocumentExtractionRuntime()) return false;
   return true;
 }
 

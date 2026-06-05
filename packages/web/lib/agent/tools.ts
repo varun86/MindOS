@@ -1,6 +1,6 @@
 import path from 'path';
 import { Type, type Static } from '@sinclair/typebox';
-import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
+import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import {
   getFileContent, getFileTree, getRecentlyModified,
   saveFileContent, createFile, appendToFile, insertAfterHeading, updateSection,
@@ -20,6 +20,14 @@ import { getProjectRoot } from '@/lib/project-root';
 
 // Max chars per file to avoid token overflow (~100k chars ≈ ~25k tokens)
 const MAX_FILE_CHARS = 20_000;
+
+type MindosAgentTool = {
+  name: string;
+  label: string;
+  description: string;
+  parameters: unknown;
+  execute: (...args: any[]) => Promise<AgentToolResult<any>>;
+};
 
 export function truncate(content: string, query?: string): string {
   const { result } = extractRelevantContent(content, MAX_FILE_CHARS, query);
@@ -220,7 +228,7 @@ export const ORGANIZE_TOOL_NAMES = new Set([
 ]);
 
 /** Lean tool set for organize mode — skips MCP discovery, history, backlinks, etc. */
-export function getOrganizeTools(): AgentTool<any>[] {
+export function getOrganizeTools(): MindosAgentTool[] {
   return knowledgeBaseTools.filter(t => ORGANIZE_TOOL_NAMES.has(t.name));
 }
 
@@ -241,11 +249,11 @@ export const CHAT_TOOL_NAMES = new Set([
   'get_backlinks',
 ]);
 
-export function getChatTools(): AgentTool<any>[] {
+export function getChatTools(): MindosAgentTool[] {
   return knowledgeBaseTools.filter(t => CHAT_TOOL_NAMES.has(t.name));
 }
 
-export function getRequestScopedTools(): AgentTool<any>[] {
+export function getRequestScopedTools(): MindosAgentTool[] {
   const baseTools = [...knowledgeBaseTools, ...a2aTools, ...acpTools];
 
   // IM tools are now provided by the im extension (packages/web/lib/im/index.ts)
@@ -257,7 +265,7 @@ export function getRequestScopedTools(): AgentTool<any>[] {
   return baseTools;
 }
 
-export const knowledgeBaseTools: AgentTool<any>[] = [
+export const knowledgeBaseTools: MindosAgentTool[] = [
   {
     name: 'list_files',
     label: 'List Files',

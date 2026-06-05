@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, AlertCircle, CheckCircle2, Loader2, GitBranch, ExternalLink, Eye, EyeOff, Check, ChevronRight, FileX2 } from 'lucide-react';
-import { SectionLabel, PrimaryButton, Input, Field, SettingCard, Select } from './Primitives';
+import { RefreshCw, AlertCircle, CheckCircle2, Loader2, GitBranch, Check, ChevronRight, FileX2, GitCommitHorizontal } from 'lucide-react';
+import { PrimaryButton, SettingCard, Select } from './Primitives';
 import { apiFetch } from '@/lib/api';
 import type { SyncStatus, SyncTabProps } from './types';
-import type { Messages } from '@/lib/i18n';
 
 export function timeAgo(iso: string | null | undefined, syncT?: Record<string, unknown>): string {
   if (!iso) return (syncT?.timeNever as string) ?? 'never';
@@ -61,6 +60,74 @@ export function getSyncErrorHint(error: string, remote?: string | null, syncT?: 
   return '';
 }
 
+function getUnpushedCount(status: SyncStatus): number {
+  const parsed = parseInt(status.unpushed || '0', 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>) {
+  const conflictCount = status.conflicts?.length ?? 0;
+  const unpushedCount = getUnpushedCount(status);
+
+  if (conflictCount > 0) {
+    return {
+      tone: 'error' as const,
+      title: (syncT?.healthConflictsTitle as string) ?? 'Resolve conflicts to finish sync',
+      description: (syncT?.healthConflictsDesc as ((n: number) => string))?.(conflictCount)
+        ?? `Review each file below, compare the two versions, then choose which one to keep.`,
+      next: (syncT?.healthConflictsNext as string) ?? 'Next: choose which version to keep',
+      icon: <AlertCircle size={18} />,
+    };
+  }
+
+  if (status.lastError) {
+    const hint = getSyncErrorHint(status.lastError, status.remote, syncT);
+    return {
+      tone: 'error' as const,
+      title: (syncT?.healthErrorTitle as string) ?? 'Sync needs attention',
+      description: hint || status.lastError,
+      next: (syncT?.healthErrorNext as string) ?? 'Next: fix the issue, then sync again',
+      icon: <AlertCircle size={18} />,
+    };
+  }
+
+  if (unpushedCount > 0) {
+    return {
+      tone: 'warning' as const,
+      title: (syncT?.healthUnpushedTitle as ((n: number) => string))?.(unpushedCount)
+        ?? `${unpushedCount} local change${unpushedCount === 1 ? '' : 's'} waiting to upload`,
+      description: (syncT?.healthUnpushedDesc as string)
+        ?? 'MindOS will push them automatically, or you can run Sync now.',
+      next: (syncT?.healthUnpushedNext as string) ?? 'Next: sync now or keep working',
+      icon: <GitCommitHorizontal size={18} />,
+    };
+  }
+
+  return {
+    tone: 'success' as const,
+    title: (syncT?.healthSyncedTitle as string) ?? 'All notes are backed up',
+    description: (syncT?.healthSyncedDesc as ((time: string) => string))?.(timeAgo(status.lastSync, syncT))
+      ?? `Last sync: ${timeAgo(status.lastSync, syncT)}.`,
+    next: (syncT?.healthSyncedNext as string) ?? 'Next: keep writing',
+    icon: <CheckCircle2 size={18} />,
+  };
+}
+
+function healthToneClass(tone: 'success' | 'warning' | 'error') {
+  switch (tone) {
+    case 'success':
+      return 'border-success/25 bg-success/10 text-success';
+    case 'warning':
+      return 'border-[var(--amber)]/30 bg-[var(--amber-subtle)] text-[var(--amber-text)]';
+    case 'error':
+      return 'border-destructive/25 bg-destructive/10 text-destructive';
+  }
+}
+
+async function loadSyncStatus(): Promise<SyncStatus> {
+  return apiFetch<SyncStatus>('/api/sync', { timeout: 10000 });
+}
+
 /* ── Conflict Row ──────────────────────────────────────────────── */
 
 function ConflictRow({ file, time, syncT, onResolved }: {
@@ -105,12 +172,12 @@ function ConflictRow({ file, time, syncT, onResolved }: {
   return (
     <div className="rounded-lg border border-border/50 overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center gap-2 p-2 text-xs bg-muted/20">
+      <div className="flex flex-wrap items-center gap-2 p-2 text-xs bg-muted/20">
         <AlertCircle size={12} className="text-error shrink-0" />
         <button
           type="button"
           onClick={togglePreview}
-          className="font-mono truncate hover:text-foreground hover:underline transition-colors flex-1 min-w-0 text-left"
+          className="inline-flex min-h-8 flex-1 min-w-[12rem] items-center rounded-md font-mono text-left hover:text-foreground hover:underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={(syncT?.viewDiff as string) ?? 'View differences'}
         >
           <ChevronRight size={11} className={`inline mr-1 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -122,7 +189,7 @@ function ConflictRow({ file, time, syncT, onResolved }: {
             type="button"
             onClick={() => handleResolve('keep-local')}
             disabled={!!resolving}
-            className="px-2 py-0.5 rounded border border-border text-2xs hover:bg-muted transition-colors disabled:opacity-40"
+            className="inline-flex min-h-8 items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={(syncT?.keepLocalHint as string) ?? 'Keep this device\'s version'}
           >
             {resolving === 'local' ? <Loader2 size={10} className="animate-spin" /> : ((syncT?.keepLocal as string) ?? 'Keep local')}
@@ -131,7 +198,7 @@ function ConflictRow({ file, time, syncT, onResolved }: {
             type="button"
             onClick={() => handleResolve('keep-remote')}
             disabled={!!resolving}
-            className="px-2 py-0.5 rounded border border-border text-2xs hover:bg-muted transition-colors disabled:opacity-40"
+            className="inline-flex min-h-8 items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={(syncT?.keepRemoteHint as string) ?? 'Replace with remote version'}
           >
             {resolving === 'remote' ? <Loader2 size={10} className="animate-spin" /> : ((syncT?.keepRemote as string) ?? 'Keep remote')}
@@ -282,7 +349,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await apiFetch<SyncStatus>('/api/sync', { timeout: 10000 });
+      const data = await loadSyncStatus();
       setStatus(data);
     } catch {
       // Keep existing status on refresh failure (don't flash init form during recompile)
@@ -293,7 +360,24 @@ export function SyncTab({ t, visible }: SyncTabProps) {
     }
   }, []);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadSyncStatus()
+      .then((data) => {
+        if (!cancelled) setStatus(data);
+      })
+      .catch(() => {
+        if (!cancelled) setStatus(prev => prev ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Refresh sync status when the tab becomes visible again (after being hidden via display:none)
   const prevVisible = useRef(visible);
@@ -419,12 +503,41 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   }
 
   const conflicts = status.conflicts || [];
+  const health = getSyncHealth(status, syncT);
+  const unpushedCount = getUnpushedCount(status);
+  const showHealthSyncAction = conflicts.length === 0;
 
   return (
     <div className="space-y-4">
+      <div className={`rounded-xl border p-4 ${healthToneClass(health.tone)}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background/65">
+              {health.icon}
+            </div>
+            <div className="min-w-0 space-y-1">
+              <h3 className="text-sm font-semibold text-foreground">{health.title}</h3>
+              <p className="text-xs leading-relaxed text-foreground/75">{health.description}</p>
+              <p className="text-xs font-medium">{health.next}</p>
+            </div>
+          </div>
+          {showHealthSyncAction && (
+            <button
+              type="button"
+              onClick={handleSyncNow}
+              disabled={syncing}
+              className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background/80 px-3 text-sm text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+              {(syncT?.syncNow as string) ?? 'Sync now'}
+            </button>
+          )}
+        </div>
+      </div>
+
       <SettingCard
         icon={<GitBranch size={15} />}
-        title={(syncT?.sectionTitle as string) ?? 'Sync'}
+        title={(syncT?.repositoryTitle as string) ?? 'Repository'}
         description={status.remote}
         badge={
           <span className="text-2xs px-1.5 py-0.5 rounded bg-success/15 text-success font-medium">
@@ -443,67 +556,22 @@ export function SyncTab({ t, visible }: SyncTabProps) {
             <span className="text-xs">{timeAgo(status.lastSync, syncT)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">{(syncT?.labelUnpushed as string) ?? 'Unpushed'}</span>
+            <span className="text-muted-foreground">{(syncT?.labelUnpushed as string) ?? 'Local changes'}</span>
             <span className="text-xs">
               {typeof status.unpushed === 'string' && /^\d+$/.test(status.unpushed)
-                ? ((syncT?.unpushedCommits as ((n: number) => string))?.(parseInt(status.unpushed, 10)) ?? `${status.unpushed} commits`)
-                : `${status.unpushed ?? '?'} commits`}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">{(syncT?.labelAutoSync as string) ?? 'Auto-sync'}</span>
-            <span className="flex items-center gap-1 text-xs">
-              commit{' '}
-              <Select
-                size="sm"
-                value={String(status.autoCommitInterval)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  void handleUpdateIntervals({ autoCommitInterval: val });
-                }}
-              >
-                <option value="10">10s</option>
-                <option value="15">15s</option>
-                <option value="30">30s</option>
-                <option value="60">60s</option>
-                <option value="120">120s</option>
-              </Select>
-              {' · pull '}
-              <Select
-                size="sm"
-                value={String(status.autoPullInterval)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  void handleUpdateIntervals({ autoPullInterval: val });
-                }}
-              >
-                <option value="60">1min</option>
-                <option value="120">2min</option>
-                <option value="300">5min</option>
-                <option value="600">10min</option>
-                <option value="1800">30min</option>
-                <option value="3600">60min</option>
-              </Select>
+                ? ((syncT?.unpushedCommits as ((n: number) => string))?.(unpushedCount) ?? `${unpushedCount} changes`)
+                : `${status.unpushed ?? '?'} changes`}
             </span>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleSyncNow}
-            disabled={syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
-            {(syncT?.syncNow as string) ?? 'Sync Now'}
-          </button>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <button
             type="button"
             onClick={handleToggle}
             disabled={toggling}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {(syncT?.disableAutoSync as string) ?? 'Disable Auto-sync'}
           </button>
@@ -527,39 +595,71 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           </div>
         )}
 
-        {/* Conflicts */}
-        {conflicts.length > 0 && (
-          <div className="pt-2 border-t border-border/50 space-y-3">
-            <p className="text-xs font-medium text-foreground">
-              {(syncT?.conflictsTitle as ((n: number) => string))?.(conflicts.length) ?? `Conflicts (${conflicts.length})`}
-            </p>
-            <p className="text-2xs text-muted-foreground">
-              {(syncT?.conflictExplain as string) ?? 'These files were changed on both this device and the remote. Choose which version to keep for each file.'}
-            </p>
-            <div className="space-y-2">
-              {conflicts.map((c, i) => (
-                <ConflictRow key={i} file={c.file} time={c.time} syncT={syncT} onResolved={fetchStatus} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Error — hide if conflicts section already explains the issue */}
-        {status.lastError && conflicts.length === 0 && (
-          <div className="flex items-start gap-2 text-xs p-2.5 rounded-lg bg-destructive/10 text-destructive">
-            <AlertCircle size={12} className="shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <span className="block">{status.lastError}</span>
-              {getSyncErrorHint(status.lastError, status.remote, syncT) && (
-                <span className="block text-destructive/70">{getSyncErrorHint(status.lastError, status.remote, syncT)}</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Gitignore editor */}
-        <GitignoreEditor syncT={syncT} />
       </SettingCard>
+
+      {conflicts.length > 0 && (
+        <SettingCard
+          icon={<AlertCircle size={15} />}
+          title={(syncT?.conflictsTitle as ((n: number) => string))?.(conflicts.length) ?? `Conflicts (${conflicts.length})`}
+          description={(syncT?.conflictSectionDesc as string) ?? 'Review each file below. Choose which version to keep before syncing again.'}
+          className="border-destructive/25"
+        >
+          <p className="text-xs text-muted-foreground">
+            {(syncT?.conflictExplain as string) ?? 'Choose which version to keep for each file.'}
+          </p>
+          <div className="space-y-2">
+            {conflicts.map((c, i) => (
+              <ConflictRow key={i} file={c.file} time={c.time} syncT={syncT} onResolved={fetchStatus} />
+            ))}
+          </div>
+        </SettingCard>
+      )}
+
+      <SettingCard
+        icon={<RefreshCw size={15} />}
+        title={(syncT?.automationTitle as string) ?? 'Automation'}
+        description={(syncT?.automationDesc as string) ?? 'MindOS keeps syncing in the background while you work.'}
+      >
+        <div className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-muted-foreground">{(syncT?.autoCommitLabel as string) ?? 'Save changes every'}</span>
+            <Select
+              size="sm"
+              value={String(status.autoCommitInterval)}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                void handleUpdateIntervals({ autoCommitInterval: val });
+              }}
+            >
+              <option value="10">10s</option>
+              <option value="15">15s</option>
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+              <option value="120">120s</option>
+            </Select>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-muted-foreground">{(syncT?.autoPullLabel as string) ?? 'Check for updates every'}</span>
+            <Select
+              size="sm"
+              value={String(status.autoPullInterval)}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                void handleUpdateIntervals({ autoPullInterval: val });
+              }}
+            >
+              <option value="60">1min</option>
+              <option value="120">2min</option>
+              <option value="300">5min</option>
+              <option value="600">10min</option>
+              <option value="1800">30min</option>
+              <option value="3600">60min</option>
+            </Select>
+          </div>
+        </div>
+      </SettingCard>
+
+      <GitignoreEditor syncT={syncT} />
     </div>
   );
 }

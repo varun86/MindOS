@@ -26,6 +26,7 @@ describe('embedding-provider retry logic', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   describe('mirror configuration', () => {
@@ -246,6 +247,26 @@ describe('embedding-provider retry logic', () => {
       const result2 = await downloadLocalModel('model-a');
       expect(result2).toBe(true);
       expect(vi.mocked(pipeline)).toHaveBeenCalledTimes(1); // Still 1, not 2
+    });
+
+    it('should release cached local pipeline after idle timeout', async () => {
+      vi.useFakeTimers();
+      const { pipeline } = await import('@huggingface/transformers');
+      const mockPipeline = { mock: true };
+
+      vi.mocked(pipeline).mockResolvedValue(mockPipeline);
+
+      const { downloadLocalModel, LOCAL_PIPELINE_IDLE_TTL_MS } = await import('@/lib/core/embedding-provider');
+
+      const result1 = await downloadLocalModel('model-a');
+      expect(result1).toBe(true);
+      expect(vi.mocked(pipeline)).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(LOCAL_PIPELINE_IDLE_TTL_MS);
+
+      const result2 = await downloadLocalModel('model-a');
+      expect(result2).toBe(true);
+      expect(vi.mocked(pipeline)).toHaveBeenCalledTimes(2);
     });
 
     it('should handle model switching after cache', async () => {

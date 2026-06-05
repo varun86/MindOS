@@ -33,6 +33,7 @@ import {
   writeBuildStamp,
   hasPrebuiltStandalone,
   hasPrebuiltStaticWeb,
+  hasDocumentExtractionRuntime,
 } from '../lib/build.js';
 import { assertPortFree } from '../lib/port.js';
 import { savePids, clearPids } from '../lib/pid.js';
@@ -80,7 +81,8 @@ function runtimeJsExecutor() {
 
 function useProductServer() {
   if (process.env.MINDOS_NEXT_STANDALONE === '1' && hasPrebuiltStandalone()) return false;
-  return process.env.MINDOS_PRODUCT_SERVER === '1' || hasPrebuiltStaticWeb();
+  if (process.env.MINDOS_PRODUCT_SERVER === '1') return true;
+  return hasPrebuiltStaticWeb() && hasDocumentExtractionRuntime();
 }
 
 export function resolveWebHost(config = {}, env = process.env) {

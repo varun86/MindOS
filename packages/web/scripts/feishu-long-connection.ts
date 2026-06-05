@@ -1,6 +1,8 @@
 /**
  * Standalone Feishu long-connection script.
- * Kept for manual debugging — production use goes through instrumentation.ts auto-start.
+ * Kept for manual debugging. Product use goes through
+ * /api/im/feishu/long-connection so ordinary page startup does not import the
+ * headless Agent runtime from instrumentation.ts.
  */
 import { getPlatformConfig } from '@/lib/im/config';
 import { startFeishuWSClient, getFeishuWSClientStatus } from '@/lib/im/feishu-ws-client';

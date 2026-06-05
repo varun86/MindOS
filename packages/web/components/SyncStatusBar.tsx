@@ -21,11 +21,11 @@ export function getStatusLevel(status: SyncStatus | null, syncing: boolean): Sta
 
 export const DOT_COLORS: Record<StatusLevel, string> = {
   synced: 'bg-success',
-  unpushed: 'bg-yellow-500',
+  unpushed: 'bg-[var(--amber)]',
   conflicts: 'bg-error',       // #6 — conflicts more prominent than unpushed
   error: 'bg-error',
   off: 'bg-muted-foreground/40',
-  syncing: 'bg-blue-500',
+  syncing: 'bg-[var(--amber)]',
 };
 
 interface SyncStatusBarProps {
@@ -194,15 +194,21 @@ export function getSyncLabel(
     case 'unpushed': {
       const n = parseInt(status?.unpushed || '0', 10);
       return {
-        label: `${n} ${syncT?.unpushed ?? 'awaiting push'}`,
-        tooltip: syncT?.unpushedHint ?? `${n} commit(s) not yet pushed to remote`,
+        label: syncT?.changesToUpload
+          ? syncT.changesToUpload.replace('{n}', String(n))
+          : `${n} changes to upload`,
+        tooltip: syncT?.changesToUploadHint
+          ?? `${n} local change(s) are not backed up yet. Run Sync now or let auto-sync upload them.`,
       };
     }
     case 'conflicts': {
       const n = status?.conflicts?.length || 0;
       return {
-        label: `${n} ${syncT?.conflicts ?? 'conflicts'}`,
-        tooltip: syncT?.conflictsHint ?? `${n} file(s) have merge conflicts — resolve in Settings > Sync`,
+        label: syncT?.resolveConflicts
+          ? syncT.resolveConflicts.replace('{n}', String(n))
+          : `Resolve ${n} conflicts`,
+        tooltip: syncT?.resolveConflictsHint
+          ?? `${n} file(s) changed in two places. Open Settings > Sync to choose which version to keep.`,
       };
     }
     case 'error':
@@ -264,12 +270,12 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
   // Task E — Show dismissible hint when sync is not configured
   if (level === 'off') {
     if (hintDismissed) return null;
-    const syncT = (t as any).sidebar?.sync;
+    const syncT = t.sidebar?.sync as Record<string, string> | undefined;
     return (
       <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-border text-xs text-muted-foreground shrink-0 animate-in fade-in duration-300">
         <button
           onClick={onOpenSyncSettings}
-          className="flex items-center gap-2 min-w-0 hover:text-foreground transition-colors truncate"
+          className="flex min-h-7 min-w-0 items-center gap-2 rounded-md hover:text-foreground transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={syncT?.enableHint ?? 'Set up cross-device sync'}
         >
           <span className="w-2 h-2 rounded-full shrink-0 bg-muted-foreground/40" />
@@ -281,7 +287,7 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
             try { localStorage.setItem('sync-hint-dismissed', '1'); } catch (err) { console.warn("[SyncStatusBar] localStorage write dismissed:", err); }
             setHintDismissed(true);
           }}
-          className="p-1 rounded hover:bg-muted hover:text-foreground transition-colors shrink-0 ml-2 text-muted-foreground/50 hover:text-muted-foreground"
+          className="ml-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-muted hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title="Dismiss"
         >
           <span className="text-2xs">✕</span>
@@ -290,7 +296,7 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
     );
   }
 
-  const syncT = (t as any).sidebar?.sync;
+  const syncT = t.sidebar?.sync as Record<string, string> | undefined;
   const { label, tooltip } = getSyncLabel(level, status, syncT);
 
   return (
@@ -298,7 +304,7 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
     <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-border text-xs text-muted-foreground shrink-0 animate-in fade-in duration-300">
       <button
         onClick={onOpenSyncSettings}
-        className="flex items-center gap-2 min-w-0 hover:text-foreground transition-colors truncate"
+        className="flex min-h-7 min-w-0 items-center gap-2 rounded-md hover:text-foreground transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={tooltip}
       >
         <span
@@ -316,7 +322,7 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
         <button
           onClick={handleSyncNow}
           disabled={syncing}
-          className="p-1 rounded hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={syncT?.syncNow ?? 'Sync now'}
         >
           <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />

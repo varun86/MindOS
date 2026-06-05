@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { DefaultResourceLoader, SettingsManager } from '@mariozechner/pi-coding-agent';
+import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
 
 export function getMindosExtensionsDir(): string {
   return path.join(os.homedir(), '.mindos', 'extensions');
@@ -40,9 +40,10 @@ export async function getExtensionsList(
 
   const loader = new DefaultResourceLoader({
     cwd: projectRoot,
+    agentDir: path.join(os.homedir(), '.pi'),
     settingsManager,
-    systemPromptOverride: () => '',
-    appendSystemPromptOverride: () => [],
+    systemPrompt: '',
+    appendSystemPrompt: [],
     additionalSkillPaths: [],
     additionalExtensionPaths: scanExtensionPaths(),
   });

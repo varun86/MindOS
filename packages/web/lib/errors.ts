@@ -80,6 +80,20 @@ function mapCodeToStatus(code: ErrorCode): number {
   }
 }
 
+function isProductAppError(err: unknown): err is { code: string; statusCode?: number; message: string } {
+  return err instanceof Error
+    && typeof (err as { code?: unknown }).code === 'string'
+    && (
+      typeof (err as { statusCode?: unknown }).statusCode === 'number'
+      || (err as { code?: unknown }).code === 'VALIDATION_ERROR'
+    );
+}
+
+function mapProductErrorToSimpleStatus(err: { code: string; statusCode?: number; message: string }): number {
+  if (err.code === 'VALIDATION_ERROR' && err.message.includes('Access denied')) return 403;
+  return err.statusCode ?? 500;
+}
+
 /**
  * Build a NextResponse with the standard `{ ok, error }` envelope.
  *
@@ -123,6 +137,13 @@ export function handleRouteErrorSimple(err: unknown, status = 500): NextResponse
     return NextResponse.json(
       { error: err.message },
       { status: mapCodeToStatus(err.code) },
+    );
+  }
+
+  if (isProductAppError(err)) {
+    return NextResponse.json(
+      { error: err.message },
+      { status: mapProductErrorToSimpleStatus(err) },
     );
   }
 

@@ -429,6 +429,21 @@ npm install -g @geminilight/mindos@latest
 
 **发布规则**：修复上线时需要同时发新的 Core patch 版本和新的 Desktop 版本；仅发 npm 或仅发 Desktop 都可能留下旧缓存继续生效。
 
+**五次复发根因**（2026-06-04）：产品包迁到 main package + platform runtime 后，CLI 的 `hasPrebuiltStandalone()` 只检查 `_standalone/server.js`、版本 stamp、manifest 和首页 bundle，不检查 document extractor runtime。结果是 `_standalone` 缺少 `scripts/extract-pdf.cjs`、`scripts/extract-docx.cjs`、`__node_modules/pdfjs-dist/legacy/build/{pdf.mjs,pdf.worker.mjs}`、`__node_modules/mammoth/` 或 `__node_modules/word-extractor/` 时，CLI 仍会跳过重建并信任坏 runtime，用户上传 PDF 才看到 `Cannot find module 'pdfjs-dist/legacy/build/pdf.mjs'`，上传 Word 也可能遇到同类模块缺失。同时 `scripts/prepare-standalone.mjs` 曾把 `_standalone/scripts/` 当作 dev payload 删除，会让 spawned extractor 入口本身丢失。
+
+**五次修复规则**：
+1. `hasPrebuiltStandalone()` 必须把 document extractor runtime 文件纳入可用性判断；缺任一文件时返回 false，触发 fallback build / dependency repair。
+2. `prepare-standalone.mjs` 必须保留 `_standalone/scripts/`，并在打包阶段 fail-fast 校验 `extract-pdf.cjs` / `extract-docx.cjs` 及其 parser packages。
+3. child-process extractor 依赖不能只相信 Next trace；需要通过 runtime dependency seed 补齐 `pdfjs-dist`、`mammoth`、`word-extractor`，并在 Desktop runtime health contract 中同步登记。
+
+**六次复发根因**（2026-06-05）：平台包 / static Web 启动路径改为 Product Server 后，`/api/extract-pdf` 和 `/api/extract-docx` 仍只存在于 Next.js route 中。`mindos start` 一旦因为 `static-web/index.html` 命中 `useProductServer()`，上传 PDF/DOCX 的请求就不再进入 Next route；Product Server 没有对应 handler 时返回 404，或在 runtime 不完整时仍可能表现为 `pdfjs-dist` 找不到。同时 `needsBuild()` 只要看到 static Web 或 matching `_standalone` stamp 就短路，也会信任缺 document extractor runtime 的坏产物。
+
+**六次修复规则**：
+1. `/api/extract-pdf` / `/api/extract-docx` 必须由 `@geminilight/mindos/server` 拥有，Web route 只做 adapter。
+2. Product Server 的 document extractor handler 继续 spawn `extract-pdf.cjs` / `extract-docx.cjs`，但必须从 `runtimeRoot/_standalone/scripts/`、`runtimeRoot/packages/web/scripts/`、`$MINDOS_PROJECT_ROOT/packages/web/scripts/` 和 dev cwd fallback 中解析脚本。
+3. Product Server spawn extractor 时必须补 `NODE_PATH`，覆盖 `_standalone/node_modules`、`_standalone/__node_modules` 和 `packages/web/node_modules`，否则 publishable `__node_modules` layout 下仍会找不到 `pdfjs-dist` / `mammoth` / `word-extractor`。
+4. `needsBuild()` 和 Product Server 启动判断不能只看 static Web；static Web 必须搭配完整 document extractor runtime，缺失时 fallback build / Next path 不能被跳过。
+
 ### Vitest `vi.mock()` 工厂会被提升，引用顶层变量会直接炸掉 (2026-04-11)
 
 **症状**：测试文件能过 TypeScript，但执行时直接报 `[vitest] There was an error when mocking a module`，并提示 `Cannot access 'xxx' before initialization`。
@@ -1467,6 +1482,12 @@ mindos onboard
 - **现象：** `instrumentation.ts` 直接 `import('../bin/lib/sync.js')` 会被 Turbopack 扫描，chokidar（含 native 绑定）解析失败
 - **解决：** (1) `next.config.ts` 添加 `serverExternalPackages: ['chokidar']` (2) 用 `resolve()` 构造绝对路径 + `/* webpackIgnore: true */` 注解绕过 bundler
 - **教训：** Next.js instrumentation.ts 中导入含 native 依赖的模块，必须同时做 serverExternalPackages 注册和 bundler ignore
+
+### instrumentation 不要 auto-start Feishu / PI runtime（2026-06-05）
+- **现象：** `settings?tab=sync` 等普通页面在 dev server 中返回 `ERR_EMPTY_RESPONSE`，日志出现 `Cannot find module 'node:fs'` / `node:os` / `node:path`，import trace 指向 `instrumentation.ts -> feishu-ws-client -> webhook/feishu -> agent/headless -> pi-coding-agent-runtime`。
+- **根因：** `instrumentation.ts` 是普通页面启动路径的一部分。把 Feishu long connection auto-start 放在这里，会让 Next 在普通页面渲染前编译 PI/headless agent runtime；这条链包含 Next dev bundler 难以处理的 Node 内置模块和 PI package 边界。另一个放大因素是旧 `.next` 产物会继续保留已删除的 `autoStartFeishuWSIfNeeded` chunk，源码修了但 dev 仍跑旧 instrumentation。
+- **解决：** `instrumentation.ts` 不导入 `feishu-ws-client`，Feishu 长连接只通过 `/api/im/feishu/long-connection` 显式 start/stop；修这类 startup 边界后清理 `packages/web/.next` 并重启 dev server。
+- **防回归：** `packages/web/__tests__/instrumentation-boundary.test.ts` 断言 `instrumentation.ts` 不包含 `feishu-ws-client` / `autoStartFeishuWSIfNeeded`；浏览器验证普通页面必须返回 200，而不是只看 Next `Ready`。
 
 ### git credential approve 后再 chmod
 - **现象：** `chmod 600 ~/.git-credentials` 在 `git credential approve` 之前执行，文件尚不存在，chmod 无效
@@ -4008,6 +4029,16 @@ const visibleNodes = useMemo(() => {
 **修复**：`prepare-static-web` 启动前用 `createRequire(webStandaloneServer)` 校验 Next 运行时依赖都解析到 `.next/standalone` 内，并为子进程构造最小环境，只透传 PATH 和临时目录等必要变量。
 
 **防回归**：`tests/static-web-artifact-contract.test.ts` 覆盖 static snapshot 脚本必须包含 standalone closure 校验和隔离环境，避免重新回到全量继承 `process.env`。
+
+### Platform runtime 包不能暴露和主包同名的 `mindos` bin（2026-06-06）
+
+**症状**：`npm run release` 的 package smoke 阶段安装主包 tarball 与当前平台 tarball 后，`node_modules/.bin/mindos` 不存在，报错 `'mindos' binary not found after install`。主包 `bin/mindos-shim.cjs` 和平台包 `bin/mindos` 文件实际都存在。
+
+**根因**：主包和平台 optional runtime 包都在 `package.json.bin` 里声明了同名 `mindos`。npm 10 同时安装两个本地 tarball 时不会稳定创建这个 bin link，导致发布前 smoke 失败。另一个隐蔽点是 release smoke 发生在版本 bump 之前；如果主包 `optionalDependencies` 还是当前已发布版本，npm 会从 registry 拉旧平台包，干扰本地 tarball 验证。
+
+**修复**：平台包只作为 runtime payload，保留 `bin/mindos` 文件供主包 shim 定位和执行，但平台包 `package.json` 不再暴露顶层 `bin` 字段。CLI 入口统一由 `@geminilight/mindos` 的 `bin/mindos-shim.cjs` 暴露。release smoke 安装本地平台 tarball 和主 tarball 时使用 `--omit=optional`，并显式 `npm rebuild --bin-links`，避免 registry 旧 optional 包影响 pre-bump 验证。
+
+**防回归**：`tests/platform-runtime-package-contract.test.ts` 覆盖 `scripts/build-platform-packages.mjs` 不得重新写入平台包 `bin` 字段，并覆盖 release smoke 必须隔离 optional registry 包。
 
 ### Monorepo 迁移后 workflow 仍引用旧顶层目录（2026-04-27）
 

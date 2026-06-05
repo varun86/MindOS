@@ -878,10 +878,11 @@ export type MindosDiscoveredSkill = {
 
 export type MindosPiRuntimeResourceLoaderConfig = {
   cwd: string;
+  agentDir: string;
   settingsManager: unknown;
-  systemPromptOverride(): string;
-  appendSystemPromptOverride(): string[];
-  agentsFilesOverride(): { agentsFiles: unknown[] };
+  systemPrompt: string;
+  appendSystemPrompt: string[];
+  agentsFilesOverride(result: { agentsFiles: unknown[] }): { agentsFiles: unknown[] };
   skillsOverride(result: { skills: MindosDiscoveredSkill[] }): { skills: MindosDiscoveredSkill[] };
   additionalSkillPaths: string[];
   additionalExtensionPaths: string[];
@@ -936,6 +937,7 @@ export type MindosPiAgentRuntimeOptions = {
   providerOverride?: string;
   modelOverride?: string;
   projectRoot: string;
+  agentDir: string;
   mindRoot: string;
   agentConfig?: {
     enableThinking?: boolean;
@@ -1016,10 +1018,11 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
   const coreSkillNames = new Set(['mindos', 'mindos-zh', 'mindos-max', 'mindos-max-zh']);
   const resourceLoader = options.services.createResourceLoader({
     cwd: options.projectRoot,
+    agentDir: options.agentDir,
     settingsManager,
-    systemPromptOverride: () => systemPrompt,
-    appendSystemPromptOverride: () => [],
-    agentsFilesOverride: () => ({ agentsFiles: [] }),
+    systemPrompt,
+    appendSystemPrompt: [],
+    agentsFilesOverride: (result) => ({ ...result, agentsFiles: [] }),
     skillsOverride: (result) => ({
       ...result,
       skills: result.skills.filter((skill) => !coreSkillNames.has(skill.name)),

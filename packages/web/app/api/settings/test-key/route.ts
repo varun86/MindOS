@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { complete } from '@mariozechner/pi-ai';
+import { complete } from '@earendil-works/pi-ai';
 import {
   handleSettingsTestKeyPost,
   type SettingsTestKeyModelInput,

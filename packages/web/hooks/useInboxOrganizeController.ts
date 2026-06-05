@@ -5,6 +5,7 @@ import type { LocalAttachment } from '@/lib/types';
 import type { useAiOrganize } from '@/hooks/useAiOrganize';
 import { checkAiAvailable } from '@/lib/space-ai-init';
 import { isAiReadableCaptureName } from '@/lib/capture-formats';
+import { buildInboxAgentPrompt } from '@/lib/inbox-agent-preset';
 import { toast } from '@/lib/toast';
 
 export interface InboxOrganizeFile {
@@ -18,7 +19,6 @@ export interface InboxOrganizeOptions {
 }
 
 export interface InboxOrganizeLabels {
-  organizePrompt: (fileNames: string[]) => string;
   organizeNoAi: string;
   organizeFailed: string;
   organizeBusy?: string;
@@ -72,7 +72,7 @@ export function useInboxOrganizeController({
       return { started: false, reason: 'busy' };
     }
 
-    const prompt = labels.organizePrompt(files.map(f => f.name));
+    const prompt = buildInboxAgentPrompt(files.map(f => f.name));
     organizedFileNamesRef.current = files.map(f => f.name);
 
     const aiReady = await checkAiAvailable();

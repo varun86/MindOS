@@ -4,7 +4,6 @@
  */
 
 import { Type, type Static } from '@sinclair/typebox';
-import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { getAcpAgents, findAcpAgent } from './registry';
 import { createSessionFromEntry, prompt, closeSession } from './session';
 import { getMindRoot } from '../fs';
@@ -12,6 +11,14 @@ import { getMindRoot } from '../fs';
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }], details: {} };
 }
+
+type MindosAgentTool = {
+  name: string;
+  label: string;
+  description: string;
+  parameters: unknown;
+  execute: (...args: any[]) => Promise<ReturnType<typeof textResult>>;
+};
 
 /* ── Parameter Schemas ─────────────────────────────────────────────────── */
 
@@ -27,7 +34,7 @@ const CallAcpAgentParams = Type.Object({
 /* ── Tool Implementations ──────────────────────────────────────────────── */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const acpTools: AgentTool<any>[] = [
+export const acpTools: MindosAgentTool[] = [
   {
     name: 'list_acp_agents',
     label: 'List ACP Agents',

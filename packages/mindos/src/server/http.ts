@@ -49,6 +49,8 @@ import { handleFileGet, handleFilePost } from './handlers/file.js';
 import { handleChangesGet, handleChangesPost } from './handlers/changes.js';
 import { handleConnectGet } from './handlers/connect.js';
 import { handleEmbeddingGet, handleEmbeddingPost } from './handlers/embedding.js';
+import { EXTRACT_DOCX_MAX_BODY_BYTES, handleExtractDocxPost, type ExtractDocxServices } from './handlers/extract-docx.js';
+import { EXTRACT_PDF_MAX_BODY_BYTES, handleExtractPdfPost, type ExtractPdfServices } from './handlers/extract-pdf.js';
 import { handleFiles } from './handlers/files.js';
 import { handleBacklinks, handleGraph } from './handlers/graph.js';
 import { handleGit } from './handlers/git.js';
@@ -57,6 +59,7 @@ import { handleInitPost } from './handlers/init.js';
 import { handleImActivityGet } from './handlers/im-activity.js';
 import { handleImConfigDelete, handleImConfigGet, handleImConfigPut } from './handlers/im-config.js';
 import { handleImFeishuLongConnectionDelete, handleImFeishuLongConnectionGet, handleImFeishuLongConnectionPost } from './handlers/im-feishu-long-connection.js';
+import { handleImFeishuOAuthCallbackGet, handleImFeishuOAuthGet } from './handlers/im-feishu-oauth.js';
 import { handleImStatusGet, handleImWebhookStatusGet } from './handlers/im-status.js';
 import { handleImTestPost } from './handlers/im-test.js';
 import { handleInboxDelete, handleInboxGet, handleInboxPost } from './handlers/inbox.js';
@@ -140,6 +143,7 @@ export type MindosHttpServices = {
   };
   listSkills(): { disabledSkills?: string[]; skillRoots: MindosSkillRoot[] };
   askStream(input: unknown): AsyncIterable<MindOSSSEvent>;
+  documentExtraction?: ExtractPdfServices & ExtractDocxServices;
 };
 
 export type MindosHttpServerOptions = {
@@ -155,6 +159,7 @@ type DefaultMindosHttpServicesOptions = MindosRuntimeOptions & {
   runtimeRoot?: string;
   staticRoot?: string;
   mcpAgents?: Record<string, MindosMcpAgentDef>;
+  documentExtraction?: ExtractPdfServices & ExtractDocxServices;
 };
 
 export type MindosHttpServer = {
@@ -183,6 +188,7 @@ export function createDefaultMindosHttpServices(options: DefaultMindosHttpServic
     readSettings: () => readRuntimeSettings(options),
     writeSettings: (settings) => writeRuntimeSettings(settings, options),
     mcpAgents: options.mcpAgents ?? createDefaultMcpAgents(),
+    documentExtraction: options.documentExtraction,
     mcpTools: {
       readMcpConfig: () => ({ mcpServers: {} }),
       readMcpToolCache: () => null,
@@ -401,6 +407,14 @@ async function handleRequest(
     }
     if (route === 'GET /api/im/webhook-status') {
       writeResponse(res, handleImWebhookStatusGet(url.searchParams));
+      return;
+    }
+    if (route === 'GET /api/im/feishu/oauth') {
+      writeResponse(res, handleImFeishuOAuthGet(url.searchParams));
+      return;
+    }
+    if (route === 'GET /api/im/feishu/oauth/callback') {
+      writeResponse(res, await handleImFeishuOAuthCallbackGet(url.searchParams));
       return;
     }
     if (route === 'GET /api/im/feishu/long-connection') {
@@ -671,6 +685,22 @@ async function handleRequest(
       writeResponse(res, await handleFilePost(await readJsonBody(req), { mindRoot: services.mindRoot }, {
         sourceHeader: req.headers['x-mindos-source'] as string | undefined,
         agentHeader: req.headers['x-mindos-agent'] as string | undefined,
+      }));
+      return;
+    }
+    if (route === 'POST /api/extract-pdf') {
+      writeResponse(res, await handleExtractPdfPost(await readJsonBody(req, EXTRACT_PDF_MAX_BODY_BYTES), {
+        ...services.documentExtraction,
+        runtimeRoot: services.documentExtraction?.runtimeRoot ?? services.runtimeRoot,
+        env: services.documentExtraction?.env ?? process.env,
+      }));
+      return;
+    }
+    if (route === 'POST /api/extract-docx') {
+      writeResponse(res, await handleExtractDocxPost(await readJsonBody(req, EXTRACT_DOCX_MAX_BODY_BYTES), {
+        ...services.documentExtraction,
+        runtimeRoot: services.documentExtraction?.runtimeRoot ?? services.runtimeRoot,
+        env: services.documentExtraction?.env ?? process.env,
       }));
       return;
     }

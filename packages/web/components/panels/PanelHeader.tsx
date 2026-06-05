@@ -23,7 +23,7 @@ export default function PanelHeader({
         {onMaximize && (
           <button
             onClick={onMaximize}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
             aria-label={maximized ? 'Restore panel' : 'Maximize panel'}
           >
             {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}

@@ -67,7 +67,10 @@ echo "   📦 Platform: $PLATFORM_TARBALL ($PLATFORM_TARBALL_SIZE)"
 # Install from tarball in isolation (production deps only)
 cd "$SMOKE_DIR"
 npm init -y --silent >/dev/null 2>&1
-npm install "$PLATFORM_TARBALL_PATH" "$TARBALL_PATH" --ignore-scripts >/dev/null 2>&1
+# Omit registry optional deps here because this pre-bump smoke uses the current
+# package version; stale published platform packages can otherwise affect bin links.
+npm install "$PLATFORM_TARBALL_PATH" "$TARBALL_PATH" --ignore-scripts --omit=optional >/dev/null 2>&1
+npm rebuild --bin-links >/dev/null 2>&1
 
 # Verify bin entry exists and is executable
 if [ ! -f "$SMOKE_DIR/node_modules/.bin/mindos" ]; then

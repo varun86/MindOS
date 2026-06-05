@@ -6,7 +6,7 @@ import {
   isRootProtected,
   assertWithinRoot,
 } from '@/lib/core/security';
-import { MindOSError, ErrorCodes } from '@/lib/errors';
+import { AppError } from '@geminilight/mindos/foundation';
 import path from 'path';
 
 describe('security', () => {
@@ -21,13 +21,14 @@ describe('security', () => {
       expect(resolved).toBe(path.resolve(mindRoot, 'foo/bar.md'));
     });
 
-    it('throws MindOSError with PATH_OUTSIDE_ROOT on path traversal', () => {
+    it('throws product validation error on path traversal', () => {
       try {
         resolveSafe(mindRoot, '../../../etc/passwd');
         expect.fail('should have thrown');
       } catch (err) {
-        expect(err).toBeInstanceOf(MindOSError);
-        expect((err as MindOSError).code).toBe(ErrorCodes.PATH_OUTSIDE_ROOT);
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).code).toBe('VALIDATION_ERROR');
+        expect((err as AppError).message).toContain('Access denied');
       }
     });
 
@@ -41,8 +42,9 @@ describe('security', () => {
         resolveSafe(mindRoot, '/tmp/evil.md');
         expect.fail('should have thrown');
       } catch (err) {
-        expect(err).toBeInstanceOf(MindOSError);
-        expect((err as MindOSError).code).toBe(ErrorCodes.PATH_OUTSIDE_ROOT);
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).code).toBe('VALIDATION_ERROR');
+        expect((err as AppError).message).toContain('absolute paths are not allowed');
       }
     });
 
@@ -78,13 +80,14 @@ describe('security', () => {
       expect(isRootProtected('nested/INSTRUCTION.md')).toBe(false);
     });
 
-    it('assertNotProtected throws MindOSError with PROTECTED_FILE for INSTRUCTION.md', () => {
+    it('assertNotProtected throws product validation error for INSTRUCTION.md', () => {
       try {
         assertNotProtected('INSTRUCTION.md', 'modified');
         expect.fail('should have thrown');
       } catch (err) {
-        expect(err).toBeInstanceOf(MindOSError);
-        expect((err as MindOSError).code).toBe(ErrorCodes.PROTECTED_FILE);
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).code).toBe('VALIDATION_ERROR');
+        expect((err as AppError).message).toContain('Protected file');
       }
     });
 

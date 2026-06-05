@@ -72,10 +72,10 @@ describe('Bun single-binary runtime contract', () => {
     const script = read('scripts/build-platform-packages.mjs');
     expect(script).toContain('buildBunBinary');
     expect(script).toContain('bun-single-binary');
-    expect(script).toContain('targetBuildBinary ? `bin/${binaryName(target)}`');
     expect(script).toContain("'bin/cli.js'");
     expect(script).toContain('binary: false');
     expect(script).toContain('fallbackRuntime');
+    expect(script).not.toContain('mindos: targetBuildBinary');
   });
 
   it('routes JS child execution through the binary executor when available', () => {

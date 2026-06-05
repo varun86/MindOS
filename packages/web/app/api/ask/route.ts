@@ -1,4 +1,6 @@
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 import { NextRequest } from 'next/server';
 import path from 'path';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
@@ -294,6 +296,7 @@ export async function POST(req: NextRequest) {
       providerOverride: body.providerOverride,
       modelOverride: typeof body.modelOverride === 'string' ? body.modelOverride : undefined,
       projectRoot,
+      agentDir: runtimePaths.agentDir,
       mindRoot,
       agentConfig: {
         enableThinking,

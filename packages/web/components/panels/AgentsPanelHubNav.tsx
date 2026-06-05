@@ -1,11 +1,12 @@
 'use client';
 
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Globe, History, LayoutDashboard, MessageSquare, Server, Zap } from 'lucide-react';
+import { Bot, Globe, LayoutDashboard, MessageSquare, Server, Zap } from 'lucide-react';
 import { PanelNavRow } from './PanelNavRow';
 
 type HubCopy = {
   navOverview: string;
+  navPresets: string;
   navMcp: string;
   navSkills: string;
   navChannels: string;
@@ -43,6 +44,12 @@ export function AgentsPanelHubNav({
         badge={<span className="text-2xs tabular-nums text-muted-foreground/60 px-1.5 py-0.5 rounded bg-muted/40 font-medium">{connectedCount}</span>}
         href="/agents"
         active={routeActive && inAgentsRoute && (tab === null || tab === 'overview')}
+      />
+      <PanelNavRow
+        icon={<Bot size={14} className={routeActive && inAgentsRoute && tab === 'presets' ? 'text-[var(--amber)]' : 'text-muted-foreground'} />}
+        title={copy.navPresets}
+        href="/agents?tab=presets"
+        active={routeActive && inAgentsRoute && tab === 'presets'}
       />
       {mcpEnabled && (
         <PanelNavRow
