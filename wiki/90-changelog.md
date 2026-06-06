@@ -20,6 +20,8 @@
 
 ### 修复
 
+- **Inbox Agent 使用 Settings 默认模型**：修复 Settings 已配置 active provider/API key 时，Inbox Agent 仍误提示需要配置 API key 的问题；AI 可用性检查现在复用 Settings 新 provider 结构，支持 env fallback。
+- **Inbox 切回 Wiki/其它页面不再卡住侧栏**：修复从 `/capture` 离开后左侧仍停留在 Inbox panel 的 route 状态竞态，切回 Wiki/Agents/Explore/Echo 时会恢复对应侧栏。
 - **v1 发布自举修复**：`prepack` 不再删除 `packages/web/node_modules`，重复执行 `npm pack` 不会因为缺少 `next` 失败；Web 脚本解析、Skill 内置冲突检测、community plugin fixture 下载和 `mindos update` fallback build 路径已统一到 `packages/web`。
 
 **跨模块 Bug 审计 (2026-04-13)**

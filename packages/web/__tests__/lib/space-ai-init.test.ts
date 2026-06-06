@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { consumeSpaceAiInitStream, findSpaceAiInitStreamError } from '@/lib/space-ai-init';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { checkAiAvailable, consumeSpaceAiInitStream, findSpaceAiInitStreamError } from '@/lib/space-ai-init';
 
 function streamFrom(chunks: string[]): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -11,6 +11,45 @@ function streamFrom(chunks: string[]): ReadableStream<Uint8Array> {
 }
 
 describe('space AI init stream handling', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the active provider from the current settings payload', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ai: {
+          activeProvider: 'p_openai01',
+          providers: [
+            { id: 'p_anthro01', name: 'Anthropic', protocol: 'anthropic', apiKey: '', model: 'claude-sonnet-4-6', baseUrl: '' },
+            { id: 'p_openai01', name: 'OpenAI', protocol: 'openai', apiKey: 'sk-openai-test', model: 'gpt-5.4', baseUrl: '' },
+          ],
+        },
+        envOverrides: {},
+      }),
+    }));
+
+    await expect(checkAiAvailable()).resolves.toBe(true);
+  });
+
+  it('uses provider env fallback from the current settings payload', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ai: {
+          activeProvider: 'p_anthro01',
+          providers: [
+            { id: 'p_anthro01', name: 'Anthropic', protocol: 'anthropic', apiKey: '', model: 'claude-sonnet-4-6', baseUrl: '' },
+          ],
+        },
+        envOverrides: { ANTHROPIC_API_KEY: true },
+      }),
+    }));
+
+    await expect(checkAiAvailable()).resolves.toBe(true);
+  });
+
   it('detects MindOS SSE error events', () => {
     expect(findSpaceAiInitStreamError('data:{"type":"error","message":"No API key"}\n\n'))
       .toBe('No API key');

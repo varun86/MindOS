@@ -34,6 +34,7 @@ import { useAiOrganize } from '@/hooks/useAiOrganize';
 import { useInboxOrganizeController } from '@/hooks/useInboxOrganizeController';
 import { InboxOrganizeProvider } from '@/components/inbox/InboxOrganizeContext';
 import { quickDropToInbox } from '@/lib/inbox-upload';
+import { recoverStaleCapturePanel } from '@/lib/navigation-panel';
 import type { Tab } from './settings/types';
 import { RIGHT_AGENT_DETAIL_PANEL } from '@/lib/config/panel-sizes';
 
@@ -316,6 +317,14 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
     if (pathname?.startsWith('/capture') && lp.activePanel !== 'capture') {
       lp.setActivePanel('capture');
     }
+  }, [pathname, lp.activePanel, lp.setActivePanel]);
+
+  // When leaving Inbox, a slow RSC transition can let the `/capture` alignment
+  // effect run after the destination click and leave the Inbox panel pinned over
+  // the new page. Once the destination route commits, recover the matching panel.
+  useEffect(() => {
+    const recoveredPanel = recoverStaleCapturePanel(pathname, lp.activePanel);
+    if (recoveredPanel) lp.setActivePanel(recoveredPanel);
   }, [pathname, lp.activePanel, lp.setActivePanel]);
 
   const handleAgentDetailWidthCommit = useCallback((w: number) => {

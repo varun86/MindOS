@@ -1,17 +1,13 @@
 import { apiFetch } from '@/lib/api';
+import { isAiConfiguredForAsk, type SettingsJsonForAi } from '@/lib/settings-ai-client';
 
 /**
  * Check if AI is available by inspecting the active provider's API key.
  */
 export async function checkAiAvailable(): Promise<boolean> {
   try {
-    const data = await apiFetch<{
-      ai?: { provider?: string; providers?: Record<string, { apiKey?: string }> };
-    }>('/api/settings');
-    const provider = data.ai?.provider ?? '';
-    const providers = data.ai?.providers ?? {};
-    const active = providers[provider as keyof typeof providers];
-    return !!(active?.apiKey);
+    const data = await apiFetch<SettingsJsonForAi>('/api/settings', { cache: 'no-store' });
+    return isAiConfiguredForAsk(data);
   } catch {
     return false;
   }

@@ -145,6 +145,26 @@
 
 **验证**：除了前端 hook/component 测试，还要用临时 `HOME` + 临时 `mindRoot` 跑真实 `/api/ask mode=organize` smoke：上传一段带唯一 marker 的内容，要求 AI 在子目录创建 Markdown 文件，最后用 `find` / `rg` 验证目标文件和 marker 真实落盘，且 SSE 中 `create_file` 的 `tool_end.isError` 为 `false`。
 
+### 前端 AI 可用性检查必须跟随 Settings 新 provider 结构（2026-06-06）
+
+**症状**：Settings 里已经配置 active provider 和 API key，但 Inbox Agent 仍提示 `Configure an AI API key before running the Inbox Agent. Capture still works without AI.`；创建 Space 或文件树转 Space 的 AI 初始化入口也可能误判没有 AI。
+
+**根因**：旧前端检查继续读取 `ai.provider` 和 `ai.providers[provider].apiKey`，而当前 Settings payload 已迁移为 `ai.activeProvider` + `ai.providers[]`，并且还需要考虑 `envOverrides` 与本地 provider fallback。`/api/ask` 后端能用真实 settings 运行，但前端在调用前提前拦截。
+
+**规则**：前端只要判断 `/api/ask` 是否可运行，就复用 `packages/web/lib/settings-ai-client.ts` 的 `isAiConfiguredForAsk()`；不要在组件或 hook 里重新写 provider/key 解析逻辑。
+
+**验证**：`packages/web/__tests__/lib/space-ai-init.test.ts` 覆盖 active provider array 与 env fallback；`packages/web/__tests__/hooks/useInboxOrganizeController.test.tsx` 覆盖 Inbox Agent 在 Settings 已配置时必须继续读取文件并调用 `aiOrganize.start()`，不能弹缺 key toast。
+
+### Route-controlled 左侧 panel 离开时也要恢复目标 panel（2026-06-07）
+
+**症状**：从 Inbox (`/capture`) 切回 Wiki 或其它页面后，主内容已经变成目标页面，但左侧 panel 仍显示 Inbox，用户感觉“再也点不回去”。
+
+**根因**：Inbox route 会用 effect 把 `activePanel` 强制对齐为 `capture`。如果用户在 `/capture` 的 RSC transition 还没完全提交时点击 Wiki，`setActivePanel('files')` 会先执行，但旧的 `/capture` 对齐 effect 随后又把 panel 改回 `capture`；目标 route 提交后没有对应恢复逻辑。
+
+**规则**：route-controlled panel 不能只处理进入 route，也要处理离开 route 后的 stale panel recovery。恢复逻辑只修正明显不合法的 stale state（例如 files/agents/explore/echo route 上仍是 `capture`），不要破坏用户在 Wiki 手动关闭 Files 或打开 Search panel 的行为。
+
+**验证**：`packages/web/__tests__/lib/navigation-panel.test.ts` 覆盖 `/capture -> /wiki`、`/agents`、`/explore`、`/echo` 的 stale capture recovery；浏览器验证从 `/capture` 点击 Wiki 后，URL 为 `/wiki` 且左侧不再显示 Inbox panel。
+
 ### v1 workspace 构建不能在 `packages/web` 内直接跑 npm install
 
 **症状**：根目录 `pnpm build` 在 `@geminilight/mindos` 的 web build 阶段失败，错误类似 `Unsupported URL Type "workspace:"`。
