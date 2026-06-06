@@ -105,7 +105,7 @@ export default function ActivityBar({
   onSettingsClick,
   onSyncClick,
 }: ActivityBarProps) {
-  const lastClickRef = useRef(0);
+  const lastClickRef = useRef<{ key: string; at: number }>({ key: '', at: 0 });
   const syncBtnRef = useRef<HTMLButtonElement>(null);
   const { t } = useLocale();
   const pathname = usePathname();
@@ -180,16 +180,16 @@ export default function ActivityBar({
     return () => window.removeEventListener('mindos:labs-changed', sync);
   }, []);
 
-  /** Debounce rapid clicks (300ms) — shared across all Rail buttons */
-  const debounced = useCallback((fn: () => void) => {
+  /** Debounce repeated clicks on the same rail target without swallowing destination changes. */
+  const debounced = useCallback((key: string, fn: () => void) => {
     const now = Date.now();
-    if (now - lastClickRef.current < 300) return;
-    lastClickRef.current = now;
+    if (lastClickRef.current.key === key && now - lastClickRef.current.at < 300) return;
+    lastClickRef.current = { key, at: now };
     fn();
   }, []);
 
   const toggle = useCallback((id: PanelId) => {
-    debounced(() => onPanelChange(activePanel === id ? null : id));
+    debounced(`panel:${id}`, () => onPanelChange(activePanel === id ? null : id));
   }, [activePanel, onPanelChange, debounced]);
 
   const syncLevel = getStatusLevel(syncStatus, false);
@@ -242,24 +242,24 @@ export default function ActivityBar({
             label={t.sidebar.capture}
             active={isCapture}
             expanded={expanded}
-            onClick={() => debounced(() => {
+            onClick={() => debounced('panel:capture', () => {
               onPanelChange('capture');
               router.push('/capture');
             })}
             walkthroughId="capture-page"
           />
-          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced(onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
-          {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} onClick={() => onEchoClick ? debounced(onEchoClick) : toggle('echo')} walkthroughId="echo-panel" />}
+          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced('panel:files', onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
+          {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} onClick={() => onEchoClick ? debounced('panel:echo', onEchoClick) : toggle('echo')} walkthroughId="echo-panel" />}
           <RailButton icon={<Search size={18} />} label={t.sidebar.searchTitle} shortcut="⌘K" active={activePanel === 'search'} expanded={expanded} onClick={() => toggle('search')} />
           <RailButton
             icon={<Bot size={18} />}
             label={t.sidebar.agents}
             active={activePanel === 'agents'}
             expanded={expanded}
-            onClick={() => onAgentsClick ? debounced(onAgentsClick) : toggle('agents')}
+            onClick={() => onAgentsClick ? debounced('panel:agents', onAgentsClick) : toggle('agents')}
             walkthroughId="agents-panel"
           />
-          {labsWorkflows && <RailButton icon={<Zap size={18} />} label={t.sidebar.workflows ?? 'Flows'} active={activePanel === 'workflows'} expanded={expanded} onClick={() => onWorkflowsClick ? debounced(onWorkflowsClick) : toggle('workflows')} />}
+          {labsWorkflows && <RailButton icon={<Zap size={18} />} label={t.sidebar.workflows ?? 'Flows'} active={activePanel === 'workflows'} expanded={expanded} onClick={() => onWorkflowsClick ? debounced('panel:workflows', onWorkflowsClick) : toggle('workflows')} />}
         </div>
 
         {/* ── Spacer ── */}
@@ -268,7 +268,7 @@ export default function ActivityBar({
         {/* ── Secondary: Explore ── */}
         <div className={`${expanded ? 'mx-3' : 'mx-2'} border-t border-border`} />
         <div className={`flex flex-col ${expanded ? 'px-1.5' : 'items-center'} gap-1 py-2`}>
-          <RailButton icon={<Compass size={18} />} label={t.sidebar.discover} active={activePanel === 'discover'} expanded={expanded} onClick={() => onDiscoverClick ? debounced(onDiscoverClick) : toggle('discover')} />
+          <RailButton icon={<Compass size={18} />} label={t.sidebar.discover} active={activePanel === 'discover'} expanded={expanded} onClick={() => onDiscoverClick ? debounced('panel:discover', onDiscoverClick) : toggle('discover')} />
         </div>
 
         {/* ── Bottom: Action buttons (not panel toggles) ── */}
@@ -279,7 +279,7 @@ export default function ActivityBar({
             label={t.sidebar.settingsTitle}
             shortcut="⌘,"
             expanded={expanded}
-            onClick={() => debounced(onSettingsClick)}
+            onClick={() => debounced('action:settings', onSettingsClick)}
             badge={hasUpdate ? (
               <span className={`absolute ${expanded ? 'left-[26px] top-1.5' : 'top-1.5 right-1.5'} w-2 h-2 rounded-full bg-error`} />
             ) : undefined}
@@ -291,7 +291,7 @@ export default function ActivityBar({
             expanded={expanded}
             buttonRef={syncBtnRef}
             badge={syncBadge}
-            onClick={() => debounced(() => {
+            onClick={() => debounced('action:sync', () => {
               const rect = syncBtnRef.current?.getBoundingClientRect();
               if (rect) onSyncClick(rect);
             })}

@@ -287,4 +287,121 @@ describe('ActivityBar rail navigation', () => {
       root.unmount();
     });
   });
+
+  it('allows leaving Inbox with an immediate rail click instead of swallowing the next destination', async () => {
+    mockPathname = '/wiki';
+    const mockPanelChange = vi.fn();
+    const mockSpacesClick = vi.fn(() => {
+      mockPanelChange('files');
+      mockRouterPush('/wiki');
+    });
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="files"
+          onPanelChange={mockPanelChange}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+          onSpacesClick={mockSpacesClick}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    expect(captureButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/capture');
+    expect(mockPanelChange).toHaveBeenCalledWith('capture');
+
+    mockPathname = '/capture';
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="capture"
+          onPanelChange={mockPanelChange}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+          onSpacesClick={mockSpacesClick}
+        />,
+      );
+    });
+
+    const filesButton = host.querySelector('[data-walkthrough="files-panel"]');
+    expect(filesButton).not.toBeNull();
+
+    await act(async () => {
+      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockSpacesClick).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).toHaveBeenCalledWith('/wiki');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('allows leaving Inbox for another workbench without waiting for the debounce window', async () => {
+    mockPathname = '/capture';
+    const mockPanelChange = vi.fn();
+    const mockAgentsClick = vi.fn(() => {
+      mockPanelChange('agents');
+      mockRouterPush('/agents');
+    });
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="capture"
+          onPanelChange={mockPanelChange}
+          onAgentsClick={mockAgentsClick}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    const agentsButton = host.querySelector('[data-walkthrough="agents-panel"]');
+    expect(captureButton).not.toBeNull();
+    expect(agentsButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      agentsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockAgentsClick).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).toHaveBeenCalledWith('/agents');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

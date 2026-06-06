@@ -4060,6 +4060,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/static-web-artifact-contract.test.ts` 覆盖 static snapshot 脚本必须包含 standalone closure 校验和隔离环境，避免重新回到全量继承 `process.env`。
 
+### Rail 导航防连点不能吞掉跨目标切换（2026-06-07）
+
+**症状**：用户点击 Inbox 后，马上点击 Wiki/Agents/Explore 等 rail 入口没有反应，看起来像 Inbox 的 sidebar 和 content 一直占住页面，无法切回其他工作台。
+
+**根因**：Activity Bar 曾经把所有 rail 按钮共用同一个 300ms debounce。第一次点击 Inbox 后，下一次点击即使目标不同也会被直接忽略，导致 `onSpacesClick` / `onAgentsClick` 等导航 handler 没有执行。
+
+**修复**：rail debounce 必须按目标 key 区分，只抑制同一个目标的重复点击，不抑制 Inbox → Files、Inbox → Agents 这类跨目标切换。
+
+**防回归**：`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 Inbox 后立即点 Files 和 Agents 都必须触发目标导航。
+
 ### Platform runtime 包不能暴露和主包同名的 `mindos` bin（2026-06-06）
 
 **症状**：`npm run release` 的 package smoke 阶段安装主包 tarball 与当前平台 tarball 后，`node_modules/.bin/mindos` 不存在，报错 `'mindos' binary not found after install`。主包 `bin/mindos-shim.cjs` 和平台包 `bin/mindos` 文件实际都存在。
