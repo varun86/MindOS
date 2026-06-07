@@ -901,8 +901,8 @@ export type MindosPiRuntimeCreateAgentSessionConfig = {
   customTools?: unknown[];
 };
 
-export type MindosPiAgentSessionWithHistory = MindosPiAgentSessionAdapter & {
-  newSession(input: { setup(manager: { appendMessage(message: unknown): void }): Promise<void> | void }): Promise<void>;
+export type MindosPiSessionManagerAdapter = {
+  appendMessage(message: unknown): void;
 };
 
 export type MindosPiAgentRuntimeServices = {
@@ -916,9 +916,9 @@ export type MindosPiAgentRuntimeServices = {
   createAuthStorage(): { setRuntimeApiKey(provider: string, apiKey: string): void };
   createModelRegistry(authStorage: unknown): unknown;
   createSettingsManager(settings: Record<string, unknown>): unknown;
-  createSessionManager(): unknown;
+  createSessionManager(): MindosPiSessionManagerAdapter;
   createResourceLoader(config: MindosPiRuntimeResourceLoaderConfig): MindosPiResourceLoaderAdapter;
-  createAgentSession(config: MindosPiRuntimeCreateAgentSessionConfig): Promise<{ session: MindosPiAgentSessionWithHistory }>;
+  createAgentSession(config: MindosPiRuntimeCreateAgentSessionConfig): Promise<{ session: MindosPiAgentSessionAdapter }>;
   convertToLlm(messages: MindosAgentHistoryMessage[]): unknown[];
   setKbMode(mode: MindosAskMode): void;
   generateSkillsXml?(skills: MindosDiscoveredSkill[]): string;
@@ -955,7 +955,7 @@ export type MindosPiAgentRuntimeOptions = {
 };
 
 export type MindosPiAgentRuntime = {
-  session: MindosPiAgentSessionWithHistory;
+  session: MindosPiAgentSessionAdapter;
   llmHistoryMessages: unknown[];
   requestTools: MindosExecutableTool[];
   systemPrompt: string;
@@ -1054,6 +1054,11 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     }
   }
 
+  const sessionManager = options.services.createSessionManager();
+  for (const message of llmHistoryMessages) {
+    sessionManager.appendMessage(message);
+  }
+
   const { session } = await options.services.createAgentSession({
     cwd: options.projectRoot,
     model: modelConfig.model,
@@ -1061,18 +1066,10 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     authStorage,
     modelRegistry,
     resourceLoader,
-    sessionManager: options.services.createSessionManager(),
+    sessionManager,
     settingsManager,
     tools: options.mode === 'agent' ? [options.bashTool] : [],
     customTools: options.requestTools,
-  });
-
-  await session.newSession({
-    setup: async (sessionManager) => {
-      for (const message of llmHistoryMessages) {
-        sessionManager.appendMessage(message);
-      }
-    },
   });
 
   return {

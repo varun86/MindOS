@@ -32,6 +32,19 @@ const fatalMainPatterns = [
   /mcp-server["']?\),\s*["']dist["'],\s*["']index\.cjs["']/,
 ];
 
+const fatalRuntimeSourcePatterns = [
+  {
+    rel: 'src/session/index.ts',
+    pattern: /session\.newSession\s*\(/,
+    message: 'runtime session adapter still calls AgentSession.newSession; history must be appended to SessionManager before createAgentSession',
+  },
+  {
+    rel: 'src/session/index.ts',
+    pattern: /MindosPiAgentSessionWithHistory/,
+    message: 'runtime session adapter still requires AgentSession.newSession in its type contract',
+  },
+];
+
 const fatalLogPatterns = [
   'MCP bundle not found',
   'ERR_MODULE_NOT_FOUND',
@@ -61,6 +74,13 @@ if (existsSync(mainBundle)) {
   if (!source.includes('resolveMcpBundlePath')) {
     failures.push('main bundle does not include resolveMcpBundlePath');
   }
+}
+
+for (const { rel, pattern, message } of fatalRuntimeSourcePatterns) {
+  const file = join(runtimeRoot, rel);
+  if (!existsSync(file)) continue;
+  const source = readFileSync(file, 'utf-8');
+  if (pattern.test(source)) failures.push(`${message}: ${rel}`);
 }
 
 const standaloneNodeModules = join(runtimeRoot, 'packages/web/.next/standalone/node_modules');

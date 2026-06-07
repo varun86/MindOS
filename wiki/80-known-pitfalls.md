@@ -155,6 +155,16 @@
 
 **验证**：除了前端 hook/component 测试，还要用临时 `HOME` + 临时 `mindRoot` 跑真实 `/api/ask mode=organize` smoke：上传一段带唯一 marker 的内容，要求 AI 在子目录创建 Markdown 文件，最后用 `find` / `rg` 验证目标文件和 marker 真实落盘，且 SSE 中 `create_file` 的 `tool_end.isError` 为 `false`。
 
+### Pi AgentSession 不再拥有 newSession，历史要在创建前写入 SessionManager（2026-06-07）
+
+**症状**：Inbox Review / AI organize 调用 `/api/ask mode=organize` 后返回 500，前端显示 `AI provider/server failed (500). o.newSession is not a function`。
+
+**根因**：`@earendil-works/pi-coding-agent` 0.78.x 已把 `newSession()` 移到 `AgentSessionRuntime`，普通 `createAgentSession()` 返回的 `AgentSession` 不再暴露 `newSession()`。MindOS 产品 runtime 仍按旧 SDK 形状先创建 session，再调用 `session.newSession({ setup })` 注入历史，导致 server 初始化阶段直接抛错。
+
+**规则**：通过 `createAgentSession()` 嵌入 Pi SDK 时，不要要求 `AgentSession` 具备 session replacement API。需要注入历史时，先创建 `SessionManager`，再把 `convertToLlm()` 得到的历史消息用 `sessionManager.appendMessage()` 写入，最后把这个 session manager 传给 `createAgentSession()`。
+
+**验证**：`packages/mindos/src/session.test.ts` 必须覆盖 mock `AgentSession` 没有 `newSession` 时仍能初始化；修改 `packages/mindos/src/session/index.ts` 后必须跑 `pnpm --filter @geminilight/mindos build` 更新 dist，再跑 Web Inbox organize 相关测试。
+
 ### 前端 AI 可用性检查必须跟随 Settings 新 provider 结构（2026-06-06）
 
 **症状**：Settings 里已经配置 active provider 和 API key，但 Inbox Agent 仍提示 `Configure an AI API key before running the Inbox Agent. Capture still works without AI.`；创建 Space 或文件树转 Space 的 AI 初始化入口也可能误判没有 AI。

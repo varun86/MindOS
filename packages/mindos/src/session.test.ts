@@ -747,15 +747,17 @@ describe('MindOS session event contract', () => {
         ],
       }),
     };
+    const sessionManager = {
+      appendMessage: (message: unknown) => {
+        calls.push(`session.append:${appendedMessages.length}`);
+        appendedMessages.push(message);
+      },
+    };
     const session = {
       subscribe: () => {},
       prompt: async () => {},
       steer: async () => {},
       abort: async () => {},
-      newSession: async ({ setup }: { setup(manager: { appendMessage(message: unknown): void }): Promise<void> }) => {
-        calls.push('session.newSession');
-        await setup({ appendMessage: (message) => appendedMessages.push(message) });
-      },
     };
 
     const runtime = await createMindosPiAgentRuntime({
@@ -797,7 +799,7 @@ describe('MindOS session event contract', () => {
           calls.push(`settings:${JSON.stringify(settings)}`);
           return { settings };
         },
-        createSessionManager: () => ({ sessionManager: true }),
+        createSessionManager: () => sessionManager,
         createResourceLoader: (config) => {
           calls.push(`loader:${config.cwd}:${config.additionalSkillPaths.join(',')}:${config.additionalExtensionPaths.join(',')}`);
           capturedSystemPrompt = config.systemPrompt;
@@ -827,7 +829,10 @@ describe('MindOS session event contract', () => {
     expect(runtime.systemPrompt).toContain('<skills>third-party</skills>');
     expect(runtime.systemPrompt).toContain('load_skill("third-party")');
     expect(capturedSystemPrompt).toBe('base prompt');
-    expect(appendedMessages).toHaveLength(2);
+    expect(appendedMessages).toEqual([
+      { index: 0, message: expect.objectContaining({ role: 'user' }) },
+      { index: 1, message: expect.objectContaining({ role: 'assistant' }) },
+    ]);
     expect(calls).toEqual([
       'model:openai:gpt-test:true',
       'convert:2',
@@ -838,8 +843,9 @@ describe('MindOS session event contract', () => {
       'resource.reload',
       'resource.reload',
       'resource.reload',
+      'session.append:0',
+      'session.append:1',
       'agent:/repo:medium:1:1',
-      'session.newSession',
     ]);
   });
 
