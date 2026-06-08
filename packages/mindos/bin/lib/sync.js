@@ -23,10 +23,22 @@ function atomicWriteJSON(filePath, data) {
 
 function loadSyncConfig() {
   try {
-    const config = JSON.parse(stripBom(readFileSync(CONFIG_PATH, 'utf-8')));
-    return config.sync || {};
+    return loadMindosConfig().sync || {};
   } catch {
     return {};
+  }
+}
+
+function loadMindosConfig() {
+  return JSON.parse(stripBom(readFileSync(CONFIG_PATH, 'utf-8')));
+}
+
+function hasSyncConfig() {
+  try {
+    const config = loadMindosConfig();
+    return Object.prototype.hasOwnProperty.call(config, 'sync') && !!config.sync;
+  } catch {
+    return false;
   }
 }
 
@@ -117,7 +129,7 @@ function isSyncLockStale(lockPath) {
     return ageMs > SYNC_LOCK_ALIVE_HARD_STALE_MS;
   }
   if (owner.pid && !isProcessAlive(owner.pid)) return true;
-  if (owner.pid && isProcessAlive(owner.pid)) return ageMs > SYNC_LOCK_ALIVE_HARD_STALE_MS;
+  if (owner.pid && isProcessAlive(owner.pid)) return false;
   if (!owner.pid) return ageMs > SYNC_LOCK_OWNER_STALE_MS;
   return false;
 }
@@ -260,6 +272,11 @@ function normalizeBranchName(branch, cwd) {
   }
 }
 
+function remoteHasBranch(remoteRefs, branch) {
+  const expected = `refs/heads/${branch}`;
+  return remoteRefs.split('\n').some(line => line.trim().split(/\s+/).pop() === expected);
+}
+
 function checkoutBranch(mindRoot, branch) {
   if (getBranch(mindRoot) === branch) return;
   try {
@@ -350,11 +367,30 @@ function getBranch(cwd) {
 }
 
 function getUnpushedCount(cwd) {
+  let unpushedCommits = null;
+  let dirtyFiles = null;
+
   try {
-    return gitExec(['rev-list', '--count', '@{u}..HEAD'], cwd);
-  } catch {
+    const raw = gitExec(['rev-list', '--count', '@{u}..HEAD'], cwd);
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) unpushedCommits = parsed;
+  } catch {}
+
+  try {
+    const status = gitExec(['status', '--porcelain=v1'], cwd);
+    dirtyFiles = status
+      ? status.split('\n').filter(line => line.trim() && !line.slice(3).endsWith('.sync-conflict')).length
+      : 0;
+  } catch {}
+
+  if (unpushedCommits === null && dirtyFiles === null) {
     return '?';
   }
+  if (unpushedCommits === null && dirtyFiles === 0) {
+    return '?';
+  }
+
+  return String((unpushedCommits || 0) + (dirtyFiles || 0));
 }
 
 export function getSyncConflictBackupPath(mindRoot, file) {
@@ -433,12 +469,15 @@ function autoPullUnlocked(mindRoot, isSshUrl = false) {
       try {
         conflicts = gitExec(['diff', '--name-only', '--diff-filter=U'], mindRoot).split('\n').filter(Boolean);
         if (conflicts.length === 0) {
+          const message = gitFailureMessage('Pull failed', mergeErr);
           saveSyncState({
             ...loadSyncState(),
-            lastError: gitFailureMessage('Pull failed', mergeErr),
+            lastError: message,
             lastErrorTime: new Date().toISOString(),
           });
-          return;
+          const pullFailure = new Error(message);
+          pullFailure.code = 'MINDOS_PULL_FAILED';
+          throw pullFailure;
         }
 
         // merge conflict → keep both versions
@@ -471,6 +510,7 @@ function autoPullUnlocked(mindRoot, isSshUrl = false) {
       } catch (err) {
         // Even if commit fails, record the error — conflicts are still saved below
         saveSyncState({ ...loadSyncState(), lastError: err.message, lastErrorTime: new Date().toISOString() });
+        if (err?.code === 'MINDOS_PULL_FAILED') throw err;
       }
       // Always save conflicts (even if commit failed) so UI can show resolution buttons
       if (conflicts.length > 0) {
@@ -500,6 +540,7 @@ let activePullInterval = null;
 let activeShutdownHandler = null;
 let activeCommitTimer = null;
 let activeConfigPollInterval = null;
+let activeDaemonStartPromise = null;
 let activeMindRoot = null;
 let activeAutoCommitInterval = null;
 let activeAutoPullInterval = null;
@@ -560,6 +601,25 @@ export async function initSync(mindRoot, opts = {}) {
   }
 
   const initLock = acquireSyncLock(mindRoot, 'init');
+  let previousOrigin = null;
+  let originMutated = false;
+  let approvedCredentialInput = null;
+  const rollbackInitSideEffects = () => {
+    if (originMutated) {
+      try {
+        if (previousOrigin) {
+          execFileSync('git', ['remote', 'set-url', 'origin', previousOrigin], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+        } else {
+          execFileSync('git', ['remote', 'remove', 'origin'], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+        }
+      } catch {}
+    }
+    if (approvedCredentialInput) {
+      try {
+        execFileSync('git', ['credential', 'reject'], { cwd: mindRoot, input: approvedCredentialInput, stdio: 'pipe', timeout: 5000 });
+      } catch {}
+    }
+  };
   try {
     const normalizedRemote = normalizeHttpsRemoteCredentials(remoteUrl, token);
     remoteUrl = normalizedRemote.remote;
@@ -649,6 +709,7 @@ export async function initSync(mindRoot, opts = {}) {
       try {
         const credInput = `protocol=${urlObj.protocol.replace(':', '')}\nhost=${urlObj.host}\nusername=oauth2\npassword=${token}\n\n`;
         execFileSync('git', ['credential', 'approve'], { cwd: mindRoot, input: credInput, stdio: 'pipe' });
+        approvedCredentialInput = credInput;
         // Verify: credential fill should return the password we just stored.
         try {
           const fillInput = `protocol=${urlObj.protocol.replace(':', '')}\nhost=${urlObj.host}\nusername=oauth2\n\n`;
@@ -682,10 +743,13 @@ export async function initSync(mindRoot, opts = {}) {
     }
 
     // 4. Set remote
+    previousOrigin = getRemoteUrl(mindRoot);
     try {
-      execFileSync('git', ['remote', 'add', 'origin', remoteUrl], { cwd: mindRoot, stdio: 'pipe' });
+      execFileSync('git', ['remote', 'add', 'origin', remoteUrl], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+      originMutated = true;
     } catch {
-      execFileSync('git', ['remote', 'set-url', 'origin', remoteUrl], { cwd: mindRoot, stdio: 'pipe' });
+      execFileSync('git', ['remote', 'set-url', 'origin', remoteUrl], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+      originMutated = true;
     }
 
     // 5. Test connection (also captures refs to avoid a second SSH round-trip)
@@ -697,6 +761,7 @@ export async function initSync(mindRoot, opts = {}) {
     } catch (lsErr) {
       const detail = lsErr.stderr ? lsErr.stderr.toString().trim() : '';
       const errMsg = `Remote not reachable${detail ? ': ' + detail : ''} — check URL and credentials`;
+      rollbackInitSideEffects();
       if (nonInteractive) throw new Error(errMsg);
       console.error(red(`✘ ${errMsg}`));
       process.exit(1);
@@ -716,10 +781,15 @@ export async function initSync(mindRoot, opts = {}) {
     const hasRemoteContent = remoteRefs.includes('refs/heads/');
     try {
       if (hasRemoteContent) {
+        if (!remoteHasBranch(remoteRefs, syncConfig.branch)) {
+          const message = `Branch "${syncConfig.branch}" was not found on the remote. Choose an existing branch or create "${syncConfig.branch}" on the remote first.`;
+          saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
+          throw new Error(message);
+        }
         if (!nonInteractive) console.log(dim('Pulling from remote...'));
         try {
           const pullEnv = isSshUrl ? { ...process.env, ...getSshEnv() } : process.env;
-          execFileSync('git', ['pull', 'origin', syncConfig.branch, '--allow-unrelated-histories'], { cwd: mindRoot, stdio: nonInteractive ? 'pipe' : 'inherit', env: pullEnv });
+          execFileSync('git', ['pull', 'origin', syncConfig.branch, '--allow-unrelated-histories'], { cwd: mindRoot, stdio: nonInteractive ? 'pipe' : 'inherit', env: pullEnv, timeout: 120000 });
           saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
           autoCommitAndPushUnlocked(mindRoot, isSshUrl);
         } catch (err) {
@@ -732,6 +802,7 @@ export async function initSync(mindRoot, opts = {}) {
         autoCommitAndPushUnlocked(mindRoot, isSshUrl);
       }
     } catch (err) {
+      rollbackInitSideEffects();
       if (nonInteractive) throw err;
       console.error(red(`✘ ${err.message}`));
       process.exit(1);
@@ -739,6 +810,8 @@ export async function initSync(mindRoot, opts = {}) {
 
     // 7. Save sync config only after the first sync succeeds.
     saveSyncConfig(syncConfig);
+    originMutated = false;
+    approvedCredentialInput = null;
     if (!nonInteractive) console.log(green('✔ Sync configured'));
     if (!nonInteractive) console.log(green('✔ Initial sync complete\n'));
   } finally {
@@ -750,6 +823,16 @@ export async function initSync(mindRoot, opts = {}) {
  * Start file watcher + periodic pull
  */
 export async function startSyncDaemon(mindRoot) {
+  if (activeDaemonStartPromise) return activeDaemonStartPromise;
+  activeDaemonStartPromise = startSyncDaemonUnlocked(mindRoot);
+  try {
+    return await activeDaemonStartPromise;
+  } finally {
+    activeDaemonStartPromise = null;
+  }
+}
+
+async function startSyncDaemonUnlocked(mindRoot) {
   const config = loadSyncConfig();
   if (!config.enabled) {
     stopSyncDaemon();
@@ -895,6 +978,7 @@ export function getSyncStatus(mindRoot) {
   const remote = hasRepo && mindRoot ? getRemoteUrl(mindRoot) : null;
 
   if (!config.enabled) {
+    if (!hasSyncConfig()) return { enabled: false };
     if (remote && mindRoot) {
       return {
         enabled: false,

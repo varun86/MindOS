@@ -15,7 +15,7 @@ export const meta = {
   usage: 'mindos sync [subcommand]',
   flags: {
     '--remote <url>': 'Git remote URL for init',
-    '--token <token>': 'Auth token for private repo',
+    '--token <token>': 'Deprecated: prefer MINDOS_SYNC_TOKEN for private repo auth',
     '--branch <name>': 'Git branch (default: main)',
     '--json': 'Output as JSON',
   },

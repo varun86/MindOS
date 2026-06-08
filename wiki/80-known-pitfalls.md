@@ -4177,7 +4177,7 @@ const visibleNodes = useMemo(() => {
 **规则**：
 1. 所有会写 Git repo、conflict 文件、`.gitignore` 或 sync state 的入口必须使用同一个目录锁：`~/.mindos/sync-locks/<mindRootHash>.lock`。
 2. 锁 owner 必须写 `pid`、`hostname`、`operation`、`mindRoot`、`startedAt`、`token`；release 必须校验 token，不能删除后来的新 owner。
-3. dead pid lock 可以自动清理；活 pid 的老锁不能被短阈值误删，只能在 hard-stale 后恢复。
+3. dead pid lock 可以自动清理；活 pid 的老锁不能因为年龄超过阈值被清掉，否则长时间 `git pull/init` 期间会有第二个写操作并发进入同一 repo。
 4. `manualSync()` 必须一把 `manual-sync` 锁覆盖 `autoPullUnlocked()` + `autoCommitAndPushUnlocked()`，不能分别拿 pull/commit 两把锁。
 5. daemon 后台操作拿不到锁要跳过本轮，不要写 `lastError` 把 UI 弄红；用户/API 操作遇到锁用稳定 `SYNC_LOCKED`，HTTP 映射为 423。
 6. API `init` 传 token 给 CLI 时走 `MINDOS_SYNC_TOKEN` env override，不要把 token 放进 argv。
@@ -4198,6 +4198,22 @@ const visibleNodes = useMemo(() => {
 5. 手动 sync 返回后必须刷新状态并按最终状态决定提示：有 conflicts/lastError/stale 时不能显示成功 toast。
 
 **防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused/unknown/lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight 与冲突后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale 状态和 `.gitignore` 重试；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
+
+### Git Sync reset/reconfigure/dirty 状态不能复用 paused 旧语义（2026-06-09）
+
+**症状**：用户在 Settings → Sync 点 `Reset & Re-configure` 后，下一次状态刷新仍因为 `.git/config` 里残留 `origin` 而显示 Paused，重新配置表单不出现；用户重新配置到一个错误 remote 时，旧 `origin` 可能已经被改坏；用户在冲突里选择 Keep remote 后，工作区已变脏但 UI 仍可能显示 "All notes are backed up"。
+
+**根因**：旧实现把「显式暂停」和「没有 sync config 但仓库里有 origin」混为 configured；`initSync` 在验证 remote 前就改写 origin；状态里的 `unpushed` 只看 `git rev-list @{u}..HEAD`，没有把 uncommitted worktree 算进去。
+
+**规则**：
+1. `sync off` 才是 paused：保留 `config.sync`、`enabled:false` 和 remote/branch 元数据。
+2. `sync reset` 必须删除 `config.sync` 并清空 sync state；之后 GET `/api/sync` / CLI status 返回 `{ enabled:false }`，不能从残留 origin 推断 configured。
+3. `initSync` / reconfigure 在 remote 验证或首轮同步失败时必须恢复旧 origin；首次失败时应删除临时 origin，避免半配置仓库卡住用户。
+4. 远端已有内容时，必须确认用户选择的 branch 存在；不要只因为 `ls-remote` 有任意 `refs/heads/*` 就固定 pull `main`。
+5. `unpushed` 代表“本地还有没备份的变化”，必须同时统计未 push commits 和 dirty worktree files；否则 Keep remote 冲突解决后会假显示已备份。
+6. manual sync 的 pull 失败不能被后续 push 成功覆盖；没有生成冲突时应保留/抛出 pull error。
+
+**防回归**：`tests/unit/cli-sync.test.ts` 覆盖无 sync config 不推断 configured、dirty worktree 计入 unpushed、reconfigure 失败回滚 origin、缺失 remote branch 给明确错误、manual pull failure 不继续 push、daemon start 并发去重、活 pid 旧锁不清理；`packages/mindos/src/server.test.ts` 覆盖 reset 后不从残留 origin 推断 paused，以及 Product Server 状态计入 dirty worktree。
 
 ### Git Sync init/auth 不能依赖用户全局 Git 配置，也不能把 token 写入 remote（2026-06-09）
 

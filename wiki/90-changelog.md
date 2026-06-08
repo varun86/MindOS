@@ -6,6 +6,10 @@
 
 ### Git Sync / Settings
 
+- **Reset / 重新配置语义修复**：`sync reset` 不再被残留 Git `origin` 误判为 paused/configured，Settings 会回到真正的重新配置入口；`sync off` 仍保留 paused 仓库元数据。
+- **Reconfigure 失败回滚**：重新配置 remote 时，如果连接验证、远端 branch 校验或首轮同步失败，会恢复旧 `origin`（首次配置失败则移除临时 origin），避免用户看到“配置失败”后旧同步也被改坏。
+- **同步状态可信度修复**：`unpushed` 现在同时统计未 push commits 和 dirty worktree files；冲突里选择 Keep remote、保存 `.gitignore` 等本地改动不会再假显示为已备份。
+- **手动同步与 daemon 稳定性**：manual sync 遇到非冲突 pull 失败会保留并抛出错误，不再被后续 push 成功清掉；daemon 并发 start 去重，活 pid 持有的 sync lock 不会因为时间久被当成 stale 清理。
 - **Sync init/auth 加固**：初始化时会补齐 repo-local Git identity，避免用户没配置全局 `user.name/user.email` 就无法自动提交；HTTPS remote 会先剥离 username/password，再通过 credential helper 存 token，helper 无法持久化时明确失败，不再把 token 写回 `.git/config`。
 - **首次同步语义修复**：远端已有内容时，`sync init` 会先 pull，再提交/推送本地待同步文件，避免显示初始化成功但本地笔记其实没有上传。
 - **后台 daemon 生命周期修复**：Settings/API 里的 init/on/off/reset/interval 更新会通知同进程 sync daemon；daemon 也会轮询配置，关闭同步后自动停掉 watcher/timer，停止时清理已排队的自动提交，interval 改动不再等重启才生效。

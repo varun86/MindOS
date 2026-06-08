@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer as createNodeServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -3228,6 +3229,67 @@ describe('MindOS product server contract', () => {
     expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('local');
     expect(state).toEqual({ conflicts: [{ file: 'note.md' }], lastError: 'previous' });
     expect(writeStateCalled).toBe(false);
+  });
+
+  it('returns an unconfigured sync status after reset instead of inferring paused from a leftover origin', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-reset-origin-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(join(mindRoot, '.git'), { recursive: true });
+
+    let config: Record<string, any> = {
+      mindRoot,
+      sync: { enabled: true, provider: 'git' },
+    };
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md' }],
+      lastError: 'previous',
+    };
+    const services = {
+      readConfig: () => config,
+      writeConfig: (next: Record<string, any>) => { config = next; },
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      isGitRepo: () => true,
+      getRemoteUrl: () => 'git@example.com:mind/repo.git',
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'reset' }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, enabled: false },
+    });
+    expect(config.sync).toBeUndefined();
+    expect(state).toEqual({});
+
+    expect(await handleSyncGet(services)).toMatchObject({
+      status: 200,
+      body: { enabled: false },
+    });
+    expect(await handleSyncGet(services)).not.toMatchObject({
+      body: { configured: true },
+    });
+  });
+
+  it('includes dirty worktree files in product sync status unpushed count', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-dirty-status-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(mindRoot, { recursive: true });
+    execFileSync('git', ['init'], { cwd: mindRoot, stdio: 'pipe' });
+    execFileSync('git', ['remote', 'add', 'origin', 'https://example.com/mind/repo.git'], { cwd: mindRoot, stdio: 'pipe' });
+    writeFileSync(join(mindRoot, 'note.md'), 'dirty local change', 'utf-8');
+
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => ({}),
+    };
+
+    expect(await handleSyncGet(services)).toMatchObject({
+      status: 200,
+      body: {
+        enabled: true,
+        unpushed: '1',
+      },
+    });
   });
 
   it('returns 423 without mutating direct sync file operations while the sync lock is owned', async () => {

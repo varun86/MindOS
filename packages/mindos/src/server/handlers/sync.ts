@@ -90,9 +90,13 @@ export async function handleSyncGet(
 ): Promise<MindosServerResponse<Record<string, unknown> | { error: string }>> {
   try {
     const config = readConfig(services);
-    const syncConfig = config.sync ?? {};
+    const syncConfig = config.sync;
     const state = readState(services);
     const mindRoot = config.mindRoot;
+
+    if (!syncConfig) {
+      return json({ enabled: false });
+    }
 
     if (!syncConfig.enabled) {
       if (!mindRoot) return json({ enabled: false });
@@ -551,7 +555,7 @@ function isServerSyncLockStale(lockPath: string): boolean {
     return ageMs > SYNC_LOCK_ALIVE_HARD_STALE_MS;
   }
   if (owner.pid && !isProcessAlive(owner.pid)) return true;
-  if (owner.pid && isProcessAlive(owner.pid)) return ageMs > SYNC_LOCK_ALIVE_HARD_STALE_MS;
+  if (owner.pid && isProcessAlive(owner.pid)) return false;
   return ageMs > SYNC_LOCK_OWNER_STALE_MS;
 }
 
@@ -645,7 +649,25 @@ function callGetBranch(services: MindosSyncServices, cwd: string): string {
 
 function callGetUnpushedCount(services: MindosSyncServices, cwd: string): string {
   if (services.getUnpushedCount) return services.getUnpushedCount(cwd);
-  try { return runGit(cwd, ['rev-list', '--count', '@{u}..HEAD']); } catch { return '?'; }
+  let unpushedCommits: number | null = null;
+  let dirtyFiles: number | null = null;
+
+  try {
+    const raw = runGit(cwd, ['rev-list', '--count', '@{u}..HEAD']);
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) unpushedCommits = parsed;
+  } catch {}
+
+  try {
+    const status = runGit(cwd, ['status', '--porcelain=v1']);
+    dirtyFiles = status
+      ? status.split('\n').filter(line => line.trim() && !line.slice(3).endsWith('.sync-conflict')).length
+      : 0;
+  } catch {}
+
+  if (unpushedCommits === null && dirtyFiles === null) return '?';
+  if (unpushedCommits === null && dirtyFiles === 0) return '?';
+  return String((unpushedCommits || 0) + (dirtyFiles || 0));
 }
 
 function runGit(cwd: string, args: string[]): string {

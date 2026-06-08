@@ -417,6 +417,43 @@ describe('mindos sync config persistence', () => {
     vi.useRealTimers();
   });
 
+  it('deduplicates concurrent daemon starts for the same repository', async () => {
+    vi.useFakeTimers();
+    const calls: string[][] = [];
+    const watcher = { on: vi.fn().mockReturnThis(), close: vi.fn() };
+    const watch = vi.fn(() => watcher);
+    vi.doMock('chokidar', () => ({
+      __esModule: true,
+      default: { watch },
+      watch,
+    }));
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return {
+        ...actual,
+        execFileSync: vi.fn((_command: string, args: string[]) => {
+          calls.push(args);
+          if (args[0] === 'remote' && args[1] === 'get-url') return 'https://example.com/mind.git\n';
+          return '';
+        }),
+      };
+    });
+    const { startSyncDaemon, stopSyncDaemon } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', autoCommitInterval: 10, autoPullInterval: 60 },
+    }), 'utf-8');
+
+    await Promise.all([startSyncDaemon(mindRoot), startSyncDaemon(mindRoot)]);
+
+    expect(calls.filter(args => args[0] === 'remote' && args[1] === 'get-url')).toHaveLength(1);
+    expect(watch.mock.calls.length).toBeLessThanOrEqual(1);
+    stopSyncDaemon();
+    vi.useRealTimers();
+  });
+
   it('rejects invalid branch names before configuring sync', async () => {
     const { initSync } = await importSync();
     const mindRoot = path.join(tempDir, 'mind');
@@ -481,6 +518,151 @@ describe('mindos sync config persistence', () => {
     });
   });
 
+  it('does not infer a configured sync setup when no sync config exists', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({}), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'git@example.com:mind/repo.git\n';
+      throw new Error(`unexpected git command: ${args.join(' ')}`);
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { getSyncStatus } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    expect(getSyncStatus(mindRoot)).toEqual({ enabled: false });
+  });
+
+  it('counts dirty worktree files as local changes waiting to upload', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ sync: { enabled: true, provider: 'git' } }), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'git@example.com:mind/repo.git\n';
+      if (args[0] === 'rev-parse') return 'main\n';
+      if (args[0] === 'rev-list') return '2\n';
+      if (args[0] === 'status' && args[1] === '--porcelain=v1') return ' M note.md\n?? draft.md\n';
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { getSyncStatus } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    expect(getSyncStatus(mindRoot).unpushed).toBe('4');
+  });
+
+  it('keeps the previous origin when reconfiguration fails connection validation', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', remote: 'origin', branch: 'main' },
+    }), 'utf-8');
+    let origin = 'https://example.com/old.git';
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') return 'true\n';
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'main\n';
+      if (args[0] === 'check-ref-format') return 'main\n';
+      if (args[0] === 'remote' && args[1] === 'get-url') return `${origin}\n`;
+      if (args[0] === 'remote' && args[1] === 'add') {
+        throw new Error('remote origin already exists');
+      }
+      if (args[0] === 'remote' && args[1] === 'set-url') {
+        origin = args[3];
+        return '';
+      }
+      if (args[0] === 'ls-remote') {
+        const err = Object.assign(new Error('ls-remote failed'), {
+          stderr: Buffer.from('fatal: repository not found\n'),
+          stdout: Buffer.from(''),
+        });
+        throw err;
+      }
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { initSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: 'https://example.com/bad.git',
+      branch: 'main',
+    })).rejects.toThrow('Remote not reachable');
+
+    expect(origin).toBe('https://example.com/old.git');
+    expect(JSON.parse(fs.readFileSync(configPath, 'utf-8')).sync.remote).toBe('origin');
+  });
+
+  it('reports a clear branch error before initial pull when the requested branch is absent on a populated remote', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({}), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') throw new Error('not a repo');
+      if (args[0] === 'init') return '';
+      if (args[0] === 'checkout') return '';
+      if (args[0] === 'check-ref-format') return 'main\n';
+      if (args[0] === 'remote' && args[1] === 'add') return '';
+      if (args[0] === 'ls-remote') return 'abc123\trefs/heads/master\n';
+      if (args[0] === 'remote' && args[1] === 'remove') return '';
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { initSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(mindRoot, { recursive: true });
+
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: 'https://example.com/repo.git',
+      branch: 'main',
+    })).rejects.toThrow('Branch "main" was not found on the remote');
+
+    expect(execFileSyncMock).not.toHaveBeenCalledWith('git', expect.arrayContaining(['pull']), expect.anything());
+  });
+
+  it('keeps manual sync failed when pull cannot read the remote and no conflict was produced', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ sync: { enabled: true, provider: 'git' } }), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'git@example.com:mind/repo.git\n';
+      if (args[0] === 'pull') {
+        const err = Object.assign(new Error('pull failed'), {
+          stderr: Buffer.from('fatal: no tracking information\n'),
+          stdout: Buffer.from(''),
+        });
+        throw err;
+      }
+      if (args[0] === 'diff' && args.includes('--diff-filter=U')) return '';
+      if (args[0] === 'status') return '';
+      if (args[0] === 'push') return '';
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { manualSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    expect(() => manualSync(mindRoot)).toThrow('Pull failed: fatal: no tracking information');
+    expect(execFileSyncMock).not.toHaveBeenCalledWith('git', expect.arrayContaining(['push']), expect.anything());
+    const state = JSON.parse(fs.readFileSync(path.join(mindosDir, 'sync-state.json'), 'utf-8'));
+    expect(state.lastError).toBe('Pull failed: fatal: no tracking information');
+  });
+
   it('does not keep the legacy allow-empty conflict commit fallback', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'packages/mindos/bin/lib/sync.js'), 'utf-8');
 
@@ -505,6 +687,30 @@ describe('mindos sync config persistence', () => {
       operation: 'pull',
       startedAt: new Date().toISOString(),
       token: 'other-owner',
+    }), 'utf-8');
+
+    expect(() => manualSync(mindRoot)).toThrow('SYNC_LOCKED: Sync is already running');
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+  });
+
+  it('does not clear an old sync lock while its owner process is still alive', async () => {
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      throw new Error(`unexpected git command: ${args.join(' ')}`);
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { manualSync, getSyncLockPath } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    const lockPath = getSyncLockPath(mindRoot);
+    fs.mkdirSync(lockPath, { recursive: true });
+    fs.writeFileSync(path.join(lockPath, 'owner.json'), JSON.stringify({
+      pid: process.pid,
+      operation: 'slow-init',
+      startedAt: new Date(Date.now() - 31 * 60_000).toISOString(),
+      token: 'live-owner',
     }), 'utf-8');
 
     expect(() => manualSync(mindRoot)).toThrow('SYNC_LOCKED: Sync is already running');
