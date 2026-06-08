@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { apiFetch } from '@/lib/api';
 import type { SyncStatus } from '@/components/settings/types';
-import { formatSyncError, SYNC_ACTION_TIMEOUT_MS } from '@/lib/sync-ui';
+import { formatSyncError, hasUnknownUnpushedCount, SYNC_ACTION_TIMEOUT_MS } from '@/lib/sync-ui';
 
 type SyncStatusSnapshot = {
   status: SyncStatus | null;
@@ -176,6 +176,8 @@ export function useSyncAction(refreshFn: () => Promise<void>, syncT?: Record<str
       } else if (refreshedStatus?.lastError) {
         setSyncError(formatSyncError(refreshedStatus.lastError, syncT));
         setSyncResult('error');
+      } else if (refreshedStatus && hasUnknownUnpushedCount(refreshedStatus)) {
+        setSyncResult(null);
       } else {
         setSyncResult('success');
       }

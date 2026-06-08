@@ -4191,13 +4191,15 @@ const visibleNodes = useMemo(() => {
 **根因**：前端多个入口各自推导状态，只有 `off/synced/error/conflicts/unpushed` 几个粗粒度状态。Settings、底栏、ActivityBar、Popover 和移动端 dot 没有共享同一个 status level 与 in-flight action，导致 paused、stale cache、unknown upstream、lock conflict、conflict-after-sync 等状态被误归类。
 
 **规则**：
-1. `configured && !enabled` 必须是 `paused`，不能当作 `off`；用户仍要能从全局 sync 入口回到 Settings → Sync 开启。
+1. `configured && !enabled` 必须是 `paused`，不能当作 `off`；但 `paused` 只是自动化开关状态，优先级必须低于 `conflicts` / `lastError` / `unknown` / `unpushed`，否则会把用户真正要处理的问题藏起来。
 2. GET `/api/sync` 失败但已有旧状态时必须标记 `stale`，任何健康卡和底栏都不能继续给纯成功文案。
 3. 非数字 `unpushed` 要显示为 `unknown`，不能用 `Number(...) || 0` 隐式吞掉。
 4. 所有手动 Sync Now 入口必须共享一个 action in-flight 状态；锁冲突 `SYNC_LOCKED` 要显示友好文案，不能泄露 owner/pid。
 5. 手动 sync 返回后必须刷新状态并按最终状态决定提示：有 conflicts/lastError/stale 时不能显示成功 toast。
+6. Settings 里隐藏 init 进度不是取消后端 Git 进程；UI 不能立刻暴露第二次 Connect，应显示后台仍在运行并等待原请求完成。
+7. `.gitignore` 保存必须补回 `*.sync-conflict` / `INSTRUCTION.md` 等受保护条目；冲突 preview 失败不能阻止 `Keep local`，因为保留本地不依赖远程备份文件。
 
-**防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused/unknown/lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight 与冲突后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale 状态和 `.gitignore` 重试；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
+**防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused attention 优先级、unknown 和 lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight、冲突/unknown 后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale、paused+conflicts、`.gitignore` 保存刷新、隐藏 init 进度、preview 失败后 Keep local；`packages/web/__tests__/components/sync-popover.test.tsx` 覆盖 paused conflict recovery 和窄屏 popover clamp；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
 
 ### Git Sync reset/reconfigure/dirty 状态不能复用 paused 旧语义（2026-06-09）
 
@@ -4226,9 +4228,9 @@ const visibleNodes = useMemo(() => {
 2. HTTPS remote 写入 `origin` 前必须剥离 username/password；显式 token 或 embedded password 只能交给 Git credential helper。
 3. credential helper 无法通过 `git credential fill` 验证 token 已存住时，必须明确失败并写 `sync-state.json`，禁止把 token fallback 到 inline remote URL。
 4. 若 `ls-remote` 显示远端已有 refs，init 必须 pull 后继续 auto-commit/push 本地待同步文件，只有完整首轮同步成功后才能写 `sync.enabled=true`。
-5. SSH 预检不能靠默认 key 文件名或 `SSH_AUTH_SOCK` 直接拒绝；自定义 config、硬件 key、平台 agent 要交给 `git ls-remote` 作为 source of truth。
+5. SSH 预检不能靠默认 key 文件名或 `SSH_AUTH_SOCK` 直接拒绝；自定义 config、硬件 key、平台 agent 要交给 `git ls-remote` 作为 source of truth，且 UI/API/CLI 都要接受 Git 原生 `ssh://git@host/org/repo.git`。
 
-**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
+**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote、`ssh://` remote 走 SSH 环境；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 和 `packages/mindos/src/server.test.ts` 覆盖 `ssh://` init；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
 
 ### Git Sync daemon 不能只在启动时读取配置（2026-06-09）
 

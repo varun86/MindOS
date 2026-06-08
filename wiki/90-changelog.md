@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+### Git Sync / Settings
+
+- **Paused 状态优先级修复**：暂停 auto-sync 后仍会显示冲突、错误、未知 upstream 状态和本地待上传改动，不再用单纯 Paused 卡片盖住真正需要处理的问题。
+- **初始化进度语义修复**：首次配置 Git Sync 时隐藏进度不再伪装成取消；后端初始化仍在运行时，Settings 会显示后台进行中并阻止第二次 Connect。
+- **恢复与保护增强**：`ssh://git@host/org/repo.git` 远程地址在 Settings、Product API、CLI 中都可用；`.gitignore` 保存会补回 `*.sync-conflict` / `INSTRUCTION.md`；冲突预览失败时仍可选择 Keep local。
+- **状态入口细节修复**：`unpushed: "?"` 不再显示“已备份”，手动 Sync 后进入 unknown 也不再弹成功；窄屏 Sync Popover 会限制在 viewport 内。
+
 ## v1.0.19 (2026-06-09)
 
 ### Git Sync / Settings

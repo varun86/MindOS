@@ -66,6 +66,7 @@ const DEFAULT_CONFIG_PATH = join(DEFAULT_MINDOS_DIR, 'config.json');
 const DEFAULT_SYNC_STATE_PATH = join(DEFAULT_MINDOS_DIR, 'sync-state.json');
 const SYNC_LOCK_OWNER_STALE_MS = 5 * 60 * 1000;
 const SYNC_LOCK_ALIVE_HARD_STALE_MS = 30 * 60 * 1000;
+const PROTECTED_GITIGNORE_ENTRIES = ['*.sync-conflict', 'INSTRUCTION.md'];
 
 type SyncLockOwner = {
   pid?: number;
@@ -83,6 +84,20 @@ class SyncLockedError extends Error {
     super(formatSyncLockedMessage(owner));
     this.name = 'SyncLockedError';
   }
+}
+
+function ensureProtectedGitignoreEntries(content: string): string {
+  const normalizedLines = content.split(/\r?\n/).map(line => line.trim());
+  const missing = PROTECTED_GITIGNORE_ENTRIES.filter(entry => !normalizedLines.includes(entry));
+  if (missing.length === 0) return content;
+
+  const base = content.trimEnd();
+  const appendix = [
+    '# MindOS protected sync files',
+    ...missing,
+    '',
+  ].join('\n');
+  return base ? `${base}\n\n${appendix}` : `${appendix}`;
 }
 
 export async function handleSyncGet(
@@ -244,7 +259,7 @@ async function handleSyncInit(
     return json({ error: 'Remote URL is required' }, { status: 400 });
   }
   const isHttps = remote.startsWith('https://');
-  const isSsh = /^git@[\w.-]+:.+/.test(remote);
+  const isSsh = /^git@[\w.-]+:.+/.test(remote) || /^ssh:\/\/git@[^/]+\/.+/.test(remote);
   if (!isHttps && !isSsh) {
     return json({ error: 'Invalid remote URL — must be HTTPS or SSH format' }, { status: 400 });
   }
@@ -298,7 +313,7 @@ function handleGitignoreSave(
   if (typeof payload.content !== 'string') {
     return json({ error: 'Missing content' }, { status: 400 });
   }
-  const content = payload.content;
+  const content = ensureProtectedGitignoreEntries(payload.content);
   try {
     return withServerSyncLock(mindRoot, 'gitignore-save', services, () => {
       writeFileSync(resolveExistingSafe(mindRoot, '.gitignore'), content, 'utf-8');

@@ -13,6 +13,7 @@ import { getSyncErrorHint } from '@/lib/sync-ui';
 function isValidGitUrl(url: string): 'https' | 'ssh' | false {
   if (/^https:\/\/.+/.test(url)) return 'https';
   if (/^git@[\w.-]+:.+/.test(url)) return 'ssh';
+  if (/^ssh:\/\/git@[^/]+\/.+/.test(url)) return 'ssh';
   return false;
 }
 
@@ -36,13 +37,15 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
   const [branch, setBranch] = useState('main');
   const [showToken, setShowToken] = useState(false);
   const [connectStep, setConnectStep] = useState<number>(-1); // -1=idle, 0..3=steps, 4=done
+  const [progressHidden, setProgressHidden] = useState(false);
+  const [backgroundInitPending, setBackgroundInitPending] = useState(false);
   const [error, setError] = useState('');
   const [connectingRemote, setConnectingRemote] = useState('');
   const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const connectRunRef = useRef(0);
 
-  const connecting = connectStep >= 0 && connectStep < 4;
+  const connecting = !progressHidden && connectStep >= 0 && connectStep < 4;
 
   const urlType = remoteUrl.trim() ? isValidGitUrl(remoteUrl.trim()) : null;
   const isValid = urlType === 'https' || urlType === 'ssh';
@@ -66,13 +69,10 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
     stepTimersRef.current = [];
   };
 
-  const handleCancel = () => {
-    connectRunRef.current += 1;
-    abortRef.current?.abort();
-    abortRef.current = null;
+  const handleHideProgress = () => {
     clearStepTimers();
+    setProgressHidden(true);
     setConnectStep(-1);
-    setConnectingRemote('');
     setError('');
   };
 
@@ -92,6 +92,8 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
     const submittedBranch = branchValue;
 
     clearStepTimers();
+    setProgressHidden(false);
+    setBackgroundInitPending(true);
     setConnectingRemote(redactGitUrl(submittedRemote));
     setConnectStep(0);
     setError('');
@@ -119,6 +121,8 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         signal: controller.signal,
       });
       if (connectRunRef.current !== runId) return;
+      setProgressHidden(false);
+      setBackgroundInitPending(false);
       setConnectStep(4); // success
       setTimeout(() => {
         if (connectRunRef.current === runId) onInitComplete();
@@ -131,6 +135,8 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
       }
       const hint = getSyncErrorHint(msg, submittedRemote, syncT);
       setError(hint ? `${msg}\n${hint}` : msg);
+      setProgressHidden(false);
+      setBackgroundInitPending(false);
       setConnectStep(-1);
     } finally {
       if (connectRunRef.current === runId) {
@@ -197,7 +203,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
           )}
           {remoteUrl.trim() && !isValid && (
             <p className="text-xs text-destructive mt-1">
-              {(syncT?.invalidUrl as string) ?? 'Invalid Git URL — use HTTPS (https://...) or SSH (git@...)'}
+              {(syncT?.invalidUrl as string) ?? 'Invalid Git URL — use HTTPS (https://...) or SSH (git@... / ssh://git@...)'}
             </p>
           )}
         </Field>
@@ -259,7 +265,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         </Field>
 
         {/* Connect button + progress */}
-        {!connecting && connectStep !== 4 && (
+        {!connecting && !backgroundInitPending && connectStep !== 4 && (
           <div className="flex flex-wrap items-center gap-3">
             <PrimaryButton
               onClick={handleConnect}
@@ -271,6 +277,21 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
             {disabledReason && (
               <span className="text-xs text-muted-foreground">{disabledReason}</span>
             )}
+          </div>
+        )}
+
+        {backgroundInitPending && progressHidden && (
+          <div className="flex items-start gap-2 rounded-lg border border-[var(--amber)]/30 bg-[var(--amber-subtle)] p-3 text-xs text-[var(--amber-text)]" role="status" aria-live="polite">
+            <Loader2 size={13} className="mt-0.5 shrink-0 animate-spin" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">
+                {(syncT?.initStillRunningTitle as string) ?? 'Sync setup is still running'}
+              </p>
+              <p>
+                {(syncT?.initStillRunningDesc as string)
+                  ?? 'MindOS is still configuring the repository in the background. Wait for the result before starting setup again.'}
+              </p>
+            </div>
           </div>
         )}
 
@@ -300,10 +321,10 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
             {connecting && (
               <button
                 type="button"
-                onClick={handleCancel}
+                onClick={handleHideProgress}
                 className="inline-flex min-h-8 items-center rounded-md border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {(syncT?.stopWaiting as string) ?? 'Stop waiting'}
+                {(syncT?.hideProgress as string) ?? 'Hide progress'}
               </button>
             )}
             {connectStep === 4 && (

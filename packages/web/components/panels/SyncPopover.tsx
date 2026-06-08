@@ -60,6 +60,9 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
 
   // Position: anchor near the button, avoid going off-screen top
   const popoverTop = Math.max(8, anchorRect.bottom - 180);
+  const viewportWidth = typeof window === 'undefined' ? railWidth + 288 : window.innerWidth;
+  const maxLeft = Math.max(8, viewportWidth - 288);
+  const popoverLeft = Math.min(Math.max(8, railWidth), maxLeft);
 
   return (
     <div
@@ -67,10 +70,10 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
       ref={ref}
       role="dialog"
       aria-label={t.sidebar?.syncLabel ?? 'Sync'}
-      className="fixed z-50 w-[280px] border rounded-lg bg-background shadow-lg border-border animate-in fade-in slide-in-from-left-2 duration-150"
+      className="fixed z-50 w-[calc(100vw-16px)] max-w-[280px] border rounded-lg bg-background shadow-lg border-border animate-in fade-in slide-in-from-left-2 duration-150"
       style={{
         top: popoverTop,
-        left: railWidth,
+        left: popoverLeft,
       }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">

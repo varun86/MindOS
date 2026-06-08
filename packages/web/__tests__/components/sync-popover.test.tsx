@@ -126,6 +126,42 @@ describe('SyncPopover', () => {
     host.remove();
   });
 
+  it('keeps paused conflict state focused on resolution', async () => {
+    const { host, root } = await renderPopover({
+      syncStatus: {
+        ...baseStatus,
+        enabled: false,
+        configured: true,
+        conflicts: [{ file: 'notes/today.md', time: '2026-06-08T00:00:00.000Z' }],
+      },
+    });
+
+    expect(host.textContent).toContain('Resolve 1 conflicts');
+    expect(host.textContent).not.toContain('Sync paused');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('clamps the popover inside narrow mobile viewports', async () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 });
+
+    const { host, root } = await renderPopover();
+    const dialog = host.querySelector('[role="dialog"]') as HTMLDivElement | null;
+
+    expect(dialog).toBeTruthy();
+    expect(dialog?.style.left).toBe('32px');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+  });
+
   it('retries stale status refresh instead of starting a sync', async () => {
     const { host, root, onSyncStatusRefresh } = await renderPopover({ syncStale: true });
 

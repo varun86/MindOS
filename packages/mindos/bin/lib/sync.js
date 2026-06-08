@@ -320,9 +320,9 @@ function normalizeHttpsRemoteCredentials(remote, token) {
   }
 }
 
-/** Check if URL is SSH format (git@host:path) */
+/** Check if URL is SSH format (git@host:path or ssh://git@host/path) */
 function isSSHUrl(url) {
-  return /^git@[\w.-]+:.+/.test(url);
+  return /^git@[\w.-]+:.+/.test(url) || /^ssh:\/\/git@[^/]+\/.+/.test(url);
 }
 
 /** Get SSH environment for git commands to auto-accept new hosts */
@@ -584,12 +584,17 @@ export async function initSync(mindRoot, opts = {}) {
       process.exit(1);
     }
 
+    rl.close();
+
     // 3. Token for HTTPS
     if (remoteUrl.startsWith('https://')) {
-      token = (await ask(`${bold('Access Token')} ${dim('(GitHub PAT / GitLab PAT, leave empty if SSH)')}: `)).trim();
+      const { promptHidden, closePrompts } = await import('./channel-prompts.js');
+      try {
+        token = (await promptHidden(`${bold('Access Token')} ${dim('(GitHub PAT / GitLab PAT, leave empty if SSH, hidden)')}: `, { maskInput: true })).trim();
+      } finally {
+        closePrompts();
+      }
     }
-
-    rl.close();
   }
 
   try {
@@ -602,9 +607,16 @@ export async function initSync(mindRoot, opts = {}) {
 
   const initLock = acquireSyncLock(mindRoot, 'init');
   let previousOrigin = null;
+  let previousBranch = null;
   let originMutated = false;
+  let branchMutated = false;
   let approvedCredentialInput = null;
   const rollbackInitSideEffects = () => {
+    if (branchMutated && previousBranch) {
+      try {
+        execFileSync('git', ['checkout', previousBranch], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 });
+      } catch {}
+    }
     if (originMutated) {
       try {
         if (previousOrigin) {
@@ -636,9 +648,9 @@ export async function initSync(mindRoot, opts = {}) {
     const isSshUrl = sshValidation.isSSH;
     if (!isGitRepo(mindRoot)) {
       if (!nonInteractive) console.log(dim('Initializing git repository...'));
-      execFileSync('git', ['init'], { cwd: mindRoot, stdio: 'pipe' });
+      execFileSync('git', ['init'], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 });
       try {
-        execFileSync('git', ['checkout', '-B', branch], { cwd: mindRoot, stdio: 'pipe' });
+        execFileSync('git', ['checkout', '-B', branch], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 });
       } catch (err) {
         const message = gitFailureMessage(`Failed to create branch "${branch}"`, err);
         if (nonInteractive) throw new Error(message);
@@ -647,7 +659,9 @@ export async function initSync(mindRoot, opts = {}) {
       }
     } else {
       try {
+        previousBranch = getBranch(mindRoot);
         checkoutBranch(mindRoot, branch);
+        branchMutated = previousBranch && previousBranch !== getBranch(mindRoot);
       } catch (err) {
         const message = gitFailureMessage(`Failed to switch to branch "${branch}"`, err);
         if (nonInteractive) throw new Error(message);
@@ -661,6 +675,7 @@ export async function initSync(mindRoot, opts = {}) {
     const SYSTEM_IGNORES = [
       'INSTRUCTION.md',
     ];
+    const PROTECTED_SYNC_IGNORES = ['*.sync-conflict', ...SYSTEM_IGNORES];
     if (!existsSync(gitignorePath)) {
       writeFileSync(gitignorePath, [
         '# MindOS auto-generated',
@@ -680,7 +695,8 @@ export async function initSync(mindRoot, opts = {}) {
     } else {
       // Existing .gitignore: append missing system file entries.
       const existing = readFileSync(gitignorePath, 'utf-8');
-      const missing = SYSTEM_IGNORES.filter(f => !existing.includes(f));
+      const existingLines = existing.split(/\r?\n/).map(line => line.trim());
+      const missing = PROTECTED_SYNC_IGNORES.filter(f => !existingLines.includes(f));
       if (missing.length > 0) {
         const append = '\n# MindOS system files (auto-added)\n' + missing.join('\n') + '\n';
         writeFileSync(gitignorePath, existing.trimEnd() + '\n' + append, 'utf-8');
@@ -688,8 +704,8 @@ export async function initSync(mindRoot, opts = {}) {
     }
 
     // Remove system files from git tracking if already committed
-    for (const file of SYSTEM_IGNORES) {
-      try { execFileSync('git', ['rm', '--cached', '--ignore-unmatch', file], { cwd: mindRoot, stdio: 'pipe' }); } catch {}
+    for (const file of PROTECTED_SYNC_IGNORES) {
+      try { execFileSync('git', ['rm', '--cached', '--ignore-unmatch', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
     }
 
     // Handle token for HTTPS
@@ -701,14 +717,14 @@ export async function initSync(mindRoot, opts = {}) {
       if (platform === 'darwin') helper = 'osxkeychain';
       else if (platform === 'win32') helper = 'manager';
       else helper = 'store';
-      try { execFileSync('git', ['config', 'credential.helper', helper], { cwd: mindRoot, stdio: 'pipe' }); } catch (e) {
+      try { execFileSync('git', ['config', 'credential.helper', helper], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 }); } catch (e) {
         console.error(`[sync] credential.helper setup failed: ${e.message}`);
       }
       // Store the credential via git credential approve, then verify it stuck.
       let credentialStored = false;
       try {
         const credInput = `protocol=${urlObj.protocol.replace(':', '')}\nhost=${urlObj.host}\nusername=oauth2\npassword=${token}\n\n`;
-        execFileSync('git', ['credential', 'approve'], { cwd: mindRoot, input: credInput, stdio: 'pipe' });
+        execFileSync('git', ['credential', 'approve'], { cwd: mindRoot, input: credInput, stdio: 'pipe', timeout: 5000 });
         approvedCredentialInput = credInput;
         // Verify: credential fill should return the password we just stored.
         try {
@@ -731,6 +747,7 @@ export async function initSync(mindRoot, opts = {}) {
       if (!credentialStored) {
         const message = 'Git credential helper did not store the access token. Configure a Git credential helper or use SSH, then try again.';
         saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
+        rollbackInitSideEffects();
         if (nonInteractive) throw new Error(message);
         console.error(red(`✘ ${message}`));
         process.exit(1);
@@ -811,6 +828,7 @@ export async function initSync(mindRoot, opts = {}) {
     // 7. Save sync config only after the first sync succeeds.
     saveSyncConfig(syncConfig);
     originMutated = false;
+    branchMutated = false;
     approvedCredentialInput = null;
     if (!nonInteractive) console.log(green('✔ Sync configured'));
     if (!nonInteractive) console.log(green('✔ Initial sync complete\n'));

@@ -285,6 +285,37 @@ describe('mindos sync config persistence', () => {
     expect(fs.existsSync(configPath)).toBe(false);
   });
 
+  it('rejects an approved HTTPS credential when credential verification fails', async () => {
+    const calls: string[][] = [];
+    const execFileSyncMock = vi.fn((_command: string, args: string[], options?: { input?: string }) => {
+      calls.push(args);
+      if (args[0] === 'check-ref-format') return `${args[2]}\n`;
+      if (args[0] === 'credential' && args[1] === 'approve') return '';
+      if (args[0] === 'credential' && args[1] === 'fill') return 'protocol=https\nhost=example.com\nusername=oauth2\n\n';
+      if (args[0] === 'credential' && args[1] === 'reject') {
+        expect(options?.input).toContain('password=ghp_secret');
+        return '';
+      }
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { initSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(mindRoot);
+
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: 'https://example.com/mind.git',
+      token: 'ghp_secret',
+      branch: 'main',
+    })).rejects.toThrow('Git credential helper did not store the access token');
+
+    expect(calls).toContainEqual(['credential', 'reject']);
+  });
+
   it('stops a running daemon after sync is disabled in config', async () => {
     vi.useFakeTimers();
     const close = vi.fn();
@@ -602,6 +633,49 @@ describe('mindos sync config persistence', () => {
     expect(JSON.parse(fs.readFileSync(configPath, 'utf-8')).sync.remote).toBe('origin');
   });
 
+  it('restores the previous branch when reconfiguration fails after switching branches', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', remote: 'origin', branch: 'main' },
+    }), 'utf-8');
+    let currentBranch = 'main';
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') return 'true\n';
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return `${currentBranch}\n`;
+      if (args[0] === 'check-ref-format') return `${args[2]}\n`;
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'https://example.com/old.git\n';
+      if (args[0] === 'remote' && args[1] === 'add') throw new Error('remote origin already exists');
+      if (args[0] === 'remote' && args[1] === 'set-url') return '';
+      if (args[0] === 'checkout') {
+        currentBranch = args[1] === '-b' ? args[2] : args[1];
+        return '';
+      }
+      if (args[0] === 'ls-remote') {
+        const err = Object.assign(new Error('ls-remote failed'), {
+          stderr: Buffer.from('fatal: repository not found\n'),
+          stdout: Buffer.from(''),
+        });
+        throw err;
+      }
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { initSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: 'https://example.com/bad.git',
+      branch: 'dev',
+    })).rejects.toThrow('Remote not reachable');
+
+    expect(currentBranch).toBe('main');
+  });
+
   it('reports a clear branch error before initial pull when the requested branch is absent on a populated remote', async () => {
     fs.mkdirSync(mindosDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({}), 'utf-8');
@@ -630,6 +704,42 @@ describe('mindos sync config persistence', () => {
     })).rejects.toThrow('Branch "main" was not found on the remote');
 
     expect(execFileSyncMock).not.toHaveBeenCalledWith('git', expect.arrayContaining(['pull']), expect.anything());
+  });
+
+  it('accepts ssh protocol remotes and restores protected gitignore entries during init', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({}), 'utf-8');
+    const lsRemoteOptions: Array<{ env?: Record<string, string> }> = [];
+    const execFileSyncMock = vi.fn((_command: string, args: string[], options?: { env?: Record<string, string> }) => {
+      if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') throw new Error('not a repo');
+      if (args[0] === 'check-ref-format') return `${args[2]}\n`;
+      if (args[0] === 'ls-remote') {
+        lsRemoteOptions.push(options ?? {});
+        return '';
+      }
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { initSync } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(mindRoot, { recursive: true });
+    fs.writeFileSync(path.join(mindRoot, '.gitignore'), 'node_modules/\n', 'utf-8');
+
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: 'ssh://git@example.com/mind/repo.git',
+      branch: 'main',
+    })).resolves.toBeUndefined();
+
+    expect(execFileSyncMock).toHaveBeenCalledWith('git', ['remote', 'add', 'origin', 'ssh://git@example.com/mind/repo.git'], expect.anything());
+    expect(lsRemoteOptions[0]?.env?.GIT_SSH_COMMAND).toContain('BatchMode=yes');
+    const gitignore = fs.readFileSync(path.join(mindRoot, '.gitignore'), 'utf-8');
+    expect(gitignore).toContain('node_modules/');
+    expect(gitignore).toContain('*.sync-conflict');
+    expect(gitignore).toContain('INSTRUCTION.md');
   });
 
   it('keeps manual sync failed when pull cannot read the remote and no conflict was produced', async () => {
@@ -667,6 +777,14 @@ describe('mindos sync config persistence', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'packages/mindos/bin/lib/sync.js'), 'utf-8');
 
     expect(source).not.toContain('--allow-empty');
+  });
+
+  it('uses hidden input for interactive HTTPS sync tokens', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'packages/mindos/bin/lib/sync.js'), 'utf-8');
+
+    expect(source).toContain("await import('./channel-prompts.js')");
+    expect(source).toContain('promptHidden');
+    expect(source).not.toContain("token = (await ask(`${bold('Access Token')}");
   });
 
   it('rejects manual sync when another process owns the sync lock', async () => {

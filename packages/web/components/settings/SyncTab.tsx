@@ -5,7 +5,7 @@ import { RefreshCw, AlertCircle, CheckCircle2, Loader2, GitBranch, Check, Chevro
 import { PrimaryButton, SettingCard, Select } from './Primitives';
 import { apiFetch } from '@/lib/api';
 import type { SyncStatus, SyncTabProps } from './types';
-import { formatSyncError, getSyncErrorHint, getUnpushedCount, timeAgo } from '@/lib/sync-ui';
+import { formatSyncError, getStatusLevel, getSyncErrorHint, getUnpushedCount, hasUnknownUnpushedCount, timeAgo } from '@/lib/sync-ui';
 import { useSyncAction, useSyncStatus } from '@/lib/sync-status-store';
 import SyncEmptyState from './SyncEmptyState';
 
@@ -47,6 +47,17 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
     };
   }
 
+  if (hasUnknownUnpushedCount(status)) {
+    return {
+      tone: 'warning' as const,
+      title: (syncT?.healthUnknownTitle as string) ?? 'Sync status unknown',
+      description: (syncT?.healthUnknownDesc as string)
+        ?? 'MindOS could not confirm whether local changes have been uploaded.',
+      next: (syncT?.healthUnknownNext as string) ?? 'Next: retry sync or check the remote repository',
+      icon: <AlertCircle size={18} />,
+    };
+  }
+
   if (unpushedCount > 0) {
     return {
       tone: 'warning' as const,
@@ -56,6 +67,17 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
         ?? 'MindOS will push them automatically, or you can run Sync now.',
       next: (syncT?.healthUnpushedNext as string) ?? 'Next: sync now or keep working',
       icon: <GitCommitHorizontal size={18} />,
+    };
+  }
+
+  if (!status.enabled && status.configured) {
+    return {
+      tone: 'warning' as const,
+      title: (syncT?.healthPausedTitle as string) ?? 'Sync is paused',
+      description: (syncT?.healthPausedDesc as string)
+        ?? 'Auto-sync is disabled for this repository. Your existing Git configuration is still available.',
+      next: (syncT?.healthPausedNext as string) ?? 'Next: enable auto-sync when you want background backups again',
+      icon: <GitBranch size={18} />,
     };
   }
 
@@ -120,7 +142,7 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
   };
 
   const handleResolve = async (strategy: 'keep-local' | 'keep-remote') => {
-    if (!preview || (strategy === 'keep-remote' && noBackup)) {
+    if (strategy === 'keep-remote' && (!preview || noBackup)) {
       return;
     }
     setRowError(null);
@@ -171,7 +193,7 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
           <button
             type="button"
             onClick={() => handleResolve('keep-local')}
-            disabled={!!resolving || !preview}
+            disabled={!!resolving}
             className="inline-flex min-h-8 items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={(syncT?.keepLocalHint as string) ?? 'Keep this device\'s version'}
           >
@@ -252,7 +274,7 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
 
 /* ── Gitignore Editor ──────────────────────────────────────────── */
 
-function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
+function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; onSaved?: () => void | Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState('');
   const [saved, setSaved] = useState('');
@@ -304,6 +326,7 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
       setSaved(content);
       setSaveOk(true);
       setLoadFailed(false);
+      await onSaved?.();
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.gitignoreSaveFailed as string) ?? 'Failed to save .gitignore');
@@ -396,7 +419,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   const { status, loaded, error: loadError, stale, fetchStatus } = useSyncStatus();
   const [toggling, setToggling] = useState(false);
   const [intervalSaving, setIntervalSaving] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const resetConfirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { syncing, syncResult, syncError, syncNow } = useSyncAction(fetchStatus, syncT);
 
   const showSuccess = useCallback((text: string) => {
@@ -404,6 +429,11 @@ export function SyncTab({ t, visible }: SyncTabProps) {
     setTimeout(() => {
       setMessage(current => (current?.type === 'success' && current.text === text ? null : current));
     }, 3000);
+  }, []);
+
+  const clearResetConfirmation = useCallback(() => {
+    setConfirmingReset(false);
+    if (resetConfirmTimerRef.current) clearTimeout(resetConfirmTimerRef.current);
   }, []);
 
   // Refresh sync status when the tab becomes visible again (after being hidden via display:none)
@@ -424,6 +454,10 @@ export function SyncTab({ t, visible }: SyncTabProps) {
       setMessage({ type: 'error', text: syncError });
     }
   }, [showSuccess, syncError, syncResult, syncT]);
+
+  useEffect(() => () => {
+    if (resetConfirmTimerRef.current) clearTimeout(resetConfirmTimerRef.current);
+  }, []);
 
   const handleSyncNow = () => {
     setMessage(null);
@@ -452,6 +486,14 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   };
 
   const handleReset = async () => {
+    if (!confirmingReset) {
+      setConfirmingReset(true);
+      setMessage(null);
+      if (resetConfirmTimerRef.current) clearTimeout(resetConfirmTimerRef.current);
+      resetConfirmTimerRef.current = setTimeout(() => setConfirmingReset(false), 3000);
+      return;
+    }
+    clearResetConfirmation();
     setToggling(true);
     setMessage(null);
     try {
@@ -521,70 +563,6 @@ export function SyncTab({ t, visible }: SyncTabProps) {
     return <SyncEmptyState t={t} onInitComplete={fetchStatus} />;
   }
 
-  if (!status.enabled && status.configured) {
-    return (
-      <div className="space-y-4">
-        <SettingCard
-          icon={<GitBranch size={15} />}
-          title={(syncT?.repositoryTitle as string) ?? 'Repository'}
-          description={status.remote || ((syncT?.notConfigured as string) ?? '(not configured)')}
-          badge={
-            <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-              {(syncT?.labelPaused as string) ?? 'Paused'}
-            </span>
-          }
-        >
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{(syncT?.labelBranch as string) ?? 'Branch'}</span>
-              <span className="font-mono text-xs">{status.branch || 'main'}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{(syncT?.labelLastSync as string) ?? 'Last sync'}</span>
-              <span className="text-xs">{timeAgo(status.lastSync, syncT)}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <PrimaryButton
-              onClick={handleToggle}
-              disabled={toggling}
-              className="flex min-h-9 items-center gap-2"
-            >
-              {toggling && <Loader2 size={14} className="animate-spin" />}
-              {(syncT?.enableAutoSync as string) ?? 'Enable Auto-sync'}
-            </PrimaryButton>
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={toggling}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {(syncT?.resetButton as string) ?? 'Reset & Re-configure'}
-            </button>
-          </div>
-
-          {message && (
-            <div className="flex items-start gap-1.5 text-xs" role="status" aria-live="polite">
-              {message.type === 'success' ? (
-                <><CheckCircle2 size={13} className="text-success shrink-0 mt-0.5" /><span className="text-success">{message.text}</span></>
-              ) : (
-                <>
-                  <AlertCircle size={13} className="text-destructive shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
-                    {message.text.split('\n').map((line, i) => (
-                      <span key={i} className={`block ${i > 0 ? 'text-destructive/70' : 'text-destructive'}`}>{line}</span>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </SettingCard>
-      </div>
-    );
-  }
-
   // Broken state: config says enabled but repo/remote is missing
   if (status.needsSetup) {
     return (
@@ -601,10 +579,13 @@ export function SyncTab({ t, visible }: SyncTabProps) {
             <PrimaryButton
               onClick={handleReset}
               disabled={toggling}
+              onBlur={() => { if (confirmingReset) clearResetConfirmation(); }}
               className="flex items-center gap-2 mt-2"
             >
               {toggling && <Loader2 size={14} className="animate-spin" />}
-              {(syncT?.resetButton as string) ?? 'Reset & Re-configure'}
+              {confirmingReset
+                ? ((syncT?.resetConfirm as string) ?? 'Confirm reset?')
+                : ((syncT?.resetButton as string) ?? 'Reset & Re-configure')}
             </PrimaryButton>
           </div>
         </div>
@@ -615,7 +596,8 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   const conflicts = status.conflicts || [];
   const health = getSyncHealth(status, syncT, stale ? loadError : null);
   const unpushedCount = getUnpushedCount(status);
-  const showHealthSyncAction = !stale && conflicts.length === 0;
+  const statusLevel = getStatusLevel(status, false);
+  const showHealthSyncAction = !stale && conflicts.length === 0 && statusLevel !== 'paused' && statusLevel !== 'off';
 
   return (
     <div className="space-y-4">
@@ -659,8 +641,12 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         title={(syncT?.repositoryTitle as string) ?? 'Repository'}
         description={status.remote}
         badge={
-          <span className="text-2xs px-1.5 py-0.5 rounded bg-success/15 text-success font-medium">
-            {(syncT?.labelEnabled as string) ?? 'Active'}
+          <span className={`text-2xs px-1.5 py-0.5 rounded font-medium ${
+            status.enabled ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
+          }`}>
+            {status.enabled
+              ? ((syncT?.labelEnabled as string) ?? 'Active')
+              : ((syncT?.labelPaused as string) ?? 'Paused')}
           </span>
         }
       >
@@ -686,14 +672,42 @@ export function SyncTab({ t, visible }: SyncTabProps) {
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleToggle}
-            disabled={toggling}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {(syncT?.disableAutoSync as string) ?? 'Disable Auto-sync'}
-          </button>
+          {status.enabled ? (
+            <button
+              type="button"
+              onClick={handleToggle}
+              disabled={toggling}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {(syncT?.disableAutoSync as string) ?? 'Disable Auto-sync'}
+            </button>
+          ) : (
+            <>
+              <PrimaryButton
+                onClick={handleToggle}
+                disabled={toggling}
+                className="flex min-h-9 items-center gap-2"
+              >
+                {toggling && <Loader2 size={14} className="animate-spin" />}
+                {(syncT?.enableAutoSync as string) ?? 'Enable Auto-sync'}
+              </PrimaryButton>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={toggling}
+                onBlur={() => { if (confirmingReset) clearResetConfirmation(); }}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  confirmingReset
+                    ? 'border-destructive/25 bg-destructive/10 text-destructive'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {confirmingReset
+                  ? ((syncT?.resetConfirm as string) ?? 'Confirm reset?')
+                  : ((syncT?.resetButton as string) ?? 'Reset & Re-configure')}
+              </button>
+            </>
+          )}
         </div>
 
         {/* Message */}
@@ -786,7 +800,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         </div>
       </SettingCard>
 
-      <GitignoreEditor syncT={syncT} />
+      <GitignoreEditor syncT={syncT} onSaved={fetchStatus} />
     </div>
   );
 }

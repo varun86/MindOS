@@ -3145,6 +3145,16 @@ describe('MindOS product server contract', () => {
     expect(cliCalls[0].args).not.toContain('tok');
     expect(daemonCalls).toContainEqual({ action: 'restart', mindRoot });
 
+    await expect(handleSyncPost({ action: 'init', remote: 'ssh://git@example.com/mind/repo.git', branch: 'main' }, services)).resolves.toMatchObject({
+      status: 200,
+      body: { success: true, message: 'Sync initialized' },
+    });
+    expect(cliCalls[1]).toEqual({
+      args: ['sync', 'init', '--non-interactive', '--remote', 'ssh://git@example.com/mind/repo.git', '--branch', 'main'],
+      timeoutMs: 120000,
+      envOverrides: undefined,
+    });
+
     expect(await handleSyncPost({ action: 'update-intervals', autoCommitInterval: 60 }, services)).toMatchObject({
       status: 200,
       body: { autoCommitInterval: 60, autoPullInterval: 600 },
@@ -3173,7 +3183,10 @@ describe('MindOS product server contract', () => {
       status: 200,
       body: { ok: true },
     });
-    expect(readFileSync(join(mindRoot, '.gitignore'), 'utf-8')).toBe('node_modules\n');
+    const savedGitignore = readFileSync(join(mindRoot, '.gitignore'), 'utf-8');
+    expect(savedGitignore).toContain('node_modules');
+    expect(savedGitignore).toContain('*.sync-conflict');
+    expect(savedGitignore).toContain('INSTRUCTION.md');
 
     expect(await handleSyncPost({ action: 'conflict-preview', remote: 'note.md' }, services)).toMatchObject({
       status: 200,

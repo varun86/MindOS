@@ -71,6 +71,18 @@ describe('getStatusLevel', () => {
     expect(getStatusLevel({ ...base, enabled: false, configured: true }, false)).toBe('paused');
   });
 
+  it('keeps attention states visible even when auto-sync is paused', () => {
+    expect(getStatusLevel({
+      ...base,
+      enabled: false,
+      configured: true,
+      conflicts: [{ file: 'a.md', time: '2026-01-01T00:00:00Z' }],
+    }, false)).toBe('conflicts');
+    expect(getStatusLevel({ ...base, enabled: false, configured: true, lastError: 'push failed' }, false)).toBe('error');
+    expect(getStatusLevel({ ...base, enabled: false, configured: true, unpushed: '?' }, false)).toBe('unknown');
+    expect(getStatusLevel({ ...base, enabled: false, configured: true, unpushed: '2' }, false)).toBe('unpushed');
+  });
+
   it('returns "error" when lastError is set', () => {
     expect(getStatusLevel({ ...base, lastError: 'push failed' }, false)).toBe('error');
   });

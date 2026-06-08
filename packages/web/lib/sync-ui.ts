@@ -21,7 +21,7 @@ export function getUnpushedCount(status: SyncStatus): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function hasUnknownUnpushedCount(status: SyncStatus): boolean {
+export function hasUnknownUnpushedCount(status: SyncStatus): boolean {
   const value = status.unpushed;
   return typeof value === 'string' && value !== '' && !/^\d+$/.test(value);
 }
@@ -29,11 +29,12 @@ function hasUnknownUnpushedCount(status: SyncStatus): boolean {
 export function getStatusLevel(status: SyncStatus | null, syncing: boolean): StatusLevel {
   if (syncing) return 'syncing';
   if (!status) return 'off';
-  if (!status.enabled) return status.configured ? 'paused' : 'off';
+  if (!status.enabled && !status.configured) return 'off';
   if (status.conflicts && status.conflicts.length > 0) return 'conflicts';
   if (status.lastError) return 'error';
   if (hasUnknownUnpushedCount(status)) return 'unknown';
   if (getUnpushedCount(status) > 0) return 'unpushed';
+  if (!status.enabled) return 'paused';
   return 'synced';
 }
 

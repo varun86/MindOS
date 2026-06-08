@@ -11,6 +11,14 @@ vi.mock('@/lib/api', () => ({
   apiFetch: mockApiFetch,
 }));
 
+function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | null, value: string) {
+  if (!input) return;
+  const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  valueSetter?.call(input, value);
+  input?.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 describe('SyncTab UX', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,6 +192,219 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('keeps conflicts visible when auto-sync is paused', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    mockApiFetch.mockResolvedValue({
+      enabled: false,
+      configured: true,
+      remote: 'git@github.com:me/mind.git',
+      branch: 'main',
+      lastSync: null,
+      unpushed: '0',
+      conflicts: [{ file: 'notes/today.md', time: '2026-06-05T10:00:00.000Z' }],
+      lastError: null,
+      autoCommitInterval: 30,
+      autoPullInterval: 300,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Paused');
+    expect(host.textContent).toContain('Resolve conflicts to finish sync');
+    expect(host.textContent).toContain('notes/today.md');
+    expect(host.textContent).not.toContain('Connect & Start Sync');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not report unknown unpushed status as backed up', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    mockApiFetch.mockResolvedValue({
+      enabled: true,
+      configured: true,
+      remote: 'git@github.com:me/mind.git',
+      branch: 'main',
+      lastSync: null,
+      unpushed: '?',
+      conflicts: [],
+      lastError: null,
+      autoCommitInterval: 30,
+      autoPullInterval: 300,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Sync status unknown');
+    expect(host.textContent).not.toContain('All notes are backed up');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('accepts ssh:// git remote URLs in first-time setup', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    mockApiFetch.mockResolvedValue({ success: true });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement | null;
+    await act(async () => {
+      setInputValue(input, 'ssh://git@example.com/mind/repo.git');
+      await Promise.resolve();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    expect(connectButton?.disabled).toBe(false);
+    expect(host.textContent).not.toContain('Invalid Git URL');
+
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: expect.stringContaining('ssh://git@example.com/mind/repo.git'),
+    }));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('hides setup progress without enabling a second init request', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    let resolveInit!: () => void;
+    mockApiFetch.mockReturnValue(new Promise(resolve => {
+      resolveInit = () => resolve({ success: true });
+    }));
+    const onInitComplete = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={onInitComplete} />);
+      await Promise.resolve();
+    });
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement | null;
+    await act(async () => {
+      setInputValue(input, 'git@example.com:mind/repo.git');
+      await Promise.resolve();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync'));
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+    const hideButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Hide progress'));
+    await act(async () => {
+      hideButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Sync setup is still running');
+    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.includes('Connect & Start Sync'))).toBe(false);
+
+    await act(async () => {
+      resolveInit();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('requires confirmation before resetting a paused sync configuration', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'reset') return { ok: true, enabled: false };
+      return {
+        enabled: false,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const resetButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Reset & Re-configure'));
+    expect(resetButton).toBeTruthy();
+
+    await act(async () => {
+      resetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: JSON.stringify({ action: 'reset' }),
+    }));
+    expect(host.textContent).toContain('Confirm reset?');
+
+    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm reset?'));
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: JSON.stringify({ action: 'reset' }),
+    }));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('does not show first-time setup when status loading fails', async () => {
     const { SyncTab } = await import('@/components/settings/SyncTab');
     mockApiFetch.mockRejectedValue(new Error('server unavailable'));
@@ -314,6 +535,66 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('refreshes sync status after saving .gitignore so dirty changes are visible', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'gitignore-get') return { content: 'node_modules\n' };
+      if (action === 'gitignore-save') return { ok: true };
+      statusReads += 1;
+      return {
+        enabled: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: statusReads > 1 ? '1' : '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const toggle = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Excluded files'));
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const textarea = host.querySelector('textarea') as HTMLTextAreaElement | null;
+    expect(textarea).toBeTruthy();
+    await act(async () => {
+      setInputValue(textarea, 'node_modules\ndist\n');
+      await Promise.resolve();
+    });
+
+    const saveButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Save'));
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(statusReads).toBeGreaterThan(1);
+    expect(host.textContent).toContain('1 local change');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('surfaces conflict preview failures inline', async () => {
     const { SyncTab } = await import('@/components/settings/SyncTab');
     mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
@@ -354,6 +635,62 @@ describe('SyncTab UX', () => {
     expect(host.textContent).toContain('Failed to load conflict preview');
     expect(host.textContent).toContain('preview service failed');
     expect(host.textContent).toContain('Retry');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('allows keeping the local file when conflict preview fails', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'conflict-preview') throw new Error('preview service failed');
+      if (action === 'resolve-conflict') return { ok: true };
+      return {
+        enabled: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: '0',
+        conflicts: [{ file: 'notes/today.md', time: '2026-06-05T10:00:00.000Z' }],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const fileButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('notes/today.md'));
+    await act(async () => {
+      fileButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const keepLocal = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Keep local')) as HTMLButtonElement | undefined;
+    const keepRemote = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Keep remote')) as HTMLButtonElement | undefined;
+    expect(keepLocal?.disabled).toBe(false);
+    expect(keepRemote?.disabled).toBe(true);
+
+    await act(async () => {
+      keepLocal?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: JSON.stringify({ action: 'resolve-conflict', file: 'notes/today.md', strategy: 'keep-local', remote: 'notes/today.md', branch: 'keep-local' }),
+    }));
 
     await act(async () => {
       root.unmount();
