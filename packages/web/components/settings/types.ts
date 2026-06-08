@@ -152,7 +152,6 @@ export interface SkillInfo {
   editable: boolean;
 }
 
-/** 🟢 MINOR #7: Moved from SyncTab.tsx for consistency */
 export interface SyncStatus {
   enabled: boolean;
   configured?: boolean;

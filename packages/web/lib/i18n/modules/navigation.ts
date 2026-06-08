@@ -34,6 +34,8 @@ export const navigationEn = {
     builtInSpacesRoot: 'Dao / Fa / Shu / Qi',
     sync: {
       synced: 'Synced',
+      syncReady: 'Sync ready',
+      syncReadyHint: 'No completed sync has been recorded yet. Run Sync Now to create the first backup.',
       unpushed: 'awaiting push',
       unpushedHint: 'commit(s) not yet pushed to remote — will sync automatically',
       changesToUpload: '{n} changes to upload',
@@ -143,6 +145,8 @@ export const navigationZh = {
     builtInSpacesRoot: '道 / 法 / 术 / 器',
     sync: {
       synced: '已同步',
+      syncReady: '同步已就绪',
+      syncReadyHint: '还没有完成过同步。点击立即同步来创建第一次备份。',
       unpushed: '待推送',
       unpushedHint: '个提交尚未推送到远程 — 将自动同步',
       changesToUpload: '{n} 个改动待上传',

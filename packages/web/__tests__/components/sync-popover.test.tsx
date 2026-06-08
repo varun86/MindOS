@@ -145,6 +145,26 @@ describe('SyncPopover', () => {
     host.remove();
   });
 
+  it('shows first-backup ready state as an action, not as synced', async () => {
+    const { host, root } = await renderPopover({
+      syncStatus: {
+        ...baseStatus,
+        lastSync: null,
+        unpushed: '0',
+      },
+    });
+
+    expect(host.textContent).toContain('Sync ready');
+    expect(host.textContent).toContain('No completed sync has been recorded');
+    expect(host.textContent).toContain('Sync now');
+    expect(host.textContent).not.toContain('Synced · never');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('clamps the popover inside narrow mobile viewports', async () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 });
@@ -176,6 +196,22 @@ describe('SyncPopover', () => {
 
     expect(onSyncStatusRefresh).toHaveBeenCalledOnce();
     expect(mocks.syncNow).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('shows the real stale status error when available', async () => {
+    const { host, root } = await renderPopover({
+      syncStale: true,
+      syncLoadError: 'server unavailable',
+    });
+
+    expect(host.textContent).toContain('Sync status stale');
+    expect(host.textContent).toContain('server unavailable');
+    expect(host.textContent).not.toContain('displayed state may be outdated');
 
     await act(async () => {
       root.unmount();

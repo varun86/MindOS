@@ -309,7 +309,7 @@ function handleGitignoreSave(
   mindRoot: string,
   payload: MindosSyncPostPayload,
   services: MindosSyncServices,
-): MindosServerResponse<{ ok: true } | { error: string }> {
+): MindosServerResponse<{ ok: true; content: string } | { error: string }> {
   if (typeof payload.content !== 'string') {
     return json({ error: 'Missing content' }, { status: 400 });
   }
@@ -317,7 +317,7 @@ function handleGitignoreSave(
   try {
     return withServerSyncLock(mindRoot, 'gitignore-save', services, () => {
       writeFileSync(resolveExistingSafe(mindRoot, '.gitignore'), content, 'utf-8');
-      return json({ ok: true });
+      return json({ ok: true, content });
     });
   } catch (error) {
     if (isSyncLockedError(error)) return syncLockedResponse(error);
@@ -387,9 +387,12 @@ function handleConflictPreview(
   if (!localPath || !remotePath) {
     return json({ error: 'Invalid file path' }, { status: 400 });
   }
+  if (!existsSync(remotePath)) {
+    return json({ error: 'Remote conflict backup is missing' }, { status: 409 });
+  }
   return json({
     local: existsSync(localPath) ? readFileSync(localPath, 'utf-8') : '',
-    remote: existsSync(remotePath) ? readFileSync(remotePath, 'utf-8') : '',
+    remote: readFileSync(remotePath, 'utf-8'),
   });
 }
 

@@ -127,6 +127,10 @@ describe('getStatusLevel', () => {
     expect(getStatusLevel(base, false)).toBe('synced');
   });
 
+  it('returns "ready" when sync is configured but no backup has completed yet', () => {
+    expect(getStatusLevel({ ...base, lastSync: null, unpushed: '0' }, false)).toBe('ready');
+  });
+
   it('returns "synced" when unpushed is "0"', () => {
     expect(getStatusLevel({ ...base, unpushed: '0' }, false)).toBe('synced');
   });
@@ -148,6 +152,14 @@ describe('getSyncLabel', () => {
     expect(label.label).toContain('已同步');
     expect(label.label).toContain('5 分钟前');
     expect(label.label).not.toContain('5m ago');
+  });
+
+  it('does not call a clean repository synced when no sync has ever been recorded', () => {
+    const label = getSyncLabel('ready', { ...base, lastSync: null });
+
+    expect(label.label).toBe('Sync ready');
+    expect(label.tooltip).toContain('No completed sync has been recorded');
+    expect(label.label).not.toContain('never');
   });
 
   it('uses user-facing language for pending local changes', () => {

@@ -29,32 +29,64 @@ function redactGitUrl(url: string): string {
   }
 }
 
+function isValidGitBranchName(input: string): boolean {
+  const value = input.trim() || 'main';
+  if (!value || value === '@') return false;
+  if (value.startsWith('-') || value.startsWith('/') || value.endsWith('/')) return false;
+  if (value.endsWith('.') || value.includes('..') || value.includes('//') || value.includes('@{')) return false;
+  if (/[\s~^:?*\[\\\]]/.test(value)) return false;
+  return value.split('/').every(part => part && !part.startsWith('.') && !part.endsWith('.lock'));
+}
+
+type SharedInitSnapshot = {
+  pending: boolean;
+  progressHidden: boolean;
+  remote: string;
+  branch: string;
+  finishReason?: 'success' | 'error';
+};
+
+const idleInitSnapshot: SharedInitSnapshot = { pending: false, progressHidden: false, remote: '', branch: 'main' };
+let sharedInitSnapshot: SharedInitSnapshot = idleInitSnapshot;
+const sharedInitListeners = new Set<() => void>();
+
+function setSharedInitSnapshot(next: SharedInitSnapshot) {
+  sharedInitSnapshot = next;
+  for (const listener of sharedInitListeners) listener();
+}
+
+function subscribeSharedInit(listener: () => void) {
+  sharedInitListeners.add(listener);
+  return () => sharedInitListeners.delete(listener);
+}
+
 export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onInitComplete: () => void }) {
   const syncT = t.settings?.sync as Record<string, unknown> | undefined;
+  const initialInitSnapshot = sharedInitSnapshot;
 
-  const [remoteUrl, setRemoteUrl] = useState('');
+  const [remoteUrl, setRemoteUrl] = useState(initialInitSnapshot.pending ? initialInitSnapshot.remote : '');
   const [token, setToken] = useState('');
-  const [branch, setBranch] = useState('main');
+  const [branch, setBranch] = useState(initialInitSnapshot.pending ? initialInitSnapshot.branch : 'main');
   const [showToken, setShowToken] = useState(false);
-  const [connectStep, setConnectStep] = useState<number>(-1); // -1=idle, 0..3=steps, 4=done
-  const [progressHidden, setProgressHidden] = useState(false);
-  const [backgroundInitPending, setBackgroundInitPending] = useState(false);
+  const [connectStep, setConnectStep] = useState<number>(initialInitSnapshot.pending && !initialInitSnapshot.progressHidden ? 0 : -1); // -1=idle, 0..3=steps, 4=done
+  const [progressHidden, setProgressHidden] = useState(initialInitSnapshot.pending ? initialInitSnapshot.progressHidden : false);
+  const [backgroundInitPending, setBackgroundInitPending] = useState(initialInitSnapshot.pending);
   const [error, setError] = useState('');
-  const [connectingRemote, setConnectingRemote] = useState('');
+  const [connectingRemote, setConnectingRemote] = useState(initialInitSnapshot.pending ? initialInitSnapshot.remote : '');
   const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const connectRunRef = useRef(0);
+  const mountedRef = useRef(true);
+  const lastSharedPendingRef = useRef(initialInitSnapshot.pending);
+  const localInitCompletingRef = useRef(false);
 
   const connecting = !progressHidden && connectStep >= 0 && connectStep < 4;
+  const setupLocked = backgroundInitPending;
 
   const urlType = remoteUrl.trim() ? isValidGitUrl(remoteUrl.trim()) : null;
   const isValid = urlType === 'https' || urlType === 'ssh';
   const branchValue = branch.trim() || 'main';
-  const branchValid = !/[\s~^:?*\[\\\]]/.test(branchValue)
-    && !branchValue.includes('..')
-    && !branchValue.startsWith('-')
-    && !branchValue.endsWith('.')
-    && branchValue !== '@';
+  const branchValid = isValidGitBranchName(branchValue);
   const showTokenField = urlType === 'https';
   const disabledReason = !remoteUrl.trim()
     ? ((syncT?.connectNeedsUrl as string) ?? 'Paste a remote URL to continue')
@@ -72,18 +104,47 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
   const handleHideProgress = () => {
     clearStepTimers();
     setProgressHidden(true);
+    setSharedInitSnapshot({
+      pending: true,
+      progressHidden: true,
+      remote: connectingRemote,
+      branch: branchValue,
+    });
     setConnectStep(-1);
     setError('');
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+    const unsubscribe = subscribeSharedInit(() => {
+      const snapshot = sharedInitSnapshot;
+      const wasPending = lastSharedPendingRef.current;
+      lastSharedPendingRef.current = snapshot.pending;
+      setBackgroundInitPending(snapshot.pending);
+      setProgressHidden(snapshot.pending ? snapshot.progressHidden : false);
+      if (!snapshot.pending) {
+        setConnectStep(-1);
+        setConnectingRemote('');
+        if (wasPending && snapshot.finishReason === 'success' && !localInitCompletingRef.current) onInitComplete();
+        return;
+      }
+      if (snapshot.pending) {
+        setRemoteUrl(current => current || snapshot.remote);
+        setBranch(current => current || snapshot.branch);
+        setConnectingRemote(snapshot.remote);
+        setConnectStep(current => snapshot.progressHidden ? -1 : (current >= 0 ? current : 0));
+      }
+    });
     return () => {
-      abortRef.current?.abort();
+      mountedRef.current = false;
+      unsubscribe();
+      if (!sharedInitSnapshot.pending) abortRef.current?.abort();
       clearStepTimers();
     };
   }, []);
 
   const handleConnect = async () => {
+    if (setupLocked || !isValid || !branchValid) return;
     const runId = connectRunRef.current + 1;
     connectRunRef.current = runId;
     const controller = new AbortController();
@@ -95,6 +156,12 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
     setProgressHidden(false);
     setBackgroundInitPending(true);
     setConnectingRemote(redactGitUrl(submittedRemote));
+    setSharedInitSnapshot({
+      pending: true,
+      progressHidden: false,
+      remote: redactGitUrl(submittedRemote),
+      branch: submittedBranch,
+    });
     setConnectStep(0);
     setError('');
 
@@ -121,14 +188,20 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         signal: controller.signal,
       });
       if (connectRunRef.current !== runId) return;
+      localInitCompletingRef.current = true;
+      setSharedInitSnapshot({ ...idleInitSnapshot, finishReason: 'success' });
+      if (!mountedRef.current) return;
       setProgressHidden(false);
       setBackgroundInitPending(false);
       setConnectStep(4); // success
       setTimeout(() => {
         if (connectRunRef.current === runId) onInitComplete();
+        localInitCompletingRef.current = false;
       }, 600);
     } catch (err: unknown) {
       if (connectRunRef.current !== runId || controller.signal.aborted) return;
+      setSharedInitSnapshot({ ...idleInitSnapshot, finishReason: 'error' });
+      if (!mountedRef.current) return;
       let msg = err instanceof Error ? err.message : 'Connection failed';
       if (msg.includes('timed out')) {
         msg = (syncT?.timeoutError as string) ?? 'Connection timed out. The remote repository may be large or the network is slow. Please try again.';
@@ -142,7 +215,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
       if (connectRunRef.current === runId) {
         clearStepTimers();
         abortRef.current = null;
-        setConnectingRemote('');
+        if (mountedRef.current) setConnectingRemote('');
       }
     }
   };
@@ -192,7 +265,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
             value={remoteUrl}
             onChange={e => { setRemoteUrl(e.target.value); setError(''); }}
             placeholder="git@github.com:user/repo.git"
-            disabled={connecting}
+            disabled={setupLocked}
             className={`font-mono ${remoteUrl.trim() && !isValid ? 'border-destructive' : ''}`}
           />
           {!remoteUrl.trim() && (
@@ -220,13 +293,13 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
                 value={token}
                 onChange={e => setToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxx"
-                disabled={connecting}
+                disabled={setupLocked}
                 className="pr-9 font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}
-                disabled={connecting}
+                disabled={setupLocked}
                 className="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={showToken ? ((syncT?.hideToken as string) ?? 'Hide token') : ((syncT?.showToken as string) ?? 'Show token')}
               >
@@ -254,7 +327,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
             value={branch}
             onChange={e => setBranch(e.target.value)}
             placeholder="main"
-            disabled={connecting}
+            disabled={setupLocked}
             className={`max-w-[200px] font-mono ${!branchValid ? 'border-destructive' : ''}`}
           />
           {!branchValid && (
@@ -291,6 +364,11 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
                 {(syncT?.initStillRunningDesc as string)
                   ?? 'MindOS is still configuring the repository in the background. Wait for the result before starting setup again.'}
               </p>
+              {connectingRemote && (
+                <p className="break-all font-mono text-2xs text-foreground/75">
+                  {((syncT?.connectingTo as ((remote: string) => string))?.(connectingRemote)) ?? `Connecting to ${connectingRemote}`}
+                </p>
+              )}
             </div>
           </div>
         )}

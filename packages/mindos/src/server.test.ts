@@ -3179,10 +3179,13 @@ describe('MindOS product server contract', () => {
       },
     });
 
-    expect(await handleSyncPost({ action: 'gitignore-save', content: 'node_modules\n' }, services)).toMatchObject({
+    const gitignoreSave = await handleSyncPost({ action: 'gitignore-save', content: 'node_modules\n' }, services);
+    expect(gitignoreSave).toMatchObject({
       status: 200,
       body: { ok: true },
     });
+    expect((gitignoreSave.body as { content?: string }).content).toContain('*.sync-conflict');
+    expect((gitignoreSave.body as { content?: string }).content).toContain('INSTRUCTION.md');
     const savedGitignore = readFileSync(join(mindRoot, '.gitignore'), 'utf-8');
     expect(savedGitignore).toContain('node_modules');
     expect(savedGitignore).toContain('*.sync-conflict');
@@ -3242,6 +3245,23 @@ describe('MindOS product server contract', () => {
     expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('local');
     expect(state).toEqual({ conflicts: [{ file: 'note.md' }], lastError: 'previous' });
     expect(writeStateCalled).toBe(false);
+  });
+
+  it('reports a missing remote backup when previewing a conflict', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-preview-missing-backup-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(join(mindRoot, '.git'), { recursive: true });
+    writeFileSync(join(mindRoot, 'note.md'), 'local', 'utf-8');
+
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'conflict-preview', file: 'note.md' }, services)).toMatchObject({
+      status: 409,
+      body: { error: 'Remote conflict backup is missing' },
+    });
   });
 
   it('returns an unconfigured sync status after reset instead of inferring paused from a leftover origin', async () => {

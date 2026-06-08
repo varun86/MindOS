@@ -189,7 +189,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     stop({ nodeCount: fileTree.length, pathCount: paths.length });
     return paths;
   }, [fileTree]);
-  const { status: syncStatus, stale: syncStatusStale, fetchStatus: syncStatusRefresh } = useSyncStatus();
+  const { status: syncStatus, error: syncStatusError, stale: syncStatusStale, fetchStatus: syncStatusRefresh } = useSyncStatus();
 
   const currentFile = pathname.startsWith('/view/')
     ? pathname.slice('/view/'.length).split('/').map(decodeURIComponent).join('/')
@@ -666,6 +666,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         onOpenSyncSettings={openSyncSettings}
         syncStatus={syncStatus}
         syncStale={syncStatusStale}
+        syncLoadError={syncStatusError}
         onSyncStatusRefresh={syncStatusRefresh}
       />
 

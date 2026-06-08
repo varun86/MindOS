@@ -14,6 +14,7 @@ export { getSyncErrorHint, timeAgo } from '@/lib/sync-ui';
 function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, staleError?: string | null) {
   const conflictCount = status.conflicts?.length ?? 0;
   const unpushedCount = getUnpushedCount(status);
+  const paused = !status.enabled && status.configured;
 
   if (staleError) {
     return {
@@ -51,9 +52,14 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
     return {
       tone: 'warning' as const,
       title: (syncT?.healthUnknownTitle as string) ?? 'Sync status unknown',
-      description: (syncT?.healthUnknownDesc as string)
-        ?? 'MindOS could not confirm whether local changes have been uploaded.',
-      next: (syncT?.healthUnknownNext as string) ?? 'Next: retry sync or check the remote repository',
+      description: paused
+        ? ((syncT?.healthPausedUnknownDesc as string)
+          ?? 'Auto-sync is paused, and MindOS could not confirm whether local changes have been uploaded.')
+        : ((syncT?.healthUnknownDesc as string)
+          ?? 'MindOS could not confirm whether local changes have been uploaded.'),
+      next: paused
+        ? ((syncT?.healthPausedUnknownNext as string) ?? 'Next: enable auto-sync or retry the status refresh')
+        : ((syncT?.healthUnknownNext as string) ?? 'Next: retry sync or check the remote repository'),
       icon: <AlertCircle size={18} />,
     };
   }
@@ -61,11 +67,19 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
   if (unpushedCount > 0) {
     return {
       tone: 'warning' as const,
-      title: (syncT?.healthUnpushedTitle as ((n: number) => string))?.(unpushedCount)
-        ?? `${unpushedCount} local change${unpushedCount === 1 ? '' : 's'} waiting to upload`,
-      description: (syncT?.healthUnpushedDesc as string)
-        ?? 'MindOS will push them automatically, or you can run Sync now.',
-      next: (syncT?.healthUnpushedNext as string) ?? 'Next: sync now or keep working',
+      title: paused
+        ? ((syncT?.healthPausedUnpushedTitle as ((n: number) => string))?.(unpushedCount)
+          ?? `${unpushedCount} local change${unpushedCount === 1 ? '' : 's'} are waiting`)
+        : ((syncT?.healthUnpushedTitle as ((n: number) => string))?.(unpushedCount)
+          ?? `${unpushedCount} local change${unpushedCount === 1 ? '' : 's'} waiting to upload`),
+      description: paused
+        ? ((syncT?.healthPausedUnpushedDesc as string)
+          ?? 'Auto-sync is paused. These changes will not upload until you sync manually or enable auto-sync.')
+        : ((syncT?.healthUnpushedDesc as string)
+          ?? 'MindOS will push them automatically, or you can run Sync now.'),
+      next: paused
+        ? ((syncT?.healthPausedUnpushedNext as string) ?? 'Next: run Sync Now or enable auto-sync')
+        : ((syncT?.healthUnpushedNext as string) ?? 'Next: sync now or keep working'),
       icon: <GitCommitHorizontal size={18} />,
     };
   }
@@ -77,6 +91,17 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
       description: (syncT?.healthPausedDesc as string)
         ?? 'Auto-sync is disabled for this repository. Your existing Git configuration is still available.',
       next: (syncT?.healthPausedNext as string) ?? 'Next: enable auto-sync when you want background backups again',
+      icon: <GitBranch size={18} />,
+    };
+  }
+
+  if (!status.lastSync) {
+    return {
+      tone: 'warning' as const,
+      title: (syncT?.healthReadyTitle as string) ?? 'Sync is ready',
+      description: (syncT?.healthReadyDesc as string)
+        ?? 'No completed sync has been recorded yet.',
+      next: (syncT?.healthReadyNext as string) ?? 'Run Sync Now to create the first backup',
       icon: <GitBranch size={18} />,
     };
   }
@@ -102,6 +127,30 @@ function healthToneClass(tone: 'success' | 'warning' | 'error') {
   }
 }
 
+function SyncActionMessage({ message }: { message: { type: 'success' | 'error'; text: string } | null }) {
+  if (!message) return null;
+
+  return (
+    <div className="flex items-start gap-1.5 text-xs" role="status" aria-live="polite">
+      {message.type === 'success' ? (
+        <>
+          <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" />
+          <span className="text-success">{message.text}</span>
+        </>
+      ) : (
+        <>
+          <AlertCircle size={13} className="mt-0.5 shrink-0 text-destructive" />
+          <div className="space-y-0.5">
+            {message.text.split('\n').map((line, i) => (
+              <span key={i} className={`block ${i > 0 ? 'text-destructive/70' : 'text-destructive'}`}>{line}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── Conflict Row ──────────────────────────────────────────────── */
 
 function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
@@ -112,9 +161,11 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
   const [preview, setPreview] = useState<{ local: string; remote: string } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [confirmKeepLocalWithoutPreview, setConfirmKeepLocalWithoutPreview] = useState(false);
 
   const loadPreview = async () => {
     setRowError(null);
+    setConfirmKeepLocalWithoutPreview(false);
     setLoadingPreview(true);
     try {
       const data = await apiFetch<{ local: string; remote: string }>('/api/sync', {
@@ -142,16 +193,24 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
   };
 
   const handleResolve = async (strategy: 'keep-local' | 'keep-remote') => {
+    if (strategy === 'keep-local' && !preview) {
+      if (!rowError) return;
+      if (!confirmKeepLocalWithoutPreview) {
+        setConfirmKeepLocalWithoutPreview(true);
+        return;
+      }
+    }
     if (strategy === 'keep-remote' && (!preview || noBackup)) {
       return;
     }
     setRowError(null);
+    setConfirmKeepLocalWithoutPreview(false);
     setResolving(strategy === 'keep-local' ? 'local' : 'remote');
     try {
       await apiFetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resolve-conflict', file, strategy, remote: file, branch: strategy }),
+        body: JSON.stringify({ action: 'resolve-conflict', file, strategy }),
       });
       onResolved();
     } catch (error) {
@@ -193,11 +252,15 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
           <button
             type="button"
             onClick={() => handleResolve('keep-local')}
-            disabled={!!resolving}
+            disabled={!!resolving || loadingPreview || (!preview && !rowError)}
             className="inline-flex min-h-8 items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             title={(syncT?.keepLocalHint as string) ?? 'Keep this device\'s version'}
           >
-            {resolving === 'local' ? <Loader2 size={10} className="animate-spin" /> : ((syncT?.keepLocal as string) ?? 'Keep local')}
+            {resolving === 'local'
+              ? <Loader2 size={10} className="animate-spin" />
+              : confirmKeepLocalWithoutPreview
+                ? ((syncT?.confirmKeepLocal as string) ?? 'Confirm keep local?')
+                : ((syncT?.keepLocal as string) ?? 'Keep local')}
           </button>
           <button
             type="button"
@@ -318,12 +381,14 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
     setError(null);
     setSaveOk(false);
     try {
-      await apiFetch('/api/sync', {
+      const data = await apiFetch<{ content?: string }>('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'gitignore-save', content }),
       });
-      setSaved(content);
+      const savedContent = data.content ?? content;
+      setContent(savedContent);
+      setSaved(savedContent);
       setSaveOk(true);
       setLoadFailed(false);
       await onSaved?.();
@@ -553,6 +618,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
               <RefreshCw size={14} />
               {(syncT?.retry as string) ?? 'Retry'}
             </PrimaryButton>
+            <SyncActionMessage message={message} />
           </div>
         </div>
       </div>
@@ -576,17 +642,23 @@ export function SyncTab({ t, visible }: SyncTabProps) {
             <p className="text-xs text-destructive/80">
               {status.lastError || ((syncT?.brokenDesc as string) ?? 'The git repository or remote is missing. Reset to re-configure.')}
             </p>
-            <PrimaryButton
+            <button
+              type="button"
               onClick={handleReset}
               disabled={toggling}
               onBlur={() => { if (confirmingReset) clearResetConfirmation(); }}
-              className="flex items-center gap-2 mt-2"
+              className={`mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                confirmingReset
+                  ? 'border border-destructive/25 bg-destructive/10 text-destructive'
+                  : 'bg-[var(--amber)] text-[var(--amber-foreground)]'
+              }`}
             >
               {toggling && <Loader2 size={14} className="animate-spin" />}
               {confirmingReset
                 ? ((syncT?.resetConfirm as string) ?? 'Confirm reset?')
                 : ((syncT?.resetButton as string) ?? 'Reset & Re-configure')}
-            </PrimaryButton>
+            </button>
+            <SyncActionMessage message={message} />
           </div>
         </div>
       </div>
@@ -658,7 +730,11 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{(syncT?.labelLastSync as string) ?? 'Last sync'}</span>
-            <span className="text-xs">{timeAgo(status.lastSync, syncT)}</span>
+            <span className="text-xs">
+              {status.lastSync
+                ? timeAgo(status.lastSync, syncT)
+                : ((syncT?.labelNoSyncYet as string) ?? 'Not synced yet')}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{(syncT?.labelUnpushed as string) ?? 'Local changes'}</span>
@@ -710,24 +786,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           )}
         </div>
 
-        {/* Message */}
-        {message && (
-          <div className="flex items-start gap-1.5 text-xs" role="status" aria-live="polite">
-            {message.type === 'success' ? (
-              <><CheckCircle2 size={13} className="text-success shrink-0 mt-0.5" /><span className="text-success">{message.text}</span></>
-            ) : (
-              <>
-                <AlertCircle size={13} className="text-destructive shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  {message.text.split('\n').map((line, i) => (
-                    <span key={i} className={`block ${i > 0 ? 'text-destructive/70' : 'text-destructive'}`}>{line}</span>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
+        <SyncActionMessage message={message} />
       </SettingCard>
 
       {conflicts.length > 0 && (
@@ -751,7 +810,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
       <SettingCard
         icon={<RefreshCw size={15} />}
         title={(syncT?.automationTitle as string) ?? 'Automation'}
-        description={(syncT?.automationDesc as string) ?? 'MindOS keeps syncing in the background while you work.'}
+        description={status.enabled
+          ? ((syncT?.automationDesc as string) ?? 'MindOS keeps syncing in the background while you work.')
+          : ((syncT?.automationPausedDesc as string) ?? 'Intervals apply when auto-sync is enabled.')}
       >
         <div className="space-y-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">

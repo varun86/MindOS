@@ -2,7 +2,7 @@ import type { SyncStatus } from '@/components/settings/types';
 
 export const SYNC_ACTION_TIMEOUT_MS = 120_000;
 
-export type StatusLevel = 'synced' | 'unpushed' | 'conflicts' | 'error' | 'paused' | 'unknown' | 'off' | 'syncing';
+export type StatusLevel = 'synced' | 'ready' | 'unpushed' | 'conflicts' | 'error' | 'paused' | 'unknown' | 'off' | 'syncing';
 
 export function timeAgo(iso: string | null | undefined, syncT?: Record<string, unknown>): string {
   if (!iso) return (syncT?.timeNever as string) ?? 'never';
@@ -35,6 +35,7 @@ export function getStatusLevel(status: SyncStatus | null, syncing: boolean): Sta
   if (hasUnknownUnpushedCount(status)) return 'unknown';
   if (getUnpushedCount(status) > 0) return 'unpushed';
   if (!status.enabled) return 'paused';
+  if (!status.lastSync) return 'ready';
   return 'synced';
 }
 
@@ -104,10 +105,23 @@ export function getSyncLabel(
       return { label: l, tooltip: l };
     }
     case 'synced': {
+      if (!status?.lastSync) {
+        return {
+          label: (syncT?.syncReady as string) ?? 'Sync ready',
+          tooltip: (syncT?.syncReadyHint as string)
+            ?? 'No completed sync has been recorded yet. Run Sync Now to create the first backup.',
+        };
+      }
       const lastSync = timeAgo(status?.lastSync, syncT);
       const l = `${(syncT?.synced as string) ?? 'Synced'} · ${lastSync}`;
       return { label: l, tooltip: l };
     }
+    case 'ready':
+      return {
+        label: (syncT?.syncReady as string) ?? 'Sync ready',
+        tooltip: (syncT?.syncReadyHint as string)
+          ?? 'No completed sync has been recorded yet. Run Sync Now to create the first backup.',
+      };
     case 'unpushed': {
       const n = parseInt(status?.unpushed || '0', 10);
       return {

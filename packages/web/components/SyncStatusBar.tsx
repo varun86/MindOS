@@ -12,6 +12,7 @@ export { useSyncAction, useSyncStatus } from '@/lib/sync-status-store';
 
 export const DOT_COLORS: Record<StatusLevel, string> = {
   synced: 'bg-success',
+  ready: 'bg-[var(--amber)]',
   unpushed: 'bg-[var(--amber)]',
   conflicts: 'bg-error',       // #6 — conflicts more prominent than unpushed
   error: 'bg-error',
@@ -26,7 +27,6 @@ interface SyncStatusBarProps {
   onOpenSyncSettings: () => void;
 }
 
-// #1 — Hook to force re-render every 60s so timeAgo stays fresh
 function useTick(intervalMs: number) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -49,19 +49,15 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
   const syncT = t.sidebar?.sync as Record<string, unknown> | undefined;
   const { syncing, syncResult, syncError, syncNow } = useSyncAction(fetchStatus, syncT);
 
-  // #1 — refresh timeAgo display every 60s
   useTick(60_000);
 
-  // Task G — detect first sync or recovery from error and show toast
   useEffect(() => {
     if (!loaded || syncing) return;
     const currentLevel = stale && status ? 'error' : getStatusLevel(status, false);
     const prev = prevLevelRef.current;
     if (prev !== currentLevel) {
       const syncT = t.sidebar?.sync;
-      // Recovery: was error/conflicts, now synced
-      if ((prev === 'error' || prev === 'conflicts') && currentLevel === 'synced') {
-        // Defer state update to avoid cascading renders
+      if ((prev === 'error' || prev === 'conflicts') && (currentLevel === 'synced' || currentLevel === 'ready')) {
         setTimeout(() => {
           setToast((syncT?.syncRestored as string) ?? 'Sync restored');
           setTimeout(() => setToast(null), 3000);
@@ -105,7 +101,6 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
     );
   }
 
-  // Task E — Show dismissible hint when sync is not configured
   if (level === 'off') {
     if (hintDismissed) return null;
     return (
@@ -142,7 +137,6 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
   const buttonTitle = syncError || tooltip;
 
   return (
-    // #3 — fade-in via animate-in
     <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-border text-xs text-muted-foreground shrink-0 animate-in fade-in duration-300">
       <button
         onClick={onOpenSyncSettings}
@@ -152,13 +146,12 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${DOT_COLORS[level]} ${
             level === 'syncing' ? 'animate-pulse' :
-            level === 'conflicts' ? 'animate-pulse' : ''   // #6 — conflicts pulse
+            level === 'conflicts' ? 'animate-pulse' : ''
           }`}
         />
         <span className="truncate">{toast || label}</span>
       </button>
       <div className="flex items-center gap-1 shrink-0 ml-2">
-        {/* #2 — sync result flash */}
         {(syncResult === 'success' || toast) && <CheckCircle2 size={12} className="text-success animate-in fade-in duration-200" />}
         {syncResult === 'error' && <XCircle size={12} className="text-error animate-in fade-in duration-200" />}
         {level === 'conflicts' || level === 'paused' ? (
@@ -189,7 +182,6 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
   );
 }
 
-// #7 — Minimal dot for collapsed sidebar
 export function SyncDot({ status, syncing, stale }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean }) {
   const level = stale && status ? 'error' : getStatusLevel(status, syncing ?? false);
   if (level === 'off') return null;
@@ -202,10 +194,9 @@ export function SyncDot({ status, syncing, stale }: { status: SyncStatus | null;
   );
 }
 
-// #8 — Small dot for mobile header
 export function MobileSyncDot({ status, syncing, stale }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean }) {
   const level = stale && status ? 'error' : getStatusLevel(status, syncing ?? false);
-  if (level === 'off' || level === 'synced') return null;  // only show when attention needed
+  if (level === 'off' || level === 'synced') return null;
   return (
     <span
       className={`w-1.5 h-1.5 rounded-full ${DOT_COLORS[level]} ${

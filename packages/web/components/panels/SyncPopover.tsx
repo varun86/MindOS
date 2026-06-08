@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { RefreshCw, CheckCircle2, XCircle, X } from 'lucide-react';
 import { DOT_COLORS } from '../SyncStatusBar';
-import { getStatusLevel, getSyncLabel } from '@/lib/sync-ui';
+import { formatSyncError, getStatusLevel, getSyncLabel } from '@/lib/sync-ui';
 import { useSyncAction } from '@/lib/sync-status-store';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SyncStatus } from '../settings/types';
@@ -18,10 +18,11 @@ interface SyncPopoverProps {
   onOpenSyncSettings: () => void;
   syncStatus: SyncStatus | null;
   syncStale?: boolean;
+  syncLoadError?: string | null;
   onSyncStatusRefresh: () => Promise<void>;
 }
 
-export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, onOpenSyncSettings, syncStatus, syncStale, onSyncStatusRefresh }: SyncPopoverProps) {
+export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, onOpenSyncSettings, syncStatus, syncStale, syncLoadError, onSyncStatusRefresh }: SyncPopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const syncT = t.sidebar?.sync as Record<string, unknown> | undefined;
@@ -53,7 +54,9 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
   const { label: statusText, tooltip: statusDetail } = syncStale && syncStatus
     ? {
       label: (syncT?.syncStale as string) ?? 'Sync status stale',
-      tooltip: (syncT?.syncStaleHint as string) ?? 'MindOS could not refresh sync status. The displayed state may be outdated.',
+      tooltip: syncLoadError
+        ? formatSyncError(syncLoadError, syncT)
+        : ((syncT?.syncStaleHint as string) ?? 'MindOS could not refresh sync status. The displayed state may be outdated.'),
     }
     : getSyncLabel(level, syncStatus, syncT);
   const showRetryStatus = !!(syncStale && syncStatus);
