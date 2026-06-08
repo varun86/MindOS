@@ -165,6 +165,35 @@ describe('SyncPopover', () => {
     host.remove();
   });
 
+  it('keeps manual sync available when auto-sync is paused', async () => {
+    const { host, root } = await renderPopover({
+      syncStatus: {
+        ...baseStatus,
+        enabled: false,
+        configured: true,
+        lastSync: '2026-06-08T00:00:00.000Z',
+        unpushed: '0',
+      },
+    });
+
+    expect(host.textContent).toContain('Sync paused');
+    expect(host.textContent).toContain('Sync now');
+
+    const syncButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Sync now'));
+    await act(async () => {
+      syncButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mocks.syncNow).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('clamps the popover inside narrow mobile viewports', async () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 });

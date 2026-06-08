@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSyncError, getStatusLevel, getSyncLabel, timeAgo } from '@/lib/sync-ui';
+import { formatSyncError, getStatusLevel, getSyncLabel, getUnpushedCount, hasUnknownUnpushedCount, timeAgo } from '@/lib/sync-ui';
 import type { SyncStatus } from '@/components/settings/types';
 import { messages } from '@/lib/i18n';
 
@@ -11,6 +11,10 @@ describe('timeAgo', () => {
   it('returns "never" for null/undefined', () => {
     expect(timeAgo(null)).toBe('never');
     expect(timeAgo(undefined)).toBe('never');
+  });
+
+  it('does not emit NaN for invalid timestamps', () => {
+    expect(timeAgo('not-a-date')).toBe('unknown');
   });
 
   it('returns "just now" for < 60s ago', () => {
@@ -121,6 +125,18 @@ describe('getStatusLevel', () => {
 
   it('returns "unknown" when unpushed count cannot be read', () => {
     expect(getStatusLevel({ ...base, unpushed: '?' }, false)).toBe('unknown');
+  });
+
+  it('treats legacy invalid numeric unpushed counts as unknown', () => {
+    const negative = { ...base, unpushed: -1 } as SyncStatus & { unpushed: number };
+    const infinite = { ...base, unpushed: Infinity } as SyncStatus & { unpushed: number };
+
+    expect(getUnpushedCount(negative)).toBe(0);
+    expect(getUnpushedCount(infinite)).toBe(0);
+    expect(hasUnknownUnpushedCount(negative)).toBe(true);
+    expect(hasUnknownUnpushedCount(infinite)).toBe(true);
+    expect(getStatusLevel(negative, false)).toBe('unknown');
+    expect(getStatusLevel(infinite, false)).toBe('unknown');
   });
 
   it('returns "synced" when everything is clean', () => {

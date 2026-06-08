@@ -680,8 +680,14 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           <span className="text-foreground text-sm font-brand">MindOS</span>
         </Link>
         <div className="flex items-center gap-0.5">
-          <button onClick={openSyncSettings} className="p-3 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent flex items-center justify-center" aria-label="Sync status">
-            <MobileSyncDot status={syncStatus} stale={syncStatusStale} />
+          <button
+            onClick={openSyncSettings}
+            className="p-3 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent flex items-center justify-center"
+            aria-label={syncStatusError && !syncStatus
+              ? ((t.sidebar?.sync?.syncError as string) ?? 'Sync status unavailable')
+              : ((t.sidebar?.syncLabel as string) ?? 'Sync status')}
+          >
+            <MobileSyncDot status={syncStatus} stale={syncStatusStale} loadError={syncStatusError} />
           </button>
           <button onClick={() => setMobileSearchOpen(true)} className="p-3 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent" aria-label={t.sidebar.searchTitle}>
             <Search size={20} />

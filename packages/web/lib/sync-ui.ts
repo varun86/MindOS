@@ -7,6 +7,8 @@ export type StatusLevel = 'synced' | 'ready' | 'unpushed' | 'conflicts' | 'error
 export function timeAgo(iso: string | null | undefined, syncT?: Record<string, unknown>): string {
   if (!iso) return (syncT?.timeNever as string) ?? 'never';
   const diff = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diff)) return (syncT?.timeUnknown as string) ?? 'unknown';
+  if (diff < 0) return (syncT?.timeJustNow as string) ?? 'just now';
   if (diff < 60000) return (syncT?.timeJustNow as string) ?? 'just now';
   const m = Math.floor(diff / 60000);
   if (diff < 3600000) return (syncT?.timeMinAgo as ((n: number) => string))?.(m) ?? `${m}m ago`;
@@ -17,12 +19,14 @@ export function timeAgo(iso: string | null | undefined, syncT?: Record<string, u
 }
 
 export function getUnpushedCount(status: SyncStatus): number {
-  const parsed = parseInt(status.unpushed || '0', 10);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const value = (status as SyncStatus & { unpushed?: string | number }).unpushed;
+  const parsed = typeof value === 'number' ? value : parseInt(value || '0', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
 }
 
 export function hasUnknownUnpushedCount(status: SyncStatus): boolean {
-  const value = status.unpushed;
+  const value = (status as SyncStatus & { unpushed?: string | number }).unpushed;
+  if (typeof value === 'number') return !Number.isFinite(value) || value < 0;
   return typeof value === 'string' && value !== '' && !/^\d+$/.test(value);
 }
 
@@ -123,7 +127,7 @@ export function getSyncLabel(
           ?? 'No completed sync has been recorded yet. Run Sync Now to create the first backup.',
       };
     case 'unpushed': {
-      const n = parseInt(status?.unpushed || '0', 10);
+      const n = status ? getUnpushedCount(status) : 0;
       return {
         label: (syncT?.changesToUpload as string)?.replace('{n}', String(n)) ?? `${n} changes to upload`,
         tooltip: (syncT?.changesToUploadHint as string)

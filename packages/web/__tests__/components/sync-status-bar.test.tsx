@@ -5,6 +5,21 @@ import { createRoot } from 'react-dom/client';
 
 const mockFetchStatus = vi.fn();
 const mockSyncNow = vi.fn();
+const syncStatusMock = vi.hoisted(() => ({
+  status: {
+    enabled: true,
+    configured: true,
+    remote: 'git@example.com:mind/repo.git',
+    branch: 'main',
+    conflicts: [] as Array<{ file: string; time: string }>,
+    lastError: null as string | null,
+    lastSync: '2026-06-08T00:00:00.000Z' as string | null,
+    unpushed: '0',
+  },
+  loaded: true,
+  error: 'status request failed' as string | null,
+  stale: true,
+}));
 
 vi.mock('@/lib/stores/locale-store', () => ({
   useLocale: () => ({
@@ -24,18 +39,10 @@ vi.mock('@/lib/stores/locale-store', () => ({
 
 vi.mock('@/lib/sync-status-store', () => ({
   useSyncStatus: () => ({
-    status: {
-      enabled: true,
-      configured: true,
-      remote: 'git@example.com:mind/repo.git',
-      branch: 'main',
-      conflicts: [],
-      lastError: null,
-      unpushed: '0',
-    },
-    loaded: true,
-    error: 'status request failed',
-    stale: true,
+    status: syncStatusMock.status,
+    loaded: syncStatusMock.loaded,
+    error: syncStatusMock.error,
+    stale: syncStatusMock.stale,
     fetchStatus: mockFetchStatus,
   }),
   useSyncAction: () => ({
@@ -50,6 +57,19 @@ describe('SyncStatusBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    syncStatusMock.status = {
+      enabled: true,
+      configured: true,
+      remote: 'git@example.com:mind/repo.git',
+      branch: 'main',
+      conflicts: [],
+      lastError: null,
+      lastSync: '2026-06-08T00:00:00.000Z',
+      unpushed: '0',
+    };
+    syncStatusMock.loaded = true;
+    syncStatusMock.error = 'status request failed';
+    syncStatusMock.stale = true;
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
@@ -71,6 +91,58 @@ describe('SyncStatusBar', () => {
 
     expect(mockFetchStatus).toHaveBeenCalledTimes(1);
     expect(mockSyncNow).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps the quick action as manual sync when auto-sync is paused', async () => {
+    syncStatusMock.status = {
+      ...syncStatusMock.status,
+      enabled: false,
+      configured: true,
+      lastSync: '2026-06-08T00:00:00.000Z',
+      unpushed: '0',
+    };
+    syncStatusMock.error = null;
+    syncStatusMock.stale = false;
+
+    const SyncStatusBar = (await import('@/components/SyncStatusBar')).default;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncStatusBar onOpenSyncSettings={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[title="Sync now"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mockSyncNow).toHaveBeenCalledTimes(1);
+    expect(mockFetchStatus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('renders a mobile error indicator when sync status cannot load', async () => {
+    const { MobileSyncDot } = await import('@/components/SyncStatusBar');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<MobileSyncDot status={null} loadError="server unavailable" />);
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('.bg-error')).toBeTruthy();
 
     await act(async () => {
       root.unmount();

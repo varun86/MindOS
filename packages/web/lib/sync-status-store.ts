@@ -61,7 +61,7 @@ function subscribeSyncAction(listener: () => void) {
   return () => syncActionListeners.delete(listener);
 }
 
-export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
+export async function fetchSharedSyncStatus(opts: { force?: boolean; throwOnError?: boolean } = {}) {
   if (syncStatusInFlight && !opts.force) return syncStatusInFlight;
   const requestToken = Symbol('sync-status-fetch');
   syncStatusInFlightToken = requestToken;
@@ -70,7 +70,7 @@ export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
     try {
       const data = await apiFetch<SyncStatus>('/api/sync', { timeout: 10_000 });
       if (syncStatusInFlightToken === requestToken) {
-        setSyncStatusSnapshot({ status: data, loaded: true, error: null, stale: false });
+        setSyncStatusSnapshot({ status: normalizeSyncStatusPayload(data), loaded: true, error: null, stale: false });
       }
     } catch (error) {
       if (syncStatusInFlightToken === requestToken) {
@@ -82,6 +82,7 @@ export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
           stale: syncStatusSnapshot.status !== null,
         });
       }
+      if (opts.throwOnError) throw error;
     } finally {
       if (syncStatusInFlightToken === requestToken) {
         syncStatusInFlight = null;
@@ -92,6 +93,58 @@ export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
 
   syncStatusInFlight = request;
   return request;
+}
+
+function normalizeSyncStatusPayload(input: SyncStatus): SyncStatus {
+  const raw = input as SyncStatus & {
+    unpushed?: unknown;
+    conflicts?: unknown;
+    lastSync?: unknown;
+    lastPull?: unknown;
+  };
+  return {
+    ...input,
+    lastSync: normalizeSyncTime(raw.lastSync),
+    lastPull: normalizeSyncTime(raw.lastPull),
+    unpushed: normalizeUnpushed(raw.unpushed),
+    conflicts: normalizeSyncConflicts(raw.conflicts),
+  };
+}
+
+function normalizeUnpushed(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return String(Math.floor(value));
+  if (typeof value !== 'string') return '?';
+  const trimmed = value.trim();
+  return /^\d+$/.test(trimmed) ? trimmed : '?';
+}
+
+function normalizeSyncTime(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? value : null;
+}
+
+function normalizeSyncConflicts(value: unknown): NonNullable<SyncStatus['conflicts']> {
+  const items = Array.isArray(value) ? value : (value && typeof value === 'object' ? [value] : []);
+  const conflicts: NonNullable<SyncStatus['conflicts']> = [];
+  for (const item of items) {
+    if (typeof item === 'string') {
+      const file = item.trim();
+      if (file) conflicts.push({ file });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const file = typeof record.file === 'string' ? record.file.trim() : '';
+    if (!file) continue;
+    conflicts.push({
+      file,
+      ...(typeof record.time === 'string' && Number.isFinite(new Date(record.time).getTime()) ? { time: record.time } : {}),
+      ...(record.noBackup === true ? { noBackup: true } : {}),
+    });
+  }
+  return conflicts;
 }
 
 function startSyncStatusPolling() {

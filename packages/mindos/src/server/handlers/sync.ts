@@ -19,7 +19,7 @@ export type MindosSyncConfig = Record<string, any> & {
 export type MindosSyncState = Record<string, any> & {
   lastSync?: string | null;
   lastPull?: string | null;
-  conflicts?: Array<{ file: string }>;
+  conflicts?: unknown;
   lastError?: string | null;
 };
 
@@ -108,17 +108,52 @@ export async function handleSyncGet(
     const syncConfig = config.sync;
     const state = readState(services);
     const mindRoot = config.mindRoot;
+    const conflicts = normalizeConflicts(state.conflicts);
 
     if (!syncConfig) {
       return json({ enabled: false });
     }
 
     if (!syncConfig.enabled) {
-      if (!mindRoot) return json({ enabled: false });
+      if (!mindRoot) {
+        return json({
+          enabled: false,
+          configured: true,
+          needsSetup: true,
+          provider: syncConfig.provider || 'git',
+          remote: '(not configured)',
+          branch: 'main',
+          lastSync: state.lastSync || null,
+          lastPull: state.lastPull || null,
+          unpushed: '?',
+          conflicts,
+          lastError: state.lastError || 'Knowledge base directory is not configured. Please re-configure sync.',
+          autoCommitInterval: syncConfig.autoCommitInterval || 30,
+          autoPullInterval: syncConfig.autoPullInterval || 300,
+        });
+      }
 
       const hasRepo = callIsGitRepo(services, mindRoot);
       const remote = hasRepo ? callGetRemoteUrl(services, mindRoot) : null;
-      if (!hasRepo || !remote) return json({ enabled: false });
+      if (!hasRepo || !remote) {
+        return json({
+          enabled: false,
+          configured: true,
+          needsSetup: true,
+          provider: syncConfig.provider || 'git',
+          remote: redactGitRemote(remote) || '(not configured)',
+          branch: hasRepo ? (callGetBranch(services, mindRoot) || 'main') : 'main',
+          lastSync: state.lastSync || null,
+          lastPull: state.lastPull || null,
+          unpushed: '?',
+          conflicts,
+          lastError: state.lastError || (!hasRepo
+            ? 'Git repository not found in knowledge base directory. Please re-configure sync.'
+            : 'Remote not configured. Please re-configure sync.'),
+          autoCommitInterval: syncConfig.autoCommitInterval || 30,
+          autoPullInterval: syncConfig.autoPullInterval || 300,
+        });
+      }
 
       return json({
         enabled: false,
@@ -129,7 +164,7 @@ export async function handleSyncGet(
         lastSync: state.lastSync || null,
         lastPull: state.lastPull || null,
         unpushed: callGetUnpushedCount(services, mindRoot),
-        conflicts: state.conflicts || [],
+        conflicts,
         lastError: state.lastError || null,
         autoCommitInterval: syncConfig.autoCommitInterval || 30,
         autoPullInterval: syncConfig.autoPullInterval || 300,
@@ -144,14 +179,14 @@ export async function handleSyncGet(
         needsSetup: true,
         provider: syncConfig.provider || 'git',
         remote: redactGitRemote(remote) || '(not configured)',
-        branch: 'main',
+        branch: hasRepo && mindRoot ? (callGetBranch(services, mindRoot) || 'main') : 'main',
         lastSync: null,
         lastPull: null,
         unpushed: '?',
-        conflicts: [],
-        lastError: !hasRepo
+        conflicts,
+        lastError: state.lastError || (!hasRepo
           ? 'Git repository not found in knowledge base directory. Please re-configure sync.'
-          : 'Remote not configured. Please re-configure sync.',
+          : 'Remote not configured. Please re-configure sync.'),
         autoCommitInterval: syncConfig.autoCommitInterval || 30,
         autoPullInterval: syncConfig.autoPullInterval || 300,
       });
@@ -165,7 +200,7 @@ export async function handleSyncGet(
       lastSync: state.lastSync || null,
       lastPull: state.lastPull || null,
       unpushed: callGetUnpushedCount(services, mindRoot),
-      conflicts: state.conflicts || [],
+      conflicts,
       lastError: state.lastError || null,
       autoCommitInterval: syncConfig.autoCommitInterval || 30,
       autoPullInterval: syncConfig.autoPullInterval || 300,
@@ -265,6 +300,9 @@ async function handleSyncInit(
   }
 
   const branch = payload.branch?.trim() || 'main';
+  if (!isValidGitBranchName(branch)) {
+    return json({ error: 'Invalid branch name' }, { status: 400 });
+  }
   const args = ['sync', 'init', '--non-interactive', '--remote', remote, '--branch', branch];
   const envOverrides = payload.token ? { MINDOS_SYNC_TOKEN: payload.token } : undefined;
 
@@ -362,10 +400,8 @@ function handleResolveConflict(
     }
 
     const state = readState(services);
-    if (state.conflicts) {
-      state.conflicts = state.conflicts.filter((conflict) => conflict.file !== file);
-      writeState(state, services);
-    }
+    const nextConflicts = normalizeConflicts(state.conflicts).filter((conflict) => conflict.file !== file);
+    writeState({ ...state, conflicts: nextConflicts }, services);
     return json({ ok: true });
   });
 }
@@ -387,13 +423,23 @@ function handleConflictPreview(
   if (!localPath || !remotePath) {
     return json({ error: 'Invalid file path' }, { status: 400 });
   }
-  if (!existsSync(remotePath)) {
-    return json({ error: 'Remote conflict backup is missing' }, { status: 409 });
+  try {
+    if (!existsSync(remotePath)) {
+      return json({ error: 'Remote conflict backup is missing' }, { status: 409 });
+    }
+    return json({
+      local: existsSync(localPath) ? readFileSync(localPath, 'utf-8') : '',
+      remote: readFileSync(remotePath, 'utf-8'),
+    });
+  } catch (error) {
+    if (isFsErrorCode(error, 'ENOENT')) {
+      return json({ error: 'Remote conflict backup is missing' }, { status: 409 });
+    }
+    if (isFsErrorCode(error, 'EACCES') || isFsErrorCode(error, 'EPERM')) {
+      return json({ error: 'Access denied' }, { status: 403 });
+    }
+    return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
-  return json({
-    local: existsSync(localPath) ? readFileSync(localPath, 'utf-8') : '',
-    remote: readFileSync(remotePath, 'utf-8'),
-  });
 }
 
 function handleUpdateIntervals(
@@ -425,6 +471,37 @@ function handleUpdateIntervals(
       autoPullInterval: config.sync.autoPullInterval || 300,
     });
   });
+}
+
+function isValidGitBranchName(input: string): boolean {
+  const value = input.trim();
+  if (!value || value === '@') return false;
+  if (value.startsWith('-') || value.startsWith('/') || value.endsWith('/')) return false;
+  if (value.endsWith('.') || value.includes('..') || value.includes('//') || value.includes('@{')) return false;
+  if (/[\s~^:?*\[\\\]]/.test(value)) return false;
+  return value.split('/').every(part => part && !part.startsWith('.') && !part.endsWith('.lock'));
+}
+
+function normalizeConflicts(value: unknown): Array<{ file: string; time?: string; noBackup?: boolean }> {
+  const items = Array.isArray(value) ? value : (value && typeof value === 'object' ? [value] : []);
+  const conflicts: Array<{ file: string; time?: string; noBackup?: boolean }> = [];
+  for (const item of items) {
+    if (typeof item === 'string') {
+      const file = item.trim();
+      if (file) conflicts.push({ file });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const file = typeof record.file === 'string' ? record.file.trim() : '';
+    if (!file) continue;
+    conflicts.push({
+      file,
+      ...(typeof record.time === 'string' && record.time ? { time: record.time } : {}),
+      ...(record.noBackup === true ? { noBackup: true } : {}),
+    });
+  }
+  return conflicts;
 }
 
 function notifySyncDaemon(

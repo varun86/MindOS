@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, CheckCircle2, PlayCircle, XCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SyncStatus } from './settings/types';
 import { getStatusLevel, getSyncLabel, type StatusLevel } from '@/lib/sync-ui';
@@ -154,18 +154,13 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
       <div className="flex items-center gap-1 shrink-0 ml-2">
         {(syncResult === 'success' || toast) && <CheckCircle2 size={12} className="text-success animate-in fade-in duration-200" />}
         {syncResult === 'error' && <XCircle size={12} className="text-error animate-in fade-in duration-200" />}
-        {level === 'conflicts' || level === 'paused' ? (
+        {level === 'conflicts' ? (
           <button
             onClick={onOpenSyncSettings}
-            className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              level === 'conflicts' ? 'text-error' : 'text-[var(--amber-text)]'
-            }`}
-            title={level === 'conflicts'
-              ? ((syncT?.resolveConflictsHint as string) ?? 'Open Settings > Sync to resolve conflicts')
-              : ((syncT?.syncPausedHint as string) ?? 'Open Settings > Sync to enable auto-sync')
-            }
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={(syncT?.resolveConflictsHint as string) ?? 'Open Settings > Sync to resolve conflicts'}
           >
-            {level === 'conflicts' ? <XCircle size={12} /> : <PlayCircle size={12} />}
+            <XCircle size={12} />
           </button>
         ) : (
           <button
@@ -194,7 +189,10 @@ export function SyncDot({ status, syncing, stale }: { status: SyncStatus | null;
   );
 }
 
-export function MobileSyncDot({ status, syncing, stale }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean }) {
+export function MobileSyncDot({ status, syncing, stale, loadError }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean; loadError?: string | null }) {
+  if (loadError && !status) {
+    return <span className="h-1.5 w-1.5 rounded-full bg-error animate-pulse" />;
+  }
   const level = stale && status ? 'error' : getStatusLevel(status, syncing ?? false);
   if (level === 'off' || level === 'synced') return null;
   return (

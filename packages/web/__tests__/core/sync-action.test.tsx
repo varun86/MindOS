@@ -277,4 +277,61 @@ describe('useSyncAction', () => {
       root.unmount();
     });
   });
+
+  it('normalizes legacy sync status payloads before exposing them to subscribers', async () => {
+    const { fetchSharedSyncStatus, resetSyncStatusStoreForTests, useSyncStatus } = await import('@/lib/sync-status-store');
+    resetSyncStatusStoreForTests();
+    mockApiFetch.mockResolvedValueOnce({
+      enabled: true,
+      remote: 'git@github.com:me/mind.git',
+      branch: 'main',
+      lastSync: 'not-a-date',
+      unpushed: 2,
+      conflicts: ['notes/today.md', { file: 'notes/other.md', time: 'bad-date' }],
+      lastError: null,
+    });
+
+    await act(async () => {
+      await fetchSharedSyncStatus({ force: true });
+    });
+    mockApiFetch.mockResolvedValue({
+      enabled: true,
+      remote: 'git@github.com:me/mind.git',
+      branch: 'main',
+      lastSync: null,
+      unpushed: '2',
+      conflicts: [{ file: 'notes/today.md' }, { file: 'notes/other.md' }],
+      lastError: null,
+    });
+
+    function Harness() {
+      const { status } = useSyncStatus();
+      return (
+        <div>
+          <p>{status?.lastSync === null ? 'lastSync null' : status?.lastSync}</p>
+          <p>{status?.unpushed}</p>
+          <p>{status?.conflicts?.map(conflict => `${conflict.file}:${conflict.time ?? 'no-time'}`).join('|')}</p>
+        </div>
+      );
+    }
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<Harness />);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('lastSync null');
+    expect(host.textContent).toContain('2');
+    expect(host.textContent).toContain('notes/today.md:no-time');
+    expect(host.textContent).toContain('notes/other.md:no-time');
+    expect(host.textContent).not.toContain('bad-date');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

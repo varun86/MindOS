@@ -82,6 +82,27 @@ function loadSyncState() {
   }
 }
 
+function normalizeConflicts(value) {
+  const items = Array.isArray(value) ? value : (value && typeof value === 'object' ? [value] : []);
+  const conflicts = [];
+  for (const item of items) {
+    if (typeof item === 'string') {
+      const file = item.trim();
+      if (file) conflicts.push({ file });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const file = typeof item.file === 'string' ? item.file.trim() : '';
+    if (!file) continue;
+    conflicts.push({
+      file,
+      ...(typeof item.time === 'string' && item.time ? { time: item.time } : {}),
+      ...(item.noBackup === true ? { noBackup: true } : {}),
+    });
+  }
+  return conflicts;
+}
+
 function saveSyncState(state) {
   if (!existsSync(MINDOS_DIR)) mkdirSync(MINDOS_DIR, { recursive: true });
   atomicWriteJSON(SYNC_STATE_PATH, state);
@@ -994,6 +1015,7 @@ export function getSyncStatus(mindRoot) {
   const state = loadSyncState();
   const hasRepo = mindRoot ? isGitRepo(mindRoot) : false;
   const remote = hasRepo && mindRoot ? getRemoteUrl(mindRoot) : null;
+  const conflicts = normalizeConflicts(state.conflicts);
 
   if (!config.enabled) {
     if (!hasSyncConfig()) return { enabled: false };
@@ -1007,13 +1029,29 @@ export function getSyncStatus(mindRoot) {
         lastSync: state.lastSync || null,
         lastPull: state.lastPull || null,
         unpushed: getUnpushedCount(mindRoot),
-        conflicts: state.conflicts || [],
+        conflicts,
         lastError: state.lastError || null,
         autoCommitInterval: config.autoCommitInterval || 30,
         autoPullInterval: config.autoPullInterval || 300,
       };
     }
-    return { enabled: false };
+    return {
+      enabled: false,
+      configured: true,
+      needsSetup: true,
+      provider: config.provider || 'git',
+      remote: redactGitRemote(remote) || '(not configured)',
+      branch: hasRepo && mindRoot ? (getBranch(mindRoot) || 'main') : 'main',
+      lastSync: state.lastSync || null,
+      lastPull: state.lastPull || null,
+      unpushed: '?',
+      conflicts,
+      lastError: state.lastError || (!hasRepo
+        ? 'Git repository not found in knowledge base directory. Please re-configure sync.'
+        : 'Remote not configured. Please re-configure sync.'),
+      autoCommitInterval: config.autoCommitInterval || 30,
+      autoPullInterval: config.autoPullInterval || 300,
+    };
   }
 
   const branch = mindRoot ? getBranch(mindRoot) : null;
@@ -1027,8 +1065,13 @@ export function getSyncStatus(mindRoot) {
     lastSync: state.lastSync || null,
     lastPull: state.lastPull || null,
     unpushed,
-    conflicts: state.conflicts || [],
-    lastError: state.lastError || null,
+    conflicts,
+    needsSetup: !remote,
+    lastError: state.lastError || (remote
+      ? null
+      : (!hasRepo
+          ? 'Git repository not found in knowledge base directory. Please re-configure sync.'
+          : 'Remote not configured. Please re-configure sync.')),
     autoCommitInterval: config.autoCommitInterval || 30,
     autoPullInterval: config.autoPullInterval || 300,
   };

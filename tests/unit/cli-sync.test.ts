@@ -66,6 +66,62 @@ describe('mindos sync config persistence', () => {
     expect(getSyncStatus(undefined)).toMatchObject({ enabled: true, provider: 'git' });
   });
 
+  it('keeps disabled broken sync configuration visible instead of reporting unconfigured', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      mindRoot,
+      sync: { enabled: false, provider: 'git' },
+    }), 'utf-8');
+    fs.writeFileSync(path.join(mindosDir, 'sync-state.json'), JSON.stringify({
+      conflicts: ['note.md'],
+      lastError: 'previous failure',
+    }), 'utf-8');
+
+    const { getSyncStatus } = await importSync();
+
+    expect(getSyncStatus(mindRoot)).toMatchObject({
+      enabled: false,
+      configured: true,
+      needsSetup: true,
+      remote: '(not configured)',
+      conflicts: [{ file: 'note.md' }],
+      lastError: 'previous failure',
+    });
+  });
+
+  it('reports enabled sync with a missing origin as a broken configured state', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      mindRoot,
+      sync: { enabled: true, provider: 'git' },
+    }), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') throw new Error('No such remote');
+      if (args[0] === 'rev-parse') return 'main\n';
+      if (args[0] === 'rev-list') throw new Error('no upstream');
+      if (args[0] === 'status') return '';
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+
+    const { getSyncStatus } = await importSync();
+
+    expect(getSyncStatus(mindRoot)).toMatchObject({
+      enabled: true,
+      needsSetup: true,
+      remote: '(not configured)',
+      branch: 'main',
+      lastError: 'Remote not configured. Please re-configure sync.',
+    });
+  });
+
   it('rejects conflict backup paths outside the knowledge base', async () => {
     const { getSyncConflictBackupPath } = await importSync();
     const mindRoot = path.join(tempDir, 'mind');

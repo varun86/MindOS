@@ -3155,6 +3155,12 @@ describe('MindOS product server contract', () => {
       envOverrides: undefined,
     });
 
+    await expect(handleSyncPost({ action: 'init', remote: 'https://example.com/repo.git', branch: 'bad branch' }, services)).resolves.toMatchObject({
+      status: 400,
+      body: { error: 'Invalid branch name' },
+    });
+    expect(cliCalls).toHaveLength(2);
+
     expect(await handleSyncPost({ action: 'update-intervals', autoCommitInterval: 60 }, services)).toMatchObject({
       status: 200,
       body: { autoCommitInterval: 60, autoPullInterval: 600 },
@@ -3178,6 +3184,20 @@ describe('MindOS product server contract', () => {
         branch: 'main',
       },
     });
+
+    config.sync.enabled = false;
+    services.getRemoteUrl = () => null;
+    await expect(handleSyncGet(services)).resolves.toMatchObject({
+      status: 200,
+      body: {
+        enabled: false,
+        configured: true,
+        needsSetup: true,
+        remote: '(not configured)',
+        conflicts: [{ file: 'note.md' }],
+      },
+    });
+    services.getRemoteUrl = () => 'https://oauth2:ghp_secret_token@example.com/mind/repo.git';
 
     const gitignoreSave = await handleSyncPost({ action: 'gitignore-save', content: 'node_modules\n' }, services);
     expect(gitignoreSave).toMatchObject({
@@ -3245,6 +3265,40 @@ describe('MindOS product server contract', () => {
     expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('local');
     expect(state).toEqual({ conflicts: [{ file: 'note.md' }], lastError: 'previous' });
     expect(writeStateCalled).toBe(false);
+  });
+
+  it('normalizes legacy sync conflicts before returning and resolving them', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-legacy-conflicts-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(join(mindRoot, '.git'), { recursive: true });
+    writeFileSync(join(mindRoot, 'note.md'), 'local', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: ['note.md', { file: 'second.md', time: 'bad-date' }, { missing: true }],
+    };
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      isGitRepo: () => true,
+      getRemoteUrl: () => 'git@example.com:mind/repo.git',
+      getBranch: () => 'main',
+      getUnpushedCount: () => '0',
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncGet(services)).toMatchObject({
+      status: 200,
+      body: {
+        conflicts: [{ file: 'note.md' }, { file: 'second.md', time: 'bad-date' }],
+      },
+    });
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-local' }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true },
+    });
+    expect(state.conflicts).toEqual([{ file: 'second.md', time: 'bad-date' }]);
   });
 
   it('reports a missing remote backup when previewing a conflict', async () => {

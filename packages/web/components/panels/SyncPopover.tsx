@@ -120,7 +120,7 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
               <RefreshCw size={12} />
               {(syncT?.retry as string) ?? 'Retry'}
             </PrimaryButton>
-          ) : level !== 'off' && level !== 'conflicts' && level !== 'paused' && (
+          ) : level !== 'off' && level !== 'conflicts' && (
             <PrimaryButton
               onClick={syncNow}
               disabled={syncing}

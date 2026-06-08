@@ -195,6 +195,20 @@
 
 **验证**：`packages/web/__tests__/settings/ai-env-restore.test.ts` 覆盖 restore 后 provider 列表仍存在、env-backed API key 被清空、非 env-backed provider 不受影响。
 
+### Git Sync legacy 状态不能被折叠成未配置（2026-06-09）
+
+**症状**：Settings → Sync 中，已经配置过的仓库如果被暂停、缺失 `.git`、丢失 remote，或 `sync-state.json` 中留有旧格式 conflicts，UI 可能退回空设置页，用户看不到真实错误、无法手动 sync / reset；冲突列表还可能因为 index key 复用，把上一行 diff preview 泄漏到下一行。
+
+**根因**：HTTP handler、CLI runtime 和前端 store 对 legacy sync 状态没有统一归一化；`enabled: false` 被当成未配置，broken configured state 丢失 `configured / needsSetup / lastError / conflicts`，前端则假设 `conflicts[].time` 和 `unpushed` 永远是新格式。
+
+**规则**：
+- 只要存在 sync config，就不要把 broken / paused 状态折叠成 `{ enabled:false }`；应保留 `configured:true`、必要时返回 `needsSetup:true` 和可操作的 `lastError`
+- `conflicts` 在 HTTP / CLI / Web store 边界都要归一化，兼容字符串、对象、坏时间戳和缺失 backup
+- 冲突行必须用文件身份 key，不能用数组 index；行内 preview / confirm / error 状态在文件变化时要重置
+- `.gitignore` 保存成功后的状态刷新失败只能显示刷新警告，不能误报为保存失败
+
+**验证**：`packages/mindos/src/server.test.ts`、`tests/unit/cli-sync.test.ts`、`packages/web/__tests__/settings/sync-tab-ux.test.tsx`、`packages/web/__tests__/core/sync-action.test.tsx`、`packages/web/__tests__/core/sync-status.test.ts` 覆盖 broken configured state、legacy conflicts、paused manual sync、refresh warning 和 conflict row state reset。
+
 ### 内置 skill 的 references 必须随 packaged skill 一起发布（2026-06-08）
 
 **症状**：正常安装 MindOS 后，MindOS skill 在创建 SOP 时读不到 `references/sop-template.md`；本地手动补文件后可用，但下一次更新可能再次丢失。

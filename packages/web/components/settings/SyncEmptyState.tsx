@@ -44,6 +44,7 @@ type SharedInitSnapshot = {
   remote: string;
   branch: string;
   finishReason?: 'success' | 'error';
+  error?: string;
 };
 
 const idleInitSnapshot: SharedInitSnapshot = { pending: false, progressHidden: false, remote: '', branch: 'main' };
@@ -63,15 +64,16 @@ function subscribeSharedInit(listener: () => void) {
 export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onInitComplete: () => void }) {
   const syncT = t.settings?.sync as Record<string, unknown> | undefined;
   const initialInitSnapshot = sharedInitSnapshot;
+  const initialFailure = !initialInitSnapshot.pending && initialInitSnapshot.finishReason === 'error';
 
-  const [remoteUrl, setRemoteUrl] = useState(initialInitSnapshot.pending ? initialInitSnapshot.remote : '');
+  const [remoteUrl, setRemoteUrl] = useState(initialInitSnapshot.pending || initialFailure ? initialInitSnapshot.remote : '');
+  const [branch, setBranch] = useState(initialInitSnapshot.pending || initialFailure ? initialInitSnapshot.branch : 'main');
   const [token, setToken] = useState('');
-  const [branch, setBranch] = useState(initialInitSnapshot.pending ? initialInitSnapshot.branch : 'main');
   const [showToken, setShowToken] = useState(false);
   const [connectStep, setConnectStep] = useState<number>(initialInitSnapshot.pending && !initialInitSnapshot.progressHidden ? 0 : -1); // -1=idle, 0..3=steps, 4=done
   const [progressHidden, setProgressHidden] = useState(initialInitSnapshot.pending ? initialInitSnapshot.progressHidden : false);
   const [backgroundInitPending, setBackgroundInitPending] = useState(initialInitSnapshot.pending);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialFailure ? (initialInitSnapshot.error ?? '') : '');
   const [connectingRemote, setConnectingRemote] = useState(initialInitSnapshot.pending ? initialInitSnapshot.remote : '');
   const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -126,6 +128,11 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         setConnectStep(-1);
         setConnectingRemote('');
         if (wasPending && snapshot.finishReason === 'success' && !localInitCompletingRef.current) onInitComplete();
+        if (snapshot.finishReason === 'error') {
+          setRemoteUrl(current => current || snapshot.remote);
+          setBranch(current => current || snapshot.branch);
+          setError(snapshot.error ?? '');
+        }
         return;
       }
       if (snapshot.pending) {
@@ -200,14 +207,24 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
       }, 600);
     } catch (err: unknown) {
       if (connectRunRef.current !== runId || controller.signal.aborted) return;
-      setSharedInitSnapshot({ ...idleInitSnapshot, finishReason: 'error' });
+      const formattedError = (() => {
+        let msg = err instanceof Error ? err.message : 'Connection failed';
+        if (msg.includes('timed out')) {
+          msg = (syncT?.timeoutError as string) ?? 'Connection timed out. The remote repository may be large or the network is slow. Please try again.';
+        }
+        const hint = getSyncErrorHint(msg, submittedRemote, syncT);
+        return hint ? `${msg}\n${hint}` : msg;
+      })();
+      setSharedInitSnapshot({
+        pending: false,
+        progressHidden: false,
+        remote: redactGitUrl(submittedRemote),
+        branch: submittedBranch,
+        finishReason: 'error',
+        error: formattedError,
+      });
       if (!mountedRef.current) return;
-      let msg = err instanceof Error ? err.message : 'Connection failed';
-      if (msg.includes('timed out')) {
-        msg = (syncT?.timeoutError as string) ?? 'Connection timed out. The remote repository may be large or the network is slow. Please try again.';
-      }
-      const hint = getSyncErrorHint(msg, submittedRemote, syncT);
-      setError(hint ? `${msg}\n${hint}` : msg);
+      setError(formattedError);
       setProgressHidden(false);
       setBackgroundInitPending(false);
       setConnectStep(-1);
@@ -263,7 +280,11 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
           <Input
             type="text"
             value={remoteUrl}
-            onChange={e => { setRemoteUrl(e.target.value); setError(''); }}
+            onChange={e => {
+              setRemoteUrl(e.target.value);
+              setError('');
+              if (sharedInitSnapshot.finishReason === 'error') setSharedInitSnapshot(idleInitSnapshot);
+            }}
             placeholder="git@github.com:user/repo.git"
             disabled={setupLocked}
             className={`font-mono ${remoteUrl.trim() && !isValid ? 'border-destructive' : ''}`}
@@ -325,7 +346,13 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
           <Input
             type="text"
             value={branch}
-            onChange={e => setBranch(e.target.value)}
+            onChange={e => {
+              setBranch(e.target.value);
+              if (sharedInitSnapshot.finishReason === 'error') {
+                setError('');
+                setSharedInitSnapshot(idleInitSnapshot);
+              }
+            }}
             placeholder="main"
             disabled={setupLocked}
             className={`max-w-[200px] font-mono ${!branchValid ? 'border-destructive' : ''}`}

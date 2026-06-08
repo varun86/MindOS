@@ -6,7 +6,7 @@ import { PrimaryButton, SettingCard, Select } from './Primitives';
 import { apiFetch } from '@/lib/api';
 import type { SyncStatus, SyncTabProps } from './types';
 import { formatSyncError, getStatusLevel, getSyncErrorHint, getUnpushedCount, hasUnknownUnpushedCount, timeAgo } from '@/lib/sync-ui';
-import { useSyncAction, useSyncStatus } from '@/lib/sync-status-store';
+import { fetchSharedSyncStatus, useSyncAction, useSyncStatus } from '@/lib/sync-status-store';
 import SyncEmptyState from './SyncEmptyState';
 
 export { getSyncErrorHint, timeAgo } from '@/lib/sync-ui';
@@ -154,7 +154,7 @@ function SyncActionMessage({ message }: { message: { type: 'success' | 'error'; 
 /* ── Conflict Row ──────────────────────────────────────────────── */
 
 function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
-  file: string; time: string; noBackup?: boolean; syncT?: Record<string, unknown>; onResolved: () => void;
+  file: string; time?: string; noBackup?: boolean; syncT?: Record<string, unknown>; onResolved: () => void;
 }) {
   const [resolving, setResolving] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -162,6 +162,15 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmKeepLocalWithoutPreview, setConfirmKeepLocalWithoutPreview] = useState(false);
+
+  useEffect(() => {
+    setResolving(null);
+    setExpanded(false);
+    setPreview(null);
+    setLoadingPreview(false);
+    setRowError(null);
+    setConfirmKeepLocalWithoutPreview(false);
+  }, [file]);
 
   const loadPreview = async () => {
     setRowError(null);
@@ -237,7 +246,9 @@ function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
           <ChevronRight size={11} className={`inline mr-1 transition-transform ${expanded ? 'rotate-90' : ''}`} />
           {file}
         </button>
-        <span className="text-muted-foreground shrink-0">{timeAgo(time, syncT)}</span>
+        <span className="text-muted-foreground shrink-0">
+          {time ? timeAgo(time, syncT) : ((syncT?.timeUnknown as string) ?? 'unknown')}
+        </span>
         {!preview && (
           <span className="text-2xs text-muted-foreground">
             {(syncT?.viewDiffFirst as string) ?? 'View diff first'}
@@ -345,6 +356,7 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 
   const dirty = content !== saved;
@@ -352,6 +364,7 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
   const loadGitignore = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setRefreshWarning(null);
     setLoadFailed(false);
     setSaveOk(false);
     try {
@@ -379,6 +392,7 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    setRefreshWarning(null);
     setSaveOk(false);
     try {
       const data = await apiFetch<{ content?: string }>('/api/sync', {
@@ -391,7 +405,14 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
       setSaved(savedContent);
       setSaveOk(true);
       setLoadFailed(false);
-      await onSaved?.();
+      try {
+        await onSaved?.();
+      } catch (refreshError) {
+        const raw = refreshError instanceof Error
+          ? refreshError.message
+          : ((syncT?.syncStatusRefreshFailed as string) ?? 'Saved, but failed to refresh sync status');
+        setRefreshWarning(formatSyncError(raw, syncT));
+      }
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.gitignoreSaveFailed as string) ?? 'Failed to save .gitignore');
@@ -465,6 +486,17 @@ function GitignoreEditor({ syncT, onSaved }: { syncT?: Record<string, unknown>; 
                   <div className="space-y-0.5">
                     {error.split('\n').map((line, i) => (
                       <span key={i} className={`block ${i > 0 ? 'text-destructive/70' : ''}`}>{line}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {refreshWarning && (
+                <div className="flex items-start gap-1.5 rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] p-2 text-xs text-[var(--amber-text)]" role="status" aria-live="polite">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                  <div className="space-y-0.5">
+                    <span className="block">{(syncT?.syncStatusRefreshFailed as string) ?? 'Saved, but failed to refresh sync status'}</span>
+                    {refreshWarning.split('\n').map((line, i) => (
+                      <span key={i} className="block text-foreground/70">{line}</span>
                     ))}
                   </div>
                 </div>
@@ -668,8 +700,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   const conflicts = status.conflicts || [];
   const health = getSyncHealth(status, syncT, stale ? loadError : null);
   const unpushedCount = getUnpushedCount(status);
+  const unpushedKnown = !hasUnknownUnpushedCount(status);
   const statusLevel = getStatusLevel(status, false);
-  const showHealthSyncAction = !stale && conflicts.length === 0 && statusLevel !== 'paused' && statusLevel !== 'off';
+  const showHealthSyncAction = !stale && conflicts.length === 0 && statusLevel !== 'off';
 
   return (
     <div className="space-y-4">
@@ -739,9 +772,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{(syncT?.labelUnpushed as string) ?? 'Local changes'}</span>
             <span className="text-xs">
-              {typeof status.unpushed === 'string' && /^\d+$/.test(status.unpushed)
+              {unpushedKnown && typeof status.unpushed === 'string' && /^\d+$/.test(status.unpushed)
                 ? ((syncT?.unpushedCommits as ((n: number) => string))?.(unpushedCount) ?? `${unpushedCount} changes`)
-                : `${status.unpushed ?? '?'} changes`}
+                : ((syncT?.labelUnknown as string) ?? 'Unknown')}
             </span>
           </div>
         </div>
@@ -801,7 +834,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           </p>
           <div className="space-y-2">
             {conflicts.map((c, i) => (
-              <ConflictRow key={i} file={c.file} time={c.time} noBackup={c.noBackup} syncT={syncT} onResolved={fetchStatus} />
+              <ConflictRow key={`${c.file}:${c.time ?? ''}`} file={c.file} time={c.time} noBackup={c.noBackup} syncT={syncT} onResolved={fetchStatus} />
             ))}
           </div>
         </SettingCard>
@@ -861,7 +894,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         </div>
       </SettingCard>
 
-      <GitignoreEditor syncT={syncT} onSaved={fetchStatus} />
+      <GitignoreEditor syncT={syncT} onSaved={() => fetchSharedSyncStatus({ force: true, throwOnError: true })} />
     </div>
   );
 }
