@@ -421,8 +421,10 @@ export {
   handleAskStream,
   type AskStreamHandlerResult,
   type AskStreamHandlerServices,
+  type MindosAgentRuntimeKind,
   type MindosAskMessage,
   type MindosAskStreamRequest,
+  type MindosSelectedRuntime,
 } from './handlers/ask.js';
 
 export {
@@ -512,6 +514,7 @@ export {
   type MindosMcpAgentInstalledSkills,
   type MindosMcpAgentProfile,
   type MindosMcpAgentRegistryDef,
+  type MindosMcpAgentSkillCapabilities,
   type MindosMcpAgentsPayload,
   type MindosMcpAgentsServices,
   type MindosMcpAgentRuntimeSignals,

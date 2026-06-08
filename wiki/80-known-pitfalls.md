@@ -155,6 +155,16 @@
 
 **验证**：除了前端 hook/component 测试，还要用临时 `HOME` + 临时 `mindRoot` 跑真实 `/api/ask mode=organize` smoke：上传一段带唯一 marker 的内容，要求 AI 在子目录创建 Markdown 文件，最后用 `find` / `rg` 验证目标文件和 marker 真实落盘，且 SSE 中 `create_file` 的 `tool_end.isError` 为 `false`。
 
+### OpenAI-compatible 自定义 baseUrl 的 organize 要优先走 non-streaming tools path（2026-06-08）
+
+**症状**：Capture / Inbox Review 点击后，`/api/ask mode=organize` 返回 `200 text/event-stream`，模型文本里声称“Created `Inbox/...md`”，但 SSE 没有 `tool_start` / `tool_end`，知识库也没有真实文件落盘。
+
+**根因**：某些 OpenAI-compatible 代理端点在 Pi Agent streaming 路径下不会返回结构化 tool call，而是把类似 `<create_file ... />` 的工具意图当普通文本输出。前端只看到正常文本流，用户会误以为整理成功。
+
+**规则**：`mode=organize` 且 provider 为 `openai`、存在自定义 `baseUrl` 时，默认使用 non-streaming compatibility path，让 OpenAI `tool_calls` 由 MindOS fallback 执行并产出 `tool_start` / `tool_end`。Chat 模式不要强制切换，避免影响普通对话流式体验。
+
+**验证**：`packages/web/__tests__/agent/ask-compat.test.ts` 覆盖 compat 选择；真实 smoke 要求 `/api/ask mode=organize` 返回 `status: Using compatibility mode (non-streaming)...`，随后出现 `tool_start create_file`、`tool_end isError:false`，并用唯一 marker 验证文件真实创建后清理。
+
 ### Pi AgentSession 不再拥有 newSession，历史要在创建前写入 SessionManager（2026-06-07）
 
 **症状**：Inbox Review / AI organize 调用 `/api/ask mode=organize` 后返回 500，前端显示 `AI provider/server failed (500). o.newSession is not a function`。
@@ -174,6 +184,26 @@
 **规则**：前端只要判断 `/api/ask` 是否可运行，就复用 `packages/web/lib/settings-ai-client.ts` 的 `isAiConfiguredForAsk()`；不要在组件或 hook 里重新写 provider/key 解析逻辑。
 
 **验证**：`packages/web/__tests__/lib/space-ai-init.test.ts` 覆盖 active provider array 与 env fallback；`packages/web/__tests__/hooks/useInboxOrganizeController.test.tsx` 覆盖 Inbox Agent 在 Settings 已配置时必须继续读取文件并调用 `aiOrganize.start()`，不能弹缺 key toast。
+
+### Restore from environment 不能清空 Settings provider 列表（2026-06-08）
+
+**症状**：Settings 里点击 `Restore from environment` 后，AI provider 配置看起来被环境变量锁死，用户无法继续手动覆盖配置。
+
+**根因**：旧 restore 逻辑把 `ai.activeProvider` 和 `ai.providers` 整体重置为空数组。后端运行时可以从 env fallback，但设置页展示的是保存配置；provider 列表被清空后，UI 不再有稳定的可编辑 provider entry。
+
+**规则**：restore 只清理确实有环境变量 fallback 的字段，例如对应 provider 的 API key；provider entry、model、baseUrl 和手动可编辑状态必须保留。`AI_PROVIDER` 只用于切换到已存在的 matching provider entry，不创建空配置。
+
+**验证**：`packages/web/__tests__/settings/ai-env-restore.test.ts` 覆盖 restore 后 provider 列表仍存在、env-backed API key 被清空、非 env-backed provider 不受影响。
+
+### 内置 skill 的 references 必须随 packaged skill 一起发布（2026-06-08）
+
+**症状**：正常安装 MindOS 后，MindOS skill 在创建 SOP 时读不到 `references/sop-template.md`；本地手动补文件后可用，但下一次更新可能再次丢失。
+
+**根因**：`skills/mindos/SKILL.md` 是 source-of-truth，`packages/web/data/skills/mindos/SKILL.md` 是 runtime packaged copy；之前只同步了 `SKILL.md` 和部分 reference，漏掉了 SOP、post-task hooks、preference capture、knowledge health 等被 SKILL.md 直接引用的文件。中文版 source skill 也引用了 `references/knowledge-health.md`，但源码目录缺文件。
+
+**规则**：凡是 `skills/mindos*/SKILL.md` 里以 `references/*.md` 形式引用的文件，source skill 和 `packages/web/data/skills/*` packaged copy 都必须存在且内容一致。不要只补某一个报错文件，否则会留下同类运行时断链。
+
+**验证**：`packages/web/__tests__/lib/mindos-copy-alignment.test.ts` 检查 `mindos` / `mindos-zh` 的 SKILL.md 与所有引用 reference 文件在 packaged copy 中存在且内容一致。
 
 ### Route-controlled 左侧 panel 离开时也要恢复目标 panel（2026-06-07）
 

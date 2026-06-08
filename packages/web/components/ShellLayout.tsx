@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useLayoutEffect, useState } from 'react';
 import SidebarLayout from './SidebarLayout';
 import { FileNode } from '@/lib/types';
+import type { MindSystemSlot } from '@/lib/mind-system';
 
 /**
  * Structural sharing for FileNode trees.
@@ -62,10 +63,11 @@ function shareFileNode(next: FileNode, prev: FileNode | undefined): FileNode {
 
 interface ShellLayoutProps {
   fileTree: FileNode[];
+  mindSystemSlots: MindSystemSlot[];
   children: React.ReactNode;
 }
 
-export default function ShellLayout({ fileTree, children }: ShellLayoutProps) {
+export default function ShellLayout({ fileTree, mindSystemSlots, children }: ShellLayoutProps) {
   const pathname = usePathname();
   const [sharedTree, setSharedTree] = useState(fileTree);
 
@@ -76,5 +78,5 @@ export default function ShellLayout({ fileTree, children }: ShellLayoutProps) {
   }, [fileTree]);
 
   if (pathname === '/login') return <>{children}</>;
-  return <SidebarLayout fileTree={sharedTree}>{children}</SidebarLayout>;
+  return <SidebarLayout fileTree={sharedTree} mindSystemSlots={mindSystemSlots}>{children}</SidebarLayout>;
 }

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } fr
 import { createPortal } from 'react-dom';
 import { Send, StopCircle, X, Plus, FileText, ImageIcon } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { AskMode, Message } from '@/lib/types';
+import type { AgentRuntimeIdentity, AskMode, Message } from '@/lib/types';
 import ModeCapsule, { getPersistedMode } from '@/components/ask/ModeCapsule';
 import { useAskSession } from '@/hooks/useAskSession';
 import { useFileUpload } from '@/hooks/useFileUpload';
@@ -22,7 +22,7 @@ import AgentSelectorCapsule from '@/components/ask/AgentSelectorCapsule';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
 import type { ProviderId } from '@/lib/agent/providers';
 import { useAskChat } from '@/hooks/useAskChat';
-import { getSelectedAcpAgentFromMessage, resolveComposerAgent } from '@/lib/ask-agent';
+import { getMessageAgentRuntime, getSessionAgentRuntime, toAgentRuntime } from '@/lib/ask-agent';
 import { cn } from '@/lib/utils';
 import { useAcpDetection } from '@/hooks/useAcpDetection';
 import type { AcpAgentSelection } from '@/hooks/useAskModal';
@@ -104,8 +104,8 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
 
   const [selectedSkill, setSelectedSkill] = useState<SlashItem | null>(null);
   const selectedSkillRef = useRef(selectedSkill);
-  const [selectedAcpAgent, setSelectedAcpAgent] = useState<AcpAgentSelection | null>(null);
-  const selectedAcpAgentRef = useRef(selectedAcpAgent);
+  const [selectedAgentRuntime, setSelectedAgentRuntime] = useState<AgentRuntimeIdentity | null>(null);
+  const selectedAgentRuntimeRef = useRef(selectedAgentRuntime);
   const pendingOpenAgentRef = useRef<AcpAgentSelection | null>(null);
   const [chatMode, setChatMode] = useState<AskMode>('agent');
   const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
@@ -155,6 +155,25 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const mention = useMention();
   const slash = useSlashCommand();
   const acpDetection = useAcpDetection();
+  const nativeRuntimes = useMemo<AgentRuntimeIdentity[]>(() => {
+    const installed = acpDetection.installedAgents;
+    const hasCodex = installed.some((agent) => agent.id === 'codex' || agent.id === 'codex-acp' || agent.name.toLowerCase() === 'codex');
+    const hasClaude = installed.some((agent) => agent.id === 'claude' || agent.id === 'claude-code' || agent.name.toLowerCase().includes('claude'));
+    return [
+      ...(hasCodex ? [{ id: 'codex', name: 'Codex', kind: 'codex' as const }] : []),
+      ...(hasClaude ? [{ id: 'claude', name: 'Claude Code', kind: 'claude' as const }] : []),
+    ];
+  }, [acpDetection.installedAgents]);
+  const visibleAcpAgents = useMemo(() => {
+    const hasNativeCodex = nativeRuntimes.some((agent) => agent.kind === 'codex');
+    const hasNativeClaude = nativeRuntimes.some((agent) => agent.kind === 'claude');
+    return acpDetection.installedAgents.filter((agent) => {
+      const lowerName = agent.name.toLowerCase();
+      if (hasNativeCodex && (agent.id === 'codex' || agent.id === 'codex-acp' || lowerName === 'codex')) return false;
+      if (hasNativeClaude && (agent.id === 'claude' || agent.id === 'claude-code' || lowerName.includes('claude'))) return false;
+      return true;
+    });
+  }, [acpDetection.installedAgents, nativeRuntimes]);
 
   const imageUploadRef = useRef(imageUploadRuntime);
   const mentionRef = useRef(mention);
@@ -163,13 +182,13 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     inputValueRef.current = input;
     attachedFilesRef.current = attachedFiles;
     selectedSkillRef.current = selectedSkill;
-    selectedAcpAgentRef.current = selectedAcpAgent;
+    selectedAgentRuntimeRef.current = selectedAgentRuntime;
     sessionRef.current = session;
     uploadRef.current = uploadRuntime;
     imageUploadRef.current = imageUploadRuntime;
     mentionRef.current = mention;
     slashRef.current = slash;
-  }, [attachedFiles, imageUploadRuntime, input, mention, selectedAcpAgent, selectedSkill, session, slash, uploadRuntime]);
+  }, [attachedFiles, imageUploadRuntime, input, mention, selectedAgentRuntime, selectedSkill, session, slash, uploadRuntime]);
 
   const resetInputState = useCallback(() => {
     setInput('');
@@ -188,7 +207,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     if (userMessage.skillName) {
       slashRef.current.resetSlash();
     }
-    setSelectedAcpAgent(getSelectedAcpAgentFromMessage(userMessage));
+    setSelectedAgentRuntime(getMessageAgentRuntime(userMessage));
     setTimeout(() => inputRef.current?.focus(), 50);
   }, []);
 
@@ -200,7 +219,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     sessionRef,
     uploadRef,
     selectedSkillRef,
-    selectedAcpAgentRef,
+    selectedAgentRuntimeRef,
     attachedFilesRef,
   }), []);
   const chat = useAskChat({
@@ -218,9 +237,17 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const handleSubmit = chat.submit;
   const handleStop = chat.stop;
 
-  const handleSelectAcpAgent = useCallback((agent: AcpAgentSelection | null) => {
-    setSelectedAcpAgent(agent);
-    session.setSessionDefaultAcpAgent(agent);
+  const handleSelectAgentRuntime = useCallback((agent: AgentRuntimeIdentity | null) => {
+    setSelectedAgentRuntime(agent);
+    if (!agent || agent.kind === 'mindos') {
+      session.setSessionDefaultAcpAgent(null);
+      return;
+    }
+    if (agent.kind === 'acp') {
+      session.setSessionDefaultAcpAgent({ id: agent.id, name: agent.name });
+      return;
+    }
+    session.setSessionAgentRuntimeBinding(agent);
   }, [session]);
   const hasLoadingAttachments = localAttachments.some((f) => f.status === 'loading');
   const composerStatusMessage = uploadError || imageError || dropError || '';
@@ -300,7 +327,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
       mention.resetMention();
       slash.resetSlash();
       setSelectedSkill(null);
-      setSelectedAcpAgent(initialAcpAgent ?? null);
+      setSelectedAgentRuntime(toAgentRuntime(initialAcpAgent));
       setShowHistory(false);
     } else if (fileChanged) {
       // Update attached file context to match new file (don't reset session/messages)
@@ -322,14 +349,11 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     if (!visible || !session.activeSessionId) return;
 
     const openerAgent = pendingOpenAgentRef.current;
-    const restoredAgent = resolveComposerAgent({
-      sessionAgent: session.activeSession?.defaultAcpAgent ?? null,
-      initialAgent: openerAgent,
-    });
+    const restoredRuntime = getSessionAgentRuntime(session.activeSession) ?? toAgentRuntime(openerAgent);
 
-    setSelectedAcpAgent(restoredAgent);
+    setSelectedAgentRuntime(restoredRuntime);
 
-    if (openerAgent && !session.activeSession?.defaultAcpAgent && session.activeSession?.messages.length === 0) {
+    if (openerAgent && !getSessionAgentRuntime(session.activeSession) && session.activeSession?.messages.length === 0) {
       session.setSessionDefaultAcpAgent(openerAgent);
     }
 
@@ -338,6 +362,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     visible,
     session.activeSessionId,
     session.activeSession?.defaultAcpAgent,
+    session.activeSession?.defaultAgentRuntime,
     session.activeSession?.messages.length,
     session.setSessionDefaultAcpAgent,
   ]);
@@ -534,7 +559,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     mentionRef.current.resetMention();
     slashRef.current.resetSlash();
     setSelectedSkill(null);
-    setSelectedAcpAgent(null);
+    setSelectedAgentRuntime(null);
     pendingOpenAgentRef.current = null;
     setShowHistory(false);
     chat.firstMessageFired.current = false;
@@ -614,7 +639,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     mentionRef.current.resetMention();
     slashRef.current.resetSlash();
     setSelectedSkill(null);
-    setSelectedAcpAgent(targetSession?.defaultAcpAgent ?? null);
+    setSelectedAgentRuntime(getSessionAgentRuntime(targetSession));
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [currentFile, session.sessions]);
 
@@ -764,7 +789,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
           onDrop={handleDrop}
         >
           {/* Unified context chip flow */}
-          {(attachedFiles.length > 0 || localAttachments.length > 0 || images.length > 0 || selectedSkill || selectedAcpAgent || uploadError || imageError) && (
+          {(attachedFiles.length > 0 || localAttachments.length > 0 || images.length > 0 || selectedSkill || selectedAgentRuntime || uploadError || imageError) && (
             <div className={cn('px-3 pt-2.5 pb-2 border-b border-border/30', isPanel ? 'max-h-24 overflow-y-auto' : 'max-h-28 overflow-y-auto')}>
               <div className="flex flex-wrap gap-1.5">
                 {attachedFiles.map(f => (
@@ -790,11 +815,11 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
                     onRemove={() => { setSelectedSkill(null); inputRef.current?.focus(); }}
                   />
                 )}
-                {selectedAcpAgent && (
+                {selectedAgentRuntime && (
                   <FileChip
-                    path={typeof selectedAcpAgent === 'object' && 'name' in selectedAcpAgent ? (selectedAcpAgent as { name: string }).name : 'Remote Agent'}
+                    path={selectedAgentRuntime.name}
                     variant="agent"
-                    onRemove={() => { handleSelectAcpAgent(null); inputRef.current?.focus(); }}
+                    onRemove={() => { handleSelectAgentRuntime(null); inputRef.current?.focus(); }}
                   />
                 )}
               </div>
@@ -911,9 +936,10 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
               <ModeCapsule mode={chatMode} onChange={setChatMode} disabled={isLoading} />
             {mounted && (
               <AgentSelectorCapsule
-                selectedAgent={selectedAcpAgent}
-                onSelect={handleSelectAcpAgent}
-                installedAgents={acpDetection.installedAgents}
+                selectedAgent={selectedAgentRuntime}
+                onSelect={handleSelectAgentRuntime}
+                installedAgents={visibleAcpAgents}
+                nativeRuntimes={nativeRuntimes}
                 loading={acpDetection.loading}
               />
             )}

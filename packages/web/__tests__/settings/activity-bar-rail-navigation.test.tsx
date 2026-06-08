@@ -27,7 +27,25 @@ vi.mock('@/lib/stores/locale-store', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+  default: ({ children, href, onClick, onNavigate, ...props }: any) => (
+    <a
+      href={href}
+      {...props}
+      onClick={(event) => {
+        onClick?.(event);
+        if (event.defaultPrevented) return;
+
+        event.preventDefault();
+        let navigatePrevented = false;
+        onNavigate?.({ preventDefault: () => { navigatePrevented = true; } });
+        if (!navigatePrevented && href) {
+          mockRouterPush(String(href));
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -79,7 +97,7 @@ describe('ActivityBar rail navigation', () => {
           onExpandedChange={vi.fn()}
           onSettingsClick={vi.fn()}
           onSyncClick={vi.fn()}
-          onSpacesClick={() => {
+          onSpacesClick={(event) => {
             // Simulate the SidebarLayout onSpacesClick logic with the fix
             const pathname = mockPathname;
             const isHome = pathname === '/';
@@ -92,6 +110,7 @@ describe('ActivityBar rail navigation', () => {
             } else if (!onFilesRoute) {
               mockRouterPush('/wiki');
             } else {
+              event.preventDefault();
               mockPanelChange(null);
             }
           }}
@@ -104,7 +123,7 @@ describe('ActivityBar rail navigation', () => {
     expect(filesButton).not.toBeNull();
 
     await act(async () => {
-      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       // Wait for debounce
       await new Promise(r => setTimeout(r, 200));
     });
@@ -140,7 +159,7 @@ describe('ActivityBar rail navigation', () => {
           onExpandedChange={vi.fn()}
           onSettingsClick={vi.fn()}
           onSyncClick={vi.fn()}
-          onSpacesClick={() => {
+          onSpacesClick={(event) => {
             // Simulate the SidebarLayout onSpacesClick logic with the fix
             const pathname = mockPathname;
             const isHome = pathname === '/';
@@ -153,6 +172,7 @@ describe('ActivityBar rail navigation', () => {
             } else if (!onFilesRoute) {
               mockRouterPush('/wiki');
             } else {
+              event.preventDefault();
               mockPanelChange(null);
             }
           }}
@@ -164,7 +184,7 @@ describe('ActivityBar rail navigation', () => {
     expect(filesButton).not.toBeNull();
 
     await act(async () => {
-      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise(r => setTimeout(r, 200));
     });
 
@@ -205,11 +225,50 @@ describe('ActivityBar rail navigation', () => {
     expect(captureButton).not.toBeNull();
 
     await act(async () => {
-      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise(r => setTimeout(r, 200));
     });
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/capture');
+    expect(captureButton?.getAttribute('href')).toBe('/capture');
+    expect(mockPanelChange).toHaveBeenCalledWith('capture');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('clicking collapsed Inbox rail button on Mind opens the Inbox workbench', async () => {
+    mockPathname = '/wiki';
+    const mockPanelChange = vi.fn();
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="files"
+          onPanelChange={mockPanelChange}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    expect(captureButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    expect(captureButton?.getAttribute('href')).toBe('/capture');
     expect(mockPanelChange).toHaveBeenCalledWith('capture');
 
     await act(async () => {
@@ -266,7 +325,7 @@ describe('ActivityBar rail navigation', () => {
     await act(async () => {
       root.render(
         <ActivityBar
-          activePanel="files"
+          activePanel="capture"
           onPanelChange={vi.fn()}
           syncStatus={null}
           expanded
@@ -282,6 +341,40 @@ describe('ActivityBar rail navigation', () => {
 
     expect(filesButton?.getAttribute('aria-pressed')).toBe('false');
     expect(captureButton?.getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('optimistically highlights Inbox after clicking it from Mind before the route commits', async () => {
+    mockPathname = '/wiki';
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="capture"
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const captureButton = host.querySelector('[data-walkthrough="capture-page"]');
+    const filesButton = host.querySelector('[data-walkthrough="files-panel"]');
+
+    expect(captureButton?.getAttribute('aria-pressed')).toBe('true');
+    expect(filesButton?.getAttribute('aria-pressed')).toBe('false');
 
     await act(async () => {
       root.unmount();
@@ -321,10 +414,10 @@ describe('ActivityBar rail navigation', () => {
     expect(captureButton).not.toBeNull();
 
     await act(async () => {
-      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/capture');
+    expect(captureButton?.getAttribute('href')).toBe('/capture');
     expect(mockPanelChange).toHaveBeenCalledWith('capture');
 
     mockPathname = '/capture';
@@ -347,7 +440,51 @@ describe('ActivityBar rail navigation', () => {
     expect(filesButton).not.toBeNull();
 
     await act(async () => {
-      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    expect(mockSpacesClick).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).toHaveBeenCalledWith('/wiki');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('clicking collapsed Mind rail button on Inbox invokes the spaces navigation callback', async () => {
+    mockPathname = '/capture';
+    const mockPanelChange = vi.fn();
+    const mockSpacesClick = vi.fn(() => {
+      mockPanelChange('files');
+      mockRouterPush('/wiki');
+    });
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="capture"
+          onPanelChange={mockPanelChange}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+          onSpacesClick={mockSpacesClick}
+        />,
+      );
+    });
+
+    const filesButton = host.querySelector('[data-walkthrough="files-panel"]');
+    expect(filesButton).not.toBeNull();
+
+    await act(async () => {
+      filesButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
 
     expect(mockSpacesClick).toHaveBeenCalledTimes(1);
@@ -393,12 +530,44 @@ describe('ActivityBar rail navigation', () => {
     expect(agentsButton).not.toBeNull();
 
     await act(async () => {
-      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      agentsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      captureButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      agentsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
 
     expect(mockAgentsClick).toHaveBeenCalledTimes(1);
     expect(mockRouterPush).toHaveBeenCalledWith('/agents');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('marks Agents active and exposes a stable /agents rail href', async () => {
+    mockPathname = '/agents';
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="agents"
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const agentsButton = host.querySelector('[data-walkthrough="agents-panel"]');
+    expect(agentsButton?.getAttribute('href')).toBe('/agents');
+    expect(agentsButton?.getAttribute('aria-pressed')).toBe('true');
 
     await act(async () => {
       root.unmount();

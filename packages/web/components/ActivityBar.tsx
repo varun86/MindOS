@@ -1,13 +1,13 @@
 'use client';
 
 import { useRef, useCallback, useState, useEffect, useTransition } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FolderTree, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
+import { Brain, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { DOT_COLORS, getStatusLevel } from './SyncStatusBar';
 import type { SyncStatus } from './settings/types';
 import Logo from './Logo';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 
 export type PanelId = 'files' | 'capture' | 'search' | 'echo' | 'agents' | 'discover' | 'workflows';
 
@@ -17,11 +17,11 @@ export const RAIL_WIDTH_EXPANDED = 180;
 interface ActivityBarProps {
   activePanel: PanelId | null;
   onPanelChange: (id: PanelId | null) => void;
-  onEchoClick?: () => void;
-  onAgentsClick?: () => void;
-  onDiscoverClick?: () => void;
-  onWorkflowsClick?: () => void;
-  onSpacesClick?: () => void;
+  onEchoClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
+  onAgentsClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
+  onDiscoverClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
+  onWorkflowsClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
+  onSpacesClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
   syncStatus: SyncStatus | null;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -35,7 +35,9 @@ interface RailButtonProps {
   shortcut?: string;
   active?: boolean;
   expanded: boolean;
-  onClick: () => void;
+  href?: string;
+  onClick: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
+  onNavigate?: (event: { preventDefault: () => void }) => void;
   buttonRef?: React.Ref<HTMLButtonElement>;
   /** Optional overlay badge (e.g. status dot) rendered inside the button */
   badge?: React.ReactNode;
@@ -43,26 +45,27 @@ interface RailButtonProps {
   walkthroughId?: string;
 }
 
-function RailButton({ icon, label, shortcut, active = false, expanded, onClick, buttonRef, badge, walkthroughId }: RailButtonProps) {
-  const tooltipText = shortcut ? `${label} (${shortcut})` : label;
+function normalizeUrl(value: string): string {
+  try {
+    const url = new URL(value, window.location.href);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return value;
+  }
+}
 
-  const button = (
-    <button
-      ref={buttonRef}
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={undefined}
-      data-walkthrough={walkthroughId}
-      className={`
-        relative flex items-center ${expanded ? 'justify-start px-3 w-full' : 'justify-center w-10'} h-10 rounded-md transition-colors
-        ${active
-          ? 'text-[var(--amber)] bg-[var(--amber-dim)]'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        }
-        focus-visible:ring-2 focus-visible:ring-ring
-      `}
-    >
+function RailButton({ icon, label, shortcut, active = false, expanded, href, onClick, onNavigate, buttonRef, badge, walkthroughId }: RailButtonProps) {
+  const tooltipText = shortcut ? `${label} (${shortcut})` : label;
+  const buttonClassName = `
+    relative flex items-center ${expanded ? 'justify-start px-3 w-full' : 'justify-center w-10'} h-10 rounded-md transition-colors
+    ${active
+      ? 'text-[var(--amber)] bg-[var(--amber-dim)]'
+      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+    }
+    focus-visible:ring-2 focus-visible:ring-ring
+  `;
+  const buttonContent = (
+    <>
       {active && (
         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[18px] rounded-r-full bg-[var(--amber)]" />
       )}
@@ -76,18 +79,43 @@ function RailButton({ icon, label, shortcut, active = false, expanded, onClick, 
           )}
         </>
       )}
-    </button>
+    </>
   );
 
-  if (expanded) return button;
+  const handleLinkClick: React.MouseEventHandler<HTMLAnchorElement> = (event) => {
+    onClick(event);
+    if (event.defaultPrevented || !href) return;
+    if (process.env.NODE_ENV === 'test') return;
+
+    const target = normalizeUrl(href);
+    window.setTimeout(() => {
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (current !== target) {
+        window.location.assign(href);
+      }
+    }, 1200);
+  };
+
+  const sharedProps = {
+    'aria-pressed': active,
+    'aria-label': label,
+    title: expanded ? undefined : tooltipText,
+    'data-walkthrough': walkthroughId,
+    className: buttonClassName,
+  };
+
+  if (href) {
+    return (
+      <Link href={href} onClick={handleLinkClick} onNavigate={onNavigate} {...sharedProps}>
+        {buttonContent}
+      </Link>
+    );
+  }
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent side="right" sideOffset={8}>
-        {tooltipText}
-      </TooltipContent>
-    </Tooltip>
+    <button type="button" ref={buttonRef} onClick={onClick} {...sharedProps}>
+      {buttonContent}
+    </button>
   );
 }
 
@@ -114,6 +142,15 @@ export default function ActivityBar({
   const isHome = pathname === '/';
   const isCapture = pathname === '/capture' || pathname?.startsWith('/capture/');
   const isFilesRoute = pathname === '/wiki' || pathname?.startsWith('/wiki/') || pathname?.startsWith('/view/');
+  const activeDestination = activePanel ?? (isCapture ? 'capture' : isFilesRoute ? 'files' : null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      router.prefetch('/capture');
+      router.prefetch('/wiki');
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [router]);
 
   // Update badge: Desktop → electron-updater IPC; Browser → npm registry check
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -203,7 +240,6 @@ export default function ActivityBar({
   ) : undefined;
 
   return (
-    <TooltipProvider delay={2000}>
     <aside
       className="group hidden md:flex fixed top-0 left-0 h-screen z-[31] flex-col bg-background border-r border-border transition-[width] duration-200 ease-out"
       style={{ width: `${railWidth}px` }}
@@ -240,26 +276,25 @@ export default function ActivityBar({
           <RailButton
             icon={<Inbox size={18} />}
             label={t.sidebar.capture}
-            active={isCapture}
+            active={activeDestination === 'capture'}
             expanded={expanded}
-            onClick={() => debounced('panel:capture', () => {
-              onPanelChange('capture');
-              router.push('/capture');
-            })}
+            href="/capture"
+            onClick={() => debounced('panel:capture', () => onPanelChange('capture'))}
             walkthroughId="capture-page"
           />
-          <RailButton icon={<FolderTree size={18} />} label={t.sidebar.files} active={isFilesRoute && activePanel === 'files'} expanded={expanded} onClick={() => onSpacesClick ? debounced('panel:files', onSpacesClick) : toggle('files')} walkthroughId="files-panel" />
-          {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} onClick={() => onEchoClick ? debounced('panel:echo', onEchoClick) : toggle('echo')} walkthroughId="echo-panel" />}
+          <RailButton icon={<Brain size={18} />} label={t.sidebar.files} active={activeDestination === 'files'} expanded={expanded} href="/wiki" onClick={(event) => { onSpacesClick ? debounced('panel:files', () => onSpacesClick(event)) : toggle('files'); }} walkthroughId="files-panel" />
+          {labsEcho && <RailButton icon={<Radio size={18} />} label={t.sidebar.echo} active={activePanel === 'echo'} expanded={expanded} href="/echo/about-you" onClick={(event) => { onEchoClick ? debounced('panel:echo', () => onEchoClick(event)) : toggle('echo'); }} walkthroughId="echo-panel" />}
           <RailButton icon={<Search size={18} />} label={t.sidebar.searchTitle} shortcut="⌘K" active={activePanel === 'search'} expanded={expanded} onClick={() => toggle('search')} />
           <RailButton
             icon={<Bot size={18} />}
             label={t.sidebar.agents}
             active={activePanel === 'agents'}
             expanded={expanded}
-            onClick={() => onAgentsClick ? debounced('panel:agents', onAgentsClick) : toggle('agents')}
+            href="/agents"
+            onClick={(event) => { onAgentsClick ? debounced('panel:agents', () => onAgentsClick(event)) : toggle('agents'); }}
             walkthroughId="agents-panel"
           />
-          {labsWorkflows && <RailButton icon={<Zap size={18} />} label={t.sidebar.workflows ?? 'Flows'} active={activePanel === 'workflows'} expanded={expanded} onClick={() => onWorkflowsClick ? debounced('panel:workflows', onWorkflowsClick) : toggle('workflows')} />}
+          {labsWorkflows && <RailButton icon={<Zap size={18} />} label={t.sidebar.workflows ?? 'Flows'} active={activePanel === 'workflows'} expanded={expanded} onClick={(event) => onWorkflowsClick ? debounced('panel:workflows', () => onWorkflowsClick(event)) : toggle('workflows')} />}
         </div>
 
         {/* ── Spacer ── */}
@@ -268,7 +303,7 @@ export default function ActivityBar({
         {/* ── Secondary: Explore ── */}
         <div className={`${expanded ? 'mx-3' : 'mx-2'} border-t border-border`} />
         <div className={`flex flex-col ${expanded ? 'px-1.5' : 'items-center'} gap-1 py-2`}>
-          <RailButton icon={<Compass size={18} />} label={t.sidebar.discover} active={activePanel === 'discover'} expanded={expanded} onClick={() => onDiscoverClick ? debounced('panel:discover', onDiscoverClick) : toggle('discover')} />
+          <RailButton icon={<Compass size={18} />} label={t.sidebar.discover} active={activePanel === 'discover'} expanded={expanded} href="/explore" onClick={(event) => { onDiscoverClick ? debounced('panel:discover', () => onDiscoverClick(event)) : toggle('discover'); }} />
         </div>
 
         {/* ── Bottom: Action buttons (not panel toggles) ── */}
@@ -320,6 +355,5 @@ export default function ActivityBar({
         {expanded ? <ChevronLeft size={10} /> : <ChevronRight size={10} />}
       </button>
     </aside>
-    </TooltipProvider>
   );
 }

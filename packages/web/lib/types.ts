@@ -84,6 +84,20 @@ export interface AgentIdentity {
   name: string;
 }
 
+export type AgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
+
+export interface AgentRuntimeIdentity extends AgentIdentity {
+  kind: AgentRuntimeKind;
+}
+
+export interface ExternalAgentBinding {
+  runtime: Exclude<AgentRuntimeKind, 'mindos'>;
+  externalSessionId?: string;
+  cwd?: string;
+  status?: 'active' | 'missing' | 'signed-out';
+  updatedAt: number;
+}
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -102,6 +116,7 @@ export interface Message {
   /** Agent attribution for this message when routed via ACP or rendered by MindOS */
   agentId?: string;
   agentName?: string;
+  agentKind?: AgentRuntimeKind;
 }
 
 export interface LocalAttachment {
@@ -136,4 +151,8 @@ export interface ChatSession {
   pinned?: boolean;
   /** Session-level ACP agent selection restored when the session becomes active */
   defaultAcpAgent?: AgentIdentity | null;
+  /** Session-level agent runtime selection. Prefer this over defaultAcpAgent when present. */
+  defaultAgentRuntime?: AgentRuntimeIdentity | null;
+  /** External runtime session metadata for native runtimes such as Codex or Claude. */
+  externalAgentBinding?: ExternalAgentBinding | null;
 }

@@ -24,6 +24,16 @@ const FILE_MUTATING_TOOLS = new Set([
   'rename_file', 'create_space',
 ]);
 
+export interface RuntimeBindingMetadata {
+  runtime: 'acp' | 'codex' | 'claude';
+  externalSessionId: string;
+  cwd?: string;
+}
+
+export interface ConsumeUIMessageStreamOptions {
+  onRuntimeBinding?: (binding: RuntimeBindingMetadata) => void;
+}
+
 /** Notify the app that files were changed by the AI agent */
 function notifyFilesChanged() {
   if (typeof window !== 'undefined') {
@@ -35,6 +45,7 @@ export async function consumeUIMessageStream(
   body: ReadableStream<Uint8Array>,
   onUpdate: (message: Message) => void,
   signal?: AbortSignal,
+  options: ConsumeUIMessageStreamOptions = {},
 ): Promise<Message> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -165,6 +176,23 @@ export async function consumeUIMessageStream(
             // Notify when a file-modifying tool completes successfully
             if (!event.isError && FILE_MUTATING_TOOLS.has(tc.toolName)) {
               notifyFilesChanged();
+            }
+            break;
+          }
+
+          case 'runtime_binding': {
+            const runtime = event.runtime;
+            const externalSessionId = event.externalSessionId;
+            if (
+              (runtime === 'acp' || runtime === 'codex' || runtime === 'claude') &&
+              typeof externalSessionId === 'string' &&
+              externalSessionId
+            ) {
+              options.onRuntimeBinding?.({
+                runtime,
+                externalSessionId,
+                ...(typeof event.cwd === 'string' ? { cwd: event.cwd } : {}),
+              });
             }
             break;
           }

@@ -3,8 +3,12 @@ import type { AgentIdentity, ChatSession, Message } from '@/lib/types';
 import {
   MINDOS_AGENT,
   annotateMessageWithAgent,
+  annotateMessageWithAgentRuntime,
   bindSessionAgent,
+  bindSessionAgentRuntime,
+  getMessageAgentRuntime,
   getSelectedAcpAgentFromMessage,
+  getSessionAgentRuntime,
   resolveComposerAgent,
   resolveMessageAgent,
 } from '@/lib/ask-agent';
@@ -34,6 +38,24 @@ describe('ask agent helpers', () => {
     });
   });
 
+  it('annotates a native runtime message with its runtime kind', () => {
+    const message: Message = {
+      role: 'assistant',
+      content: 'Here is the answer.',
+    };
+
+    expect(annotateMessageWithAgentRuntime(message, {
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+    })).toEqual({
+      ...message,
+      agentId: 'codex',
+      agentName: 'Codex',
+      agentKind: 'codex',
+    });
+  });
+
   it('prefers the bound session agent over the initial preselected agent', () => {
     const initial: AgentIdentity = { id: 'cursor', name: 'Cursor' };
     expect(resolveComposerAgent({ sessionAgent: claude, initialAgent: initial })).toEqual(claude);
@@ -53,6 +75,35 @@ describe('ask agent helpers', () => {
     expect(getSelectedAcpAgentFromMessage({ agentId: 'mindos', agentName: 'MindOS' })).toBeNull();
   });
 
+  it('does not restore a native runtime as a legacy ACP selection', () => {
+    expect(getSelectedAcpAgentFromMessage({
+      agentId: 'codex',
+      agentName: 'Codex',
+      agentKind: 'codex',
+    })).toBeNull();
+  });
+
+  it('restores native and legacy runtime selections from message attribution', () => {
+    expect(getMessageAgentRuntime({
+      agentId: 'codex',
+      agentName: 'Codex',
+      agentKind: 'codex',
+    })).toEqual({
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+    });
+
+    expect(getMessageAgentRuntime({
+      agentId: 'claude-code',
+      agentName: 'Claude Code',
+    })).toEqual({
+      id: 'claude-code',
+      name: 'Claude Code',
+      kind: 'acp',
+    });
+  });
+
   it('binds an ACP agent to the active session without touching messages', () => {
     const session: ChatSession = {
       id: 's1',
@@ -64,6 +115,7 @@ describe('ask agent helpers', () => {
     expect(bindSessionAgent(session, claude)).toEqual({
       ...session,
       defaultAcpAgent: claude,
+      defaultAgentRuntime: { id: 'claude-code', name: 'Claude Code', kind: 'acp' },
     });
   });
 
@@ -79,6 +131,71 @@ describe('ask agent helpers', () => {
     expect(bindSessionAgent(session, null)).toEqual({
       ...session,
       defaultAcpAgent: null,
+      defaultAgentRuntime: null,
+    });
+  });
+
+  it('normalizes a legacy ACP session binding into a runtime identity', () => {
+    const session: ChatSession = {
+      id: 's1',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+      defaultAcpAgent: claude,
+    };
+
+    expect(getSessionAgentRuntime(session)).toEqual({
+      id: 'claude-code',
+      name: 'Claude Code',
+      kind: 'acp',
+    });
+  });
+
+  it('prefers the new runtime binding over the legacy ACP binding', () => {
+    const session: ChatSession = {
+      id: 's1',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+      defaultAcpAgent: claude,
+      defaultAgentRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+    };
+
+    expect(getSessionAgentRuntime(session)).toEqual({
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+    });
+  });
+
+  it('binds a native runtime and stores its external session metadata', () => {
+    const session: ChatSession = {
+      id: 's1',
+      createdAt: 1,
+      updatedAt: 1,
+      messages: [],
+      defaultAcpAgent: claude,
+    };
+
+    expect(bindSessionAgentRuntime(session, {
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+    }, {
+      externalSessionId: 'thr_123',
+      cwd: '/tmp/mind',
+      updatedAt: 123,
+    })).toEqual({
+      ...session,
+      defaultAcpAgent: null,
+      defaultAgentRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      externalAgentBinding: {
+        runtime: 'codex',
+        externalSessionId: 'thr_123',
+        cwd: '/tmp/mind',
+        status: 'active',
+        updatedAt: 123,
+      },
     });
   });
 });

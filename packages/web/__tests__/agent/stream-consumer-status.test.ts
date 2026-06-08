@@ -75,6 +75,24 @@ describe('consumeUIMessageStream — status event handling', () => {
     expect(result.content).toBe('Response after retry');
   });
 
+  it('surfaces runtime binding metadata without adding message content', async () => {
+    const onRuntimeBinding = vi.fn();
+    const stream = makeStream(
+      { type: 'runtime_binding', runtime: 'codex', externalSessionId: 'thr_123', cwd: '/tmp/mind' },
+      { type: 'text_delta', delta: 'Bound session.' },
+      { type: 'done' },
+    );
+
+    const result = await consumeUIMessageStream(stream, vi.fn(), undefined, { onRuntimeBinding });
+
+    expect(onRuntimeBinding).toHaveBeenCalledWith({
+      runtime: 'codex',
+      externalSessionId: 'thr_123',
+      cwd: '/tmp/mind',
+    });
+    expect(result.content).toBe('Bound session.');
+  });
+
   it('handles error event by adding error text to message', async () => {
     const stream = makeStream(
       { type: 'error', message: 'LLM API unavailable' },

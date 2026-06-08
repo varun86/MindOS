@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { getFileTree } from '@/lib/fs';
+import { getFileTree, getMindRoot } from '@/lib/fs';
+import { listMindSystemSlots, type MindSystemSlot } from '@/lib/mind-system';
 import ShellLayout from '@/components/ShellLayout';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import LocaleStoreInit from '@/lib/stores/LocaleStoreInit';
@@ -37,8 +38,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   let fileTree: import('@/lib/types').FileNode[] = [];
+  let mindSystemSlots: MindSystemSlot[] = [];
   try {
     fileTree = getFileTree();
+    mindSystemSlots = listMindSystemSlots(getMindRoot());
   } catch (err) {
     console.error('[RootLayout] Failed to load file tree:', err);
   }
@@ -91,7 +94,7 @@ export default async function RootLayout({
         <LocaleStoreInit ssrLocale={ssrLocale} />
           <TooltipProvider delay={300}>
             <ErrorBoundary>
-              <ShellLayout fileTree={fileTree}>
+              <ShellLayout fileTree={fileTree} mindSystemSlots={mindSystemSlots}>
                 {children}
               </ShellLayout>
             </ErrorBoundary>

@@ -10,6 +10,7 @@ const mockPersistSession = vi.fn();
 const mockClearPersistTimer = vi.fn();
 const mockInitSessions = vi.fn();
 const mockSetSessionDefaultAcpAgent = vi.fn();
+const mockSetSessionAgentRuntimeBinding = vi.fn();
 
 const sessionWithClaude: ChatSession = {
   id: 's1',
@@ -75,6 +76,7 @@ vi.mock('@/hooks/useAskSession', () => ({
     clearPersistTimer: mockClearPersistTimer,
     setMessages: mockSetMessages,
     setSessionDefaultAcpAgent: mockSetSessionDefaultAcpAgent,
+    setSessionAgentRuntimeBinding: mockSetSessionAgentRuntimeBinding,
     resetSession: vi.fn(),
     loadSession: vi.fn(),
     deleteSession: vi.fn(),
@@ -133,7 +135,10 @@ vi.mock('@/hooks/useSlashCommand', () => ({
 
 vi.mock('@/hooks/useAcpDetection', () => ({
   useAcpDetection: () => ({
-    installedAgents: [{ id: 'claude-code', name: 'Claude Code', binaryPath: '/tmp/claude' }],
+    installedAgents: [
+      { id: 'claude-code', name: 'Claude Code', binaryPath: '/tmp/claude' },
+      { id: 'codex-acp', name: 'Codex', binaryPath: '/tmp/codex' },
+    ],
     notInstalledAgents: [],
     loading: false,
     error: null,
@@ -153,10 +158,12 @@ vi.mock('@/components/ask/FileChip', () => ({
   default: ({ path, variant }: { path: string; variant?: string }) => <div data-testid={`chip-${variant ?? 'kb'}`}>{path}</div>,
 }));
 vi.mock('@/components/ask/AgentSelectorCapsule', () => ({
-  default: ({ selectedAgent, onSelect }: { selectedAgent: { id: string; name: string } | null; onSelect: (agent: { id: string; name: string } | null) => void }) => (
+  default: ({ selectedAgent, onSelect }: { selectedAgent: { id: string; name: string; kind: 'acp' | 'codex' | 'claude' } | null; onSelect: (agent: { id: string; name: string; kind: 'acp' | 'codex' | 'claude' } | null) => void }) => (
     <div>
       <div data-testid="agent-selector">{selectedAgent?.name ?? 'MindOS'}</div>
-      <button type="button" onClick={() => onSelect({ id: 'claude-code', name: 'Claude Code' })}>Select Claude</button>
+      <button type="button" onClick={() => onSelect({ id: 'claude-code', name: 'Claude Code', kind: 'acp' })}>Select Claude</button>
+      <button type="button" onClick={() => onSelect({ id: 'claude', name: 'Claude Code', kind: 'claude' })}>Select Claude Native</button>
+      <button type="button" onClick={() => onSelect({ id: 'codex', name: 'Codex', kind: 'codex' })}>Select Codex</button>
     </div>
   ),
 }));
@@ -230,7 +237,7 @@ describe('AskContent ACP session binding', () => {
     });
   });
 
-  it('does not clear the selected agent after submit', async () => {
+  it('does not clear the selected agent after submit and sends its runtime identity', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -258,6 +265,92 @@ describe('AskContent ACP session binding', () => {
     });
 
     expect(host.querySelector('[data-testid="agent-selector"]')?.textContent).toBe('Claude Code');
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.selectedAcpAgent).toEqual({ id: 'claude-code', name: 'Claude Code' });
+    expect(requestBody.selectedRuntime).toEqual({ id: 'claude-code', name: 'Claude Code', kind: 'acp' });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('sends a native Codex runtime selection without legacy ACP routing', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<AskContent visible variant="panel" initialMessage="summarize this repo" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const selectButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Select Codex') as HTMLButtonElement;
+    await act(async () => {
+      selectButton.click();
+    });
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.selectedAcpAgent).toBeNull();
+    expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex' });
+    expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'codex', name: 'Codex', kind: 'codex' });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('sends a native Claude Code runtime selection without legacy ACP routing', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<AskContent visible variant="panel" initialMessage="review this diff" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const selectButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Select Claude Native') as HTMLButtonElement;
+    await act(async () => {
+      selectButton.click();
+    });
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.selectedAcpAgent).toBeNull();
+    expect(requestBody.selectedRuntime).toEqual({ id: 'claude', name: 'Claude Code', kind: 'claude' });
+    expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude' });
 
     await act(async () => {
       root.unmount();

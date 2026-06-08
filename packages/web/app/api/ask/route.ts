@@ -6,12 +6,13 @@ import path from 'path';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
-import type { AskModeApi } from '@/lib/types';
+import type { AgentRuntimeIdentity, AskModeApi } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { en as i18nEn, zh as i18nZh } from '@/lib/i18n';
 import { MindOSError, apiError, ErrorCodes } from '@/lib/errors';
 import { performActiveRecall } from '@/lib/agent/active-recall';
 import { metrics } from '@/lib/metrics';
+import { resolveAskCompatMode } from '@/lib/agent/ask-compat';
 import '@/lib/pi-integration/mcp-config'; // Injects --mcp-config argv before extension load
 import { createSession, promptStream, closeSession } from '@/lib/acp/session';
 import { getProjectRoot } from '@/lib/project-root';
@@ -31,6 +32,10 @@ import {
   runMindosNonStreamingFallback,
   runMindosPiAgentAskSession,
 } from '@geminilight/mindos/session';
+import {
+  runMindosAgentRuntimeAskSession,
+  type MindosAgentRuntimeSelection,
+} from '@geminilight/mindos/agent-runtime';
 import {
   buildMindosAskSystemPrompt,
   type MindosAskInitializationContext,
@@ -58,6 +63,26 @@ function loadAttachedFileContext(
 /** Expand attachedFiles entries: directory paths (trailing /) become individual file paths. */
 function expandAttachedFiles(raw: string[]): string[] {
   return expandMindosAskAttachedFiles(raw, collectAllFiles) ?? raw;
+}
+
+function acpAgentFromRuntime(runtime: unknown): { id: string; name: string } | null {
+  if (!runtime || typeof runtime !== 'object') return null;
+  const record = runtime as Partial<AgentRuntimeIdentity>;
+  if (record.kind !== 'acp' || typeof record.id !== 'string' || typeof record.name !== 'string') return null;
+  return { id: record.id, name: record.name };
+}
+
+function nativeAgentRuntimeFromSelection(runtime: unknown): MindosAgentRuntimeSelection | null {
+  if (!runtime || typeof runtime !== 'object') return null;
+  const record = runtime as Partial<AgentRuntimeIdentity> & { externalSessionId?: unknown };
+  if (record.kind !== 'codex' && record.kind !== 'claude') return null;
+  if (typeof record.id !== 'string' || typeof record.name !== 'string') return null;
+  return {
+    id: record.id,
+    name: record.name,
+    kind: record.kind,
+    ...(typeof record.externalSessionId === 'string' ? { externalSessionId: record.externalSessionId } : {}),
+  };
 }
 
 // SSE event contract and pi-agent event guards → @geminilight/mindos/session
@@ -111,6 +136,8 @@ export async function POST(req: NextRequest) {
     mode?: AskModeApi;
     /** ACP agent selection: if present, route to ACP instead of MindOS */
     selectedAcpAgent?: { id: string; name: string } | null;
+    /** Unified runtime selection. ACP values mirror selectedAcpAgent for compatibility. */
+    selectedRuntime?: (AgentRuntimeIdentity & { externalSessionId?: string }) | null;
     /** Per-request provider override from the chat panel capsule */
     providerOverride?: string;
     /** Per-request model override from the inline model picker */
@@ -122,7 +149,11 @@ export async function POST(req: NextRequest) {
     return apiError(ErrorCodes.INVALID_REQUEST, 'Invalid JSON body', 400);
   }
 
-  const { messages, currentFile, attachedFiles: rawAttached, uploadedFiles, selectedAcpAgent } = body;
+  const { messages, currentFile, attachedFiles: rawAttached, uploadedFiles } = body;
+  const selectedAcpAgent = body.selectedRuntime === undefined
+    ? body.selectedAcpAgent
+    : acpAgentFromRuntime(body.selectedRuntime);
+  const selectedNativeRuntime = nativeAgentRuntimeFromSelection(body.selectedRuntime);
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
   const askMode: AskModeApi = normalizeMindosAskMode(body.mode);
 
@@ -341,9 +372,18 @@ export async function POST(req: NextRequest) {
         }
 
         let hasContent = false;
-        // ── Route to ACP agent if selected, otherwise use MindOS agent ──
+        // ── Route to native runtime / ACP agent if selected, otherwise use MindOS agent ──
         const runAgent = async () => {
-          if (selectedAcpAgent) {
+          if (selectedNativeRuntime) {
+            await runMindosAgentRuntimeAskSession({
+              runtime: selectedNativeRuntime,
+              cwd: getMindRoot(),
+              prompt: lastUserContent,
+              signal: req.signal,
+              send,
+            });
+            safeClose();
+          } else if (selectedAcpAgent) {
             await runMindosAcpAskSession({
               agentId: selectedAcpAgent.id,
               cwd: getMindRoot(),
@@ -371,6 +411,12 @@ export async function POST(req: NextRequest) {
             // and go straight to the non-streaming fallback path.
             const compatCache = readBaseUrlCompat();
             const effectiveBaseUrlKey = baseUrl || 'default';
+            const compatMode = resolveAskCompatMode({
+              askMode,
+              provider,
+              baseUrl,
+              cachedMode: compatCache[effectiveBaseUrlKey],
+            });
             const proxyFallbackMessages = {
               proxyCompatMode: t.proxyCompatMode,
               proxyCompatDetecting: t.proxyCompatDetecting,
@@ -405,7 +451,7 @@ export async function POST(req: NextRequest) {
               provider,
               baseUrl,
               effectiveBaseUrlKey,
-              compatMode: compatCache[effectiveBaseUrlKey],
+              compatMode,
               send,
               runFallback: runProxyFallback,
               proxyMessages: proxyFallbackMessages,

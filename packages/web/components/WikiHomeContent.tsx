@@ -9,6 +9,7 @@ import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils'
 import { InboxSection } from '@/components/home/InboxSection';
 import type { SpaceInfo } from '@/app/page';
 import { Select } from '@/components/settings/Primitives';
+import type { MindSystemSlot } from '@/lib/mind-system';
 
 interface RecentFile {
   path: string;
@@ -18,6 +19,7 @@ interface RecentFile {
 interface WikiHomeContentProps {
   spaces: SpaceInfo[];
   recent: RecentFile[];
+  mindSystemSlots: MindSystemSlot[];
 }
 
 function triggerSearch() {
@@ -43,7 +45,7 @@ function getSpaceLatestMtime(spaceName: string, recentFiles: RecentFile[]): numb
 
 const SPACES_COLLAPSED = 6;
 
-export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps) {
+export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: WikiHomeContentProps) {
   const { t } = useLocale();
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'fileCount'>('recent');
   const [showAllSpaces, setShowAllSpaces] = useState(false);
@@ -64,8 +66,13 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
   }, [suggestions.length]);
 
   // Sort spaces
+  const workspaceSpaces = useMemo(() => {
+    const mindSystemPaths = new Set(mindSystemSlots.map(slot => `${slot.path.replace(/\/+$/, '')}/`));
+    return spaces.filter(space => !mindSystemPaths.has(space.path));
+  }, [spaces, mindSystemSlots]);
+
   const sortedSpaces = useMemo(() => {
-    const sorted = [...spaces];
+    const sorted = [...workspaceSpaces];
     if (sortBy === 'recent') {
       sorted.sort((a, b) => {
         const aMtime = getSpaceLatestMtime(a.name, recent);
@@ -78,7 +85,7 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
       sorted.sort((a, b) => b.fileCount - a.fileCount);
     }
     return sorted;
-  }, [spaces, recent, sortBy]);
+  }, [workspaceSpaces, recent, sortBy]);
 
   const visibleSpaces = showAllSpaces ? sortedSpaces : sortedSpaces.slice(0, SPACES_COLLAPSED);
   const formatTime = (mtime: number) => relativeTime(mtime, t.home.relativeTime);
@@ -95,6 +102,9 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
             {t.sidebar.files}
           </h1>
         </div>
+        <p className="pl-4 -mt-3 mb-5 text-sm text-muted-foreground">
+          {t.home.mindTagline}
+        </p>
 
         {/* Command bar */}
         <div className="w-full max-w-xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pl-4">
@@ -152,6 +162,9 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
         </div>
       </div>
 
+      {/* ══════════ Built-in Mind Spaces ══════════ */}
+      <BuiltInMindSpacesSection slots={mindSystemSlots} />
+
       {/* ══════════ Spaces Grid ══════════ */}
       <section className="mb-10">
         <div className="flex items-center gap-2.5 mb-5">
@@ -161,13 +174,13 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
           <h2 className="text-[13px] font-semibold text-foreground tracking-wide">
             {t.home.spaces}
           </h2>
-          {spaces.length > 0 && (
+          {workspaceSpaces.length > 0 && (
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold rounded-full bg-muted text-muted-foreground tabular-nums">
-              {spaces.length}
+              {workspaceSpaces.length}
             </span>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {spaces.length > 0 && (
+            {workspaceSpaces.length > 0 && (
               <Select
                 size="sm"
                 value={sortBy}
@@ -188,7 +201,7 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
           </div>
         </div>
 
-        {spaces.length === 0 ? (
+        {workspaceSpaces.length === 0 ? (
           <div className="rounded-xl border border-border/40 bg-card/30 px-6 py-12 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--amber-subtle)] mb-4">
               <Brain size={22} className="text-[var(--amber)]/60" />
@@ -282,6 +295,52 @@ export default function WikiHomeContent({ spaces, recent }: WikiHomeContentProps
         <span>{t.app.footer}</span>
       </div>
     </div>
+  );
+}
+
+function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
+  const { t } = useLocale();
+  const pillars = slots.map(slot => ({
+    ...slot,
+    data: t.home.mindPillars[slot.key],
+  }));
+
+  if (pillars.length === 0) return null;
+
+  return (
+    <section className="mb-10">
+      <SectionTitle
+        icon={<Star size={14} />}
+        count={pillars.length}
+        action={
+          <Link
+            href={`/view/${encodePath(pillars.find(pillar => pillar.key === 'yan')?.path ?? pillars[pillars.length - 1].path)}`}
+            className="text-xs font-medium text-[var(--amber)] transition-colors hover:opacity-80"
+          >
+            {t.home.builtInSpacesReview}
+          </Link>
+        }
+      >
+        {t.home.builtInSpacesTitle}
+      </SectionTitle>
+      <div className="rounded-xl border border-[var(--amber)]/20 bg-[var(--amber-subtle)] p-4">
+        <div className="mb-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          {t.home.builtInSpacesDesc}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {pillars.map((pillar) => (
+            <Link
+              key={pillar.key}
+              href={`/view/${encodePath(pillar.path)}`}
+              className="rounded-lg border border-border/60 bg-card/50 px-3 py-3 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/35 hover:bg-card"
+            >
+              <span className="mb-1 block text-sm font-semibold text-foreground">{pillar.label}</span>
+              <span className="block text-xs leading-relaxed text-muted-foreground">{pillar.data?.desc ?? pillar.role}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -52,6 +52,9 @@ export type SkillsSectionCopy = {
     sourceBuiltin: string;
     sourceUser: string;
     sourceNative: string;
+    availabilityGlobal: string;
+    availabilityLinked: string;
+    availabilityNativePrivate: string;
     statusAll: string;
     noSkillsMatchFilter: string;
     statusEnabled: string;
@@ -76,6 +79,10 @@ export type SkillsSectionCopy = {
     cancelSkillAction: string;
     noAvailableAgentsForSkill: string;
     manualSkillHint: string;
+    linkSkillSuccess: (skill: string, agent: string) => string;
+    linkSkillFailed: (skill: string, agent: string, reason: string) => string;
+    linkSkillUnsupported: string;
+    nativeSkillSourceMissing: string;
     skillDescription: string;
     skillNoDescription: string;
     skillAgentCount: (n: number) => string;
@@ -358,6 +365,7 @@ function BySkillView({
   const [pickerSkill, setPickerSkill] = useState<string | null>(null);
   const [hintMessage, setHintMessage] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
 
   const handleConfirmAgentRemove = useCallback(() => {
     setConfirmAgentRemove(null);
@@ -457,12 +465,15 @@ function BySkillView({
           copy={copy}
           pickerSkill={pickerSkill}
           deleteBusy={deleteBusy}
+          linkBusy={linkBusy}
           onOpenDetail={onOpenDetail}
           onToggleSkill={onToggleSkill}
           setPickerSkill={setPickerSkill}
           setHintMessage={setHintMessage}
           setConfirmSkillDelete={setConfirmSkillDelete}
           setConfirmAgentRemove={setConfirmAgentRemove}
+          setLinkBusy={setLinkBusy}
+          onRefresh={onRefresh}
         />
       )}
 
@@ -505,24 +516,30 @@ function VirtualizedSkillList({
   copy,
   pickerSkill,
   deleteBusy,
+  linkBusy,
   onOpenDetail,
   onToggleSkill,
   setPickerSkill,
   setHintMessage,
   setConfirmSkillDelete,
   setConfirmAgentRemove,
+  setLinkBusy,
+  onRefresh,
 }: {
   sortedGrouped: Array<[string, UnifiedSkillItem[]]>;
   allAgents: ReturnType<typeof sortAgentsByStatus>;
   copy: SkillsSectionCopy;
   pickerSkill: string | null;
   deleteBusy: string | null;
+  linkBusy: string | null;
   onOpenDetail: (name: string) => void;
   onToggleSkill: (name: string, enabled: boolean) => Promise<boolean>;
   setPickerSkill: (name: string | null) => void;
   setHintMessage: (msg: string | null) => void;
   setConfirmSkillDelete: (name: string | null) => void;
   setConfirmAgentRemove: (v: { agentName: string; skillName: string } | null) => void;
+  setLinkBusy: (key: string | null) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
@@ -551,10 +568,57 @@ function VirtualizedSkillList({
     }
 
     const { skill } = item;
+    const canLinkSkill = skill.kind === 'mindos' || Boolean(skill.sourcePath);
     const availableAgents = allAgents
-      .filter((a) => !skill.agents.includes(a.name))
+      .filter((a) =>
+        canLinkSkill
+        && !skill.agents.includes(a.name)
+        && a.present
+        && a.installed
+        && Boolean(a.skillWorkspacePath)
+        && a.skillCapabilities?.canReceiveLinkedSkills !== false)
       .map((a) => ({ key: a.key, name: a.name }));
     const isUserSkill = skill.kind === 'mindos' && skill.source === 'user';
+    const availabilityLabel = getSkillAvailabilityLabel(copy, skill.availability);
+
+    const handleLinkToAgent = async (agentKey: string) => {
+      const target = allAgents.find((a) => a.key === agentKey);
+      if (!target?.skillWorkspacePath) {
+        setHintMessage(copy.linkSkillUnsupported);
+        setTimeout(() => setHintMessage(null), 4000);
+        return;
+      }
+      if (skill.kind === 'native' && !skill.sourcePath) {
+        setHintMessage(copy.nativeSkillSourceMissing);
+        setTimeout(() => setHintMessage(null), 4000);
+        return;
+      }
+
+      const busyKey = `${skill.name}:${target.key}`;
+      setLinkBusy(busyKey);
+      try {
+        await apiFetch('/api/agents/copy-skill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            skillName: skill.name,
+            sourcePath: skill.kind === 'native' ? skill.sourcePath : undefined,
+            targetPath: target.skillWorkspacePath,
+            strategy: skill.kind === 'native' && target.skillCapabilities?.linkStrategy === 'symlink' ? 'symlink' : 'copy',
+          }),
+        });
+        setPickerSkill(null);
+        setHintMessage(copy.linkSkillSuccess(skill.name, target.name));
+        window.dispatchEvent(new Event('mindos:skills-changed'));
+        await onRefresh();
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Unknown error';
+        setHintMessage(copy.linkSkillFailed(skill.name, target.name, reason));
+      } finally {
+        setLinkBusy(null);
+        setTimeout(() => setHintMessage(null), 5000);
+      }
+    };
 
     return (
       <div className={item.isLast ? 'pb-0' : 'pb-3'}>
@@ -578,6 +642,15 @@ function VirtualizedSkillList({
                     : 'bg-[var(--amber-dim)] text-[var(--amber-text)]'
               }`}>
                 {skill.kind === 'native' ? copy.sourceNative : skill.source === 'builtin' ? copy.sourceBuiltin : copy.sourceUser}
+              </span>
+              <span className={`text-2xs shrink-0 px-1.5 py-0.5 rounded ${
+                skill.availability === 'native-private'
+                  ? 'bg-muted text-muted-foreground'
+                  : skill.availability === 'linked'
+                    ? 'bg-[var(--amber-subtle)] text-[var(--amber-text)]'
+                    : 'bg-[var(--success)]/15 text-[var(--success)]'
+              }`}>
+                {availabilityLabel}
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -606,12 +679,8 @@ function VirtualizedSkillList({
                 <AgentPickerPopover
                   open={pickerSkill === skill.name}
                   agents={availableAgents}
-                  emptyLabel={copy.noAvailableAgentsForSkill}
-                  onSelect={() => {
-                    setPickerSkill(null);
-                    setHintMessage(copy.manualSkillHint);
-                    setTimeout(() => setHintMessage(null), 4000);
-                  }}
+                  emptyLabel={skill.kind === 'native' && !skill.sourcePath ? copy.nativeSkillSourceMissing : copy.noAvailableAgentsForSkill}
+                  onSelect={(agentKey) => void handleLinkToAgent(agentKey)}
                   onClose={() => setPickerSkill(null)}
                 />
               </div>
@@ -621,6 +690,9 @@ function VirtualizedSkillList({
           {/* Agent count */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground mb-3">
             <span className="tabular-nums">{copy.skillAgentCount(skill.agents.length)}</span>
+            <span className="text-muted-foreground/30" aria-hidden="true">·</span>
+            <span>{availabilityLabel}</span>
+            {linkBusy?.startsWith(`${skill.name}:`) && <span className="text-[var(--amber)]">{copy.bulkRunning}</span>}
           </div>
 
           {/* Agent avatar grid */}
@@ -636,7 +708,7 @@ function VirtualizedSkillList({
         </div>
       </div>
     );
-  }, [allAgents, copy, pickerSkill, deleteBusy, onOpenDetail, onToggleSkill, setPickerSkill, setHintMessage, setConfirmSkillDelete, setConfirmAgentRemove]);
+  }, [allAgents, copy, pickerSkill, deleteBusy, linkBusy, onOpenDetail, onToggleSkill, setPickerSkill, setHintMessage, setConfirmSkillDelete, setConfirmAgentRemove, setLinkBusy, onRefresh]);
 
   return (
     <Virtuoso
@@ -648,4 +720,10 @@ function VirtualizedSkillList({
       increaseViewportBy={{ top: 100, bottom: 100 }}
     />
   );
+}
+
+function getSkillAvailabilityLabel(copy: SkillsSectionCopy, availability: UnifiedSkillItem['availability']): string {
+  if (availability === 'native-private') return copy.availabilityNativePrivate;
+  if (availability === 'linked') return copy.availabilityLinked;
+  return copy.availabilityGlobal;
 }

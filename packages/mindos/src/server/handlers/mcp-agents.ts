@@ -57,6 +57,17 @@ export type MindosMcpAgentInstalledSkills = {
   sourcePath: string;
 };
 
+export type MindosMcpAgentSkillCapabilities = {
+  mode: 'universal' | 'additional' | 'unsupported';
+  workspacePath: string;
+  visibility: 'global' | 'agent' | 'manual';
+  nativeSkillScope: 'none' | 'global' | 'native-private';
+  canLinkMindosSkills: boolean;
+  canReceiveLinkedSkills: boolean;
+  canExportNativeSkills: boolean;
+  linkStrategy: 'symlink' | 'copy' | 'manual' | 'unsupported';
+};
+
 export type MindosMcpMindosSkills = {
   names: string[];
   sourcePath: string;
@@ -94,6 +105,7 @@ export type MindosMcpAgentProfile = {
   installedSkillNames: string[];
   installedSkillCount: number;
   installedSkillSourcePath: string;
+  skillCapabilities: MindosMcpAgentSkillCapabilities;
   isCustom: boolean;
   customBaseDir?: string;
 };
@@ -190,6 +202,7 @@ export async function handleMcpAgentsGet(
         installedSkillNames: installedSkills.skills,
         installedSkillCount: installedSkills.skills.length,
         installedSkillSourcePath: installedSkills.sourcePath,
+        skillCapabilities: buildSkillCapabilities(key, skillProfile, installedSkills.skills.length),
         isCustom,
         customBaseDir: isCustom ? customDef?.baseDir : undefined,
       } satisfies MindosMcpAgentProfile;
@@ -317,6 +330,10 @@ function enrichMindosAgent(
       agent.installedSkillSourcePath = skills.sourcePath;
       agent.skillMode = 'universal';
       agent.skillWorkspacePath = skills.workspacePath;
+      agent.skillCapabilities = buildSkillCapabilities('mindos', {
+        mode: 'universal',
+        workspacePath: skills.workspacePath,
+      }, skills.names.length);
     }
   } catch {
     // Skill discovery should never make agent discovery fail.
@@ -343,6 +360,41 @@ function enrichMindosAgent(
   agent.runtimeLastActivityAt = (services.now ?? (() => new Date()))().toISOString();
   agent.hiddenRootPath = mindRoot;
   agent.hiddenRootPresent = true;
+}
+
+function buildSkillCapabilities(
+  agentKey: string,
+  skillProfile: MindosMcpAgentSkillProfile,
+  installedSkillCount: number,
+): MindosMcpAgentSkillCapabilities {
+  const hasWorkspace = skillProfile.workspacePath.trim().length > 0;
+  const isMindos = agentKey === 'mindos';
+  const visibility = isMindos || skillProfile.mode === 'universal'
+    ? 'global'
+    : skillProfile.mode === 'unsupported'
+      ? 'manual'
+      : 'agent';
+  const nativeSkillScope = installedSkillCount === 0
+    ? 'none'
+    : visibility === 'global'
+      ? 'global'
+      : 'native-private';
+  const linkStrategy = !hasWorkspace
+    ? 'unsupported'
+    : skillProfile.mode === 'unsupported'
+      ? 'copy'
+      : 'symlink';
+
+  return {
+    mode: skillProfile.mode,
+    workspacePath: skillProfile.workspacePath,
+    visibility,
+    nativeSkillScope,
+    canLinkMindosSkills: hasWorkspace,
+    canReceiveLinkedSkills: hasWorkspace,
+    canExportNativeSkills: installedSkillCount > 0,
+    linkStrategy,
+  };
 }
 
 async function verifyHttpAgentInstallations(

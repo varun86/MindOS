@@ -5,6 +5,14 @@ import {
 
 export type MindosAskMessage = Record<string, unknown>;
 
+export type MindosAgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
+
+export type MindosSelectedRuntime = {
+  id: string;
+  name: string;
+  kind: MindosAgentRuntimeKind;
+};
+
 export type MindosAskStreamRequest = {
   messages: MindosAskMessage[];
   currentFile?: string;
@@ -12,6 +20,7 @@ export type MindosAskStreamRequest = {
   uploadedFiles?: Array<{ name: string; content: string }>;
   maxSteps?: number;
   mode?: 'chat' | 'agent' | 'organize';
+  selectedRuntime?: MindosSelectedRuntime | null;
   selectedAcpAgent?: { id: string; name: string } | null;
   providerOverride?: string;
   modelOverride?: string;
@@ -57,6 +66,8 @@ function parseAskStreamRequest(body: unknown):
     return { ok: false, status: 400, body: { error: 'mode must be chat, agent, or organize' } };
   }
 
+  const selectedRuntime = normalizeSelectedRuntime(record);
+
   return {
     ok: true,
     body: {
@@ -66,6 +77,7 @@ function parseAskStreamRequest(body: unknown):
       ...(Array.isArray(record.uploadedFiles) ? { uploadedFiles: normalizeUploadedFiles(record.uploadedFiles) } : {}),
       ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
       ...(mode ? { mode } : {}),
+      ...(selectedRuntime !== undefined ? { selectedRuntime } : {}),
       ...(isSelectedAcpAgent(record.selectedAcpAgent) ? { selectedAcpAgent: record.selectedAcpAgent } : {}),
       ...(typeof record.providerOverride === 'string' ? { providerOverride: record.providerOverride } : {}),
       ...(typeof record.modelOverride === 'string' ? { modelOverride: record.modelOverride } : {}),
@@ -85,4 +97,33 @@ function isSelectedAcpAgent(value: unknown): value is { id: string; name: string
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   return typeof record.id === 'string' && typeof record.name === 'string';
+}
+
+function normalizeSelectedRuntime(record: Record<string, unknown>): MindosSelectedRuntime | null | undefined {
+  if (record.selectedRuntime === null) return null;
+  if (isSelectedRuntime(record.selectedRuntime)) return record.selectedRuntime;
+
+  if (record.selectedRuntime !== undefined) return undefined;
+  if (!isSelectedAcpAgent(record.selectedAcpAgent) || record.selectedAcpAgent === null) {
+    return record.selectedAcpAgent === null ? null : undefined;
+  }
+
+  return {
+    ...record.selectedAcpAgent,
+    kind: 'acp',
+  };
+}
+
+function isSelectedRuntime(value: unknown): value is MindosSelectedRuntime {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === 'string'
+    && typeof record.name === 'string'
+    && isAgentRuntimeKind(record.kind)
+  );
+}
+
+function isAgentRuntimeKind(value: unknown): value is MindosAgentRuntimeKind {
+  return value === 'mindos' || value === 'acp' || value === 'codex' || value === 'claude';
 }

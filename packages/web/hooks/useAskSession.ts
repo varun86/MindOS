@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo, useRef } from 'react';
-import type { AgentIdentity, Message, ChatSession } from '@/lib/types';
-import { bindSessionAgent } from '@/lib/ask-agent';
+import type { AgentIdentity, AgentRuntimeIdentity, Message, ChatSession } from '@/lib/types';
+import { bindSessionAgent, bindSessionAgentRuntime } from '@/lib/ask-agent';
 
 const MAX_SESSIONS = 30;
 
@@ -269,6 +269,37 @@ export function useAskSession(currentFile?: string) {
     }
   }, [activeSessionId, currentFile, sessions]);
 
+  /** Update the session-level runtime binding for native agent sessions. */
+  const setSessionAgentRuntimeBinding = useCallback((
+    runtime: AgentRuntimeIdentity,
+    binding?: { externalSessionId?: string; cwd?: string; updatedAt?: number },
+  ) => {
+    if (!activeSessionId) return;
+
+    const currentSession = sessions.find((session) => session.id === activeSessionId);
+    if (!currentSession) return;
+
+    const updatedSession = bindSessionAgentRuntime({
+      ...currentSession,
+      currentFile: currentSession.currentFile ?? currentFile,
+      updatedAt: Date.now(),
+    }, runtime, binding);
+
+    setSessions((prev) => {
+      const rest = prev.filter((session) => session.id !== activeSessionId);
+      return [updatedSession, ...rest]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, MAX_SESSIONS);
+    });
+
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    if (updatedSession.messages.length > 0) {
+      persistTimerRef.current = setTimeout(() => {
+        void upsertSession(updatedSession);
+      }, 600);
+    }
+  }, [activeSessionId, currentFile, sessions]);
+
   const clearAllSessions = useCallback(() => {
     // Only delete sessions that have messages (were persisted)
     const persistedIds = sessions.filter(s => s.messages.length > 0).map(s => s.id);
@@ -307,6 +338,7 @@ export function useAskSession(currentFile?: string) {
     renameSession,
     togglePinSession,
     setSessionDefaultAcpAgent,
+    setSessionAgentRuntimeBinding,
     clearAllSessions,
   };
 }

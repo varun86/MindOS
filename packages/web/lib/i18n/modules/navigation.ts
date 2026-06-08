@@ -2,7 +2,7 @@
 
 export const navigationEn = {
   sidebar: {
-    files: 'Wiki',
+    files: 'Mind',
     search: 'Search',
     searchTitle: 'Search',
     askTitle: 'MindOS',
@@ -29,6 +29,9 @@ export const navigationEn = {
     more: 'More',
     capture: 'Inbox',
     showHiddenFiles: 'Show hidden files',
+    builtInSpacesTitle: 'Mind System',
+    builtInSpacesDesc: 'Built-in modules mapped to local folders.',
+    builtInSpacesRoot: 'Dao / Fa / Shu / Qi',
     sync: {
       synced: 'Synced',
       unpushed: 'awaiting push',
@@ -93,7 +96,7 @@ export const navigationEn = {
 
 export const navigationZh = {
   sidebar: {
-    files: '知识库',
+    files: 'Mind',
     search: '搜索',
     searchTitle: '搜索',
     askTitle: 'MindOS',
@@ -120,6 +123,9 @@ export const navigationZh = {
     more: '更多',
     capture: 'Inbox',
     showHiddenFiles: '显示隐藏文件',
+    builtInSpacesTitle: 'Mind 系统',
+    builtInSpacesDesc: '内置模块映射到本地目录。',
+    builtInSpacesRoot: '道 / 法 / 术 / 器',
     sync: {
       synced: '已同步',
       unpushed: '待推送',

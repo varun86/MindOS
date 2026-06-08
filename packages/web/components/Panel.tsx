@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
 import type { PanelId } from './ActivityBar';
 import type { FileNode } from '@/lib/types';
+import type { MindSystemSlot } from '@/lib/mind-system';
 import FileTree, { setShowHiddenFiles, useShowHiddenFiles } from './FileTree';
 import SyncStatusBar from './SyncStatusBar';
 import PanelHeader from './panels/PanelHeader';
@@ -12,6 +13,7 @@ import { useResizeDrag } from '@/hooks/useResizeDrag';
 import { useLocale } from '@/lib/stores/locale-store';
 import { listTrashAction } from '@/lib/actions';
 import { DEFAULT_LEFT_PANEL_WIDTH, LEFT_PANEL } from '@/lib/config/panel-sizes';
+import { encodePath } from '@/lib/utils';
 
 const noop = () => {};
 
@@ -34,6 +36,7 @@ const MAX_PANEL_WIDTH_ABS = LEFT_PANEL.MAX_ABS;
 interface PanelProps {
   activePanel: PanelId | null;
   fileTree: FileNode[];
+  mindSystemSlots: MindSystemSlot[];
   onNavigate?: () => void;
   onOpenSyncSettings: () => void;
   railWidth?: number;
@@ -56,6 +59,7 @@ interface PanelProps {
 export default function Panel({
   activePanel,
   fileTree,
+  mindSystemSlots,
   onNavigate,
   onOpenSyncSettings,
   railWidth = 48,
@@ -398,6 +402,13 @@ export default function Panel({
           onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); } }}
           onDrop={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); } }}
         >
+          <BuiltInMindSpaces
+            title={t.sidebar.builtInSpacesTitle}
+            description={t.sidebar.builtInSpacesDesc}
+            rootLabel={mindSystemSlots.filter(slot => slot.primary).map(slot => slot.label).join(' / ') || t.sidebar.builtInSpacesRoot}
+            slots={mindSystemSlots}
+            onOpen={(path) => router.push(`/view/${encodePath(path)}`)}
+          />
           <FileTree nodes={fileTree} onNavigate={onNavigate} maxOpenDepth={maxOpenDepth} onImport={onImport} />
         </div>
         {/* Inbox quick entry — always visible above sync bar */}
@@ -446,6 +457,63 @@ export default function Panel({
         </div>
       )}
     </aside>
+  );
+}
+
+function BuiltInMindSpaces({
+  title,
+  description,
+  rootLabel,
+  slots,
+  onOpen,
+}: {
+  title: string;
+  description: string;
+  rootLabel: string;
+  slots: MindSystemSlot[];
+  onOpen: (path: string) => void;
+}) {
+  const { t } = useLocale();
+  const visibleSlots = slots.length > 0 ? slots : [];
+  if (visibleSlots.length === 0) return null;
+
+  return (
+    <section className="mb-2 px-1 pb-2 border-b border-border/40" aria-label={title}>
+      <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/55">
+        {title}
+      </div>
+      <button
+        type="button"
+        onClick={() => onOpen(visibleSlots[0].path)}
+        className="mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--amber)]/20 bg-[var(--amber-subtle)] px-2.5 py-2 text-left transition-colors hover:border-[var(--amber)]/35 hover:bg-[var(--amber-dim)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber)]/10 text-xs font-semibold text-[var(--amber)]">
+          心
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-semibold text-foreground">{rootLabel}</span>
+          <span className="block truncate text-2xs text-muted-foreground/70">{description}</span>
+        </span>
+      </button>
+      <div className="space-y-0.5">
+        {visibleSlots.map((item) => {
+          const copy = t.home.mindPillars[item.key];
+          return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onOpen(item.path)}
+            className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-background/40 text-[11px] font-semibold text-[var(--amber)]">
+              {item.label}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>
+            <span className="max-w-[70px] truncate text-2xs text-muted-foreground/45 group-hover:text-muted-foreground/70">{item.path}</span>
+          </button>
+        );})}
+      </div>
+    </section>
   );
 }
 

@@ -69,6 +69,10 @@
       "types": "./dist/agent.d.ts",
       "import": "./dist/agent.js"
     },
+    "./agent-runtime": {
+      "types": "./dist/agent-runtime.d.ts",
+      "import": "./dist/agent-runtime.js"
+    },
     "./foundation": {
       "types": "./dist/foundation.d.ts",
       "import": "./dist/foundation.js"

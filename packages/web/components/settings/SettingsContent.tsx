@@ -14,6 +14,7 @@ import { McpTab } from './McpTab';
 import { PluginsTab } from './PluginsTab';
 import { UpdateTab } from './UpdateTab';
 import { UninstallTab } from './UninstallTab';
+import { restoreAiSettingsFromEnvironment } from './ai-env-restore';
 
 interface SettingsContentProps {
   visible: boolean;
@@ -214,11 +215,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
 
   const restoreFromEnv = useCallback(async () => {
     if (!data) return;
-    const defaults: AiSettings = {
-      activeProvider: '',
-      providers: [],
-    };
-    setData(d => d ? { ...d, ai: defaults } : d);
+    setData(d => d ? { ...d, ai: restoreAiSettingsFromEnvironment(d) } : d);
     const DEBOUNCE_DELAY = 800;
     const SAVE_OPERATION_TIME = 500;
     setTimeout(() => {

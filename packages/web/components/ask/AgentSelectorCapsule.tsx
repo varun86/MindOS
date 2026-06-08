@@ -3,14 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Bot, ChevronDown, X, Check } from 'lucide-react';
-import type { AcpAgentSelection } from '@/hooks/useAskModal';
+import type { AgentRuntimeIdentity } from '@/lib/types';
 import type { DetectedAgent } from '@/hooks/useAcpDetection';
 import { useLocale } from '@/lib/stores/locale-store';
 
 interface AgentSelectorCapsuleProps {
-  selectedAgent: AcpAgentSelection | null;
-  onSelect: (agent: AcpAgentSelection | null) => void;
+  selectedAgent: AgentRuntimeIdentity | null;
+  onSelect: (agent: AgentRuntimeIdentity | null) => void;
   installedAgents: DetectedAgent[];
+  nativeRuntimes?: AgentRuntimeIdentity[];
   loading?: boolean;
 }
 
@@ -24,6 +25,7 @@ export default function AgentSelectorCapsule({
   selectedAgent,
   onSelect,
   installedAgents,
+  nativeRuntimes = [],
   loading = false,
 }: AgentSelectorCapsuleProps) {
   const { t } = useLocale();
@@ -109,7 +111,12 @@ export default function AgentSelectorCapsule({
   }, [onSelect]);
 
   const handleSelectAgent = useCallback((agent: DetectedAgent) => {
-    onSelect({ id: agent.id, name: agent.name });
+    onSelect({ id: agent.id, name: agent.name, kind: 'acp' });
+    setOpen(false);
+  }, [onSelect]);
+
+  const handleSelectRuntime = useCallback((agent: AgentRuntimeIdentity) => {
+    onSelect(agent);
     setOpen(false);
   }, [onSelect]);
 
@@ -148,13 +155,36 @@ export default function AgentSelectorCapsule({
       </button>
 
       {/* Divider */}
-      {installedAgents.length > 0 && (
+      {(nativeRuntimes.length > 0 || installedAgents.length > 0) && (
+        <div className="mx-2 my-1 border-t border-border/60" />
+      )}
+
+      {/* Native agent runtimes */}
+      {nativeRuntimes.map((agent) => {
+        const isSelected = selectedAgent?.kind === agent.kind && selectedAgent?.id === agent.id;
+        return (
+          <button
+            key={`${agent.kind}:${agent.id}`}
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            onClick={() => handleSelectRuntime(agent)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-muted"
+          >
+            <span className="w-2 h-2 rounded-full bg-[var(--amber)] shrink-0" />
+            <span className="flex-1 truncate">{agent.name}</span>
+            {isSelected && <Check size={11} className="shrink-0 text-[var(--amber)]" />}
+          </button>
+        );
+      })}
+
+      {nativeRuntimes.length > 0 && installedAgents.length > 0 && (
         <div className="mx-2 my-1 border-t border-border/60" />
       )}
 
       {/* Installed ACP agents */}
       {installedAgents.map((agent) => {
-        const isSelected = selectedAgent?.id === agent.id;
+        const isSelected = selectedAgent?.kind === 'acp' && selectedAgent?.id === agent.id;
         return (
           <button
             key={agent.id}

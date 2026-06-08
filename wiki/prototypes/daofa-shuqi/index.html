@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MindOS Wiki to Mind Prototype</title>
+  <style>
+    :root {
+      --bg: #121110;
+      --panel: #1d1b18;
+      --panel-2: #191816;
+      --card: #171613;
+      --card-2: #1f1d19;
+      --line: rgba(232, 228, 220, 0.075);
+      --line-strong: rgba(232, 228, 220, 0.13);
+      --text: #e8e4dc;
+      --muted: #91897d;
+      --faint: #625b52;
+      --amber: #d4954a;
+      --amber-dim: rgba(212, 149, 74, 0.18);
+      --amber-soft: rgba(212, 149, 74, 0.09);
+      --green: #83a877;
+      --blue: #7f9fbd;
+      --red: #c86b5d;
+      --radius: 8px;
+      --font: "IBM Plex Sans", "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 48px 280px minmax(0, 1fr);
+      background: var(--bg);
+    }
+
+    .rail {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 4px;
+      border-right: 1px solid var(--line);
+      background: #141310;
+    }
+
+    .logo {
+      width: 34px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 8px;
+      color: var(--amber);
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .rail-divider {
+      width: 30px;
+      height: 1px;
+      margin: 3px 0;
+      background: var(--line);
+    }
+
+    .rail-btn {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--muted);
+      cursor: default;
+      font-size: 17px;
+    }
+
+    .rail-btn.active {
+      background: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    .rail-btn.active::before {
+      content: "";
+      position: absolute;
+      left: -4px;
+      top: 10px;
+      width: 2px;
+      height: 20px;
+      border-radius: 2px;
+      background: var(--amber);
+    }
+
+    .sidebar {
+      min-width: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .panel-head {
+      height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px 0 16px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .panel-head strong {
+      color: var(--text);
+      font-weight: 680;
+      letter-spacing: 0.08em;
+    }
+
+    .head-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .icon-btn:hover {
+      background: rgba(232, 228, 220, 0.06);
+      color: var(--text);
+    }
+
+    .tree {
+      min-height: 0;
+      overflow: auto;
+      padding: 10px 8px 14px;
+    }
+
+    .tree-section {
+      margin: 12px 8px 6px;
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .tree-row {
+      min-width: 0;
+      min-height: 30px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 8px;
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .tree-row.child {
+      padding-left: 28px;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+    }
+
+    .tree-row.active {
+      background: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    .tree-row.pinned {
+      border: 1px solid rgba(212, 149, 74, 0.24);
+      background: var(--amber-soft);
+    }
+
+    .tree-row span:nth-child(2),
+    .tree-row strong {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tree-row strong {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .tree-row small {
+      color: var(--faint);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .workspace {
+      width: min(928px, calc(100vw - 384px));
+      margin: 0 auto;
+      padding: 56px 24px 80px;
+      overflow-x: hidden;
+    }
+
+    .title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .title > div {
+      min-width: 0;
+    }
+
+    .title::before {
+      content: "";
+      width: 4px;
+      height: 30px;
+      border-radius: 3px;
+      background: var(--amber);
+      box-shadow: 0 0 24px rgba(212, 149, 74, 0.24);
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 760;
+      letter-spacing: -0.01em;
+    }
+
+    .title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 76px;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .command {
+      min-width: 0;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card-2);
+      color: var(--muted);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.025) inset;
+    }
+
+    .command > * {
+      min-width: 0;
+    }
+
+    .command b {
+      color: var(--text);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .command span {
+      overflow-wrap: anywhere;
+    }
+
+    .kbd {
+      margin-left: auto;
+      min-width: 30px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: rgba(212, 149, 74, 0.22);
+      color: var(--amber);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .search-mini {
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      color: var(--muted);
+    }
+
+    .primary-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin: 18px 0 42px;
+    }
+
+    .new-btn {
+      height: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--amber);
+      color: #16120d;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .continue {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .continue strong {
+      color: #b8afa2;
+      font-weight: 600;
+    }
+
+    .section-head {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 720;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(232, 228, 220, 0.06);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .pill.amber {
+      background: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    .sort {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--card);
+      color: #b8afa2;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .spaces {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .space-card {
+      min-width: 0;
+      max-width: 100%;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 15px 16px 13px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      color: var(--muted);
+    }
+
+    .space-card.featured {
+      border-color: rgba(212, 149, 74, 0.28);
+      background: linear-gradient(180deg, rgba(212, 149, 74, 0.12), var(--card));
+    }
+
+    .space-card h2 {
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 680;
+    }
+
+    .space-card p {
+      margin: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .space-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 12px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .model-grid {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .model-chip {
+      min-height: 58px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(232, 228, 220, 0.035);
+    }
+
+    .model-chip b {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .model-chip span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .recent {
+      margin-top: 58px;
+    }
+
+    .recent-list {
+      border-top: 1px solid var(--line);
+    }
+
+    .recent-row {
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .recent-row strong {
+      display: block;
+      color: var(--text);
+      font-weight: 580;
+    }
+
+    .recent-row small {
+      color: var(--faint);
+    }
+
+    .tab-panels {
+      margin-top: 30px;
+    }
+
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+    }
+
+    .tab {
+      min-height: 28px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .tab.active {
+      background: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    @media (max-width: 1020px) {
+      .app {
+        grid-template-columns: 48px 270px minmax(0, 1fr);
+      }
+
+      .workspace {
+        width: calc(100vw - 318px);
+      }
+
+      .spaces {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .model-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        display: block;
+      }
+
+      .rail,
+      .sidebar {
+        display: none;
+      }
+
+      .workspace {
+        width: 100%;
+        padding: 22px 14px 56px;
+        max-width: 100vw;
+      }
+
+      .main,
+      .title,
+      .command,
+      .space-card,
+      .section-head,
+      .recent-row {
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      .title p {
+        max-width: calc(100vw - 42px);
+      }
+
+      .title {
+        margin-bottom: 18px;
+      }
+
+      .title h1 {
+        font-size: 25px;
+      }
+
+      .command-row,
+      .spaces,
+      .model-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .command {
+        height: auto;
+        min-height: 58px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: 12px 14px;
+      }
+
+      .command b {
+        white-space: normal;
+      }
+
+      .kbd {
+        margin-left: 0;
+      }
+
+      .command span:nth-of-type(2),
+      .command .kbd {
+        display: none;
+      }
+
+      .search-mini {
+        display: none;
+      }
+
+      .primary-row {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <nav class="rail" aria-label="Activity Bar">
+      <div class="logo">∞</div>
+      <button class="rail-btn" title="Inbox" aria-label="Inbox">▱</button>
+      <button class="rail-btn active" title="Mind" aria-label="Mind">⌬</button>
+      <button class="rail-btn" title="Search" aria-label="Search">⌕</button>
+      <button class="rail-btn" title="Agents" aria-label="Agents">⌘</button>
+      <div class="rail-divider"></div>
+      <button class="rail-btn" title="Discover" aria-label="Discover">◌</button>
+      <div style="flex:1"></div>
+      <button class="rail-btn" title="Settings" aria-label="Settings">⚙</button>
+    </nav>
+
+    <aside class="sidebar" aria-label="Mind file tree">
+      <header class="panel-head">
+        <strong>Mind</strong>
+        <span>+</span>
+        <div class="head-actions">
+          <button class="icon-btn" aria-label="Import">⇩</button>
+          <button class="icon-btn" aria-label="Refresh">↻</button>
+          <button class="icon-btn" aria-label="Collapse">×</button>
+          <button class="icon-btn" aria-label="More">…</button>
+        </div>
+      </header>
+
+      <div class="tree">
+        <div class="tree-section">Pinned model</div>
+        <div class="tree-row pinned active">
+          <span>⌬</span>
+          <strong>道法术器</strong>
+          <small>pin</small>
+        </div>
+        <div class="tree-row child">
+          <span>🎯</span>
+          <span>道 · 价值与方向.md</span>
+          <small>42</small>
+        </div>
+        <div class="tree-row child">
+          <span>🛡</span>
+          <span>法 · 规则与边界.md</span>
+          <small>31</small>
+        </div>
+        <div class="tree-row child">
+          <span>🧭</span>
+          <span>术 · 策略与方法.md</span>
+          <small>56</small>
+        </div>
+        <div class="tree-row child">
+          <span>🧰</span>
+          <span>器 · 工具与资产.md</span>
+          <small>68</small>
+        </div>
+
+        <div class="tree-section">Workspaces</div>
+        <div class="tree-row">
+          <span>🏠</span>
+          <strong>生活</strong>
+          <small>7</small>
+        </div>
+        <div class="tree-row child">
+          <span>📄</span>
+          <span>Routine.md</span>
+          <small></small>
+        </div>
+        <div class="tree-row child">
+          <span>📄</span>
+          <span>Focus.md</span>
+          <small></small>
+        </div>
+        <div class="tree-row">
+          <span>💼</span>
+          <strong>创业</strong>
+          <small>9</small>
+        </div>
+        <div class="tree-row child">
+          <span>🚀</span>
+          <span>Startup Skill Workflow.md</span>
+          <small></small>
+        </div>
+        <div class="tree-row child">
+          <span>📄</span>
+          <span>产品 taste.md</span>
+          <small></small>
+        </div>
+        <div class="tree-row">
+          <span>👤</span>
+          <strong>画像</strong>
+          <small>9</small>
+        </div>
+        <div class="tree-row child">
+          <span>📄</span>
+          <span>Identity.md</span>
+          <small></small>
+        </div>
+        <div class="tree-row child">
+          <span>🔗</span>
+          <span>Network.md</span>
+          <small></small>
+        </div>
+
+        <div class="tree-section">Inbox</div>
+        <div class="tree-row">
+          <span>▱</span>
+          <strong>Inbox</strong>
+          <small>12</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="workspace">
+        <div class="title">
+          <div>
+            <h1>Mind</h1>
+            <p>本地 Markdown 上的个人模型工作台。</p>
+          </div>
+        </div>
+
+        <div class="command-row">
+          <div class="command">
+            <span>✣</span>
+            <b>Organize inbox into Mind</b>
+            <span>抽取待审核 signal</span>
+            <span class="kbd">⌘/</span>
+          </div>
+          <div class="search-mini">⌕ ⌘K</div>
+        </div>
+
+        <div class="primary-row">
+          <button class="new-btn">✚ New Mind Note</button>
+          <div class="continue">→ <strong>Continue editing</strong> Profile/Mind/术.md</div>
+        </div>
+
+        <div class="section-head">
+          <div class="section-title">⌬ Pinned Model <span class="pill amber">4</span></div>
+          <button class="sort">Review 12</button>
+        </div>
+
+        <article class="space-card featured">
+          <h2>⌬ 道法术器</h2>
+          <p>固定在 sidebar 顶部。生活、创业、画像都读取这一层 model。</p>
+          <div class="model-grid">
+            <div class="model-chip"><b>道</b><span>价值、方向、长期判断</span></div>
+            <div class="model-chip"><b>法</b><span>规则、边界、不能越过的线</span></div>
+            <div class="model-chip"><b>术</b><span>策略、方法、可复用套路</span></div>
+            <div class="model-chip"><b>器</b><span>工具、资产、渠道、模板</span></div>
+          </div>
+        </article>
+
+        <div class="tab-panels">
+          <div class="section-head">
+            <div class="section-title">▣ Workspaces <span class="pill">3</span></div>
+            <div class="tabs" role="tablist" aria-label="Workspace views">
+              <button class="tab active" data-screen="life">生活</button>
+              <button class="tab" data-screen="startup">创业</button>
+              <button class="tab" data-screen="persona">画像</button>
+            </div>
+          </div>
+
+          <div class="screen active" id="life">
+            <div class="spaces">
+              <article class="space-card">
+                <h2>🏠 生活</h2>
+                <p>健康、家庭、日常节律。读取生活相关 claims。</p>
+                <div class="space-meta"><span>7 files</span><span>18 claims</span></div>
+              </article>
+              <article class="space-card">
+                <h2>🧘 节律</h2>
+                <p>把“不能被工作临时任务反复挤压”的判断转成可执行提醒。</p>
+                <div class="space-meta"><span>3 files</span><span>6 signals</span></div>
+              </article>
+              <article class="space-card">
+                <h2>📥 生活 Inbox</h2>
+                <p>家庭、身体、作息相关输入先进入 review，不自动写入稳定 Mind。</p>
+                <div class="space-meta"><span>local only</span><span>private</span></div>
+              </article>
+            </div>
+          </div>
+
+          <div class="screen" id="startup">
+            <div class="spaces">
+              <article class="space-card">
+                <h2>💼 创业</h2>
+                <p>产品 taste、发版纪律、渠道资产和团队边界。</p>
+                <div class="space-meta"><span>9 files</span><span>37 claims</span></div>
+              </article>
+              <article class="space-card">
+                <h2>🚀 产品判断</h2>
+                <p>一眼看出产品价值；真实可用优先于漂亮概念。</p>
+                <div class="space-meta"><span>术</span><span>高权重</span></div>
+              </article>
+              <article class="space-card">
+                <h2>🧰 资产</h2>
+                <p>渠道、模板、素材、账号和可调用能力进入“器”。</p>
+                <div class="space-meta"><span>器</span><span>12 assets</span></div>
+              </article>
+            </div>
+          </div>
+
+          <div class="screen" id="persona">
+            <div class="spaces">
+              <article class="space-card">
+                <h2>👤 个人画像</h2>
+                <p>偏好、工作风格、纠偏记录、Agent 协作方式。</p>
+                <div class="space-meta"><span>9 files</span><span>24 claims</span></div>
+              </article>
+              <article class="space-card">
+                <h2>🧭 协作方式</h2>
+                <p>希望 Agent 看真实环境、做完验证，而不是停在抽象建议。</p>
+                <div class="space-meta"><span>法</span><span>active</span></div>
+              </article>
+              <article class="space-card">
+                <h2>✎ 纠偏记录</h2>
+                <p>“不像产品”这类反馈写成具体约束，后续 demo 先对齐真实截图。</p>
+                <div class="space-meta"><span>evidence</span><span>3 conflicts</span></div>
+              </article>
+            </div>
+          </div>
+        </div>
+
+        <section class="recent">
+          <div class="section-head">
+            <div class="section-title">◷ Recently Edited <span class="pill">20</span></div>
+            <button class="sort">Change History</button>
+          </div>
+          <div class="recent-list">
+            <div class="recent-row">
+              <span>📄</span>
+              <div><strong>术 · 策略与方法.md</strong><small>Profile/Mind</small></div>
+              <span>just now</span>
+            </div>
+            <div class="recent-row">
+              <span>📄</span>
+              <div><strong>生活/Routine.md</strong><small>Workspaces/Life</small></div>
+              <span>2h ago</span>
+            </div>
+            <div class="recent-row">
+              <span>▱</span>
+              <div><strong>Mind review queue</strong><small>12 candidate signals</small></div>
+              <span>open</span>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const tabs = Array.from(document.querySelectorAll('.tab'));
+    const screens = Array.from(document.querySelectorAll('.screen'));
+    function activate(id) {
+      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.screen === id));
+      screens.forEach((screen) => screen.classList.toggle('active', screen.id === id));
+    }
+    tabs.forEach((tab) => tab.addEventListener('click', () => activate(tab.dataset.screen)));
+  </script>
+</body>
+</html>

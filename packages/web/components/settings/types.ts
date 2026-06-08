@@ -127,6 +127,16 @@ export interface AgentInfo {
   installedSkillNames?: string[];
   installedSkillCount?: number;
   installedSkillSourcePath?: string;
+  skillCapabilities?: {
+    mode: 'universal' | 'additional' | 'unsupported';
+    workspacePath: string;
+    visibility: 'global' | 'agent' | 'manual';
+    nativeSkillScope: 'none' | 'global' | 'native-private';
+    canLinkMindosSkills: boolean;
+    canReceiveLinkedSkills: boolean;
+    canExportNativeSkills: boolean;
+    linkStrategy: 'symlink' | 'copy' | 'manual' | 'unsupported';
+  };
   /** True for user-defined agents (not built-in). */
   isCustom?: boolean;
   /** Base directory for custom agents (used for UI display). */

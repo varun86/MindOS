@@ -58,6 +58,7 @@ describe('MindOS runtime product kernel contract', () => {
     expect(Object.keys(manifest.exports ?? {}).sort()).toEqual([
       '.',
       './agent',
+      './agent-runtime',
       './capabilities',
       './cli',
       './client',

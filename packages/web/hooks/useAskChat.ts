@@ -1,10 +1,10 @@
 'use client';
 
 import { useRef, useState, useCallback, useLayoutEffect } from 'react';
-import type { AgentIdentity, Message, ImagePart, AskMode, LocalAttachment } from '@/lib/types';
+import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, AskMode, LocalAttachment } from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
-import { annotateMessageWithAgent } from '@/lib/ask-agent';
+import { annotateMessageWithAgentRuntime } from '@/lib/ask-agent';
 import { isRetryableError, retryDelay, sleep } from '@/lib/agent/reconnect';
 
 export type LoadingPhase = 'connecting' | 'thinking' | 'streaming' | 'reconnecting';
@@ -15,14 +15,25 @@ export interface AskChatRefs {
   slashRef: React.RefObject<{ slashQuery: string | null }>;
   imageUploadRef: React.RefObject<{ images: ImagePart[]; clearImages: () => void }>;
   sessionRef: React.RefObject<{
+    activeSession?: {
+      externalAgentBinding?: {
+        runtime: 'acp' | 'codex' | 'claude';
+        externalSessionId?: string;
+        cwd?: string;
+      } | null;
+    } | null;
     messages: Message[];
     setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+    setSessionAgentRuntimeBinding?: (
+      runtime: AgentRuntimeIdentity,
+      binding?: { externalSessionId?: string; cwd?: string; updatedAt?: number },
+    ) => void;
   }>;
   uploadRef: React.RefObject<{
     localAttachments: LocalAttachment[];
   }>;
   selectedSkillRef: React.RefObject<{ name: string } | null>;
-  selectedAcpAgentRef: React.RefObject<AgentIdentity | null>;
+  selectedAgentRuntimeRef: React.RefObject<AgentRuntimeIdentity | null>;
   attachedFilesRef: React.RefObject<string[]>;
 }
 
@@ -139,7 +150,15 @@ export function useAskChat({
     if (hasLoadingUploads || ((!text && img.images.length === 0) || isLoadingRef.current)) return;
 
     const skill = refs.selectedSkillRef.current;
-    const acpAgent = refs.selectedAcpAgentRef.current;
+    const selectedRuntimeBase = refs.selectedAgentRuntimeRef.current;
+    const acpAgent: AgentIdentity | null = selectedRuntimeBase?.kind === 'acp'
+      ? { id: selectedRuntimeBase.id, name: selectedRuntimeBase.name }
+      : null;
+    const activeBinding = sess.activeSession?.externalAgentBinding;
+    const selectedRuntime = selectedRuntimeBase && activeBinding?.runtime === selectedRuntimeBase.kind && activeBinding.externalSessionId
+      ? { ...selectedRuntimeBase, externalSessionId: activeBinding.externalSessionId }
+      : selectedRuntimeBase;
+    const runtimeForMessage = selectedRuntimeBase ?? null;
     const pendingImages = img.images.length > 0 ? [...img.images] : undefined;
     // Only store explicitly user-chosen files (filter out auto-included currentFile)
     const explicitAttached = refs.attachedFilesRef.current.filter(f => f !== currentFile);
@@ -147,7 +166,7 @@ export function useAskChat({
     const pendingUploadedNames = upl.localAttachments
       .filter(f => f.status !== 'loading')
       .map(f => f.name);
-    const userMsg: Message = annotateMessageWithAgent({
+    const userMsg: Message = annotateMessageWithAgentRuntime({
       role: 'user',
       content: text,
       timestamp: Date.now(),
@@ -155,7 +174,7 @@ export function useAskChat({
       ...(pendingImages && { images: pendingImages }),
       ...(pendingAttachedFiles && { attachedFiles: pendingAttachedFiles }),
       ...(pendingUploadedNames.length > 0 && { uploadedFileNames: pendingUploadedNames }),
-    }, acpAgent);
+    }, runtimeForMessage);
     img.clearImages();
     const requestMessages = [...sess.messages, userMsg];
 
@@ -168,7 +187,7 @@ export function useAskChat({
     };
     retractedRef.current = false;
 
-    sess.setMessages([...requestMessages, annotateMessageWithAgent({ role: 'assistant', content: '', timestamp: Date.now() }, acpAgent)]);
+    sess.setMessages([...requestMessages, annotateMessageWithAgentRuntime({ role: 'assistant', content: '', timestamp: Date.now() }, runtimeForMessage)]);
 
     resetInputState();
 
@@ -202,8 +221,9 @@ export function useAskChat({
           content: f.content.length > 80_000
             ? f.content.slice(0, 80_000) + '\n\n[...truncated to first ~80000 chars]'
             : f.content,
-        })),
+      })),
       selectedAcpAgent: acpAgent,
+      selectedRuntime,
       mode: chatMode,
       providerOverride: providerOverride ?? undefined,
       modelOverride: modelOverride ?? undefined,
@@ -244,11 +264,22 @@ export function useAskChat({
           setLoadingPhase('streaming');
           refs.sessionRef.current?.setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = annotateMessageWithAgent(msg, acpAgent);
+            updated[updated.length - 1] = annotateMessageWithAgentRuntime(msg, runtimeForMessage);
             return updated;
           });
         },
         controller.signal,
+        {
+          onRuntimeBinding: (binding) => {
+            const currentRuntime = refs.selectedAgentRuntimeRef.current;
+            if (!currentRuntime || currentRuntime.kind !== binding.runtime) return;
+            refs.sessionRef.current?.setSessionAgentRuntimeBinding?.(currentRuntime, {
+              externalSessionId: binding.externalSessionId,
+              cwd: binding.cwd,
+              updatedAt: Date.now(),
+            });
+          },
+        },
       );
       return { finalMessage };
     };
@@ -264,7 +295,7 @@ export function useAskChat({
           setLoadingPhase('reconnecting');
           refs.sessionRef.current?.setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = annotateMessageWithAgent({ role: 'assistant', content: '', timestamp: Date.now() }, acpAgent);
+            updated[updated.length - 1] = annotateMessageWithAgentRuntime({ role: 'assistant', content: '', timestamp: Date.now() }, runtimeForMessage);
             return updated;
           });
           await sleep(retryDelay(attempt - 1), controller.signal);
@@ -276,7 +307,7 @@ export function useAskChat({
           if (!finalMessage.content.trim() && (!finalMessage.parts || finalMessage.parts.length === 0)) {
             refs.sessionRef.current?.setMessages(prev => {
               const updated = [...prev];
-              updated[updated.length - 1] = annotateMessageWithAgent({ role: 'assistant', content: `__error__${errorLabels.noResponse}` }, acpAgent);
+              updated[updated.length - 1] = annotateMessageWithAgentRuntime({ role: 'assistant', content: `__error__${errorLabels.noResponse}` }, runtimeForMessage);
               return updated;
             });
           }
@@ -302,7 +333,7 @@ export function useAskChat({
               const last = updated[lastIdx];
               const hasContent = last.content.trim() || (last.parts && last.parts.length > 0);
               if (!hasContent) {
-                updated[lastIdx] = annotateMessageWithAgent({ role: 'assistant', content: `__error__${errorLabels.stopped}` }, acpAgent);
+                updated[lastIdx] = annotateMessageWithAgentRuntime({ role: 'assistant', content: `__error__${errorLabels.stopped}` }, runtimeForMessage);
               }
             }
             return updated;
@@ -317,11 +348,11 @@ export function useAskChat({
             const last = updated[lastIdx];
             const hasContent = last.content.trim() || (last.parts && last.parts.length > 0);
             if (!hasContent) {
-              updated[lastIdx] = annotateMessageWithAgent({ role: 'assistant', content: `__error__${errMsg}` }, acpAgent);
+              updated[lastIdx] = annotateMessageWithAgentRuntime({ role: 'assistant', content: `__error__${errMsg}` }, runtimeForMessage);
               return updated;
             }
           }
-          return [...updated, annotateMessageWithAgent({ role: 'assistant', content: `__error__${errMsg}` }, acpAgent)];
+          return [...updated, annotateMessageWithAgentRuntime({ role: 'assistant', content: `__error__${errMsg}` }, runtimeForMessage)];
         });
       }
     } finally {

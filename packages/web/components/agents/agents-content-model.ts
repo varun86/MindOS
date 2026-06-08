@@ -237,19 +237,31 @@ export function aggregateCrossAgentMcpServers(agents: AgentInfo[]): CrossAgentMc
 export interface CrossAgentSkill {
   skillName: string;
   agents: string[];
+  sourcePaths: string[];
 }
 
 export function aggregateCrossAgentSkills(agents: AgentInfo[]): CrossAgentSkill[] {
   const map = new Map<string, string[]>();
+  const sourceMap = new Map<string, Set<string>>();
   for (const agent of agents) {
     for (const skill of agent.installedSkillNames ?? []) {
       const existing = map.get(skill);
       if (existing) existing.push(agent.name);
       else map.set(skill, [agent.name]);
+
+      if (agent.installedSkillSourcePath) {
+        const sources = sourceMap.get(skill) ?? new Set<string>();
+        sources.add(agent.installedSkillSourcePath);
+        sourceMap.set(skill, sources);
+      }
     }
   }
   return [...map.entries()]
-    .map(([skillName, agentNames]) => ({ skillName, agents: agentNames }))
+    .map(([skillName, agentNames]) => ({
+      skillName,
+      agents: agentNames,
+      sourcePaths: [...(sourceMap.get(skillName) ?? new Set<string>())],
+    }))
     .sort((a, b) => b.agents.length - a.agents.length || a.skillName.localeCompare(b.skillName));
 }
 
@@ -279,11 +291,15 @@ export function filterSkillsForAgentDetail(
 
 /* ────────── Unified Skill List (MindOS + Native) ────────── */
 
+export type SkillAvailability = 'global' | 'linked' | 'native-private';
+
 export interface UnifiedSkillItem {
   name: string;
   kind: 'mindos' | 'native';
   mindosSkill?: SkillInfo;
   agents: string[];
+  availability: SkillAvailability;
+  sourcePath?: string;
   capability: SkillCapability;
   enabled: boolean;
   source: 'builtin' | 'user' | 'native';
@@ -304,17 +320,21 @@ export function buildUnifiedSkillList(
   crossAgentSkills: CrossAgentSkill[],
 ): UnifiedSkillItem[] {
   const mindosNames = new Set(mindosSkills.map((s) => s.name));
-  const crossMap = new Map<string, string[]>();
-  for (const cs of crossAgentSkills) crossMap.set(cs.skillName, cs.agents);
+  const crossMap = new Map<string, CrossAgentSkill>();
+  for (const cs of crossAgentSkills) crossMap.set(cs.skillName, cs);
 
   const result: UnifiedSkillItem[] = [];
 
   for (const skill of mindosSkills) {
+    const crossSkill = crossMap.get(skill.name);
+    const agents = crossSkill?.agents ?? [];
     result.push({
       name: skill.name,
       kind: 'mindos',
       mindosSkill: skill,
-      agents: crossMap.get(skill.name) ?? [],
+      agents,
+      availability: resolveMindosSkillAvailability(agents),
+      sourcePath: skill.path,
       capability: capabilityForSkill(skill),
       enabled: skill.enabled,
       source: skill.source,
@@ -328,6 +348,8 @@ export function buildUnifiedSkillList(
       name: cs.skillName,
       kind: 'native',
       agents: cs.agents,
+      availability: 'native-private',
+      sourcePath: cs.sourcePaths[0],
       capability: capabilityFromText(cs.skillName),
       enabled: true,
       source: 'native',
@@ -336,6 +358,12 @@ export function buildUnifiedSkillList(
   }
 
   return result;
+}
+
+function resolveMindosSkillAvailability(agentNames: string[]): SkillAvailability {
+  if (agentNames.length === 0) return 'global';
+  if (agentNames.includes('MindOS') || agentNames.length > 1) return 'global';
+  return 'linked';
 }
 
 export function groupUnifiedSkills(skills: UnifiedSkillItem[]): Record<SkillCapability, UnifiedSkillItem[]> {

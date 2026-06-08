@@ -61,6 +61,7 @@ export type SkillsPostPayload = {
 export type SkillsPostHandlerServices = {
   mindRoot: string;
   skillRoots: MindosSkillRoot[];
+  trustedNativeSkillRoots?: string[];
   readSettings(): MindosSkillsSettings;
   writeSettings(settings: MindosSkillsSettings): void;
 };
@@ -149,7 +150,7 @@ export function handleSkillsPost(
       if (!name || !payload.sourcePath) {
         return json({ error: 'name and sourcePath required' }, { status: 400 });
       }
-      return readNativeSkill(name, payload.sourcePath, services.skillRoots);
+      return readNativeSkill(name, payload.sourcePath, services.skillRoots, services.trustedNativeSkillRoots);
 
     case 'record-install':
       return recordSkillInstall(payload, settings, services);
@@ -360,9 +361,10 @@ function readNativeSkill(
   name: string,
   sourcePath: string,
   skillRoots: MindosSkillRoot[],
+  trustedNativeSkillRoots: string[] = [],
 ): MindosServerResponse<{ content: string; description?: string } | { error: string }> {
   const nativeBase = resolve(sourcePath);
-  if (!isRegisteredSkillRoot(nativeBase, skillRoots)) {
+  if (!isRegisteredSkillRoot(nativeBase, skillRoots, trustedNativeSkillRoots)) {
     return json({ error: 'Invalid sourcePath' }, { status: 400 });
   }
   const nativeSkillFile = resolve(nativeBase, name, 'SKILL.md');
@@ -384,8 +386,9 @@ function readNativeSkill(
   return json({ content, description: parseSkillMd(content).description });
 }
 
-function isRegisteredSkillRoot(sourcePath: string, skillRoots: MindosSkillRoot[]): boolean {
-  return skillRoots.some((root) => resolve(root.path) === sourcePath);
+function isRegisteredSkillRoot(sourcePath: string, skillRoots: MindosSkillRoot[], trustedNativeSkillRoots: string[]): boolean {
+  if (skillRoots.some((root) => resolve(root.path) === sourcePath)) return true;
+  return trustedNativeSkillRoots.some((root) => resolve(root) === sourcePath);
 }
 
 function recordSkillInstall(

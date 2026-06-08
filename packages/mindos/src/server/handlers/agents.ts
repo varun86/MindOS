@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { errorResponse, json, type MindosServerResponse } from '../response.js';
@@ -49,7 +49,10 @@ export type DetectCustomAgentResult = {
 
 export type AgentCopySkillPayload = {
   skillName?: string;
+  sourcePath?: string;
   targetPath?: string;
+  strategy?: 'auto' | 'copy' | 'symlink';
+  dryRun?: boolean;
 };
 
 export type AgentCopySkillServices = {
@@ -614,15 +617,59 @@ async function copyDirectoryRecursive(sourcePath: string, targetPath: string): P
 function findSkillSourcePath(skillName: string, skillRoots: MindosRuntimeSkillRoot[]): string | null {
   for (const root of skillRoots) {
     const candidate = join(root.path, skillName);
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(join(candidate, 'SKILL.md'))) return candidate;
   }
   return null;
+}
+
+function resolveRequestedSkillSourcePath(
+  skillName: string,
+  sourcePath: string | undefined,
+  services: AgentCopySkillServices,
+): string | null | { error: string; status: number } {
+  if (!sourcePath?.trim()) return findSkillSourcePath(skillName, services.skillRoots);
+
+  const rawSourcePath = sourcePath.trim();
+  if (hasParentDirectorySegment(rawSourcePath)) return { error: 'Invalid source path', status: 400 };
+  if (!isAgentAbsoluteInputPath(rawSourcePath)) return { error: 'Source path must be absolute (starting with / or ~/)', status: 400 };
+
+  const homeDir = services.homeDir ?? homedir();
+  const expandedSourcePath = expandAgentHome(rawSourcePath, homeDir).replace(/\/$/, '');
+  const sourceAsRoot = join(expandedSourcePath, skillName);
+  if (existsSync(join(sourceAsRoot, 'SKILL.md'))) return sourceAsRoot;
+  if (existsSync(join(expandedSourcePath, 'SKILL.md')) && basename(expandedSourcePath) === skillName) return expandedSourcePath;
+  return null;
+}
+
+function resolveSkillCopyOperation(strategy: AgentCopySkillPayload['strategy']): 'copy' | 'symlink' {
+  return strategy === 'symlink' || strategy === 'auto' ? 'symlink' : 'copy';
+}
+
+async function writeSkillToTarget(
+  sourcePath: string,
+  targetSkillPath: string,
+  operation: 'copy' | 'symlink',
+  copyDirectory: AgentCopySkillServices['copyDirectory'],
+): Promise<'copy' | 'symlink'> {
+  if (operation === 'symlink') {
+    symlinkSync(sourcePath, targetSkillPath, process.platform === 'win32' ? 'junction' : 'dir');
+    return 'symlink';
+  }
+  await (copyDirectory ?? copyDirectoryRecursive)(sourcePath, targetSkillPath);
+  return 'copy';
 }
 
 export async function handleAgentCopySkillPost(
   body: AgentCopySkillPayload,
   services: AgentCopySkillServices,
-): Promise<MindosServerResponse<{ success: true; skillName: string; targetPath: string } | { error: string }>> {
+): Promise<MindosServerResponse<{
+  success: true;
+  dryRun: boolean;
+  skillName: string;
+  operation: 'copy' | 'symlink';
+  sourcePath: string;
+  targetPath: string;
+} | { error: string }>> {
   try {
     if (!body.skillName?.trim()) return json({ error: 'skillName is required' }, { status: 400 });
     if (!body.targetPath?.trim()) return json({ error: 'targetPath is required' }, { status: 400 });
@@ -638,7 +685,8 @@ export async function handleAgentCopySkillPost(
       return json({ error: 'Target path must be absolute (starting with / or ~/)' }, { status: 400 });
     }
 
-    const sourcePath = findSkillSourcePath(skillName, services.skillRoots);
+    const sourcePath = resolveRequestedSkillSourcePath(skillName, body.sourcePath, services);
+    if (sourcePath && typeof sourcePath === 'object') return json({ error: sourcePath.error }, { status: sourcePath.status });
     if (!sourcePath) return json({ error: `Skill "${skillName}" not found` }, { status: 404 });
 
     const homeDir = services.homeDir ?? homedir();
@@ -648,9 +696,14 @@ export async function handleAgentCopySkillPost(
       return json({ error: `Skill "${skillName}" already exists in target directory` }, { status: 409 });
     }
 
+    const operation = resolveSkillCopyOperation(body.strategy ?? 'copy');
+    if (body.dryRun) {
+      return json({ success: true, dryRun: true, skillName, operation, sourcePath, targetPath: targetSkillPath });
+    }
+
     mkdirSync(dirname(targetSkillPath), { recursive: true });
-    await (services.copyDirectory ?? copyDirectoryRecursive)(sourcePath, targetSkillPath);
-    return json({ success: true, skillName, targetPath: targetSkillPath });
+    const actualOperation = await writeSkillToTarget(sourcePath, targetSkillPath, operation, services.copyDirectory);
+    return json({ success: true, dryRun: false, skillName, operation: actualOperation, sourcePath, targetPath: targetSkillPath });
   } catch (error) {
     return errorResponse(error);
   }

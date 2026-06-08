@@ -47,6 +47,7 @@ export type MindOSSSEvent =
   | { type: 'thinking_delta'; delta: string }
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_end'; toolCallId: string; output: string; isError: boolean }
+  | { type: 'runtime_binding'; runtime: 'acp' | 'codex' | 'claude'; externalSessionId: string; cwd?: string }
   | { type: 'done'; usage?: { input: number; output: number } }
   | { type: 'error'; message: string }
   | { type: 'status'; message: string };
@@ -56,6 +57,7 @@ export const MINDOS_ASK_STREAM_EVENT_TYPES = [
   'thinking_delta',
   'tool_start',
   'tool_end',
+  'runtime_binding',
   'done',
   'error',
   'status',

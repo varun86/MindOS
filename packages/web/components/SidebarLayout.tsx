@@ -16,6 +16,7 @@ import SpaceInitToast from './SpaceInitToast';
 import OrganizeToast from './OrganizeToast';
 import { MobileSyncDot, useSyncStatus } from './SyncStatusBar';
 import { FileNode } from '@/lib/types';
+import type { MindSystemSlot } from '@/lib/mind-system';
 import { useLocale } from '@/lib/stores/locale-store';
 import { telemetry } from '@/lib/telemetry';
 import dynamic from 'next/dynamic';
@@ -34,7 +35,7 @@ import { useAiOrganize } from '@/hooks/useAiOrganize';
 import { useInboxOrganizeController } from '@/hooks/useInboxOrganizeController';
 import { InboxOrganizeProvider } from '@/components/inbox/InboxOrganizeContext';
 import { quickDropToInbox } from '@/lib/inbox-upload';
-import { recoverStaleCapturePanel } from '@/lib/navigation-panel';
+import { getActiveLeftPanel, getContentRoutePanel, getRouteControlledPanel, recoverStaleCapturePanel } from '@/lib/navigation-panel';
 import type { Tab } from './settings/types';
 import { RIGHT_AGENT_DETAIL_PANEL } from '@/lib/config/panel-sizes';
 
@@ -42,7 +43,25 @@ const noop = () => {};
 
 const SearchPanel = dynamic(() => import('./panels/SearchPanel'), { ssr: false });
 const CapturePanel = dynamic(() => import('./panels/CapturePanel'), { ssr: false });
-const AgentsPanel = dynamic(() => import('./panels/AgentsPanel'), { ssr: false });
+function AgentsPanelLoading() {
+  const { t } = useLocale();
+  const p = t.panels.agents;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="h-[46px] shrink-0 border-b border-border px-4 flex items-center">
+        <span className="text-sm font-medium text-foreground">{p.title}</span>
+      </div>
+      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+        {p.acpLoading}
+      </div>
+    </div>
+  );
+}
+
+const AgentsPanel = dynamic(() => import('./panels/AgentsPanel'), {
+  ssr: false,
+  loading: AgentsPanelLoading,
+});
 const DiscoverPanel = dynamic(() => import('./panels/DiscoverPanel'), { ssr: false });
 const EchoPanel = dynamic(() => import('./panels/EchoPanel'), { ssr: false });
 const WorkflowsPanel = dynamic(() => import('./panels/WorkflowsPanel'), { ssr: false });
@@ -67,10 +86,11 @@ function collectDirPaths(nodes: FileNode[], prefix = ''): string[] {
 
 interface SidebarLayoutProps {
   fileTree: FileNode[];
+  mindSystemSlots: MindSystemSlot[];
   children: React.ReactNode;
 }
 
-export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps) {
+export default function SidebarLayout({ fileTree, mindSystemSlots, children }: SidebarLayoutProps) {
   // ── Left panel state (extracted hook) ──
   const lp = useLeftPanel();
 
@@ -188,10 +208,10 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  const routePanel = pathname?.startsWith('/capture') ? 'capture' : null;
-  const activeLeftPanel = routePanel ?? lp.activePanel;
-  const agentsContentActive = pathname?.startsWith('/agents');
-  const railActivePanel = activeLeftPanel ?? (agentsContentActive ? 'agents' : null);
+  const routePanel = getRouteControlledPanel(pathname);
+  const contentRoutePanel = getContentRoutePanel(pathname);
+  const activeLeftPanel = getActiveLeftPanel(pathname, lp.activePanel);
+  const railActivePanel = activeLeftPanel ?? contentRoutePanel;
   const agentDockOpen = agentDetailKey !== null && activeLeftPanel === 'agents';
   const routeControlledPanel = activeLeftPanel !== lp.activePanel;
   const panelOpen = activeLeftPanel !== null;
@@ -304,20 +324,15 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
     return () => cancelAnimationFrame(id);
   }, [pathname]);
 
-  // Deep-link Echo routes: keep left Echo panel aligned with URL
+  // Deep-link workbench routes keep their matching left panel aligned with URL.
+  // Files/Mind routes are intentionally excluded so users can close that panel
+  // while still staying on /wiki or /view/* content.
   useEffect(() => {
-    if (pathname?.startsWith('/echo')) {
-      lp.setActivePanel('echo');
+    const panel = getRouteControlledPanel(pathname);
+    if (panel) {
+      lp.setActivePanel(panel);
     }
   }, [pathname, lp.setActivePanel]);
-
-  // Capture is a first-class workbench with its own rail panel.
-  // Keep deep links and reloads aligned with the Capture panel instead of Files.
-  useEffect(() => {
-    if (pathname?.startsWith('/capture') && lp.activePanel !== 'capture') {
-      lp.setActivePanel('capture');
-    }
-  }, [pathname, lp.activePanel, lp.setActivePanel]);
 
   // When leaving Inbox, a slow RSC transition can let the `/capture` alignment
   // effect run after the destination click and leave the Inbox panel pinned over
@@ -499,47 +514,47 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       <ActivityBar
         activePanel={railActivePanel}
         onPanelChange={lp.setActivePanel}
-        onEchoClick={() => {
+        onEchoClick={(event) => {
           exitAskMaximized();
           const wasActive = activeLeftPanel === 'echo';
           const onEchoRoute = pathname?.startsWith('/echo');
           if (!wasActive) {
             lp.setActivePanel('echo');
-            router.push('/echo/about-you');
           } else if (!onEchoRoute) {
-            router.push('/echo/about-you');
+            lp.setActivePanel('echo');
           } else {
-            lp.setActivePanel(null);
+            event.preventDefault();
+            lp.setActivePanel('echo');
           }
         }}
-        onAgentsClick={() => {
+        onAgentsClick={(event) => {
           exitAskMaximized();
           const wasActive = activeLeftPanel === 'agents';
           const onAgentsRoute = pathname?.startsWith('/agents');
           if (!wasActive) {
             lp.setActivePanel('agents');
-            router.push('/agents');
           } else if (!onAgentsRoute) {
-            router.push('/agents');
+            lp.setActivePanel('agents');
           } else {
-            lp.setActivePanel(null);
+            event.preventDefault();
+            lp.setActivePanel('agents');
           }
           setAgentDetailKey(null);
         }}
-        onDiscoverClick={() => {
+        onDiscoverClick={(event) => {
           exitAskMaximized();
           const wasActive = activeLeftPanel === 'discover';
           const onDiscoverRoute = pathname?.startsWith('/explore');
           if (!wasActive) {
             lp.setActivePanel('discover');
-            router.push('/explore');
           } else if (!onDiscoverRoute) {
-            router.push('/explore');
+            lp.setActivePanel('discover');
           } else {
-            lp.setActivePanel(null);
+            event.preventDefault();
+            lp.setActivePanel('discover');
           }
         }}
-        onSpacesClick={() => {
+        onSpacesClick={(event) => {
           exitAskMaximized();
           const isHome = pathname === '/';
           const wasActive = activeLeftPanel === 'files';
@@ -547,10 +562,10 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
           // On homepage, always navigate to /wiki (don't toggle off)
           if (isHome || !wasActive) {
             lp.setActivePanel('files');
-            router.push('/wiki');
           } else if (!onFilesRoute) {
-            router.push('/wiki');
+            lp.setActivePanel('files');
           } else {
+            event.preventDefault();
             lp.setActivePanel(null);
           }
         }}
@@ -564,6 +579,7 @@ export default function SidebarLayout({ fileTree, children }: SidebarLayoutProps
       <Panel
         activePanel={activeLeftPanel}
         fileTree={fileTree}
+        mindSystemSlots={mindSystemSlots}
         onNavigate={noop}
         onOpenSyncSettings={openSyncSettings}
         railWidth={lp.railWidth}

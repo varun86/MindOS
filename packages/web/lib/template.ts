@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getProjectRoot } from './project-root';
+import { ensureMindSystemConfig } from './mind-system';
 
 /**
  * Recursively copy `src` to `dest`, skipping files that already exist in dest.
@@ -49,4 +50,5 @@ export function applyTemplate(template: string, destDir: string): void {
   }
 
   copyRecursive(templateDir, destDir);
+  ensureMindSystemConfig(destDir);
 }

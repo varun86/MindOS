@@ -3,6 +3,7 @@ import type { AgentInfo, SkillInfo } from '@/components/settings/types';
 import {
   aggregateCrossAgentMcpServers,
   aggregateCrossAgentSkills,
+  buildUnifiedSkillList,
   buildMcpRiskQueue,
   createBulkSkillTogglePlan,
   filterAgentsForMcpWorkspace,
@@ -202,10 +203,11 @@ describe('aggregateCrossAgentMcpServers', () => {
 describe('aggregateCrossAgentSkills', () => {
   it('aggregates skills across agents (normal path)', () => {
     const result = aggregateCrossAgentSkills([
-      { ...agents[0], installedSkillNames: ['mindos', 'custom-a'] } as AgentInfo,
-      { ...agents[1], installedSkillNames: ['mindos'] } as AgentInfo,
+      { ...agents[0], installedSkillNames: ['mindos', 'custom-a'], installedSkillSourcePath: '/tmp/cursor/skills' } as AgentInfo,
+      { ...agents[1], installedSkillNames: ['mindos'], installedSkillSourcePath: '/tmp/ghost/skills' } as AgentInfo,
     ]);
     expect(result.find((s) => s.skillName === 'mindos')?.agents).toHaveLength(2);
+    expect(result.find((s) => s.skillName === 'mindos')?.sourcePaths).toEqual(['/tmp/cursor/skills', '/tmp/ghost/skills']);
     expect(result.find((s) => s.skillName === 'custom-a')?.agents).toHaveLength(1);
   });
 
@@ -214,5 +216,35 @@ describe('aggregateCrossAgentSkills', () => {
       { ...agents[0], installedSkillNames: [] } as AgentInfo,
     ]);
     expect(result).toHaveLength(0);
+  });
+});
+
+describe('buildUnifiedSkillList', () => {
+  it('marks MindOS skills as global or linked and native-only skills as private', () => {
+    const result = buildUnifiedSkillList([
+      { name: 'mindos', description: 'MindOS context', path: '/skills/mindos/SKILL.md', source: 'builtin', enabled: true, editable: false },
+      { name: 'taste-skill', description: 'Design taste', path: '/mind/.skills/taste-skill/SKILL.md', source: 'user', enabled: true, editable: true },
+    ], [
+      { skillName: 'mindos', agents: ['MindOS', 'Claude Code', 'Codex'], sourcePaths: ['/Users/test/.agents/skills'] },
+      { skillName: 'taste-skill', agents: ['Codex'], sourcePaths: ['/Users/test/.codex/skills'] },
+      { skillName: 'native-only', agents: ['Claude Code'], sourcePaths: ['/Users/test/.claude/skills'] },
+    ]);
+
+    expect(result.find((skill) => skill.name === 'mindos')).toMatchObject({
+      kind: 'mindos',
+      availability: 'global',
+      agents: ['MindOS', 'Claude Code', 'Codex'],
+    });
+    expect(result.find((skill) => skill.name === 'taste-skill')).toMatchObject({
+      kind: 'mindos',
+      availability: 'linked',
+      agents: ['Codex'],
+    });
+    expect(result.find((skill) => skill.name === 'native-only')).toMatchObject({
+      kind: 'native',
+      availability: 'native-private',
+      agents: ['Claude Code'],
+      sourcePath: '/Users/test/.claude/skills',
+    });
   });
 });

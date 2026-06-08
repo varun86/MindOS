@@ -72,6 +72,7 @@ describe('MindOS session event contract', () => {
       'thinking_delta',
       'tool_start',
       'tool_end',
+      'runtime_binding',
       'done',
       'error',
       'status',
@@ -84,6 +85,17 @@ describe('MindOS session event contract', () => {
     const encoded = encodeMindosSseEvent({ type: 'text_delta', delta: 'hello' });
     expect(encoded).toBe('data:{"type":"text_delta","delta":"hello"}\n\n');
     expect(parseMindosSseLine(encoded.trim())).toEqual({ type: 'text_delta', delta: 'hello' });
+    expect(parseMindosSseLine(encodeMindosSseEvent({
+      type: 'runtime_binding',
+      runtime: 'codex',
+      externalSessionId: 'thr_123',
+      cwd: '/tmp/mind',
+    }).trim())).toEqual({
+      type: 'runtime_binding',
+      runtime: 'codex',
+      externalSessionId: 'thr_123',
+      cwd: '/tmp/mind',
+    });
     expect(parseMindosSseLine('event: ping')).toBeNull();
     expect(parseMindosSseLine('data: not-json')).toBeNull();
   });

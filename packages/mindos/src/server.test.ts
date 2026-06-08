@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -1330,6 +1330,13 @@ describe('MindOS product server contract', () => {
       status: 400,
       body: { error: 'Invalid sourcePath' },
     });
+    expect(handleSkillsPost({ action: 'read-native', name: 'secret-skill', sourcePath: outsideRoot }, {
+      ...services,
+      trustedNativeSkillRoots: [outsideRoot],
+    })).toMatchObject({
+      status: 200,
+      body: { content: expect.stringContaining('secret') },
+    });
 
     expect(handleSkillsPost({ action: 'toggle', name: 'user-skill', enabled: false }, services)).toMatchObject({
       status: 200,
@@ -1514,6 +1521,7 @@ describe('MindOS product server contract', () => {
     const home = mkdtempSync(join(tmpdir(), 'mindos-agent-home-'));
     const agentRoot = join(home, '.qclaw');
     mkdirSync(join(agentRoot, 'skills', 'agent-skill'), { recursive: true });
+    writeFileSync(join(agentRoot, 'skills', 'agent-skill', 'SKILL.md'), '# Agent Skill');
     writeFileSync(join(agentRoot, 'mcp.json'), JSON.stringify({
       mcpServers: {
         mindos: { command: 'mindos' },
@@ -1589,6 +1597,65 @@ describe('MindOS product server contract', () => {
       body: { success: true, skillName: 'mindos', targetPath: join(targetRoot, 'mindos') },
     });
     expect(existsSync(join(targetRoot, 'mindos', 'SKILL.md'))).toBe(true);
+
+    const nativeSourceRoot = join(agentRoot, 'skills');
+    const linkedTargetRoot = join(home, '.claude', 'skills');
+
+    await expect(handleAgentCopySkillPost({
+      skillName: 'agent-skill',
+      sourcePath: nativeSourceRoot,
+      targetPath: linkedTargetRoot,
+      strategy: 'symlink',
+      dryRun: true,
+    }, {
+      skillRoots: [{ path: skillRoot, source: 'builtin', origin: 'project-builtin', editable: false }],
+      homeDir: home,
+    })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        success: true,
+        dryRun: true,
+        skillName: 'agent-skill',
+        operation: 'symlink',
+        sourcePath: join(nativeSourceRoot, 'agent-skill'),
+        targetPath: join(linkedTargetRoot, 'agent-skill'),
+      },
+    });
+    expect(existsSync(join(linkedTargetRoot, 'agent-skill'))).toBe(false);
+
+    await expect(handleAgentCopySkillPost({
+      skillName: 'agent-skill',
+      sourcePath: nativeSourceRoot,
+      targetPath: linkedTargetRoot,
+      strategy: 'symlink',
+    }, {
+      skillRoots: [{ path: skillRoot, source: 'builtin', origin: 'project-builtin', editable: false }],
+      homeDir: home,
+    })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        success: true,
+        dryRun: false,
+        skillName: 'agent-skill',
+        operation: 'symlink',
+        sourcePath: join(nativeSourceRoot, 'agent-skill'),
+        targetPath: join(linkedTargetRoot, 'agent-skill'),
+      },
+    });
+    expect(lstatSync(join(linkedTargetRoot, 'agent-skill')).isSymbolicLink()).toBe(true);
+
+    await expect(handleAgentCopySkillPost({
+      skillName: 'agent-skill',
+      sourcePath: nativeSourceRoot,
+      targetPath: linkedTargetRoot,
+      strategy: 'copy',
+    }, {
+      skillRoots: [{ path: skillRoot, source: 'builtin', origin: 'project-builtin', editable: false }],
+      homeDir: home,
+    })).resolves.toMatchObject({
+      status: 409,
+      body: { error: 'Skill "agent-skill" already exists in target directory' },
+    });
   });
 
   it('installs and uninstalls MCP config entries from the product runtime', async () => {
@@ -1927,6 +1994,28 @@ describe('MindOS product server contract', () => {
       installedSkillNames: ['mindos'],
       hiddenRootPresent: true,
       runtimeLastActivityAt: '2026-04-30T00:00:00.000Z',
+      skillCapabilities: {
+        mode: 'universal',
+        visibility: 'global',
+        nativeSkillScope: 'global',
+        canLinkMindosSkills: true,
+        canReceiveLinkedSkills: true,
+        canExportNativeSkills: true,
+        linkStrategy: 'symlink',
+      },
+    });
+    expect(profiles[1]).toMatchObject({
+      key: 'claude-code',
+      skillMode: 'additional',
+      skillCapabilities: {
+        mode: 'additional',
+        visibility: 'agent',
+        nativeSkillScope: 'none',
+        canLinkMindosSkills: true,
+        canReceiveLinkedSkills: true,
+        canExportNativeSkills: false,
+        linkStrategy: 'symlink',
+      },
     });
     expect(profiles[2]).toMatchObject({
       key: 'custom-one',
@@ -1937,6 +2026,15 @@ describe('MindOS product server contract', () => {
       customBaseDir: '~/.custom/',
       configuredMcpServers: ['mindos', 'search'],
       installedSkillNames: ['mindos'],
+      skillCapabilities: {
+        mode: 'additional',
+        visibility: 'agent',
+        nativeSkillScope: 'native-private',
+        canLinkMindosSkills: true,
+        canReceiveLinkedSkills: true,
+        canExportNativeSkills: true,
+        linkStrategy: 'symlink',
+      },
     });
   });
 
@@ -3655,9 +3753,11 @@ describe('MindOS product server contract', () => {
       messages: [{ role: 'user', content: 'hello' }],
       mode: 'chat',
       attachedFiles: ['note.md', 123],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
       askStream: async function* (input) {
-        yield { type: 'status', message: `mode=${input.mode}` };
+        yield { type: 'status', message: `mode=${input.mode};runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
         yield { type: 'text_delta', delta: String(input.messages[0]?.content ?? '') };
         yield { type: 'done' };
       },
@@ -3668,9 +3768,51 @@ describe('MindOS product server contract', () => {
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
-      { type: 'status', message: 'mode=chat' },
+      { type: 'status', message: 'mode=chat;runtime=codex:codex' },
       { type: 'text_delta', delta: 'hello' },
       { type: 'done' },
+    ]);
+  });
+
+  it('normalizes legacy selected ACP agent into an ACP runtime selection', async () => {
+    const valid = handleAskStream({
+      messages: [{ role: 'user', content: 'hello' }],
+      selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
+    }, {
+      askStream: async function* (input) {
+        yield { type: 'status', message: `${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
+      },
+    });
+
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) throw new Error('expected ask stream');
+    const events = [];
+    for await (const event of valid.body) events.push(event);
+    expect(events).toEqual([
+      { type: 'status', message: 'acp:claude' },
+    ]);
+  });
+
+  it('honors an explicit null runtime selection over legacy ACP selection', async () => {
+    const valid = handleAskStream({
+      messages: [{ role: 'user', content: 'hello' }],
+      selectedRuntime: null,
+      selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
+    }, {
+      askStream: async function* (input) {
+        yield {
+          type: 'status',
+          message: input.selectedRuntime === null ? 'runtime:none' : 'runtime:unexpected',
+        };
+      },
+    });
+
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) throw new Error('expected ask stream');
+    const events = [];
+    for await (const event of valid.body) events.push(event);
+    expect(events).toEqual([
+      { type: 'status', message: 'runtime:none' },
     ]);
   });
 

@@ -35,7 +35,7 @@ describe('AgentSelectorCapsule', () => {
   it('renders selected-agent clear as a sibling button, not nested interactive content', () => {
     const html = renderToStaticMarkup(
       <AgentSelectorCapsule
-        selectedAgent={{ id: 'codex', name: 'Codex' }}
+        selectedAgent={{ id: 'codex', name: 'Codex', kind: 'codex' }}
         onSelect={vi.fn()}
         installedAgents={[]}
         loading={false}

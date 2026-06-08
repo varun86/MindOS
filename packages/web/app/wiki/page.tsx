@@ -1,5 +1,6 @@
 import { readSetupPending } from '@/lib/setup-state';
-import { getRecentlyModified, getFileTree, getFileContent } from '@/lib/fs';
+import { getRecentlyModified, getFileTree, getFileContent, getMindRoot } from '@/lib/fs';
+import { listMindSystemSlots } from '@/lib/mind-system';
 import WikiHomeContent from '@/components/WikiHomeContent';
 import ClientRedirect from '@/components/ClientRedirect';
 import type { FileNode } from '@/lib/core/types';
@@ -52,6 +53,7 @@ export default function WikiPage() {
   }
 
   const spaces = getTopLevelDirs();
+  const mindSystemSlots = listMindSystemSlots(getMindRoot());
 
-  return <WikiHomeContent spaces={spaces} recent={recent} />;
+  return <WikiHomeContent spaces={spaces} recent={recent} mindSystemSlots={mindSystemSlots} />;
 }

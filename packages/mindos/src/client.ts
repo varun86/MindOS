@@ -49,6 +49,14 @@ export type MindosSearchOptions = {
 
 export type MindosSettings = Record<string, unknown>;
 
+export type MindosAgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
+
+export type MindosSelectedRuntime = {
+  id: string;
+  name: string;
+  kind: MindosAgentRuntimeKind;
+};
+
 export type MindosAskStreamRequest = {
   messages: Array<Record<string, unknown>>;
   currentFile?: string;
@@ -56,6 +64,7 @@ export type MindosAskStreamRequest = {
   uploadedFiles?: Array<{ name: string; content: string }>;
   maxSteps?: number;
   mode?: 'chat' | 'agent' | 'organize';
+  selectedRuntime?: MindosSelectedRuntime | null;
   selectedAcpAgent?: { id: string; name: string } | null;
   providerOverride?: string;
   modelOverride?: string;
