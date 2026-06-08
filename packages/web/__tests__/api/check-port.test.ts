@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
+import { createServer } from 'node:net';
 
 async function importRoute() {
   return await import('../../app/api/setup/check-port/route');
@@ -14,6 +15,26 @@ function makeReq(body: Record<string, unknown>, port?: number) {
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
   });
+}
+
+async function getFreePort(): Promise<number> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const port = await new Promise<number>((resolve, reject) => {
+      const server = createServer();
+      server.unref();
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        const allocatedPort = typeof address === 'object' && address ? address.port : 0;
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve(allocatedPort);
+        });
+      });
+    });
+    if (port >= 1024) return port;
+  }
+  throw new Error('Could not allocate a valid free test port');
 }
 
 describe('POST /api/setup/check-port — validation', () => {
@@ -45,8 +66,7 @@ describe('POST /api/setup/check-port — validation', () => {
 describe('POST /api/setup/check-port — availability', () => {
   it('reports available for unused high port', async () => {
     const { POST } = await importRoute();
-    // Use a random high port unlikely to be in use
-    const port = 49152 + Math.floor(Math.random() * 10000);
+    const port = await getFreePort();
     const res = await POST(makeReq({ port }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -67,8 +87,8 @@ describe('POST /api/setup/check-port — self-detection', () => {
 
   it('does NOT mark a different port as self', async () => {
     const { POST } = await importRoute();
-    // Request arrives on 3013, but checking a random unused port
-    const unusedPort = 49152 + Math.floor(Math.random() * 10000);
+    // Request arrives on 3013, but checks a real free port.
+    const unusedPort = await getFreePort();
     const res = await POST(makeReq({ port: unusedPort }, 3013));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -89,8 +109,7 @@ describe('POST /api/setup/check-port — self-detection', () => {
   it('falls back to network check when no port in request URL', async () => {
     const { POST } = await importRoute();
     // No port in URL → getListeningPort returns 0 → no fast path
-    // Use a random unused port, so TCP check should report available
-    const unusedPort = 49152 + Math.floor(Math.random() * 10000);
+    const unusedPort = await getFreePort();
     const res = await POST(makeReq({ port: unusedPort }));
     expect(res.status).toBe(200);
     const body = await res.json();

@@ -3145,11 +3145,32 @@ describe('MindOS product server contract', () => {
     expect(cliCalls[0].args).not.toContain('tok');
     expect(daemonCalls).toContainEqual({ action: 'restart', mindRoot });
 
-    await expect(handleSyncPost({ action: 'init', remote: 'ssh://git@example.com/mind/repo.git', branch: 'main' }, services)).resolves.toMatchObject({
+    await expect(handleSyncPost({ action: 'init', remote: 'https://oauth2:ghp_secret@example.com/repo.git', branch: 'main' }, services)).resolves.toMatchObject({
       status: 200,
       body: { success: true, message: 'Sync initialized' },
     });
     expect(cliCalls[1]).toEqual({
+      args: ['sync', 'init', '--non-interactive', '--remote', 'https://example.com/repo.git', '--branch', 'main'],
+      timeoutMs: 120000,
+      envOverrides: { MINDOS_SYNC_TOKEN: 'ghp_secret' },
+    });
+    expect(JSON.stringify(cliCalls[1].args)).not.toContain('ghp_secret');
+
+    await expect(handleSyncPost({ action: 'init', remote: 'https://alice@example.com/repo.git', branch: 'main' }, services)).resolves.toMatchObject({
+      status: 200,
+      body: { success: true, message: 'Sync initialized' },
+    });
+    expect(cliCalls[2]).toEqual({
+      args: ['sync', 'init', '--non-interactive', '--remote', 'https://example.com/repo.git', '--branch', 'main'],
+      timeoutMs: 120000,
+      envOverrides: undefined,
+    });
+
+    await expect(handleSyncPost({ action: 'init', remote: 'ssh://git@example.com/mind/repo.git', branch: 'main' }, services)).resolves.toMatchObject({
+      status: 200,
+      body: { success: true, message: 'Sync initialized' },
+    });
+    expect(cliCalls[3]).toEqual({
       args: ['sync', 'init', '--non-interactive', '--remote', 'ssh://git@example.com/mind/repo.git', '--branch', 'main'],
       timeoutMs: 120000,
       envOverrides: undefined,
@@ -3159,7 +3180,7 @@ describe('MindOS product server contract', () => {
       status: 400,
       body: { error: 'Invalid branch name' },
     });
-    expect(cliCalls).toHaveLength(2);
+    expect(cliCalls).toHaveLength(4);
 
     expect(await handleSyncPost({ action: 'update-intervals', autoCommitInterval: 60 }, services)).toMatchObject({
       status: 200,
@@ -3394,6 +3415,45 @@ describe('MindOS product server contract', () => {
     });
     expect(await handleSyncGet(services)).not.toMatchObject({
       body: { configured: true },
+    });
+  });
+
+  it('preserves previous sync context when enabled sync is broken', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-broken-context-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(join(mindRoot, '.git'), { recursive: true });
+
+    const services = {
+      readConfig: () => ({
+        mindRoot,
+        sync: { enabled: true, provider: 'git', autoCommitInterval: 45, autoPullInterval: 600 },
+      }),
+      readState: () => ({
+        lastSync: '2026-05-09T10:00:00Z',
+        lastPull: '2026-05-09T09:59:00Z',
+        conflicts: ['note.md'],
+        lastError: 'previous failure',
+      }),
+      isGitRepo: () => true,
+      getRemoteUrl: () => null,
+      getBranch: () => 'main',
+      syncLockDir: join(root, 'locks'),
+    };
+
+    await expect(handleSyncGet(services)).resolves.toMatchObject({
+      status: 200,
+      body: {
+        enabled: true,
+        needsSetup: true,
+        remote: '(not configured)',
+        branch: 'main',
+        lastSync: '2026-05-09T10:00:00Z',
+        lastPull: '2026-05-09T09:59:00Z',
+        conflicts: [{ file: 'note.md' }],
+        lastError: 'previous failure',
+        autoCommitInterval: 45,
+        autoPullInterval: 600,
+      },
     });
   });
 

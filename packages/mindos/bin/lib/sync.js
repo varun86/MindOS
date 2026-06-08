@@ -429,10 +429,14 @@ function autoCommitAndPush(mindRoot, isSshUrl = false) {
 }
 
 function autoCommitAndPushUnlocked(mindRoot, isSshUrl = false) {
-  const sshEnv = isSshUrl ? getSshEnv() : {};
-  const pushEnv = { ...process.env, ...sshEnv };
+  commitPendingChangesUnlocked(mindRoot);
+  pushHeadUnlocked(mindRoot, isSshUrl);
+}
 
-  // Stage and commit any pending changes
+function commitPendingChangesUnlocked(mindRoot) {
+  // Stage and commit any pending changes before a pull/push operation. Initial
+  // sync needs this too, otherwise a populated remote can overwrite untracked
+  // local notes before MindOS has put them under version control.
   try {
     ensureGitIdentity(mindRoot);
     execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
@@ -446,6 +450,11 @@ function autoCommitAndPushUnlocked(mindRoot, isSshUrl = false) {
     saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
     throw new Error(message);
   }
+}
+
+function pushHeadUnlocked(mindRoot, isSshUrl = false) {
+  const sshEnv = isSshUrl ? getSshEnv() : {};
+  const pushEnv = { ...process.env, ...sshEnv };
 
   // Always try to push (even if no new commit — there may be unpushed commits from previous runs)
   try {
@@ -456,6 +465,64 @@ function autoCommitAndPushUnlocked(mindRoot, isSshUrl = false) {
     saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
     throw new Error(message); // Let caller know push failed
   }
+}
+
+function resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, failurePrefix = 'Pull failed') {
+  let conflicts = [];
+  let conflictWarnings = [];
+  try {
+    conflicts = gitExec(['diff', '--name-only', '--diff-filter=U'], mindRoot).split('\n').filter(Boolean);
+    if (conflicts.length === 0) {
+      const message = gitFailureMessage(failurePrefix, mergeErr);
+      saveSyncState({
+        ...loadSyncState(),
+        lastError: message,
+        lastErrorTime: new Date().toISOString(),
+      });
+      const pullFailure = new Error(message);
+      pullFailure.code = 'MINDOS_PULL_FAILED';
+      throw pullFailure;
+    }
+
+    // Keep the local file in place and save the remote version beside it so the
+    // settings UI can offer an explicit keep-local / keep-remote choice.
+    for (const file of conflicts) {
+      try {
+        const theirs = execFileSync('git', ['show', `:3:${file}`], { cwd: mindRoot, encoding: 'utf-8' });
+        writeFileSync(getSyncConflictBackupPath(mindRoot, file), theirs, 'utf-8');
+      } catch {
+        conflictWarnings.push(file);
+      }
+      try { execFileSync('git', ['checkout', '--ours', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
+    }
+    execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+    try {
+      execFileSync('git', ['-c', 'core.editor=true', 'commit', '--no-edit'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+    } catch (commitErr) {
+      try {
+        execFileSync('git', ['commit', '-m', 'auto-sync: resolved conflicts (kept local versions)'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+      } catch {
+        saveSyncState({
+          ...loadSyncState(),
+          lastError: gitFailureMessage('Conflict commit failed', commitErr),
+          lastErrorTime: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (err) {
+    saveSyncState({ ...loadSyncState(), lastError: err.message, lastErrorTime: new Date().toISOString() });
+    if (err?.code === 'MINDOS_PULL_FAILED') throw err;
+  }
+
+  if (conflicts.length > 0) {
+    const now = new Date().toISOString();
+    saveSyncState({
+      ...loadSyncState(),
+      lastPull: now,
+      conflicts: conflicts.map(f => ({ file: f, time: now, noBackup: conflictWarnings.includes(f) })),
+    });
+  }
+  return conflicts;
 }
 
 function autoPull(mindRoot, isSshUrl = false) {
@@ -485,62 +552,7 @@ function autoPullUnlocked(mindRoot, isSshUrl = false) {
       execFileSync('git', ['pull', '--no-rebase'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
       saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
     } catch (mergeErr) {
-      let conflicts = [];
-      let conflictWarnings = [];
-      try {
-        conflicts = gitExec(['diff', '--name-only', '--diff-filter=U'], mindRoot).split('\n').filter(Boolean);
-        if (conflicts.length === 0) {
-          const message = gitFailureMessage('Pull failed', mergeErr);
-          saveSyncState({
-            ...loadSyncState(),
-            lastError: message,
-            lastErrorTime: new Date().toISOString(),
-          });
-          const pullFailure = new Error(message);
-          pullFailure.code = 'MINDOS_PULL_FAILED';
-          throw pullFailure;
-        }
-
-        // merge conflict → keep both versions
-        for (const file of conflicts) {
-          try {
-            const theirs = execFileSync('git', ['show', `:3:${file}`], { cwd: mindRoot, encoding: 'utf-8' });
-            writeFileSync(getSyncConflictBackupPath(mindRoot, file), theirs, 'utf-8');
-          } catch {
-            conflictWarnings.push(file);
-          }
-          try { execFileSync('git', ['checkout', '--ours', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
-        }
-        execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
-        // --no-edit avoids editor prompt for merge commit. Do not create empty
-        // "resolved conflicts" commits when Git has no actual merge changes.
-        try {
-          execFileSync('git', ['-c', 'core.editor=true', 'commit', '--no-edit'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
-        } catch (commitErr) {
-          // If merge commit fails (e.g. nothing to commit), try explicit message
-          try {
-            execFileSync('git', ['commit', '-m', 'auto-sync: resolved conflicts (kept local versions)'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
-          } catch {
-            saveSyncState({
-              ...loadSyncState(),
-              lastError: gitFailureMessage('Conflict commit failed', commitErr),
-              lastErrorTime: new Date().toISOString(),
-            });
-          }
-        }
-      } catch (err) {
-        // Even if commit fails, record the error — conflicts are still saved below
-        saveSyncState({ ...loadSyncState(), lastError: err.message, lastErrorTime: new Date().toISOString() });
-        if (err?.code === 'MINDOS_PULL_FAILED') throw err;
-      }
-      // Always save conflicts (even if commit failed) so UI can show resolution buttons
-      if (conflicts.length > 0) {
-        saveSyncState({
-          ...loadSyncState(),
-          lastPull: new Date().toISOString(),
-          conflicts: conflicts.map(f => ({ file: f, time: new Date().toISOString(), noBackup: conflictWarnings.includes(f) })),
-        });
-      }
+      resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, 'Pull failed');
     }
   }
 
@@ -825,16 +837,15 @@ export async function initSync(mindRoot, opts = {}) {
           throw new Error(message);
         }
         if (!nonInteractive) console.log(dim('Pulling from remote...'));
+        commitPendingChangesUnlocked(mindRoot);
         try {
           const pullEnv = isSshUrl ? { ...process.env, ...getSshEnv() } : process.env;
-          execFileSync('git', ['pull', 'origin', syncConfig.branch, '--allow-unrelated-histories'], { cwd: mindRoot, stdio: nonInteractive ? 'pipe' : 'inherit', env: pullEnv, timeout: 120000 });
+          execFileSync('git', ['pull', '--no-rebase', 'origin', syncConfig.branch, '--allow-unrelated-histories'], { cwd: mindRoot, stdio: nonInteractive ? 'pipe' : 'inherit', env: pullEnv, timeout: 120000 });
           saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
-          autoCommitAndPushUnlocked(mindRoot, isSshUrl);
         } catch (err) {
-          const message = gitFailureMessage('Initial pull failed', err);
-          saveSyncState({ ...loadSyncState(), lastError: message, lastErrorTime: new Date().toISOString() });
-          throw new Error(message);
+          resolveMergeConflictsKeepingLocal(mindRoot, err, 'Initial pull failed');
         }
+        pushHeadUnlocked(mindRoot, isSshUrl);
       } else {
         if (!nonInteractive) console.log(dim('Pushing to remote...'));
         autoCommitAndPushUnlocked(mindRoot, isSshUrl);

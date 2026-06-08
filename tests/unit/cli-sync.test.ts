@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,6 +48,44 @@ async function importSync() {
     startSyncDaemon: (mindRoot: string) => Promise<unknown>;
     stopSyncDaemon: () => void;
   };
+}
+
+function runGit(args: string[], cwd: string): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'MindOS Test',
+      GIT_AUTHOR_EMAIL: 'mindos-test@example.com',
+      GIT_COMMITTER_NAME: 'MindOS Test',
+      GIT_COMMITTER_EMAIL: 'mindos-test@example.com',
+    },
+  }).trim();
+}
+
+function commitAll(cwd: string, message: string): void {
+  runGit(['add', '-A'], cwd);
+  runGit(['commit', '-m', message], cwd);
+}
+
+function createBareRemoteWithFiles(files: Record<string, string>): string {
+  const remotePath = path.join(tempDir, `remote-${Math.random().toString(16).slice(2)}.git`);
+  const seedPath = path.join(tempDir, `seed-${Math.random().toString(16).slice(2)}`);
+  fs.mkdirSync(seedPath, { recursive: true });
+  runGit(['init', '--bare', remotePath], tempDir);
+  runGit(['init'], seedPath);
+  runGit(['checkout', '-B', 'main'], seedPath);
+  for (const [file, content] of Object.entries(files)) {
+    const fullPath = path.join(seedPath, file);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, 'utf-8');
+  }
+  commitAll(seedPath, 'seed remote');
+  runGit(['remote', 'add', 'origin', remotePath], seedPath);
+  runGit(['push', '-u', 'origin', 'main'], seedPath);
+  return remotePath;
 }
 
 describe('mindos sync config persistence', () => {
@@ -248,11 +287,61 @@ describe('mindos sync config persistence', () => {
       branch: 'main',
     });
 
-    expect(calls).toContainEqual(['pull', 'origin', 'main', '--allow-unrelated-histories']);
+    expect(calls).toContainEqual(['pull', '--no-rebase', 'origin', 'main', '--allow-unrelated-histories']);
     expect(calls.some(args => args[0] === 'commit' && args[1] === '-m')).toBe(true);
     expect(calls).toContainEqual(['push', '-u', 'origin', 'HEAD']);
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     expect(config.sync.enabled).toBe(true);
+  });
+
+  it('initializes sync when local and remote already have unrelated non-conflicting commits', async () => {
+    const remotePath = createBareRemoteWithFiles({ 'remote.md': 'remote\n' });
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(mindRoot);
+    runGit(['init'], mindRoot);
+    runGit(['checkout', '-B', 'main'], mindRoot);
+    fs.writeFileSync(path.join(mindRoot, 'local.md'), 'local\n', 'utf-8');
+    commitAll(mindRoot, 'local content');
+
+    const { initSync } = await importSync();
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: remotePath,
+      branch: 'main',
+    })).resolves.toBeUndefined();
+
+    expect(fs.readFileSync(path.join(mindRoot, 'local.md'), 'utf-8')).toBe('local\n');
+    expect(fs.readFileSync(path.join(mindRoot, 'remote.md'), 'utf-8')).toBe('remote\n');
+    expect(JSON.parse(fs.readFileSync(configPath, 'utf-8')).sync).toMatchObject({
+      enabled: true,
+      branch: 'main',
+      remote: 'origin',
+    });
+    expect(runGit(['rev-list', '--count', 'origin/main..HEAD'], mindRoot)).toBe('0');
+  });
+
+  it('keeps local content and records a conflict backup during initial sync conflicts', async () => {
+    const remotePath = createBareRemoteWithFiles({ 'note.md': 'remote\n' });
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(mindRoot);
+    runGit(['init'], mindRoot);
+    runGit(['checkout', '-B', 'main'], mindRoot);
+    fs.writeFileSync(path.join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    commitAll(mindRoot, 'local note');
+
+    const { initSync, getSyncConflictBackupPath } = await importSync();
+    await expect(initSync(mindRoot, {
+      nonInteractive: true,
+      remote: remotePath,
+      branch: 'main',
+    })).resolves.toBeUndefined();
+
+    expect(fs.readFileSync(path.join(mindRoot, 'note.md'), 'utf-8')).toBe('local\n');
+    expect(fs.readFileSync(getSyncConflictBackupPath(mindRoot, 'note.md'), 'utf-8')).toBe('remote\n');
+    expect(fs.readFileSync(path.join(mindRoot, 'note.md'), 'utf-8')).not.toContain('<<<<<<<');
+    const state = JSON.parse(fs.readFileSync(path.join(mindosDir, 'sync-state.json'), 'utf-8'));
+    expect(state.conflicts).toEqual([expect.objectContaining({ file: 'note.md' })]);
+    expect(JSON.parse(fs.readFileSync(configPath, 'utf-8')).sync.enabled).toBe(true);
   });
 
   it('does not write HTTPS access tokens into the configured remote URL', async () => {

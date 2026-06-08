@@ -1,11 +1,25 @@
 import type { Request, Response, NextFunction } from 'express'
-import { createError } from '@geminilight/mindos/foundation'
+import { ZodError } from 'zod'
 import type { Logger } from '@geminilight/mindos/foundation'
 import type { ErrorResponse } from './types.js'
 
 export function errorHandler(logger: Logger) {
   return (err: any, req: Request, res: Response, next: NextFunction) => {
     logger.error('API error', err instanceof Error ? err : new Error(err.message), { path: req.path })
+
+    if (err instanceof ZodError) {
+      const response: ErrorResponse = {
+        error: 'INVALID_REQUEST',
+        message: 'Invalid request body',
+        details: err.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+          code: issue.code,
+        })),
+      }
+
+      return res.status(400).json(response)
+    }
 
     const statusCode = err.statusCode || 500
     const response: ErrorResponse = {
@@ -26,8 +40,12 @@ export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json(response)
 }
 
-export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) {
+export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<any> | any) {
   return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next)
+    try {
+      Promise.resolve(fn(req, res, next)).catch(next)
+    } catch (error) {
+      next(error)
+    }
   }
 }

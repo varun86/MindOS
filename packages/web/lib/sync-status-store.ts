@@ -194,12 +194,15 @@ export function useSyncStatus() {
     getSyncStatusSnapshot,
     getSyncStatusSnapshot,
   );
-  const fetchStatus = useCallback(() => fetchSharedSyncStatus({ force: true }), []);
+  const fetchStatus = useCallback(
+    (opts: { throwOnError?: boolean } = {}) => fetchSharedSyncStatus({ force: true, throwOnError: opts.throwOnError }),
+    [],
+  );
 
   return { status, loaded, error, stale, fetchStatus };
 }
 
-export function useSyncAction(refreshFn: () => Promise<void>, syncT?: Record<string, unknown>) {
+export function useSyncAction(refreshFn: (opts?: { throwOnError?: boolean }) => Promise<void>, syncT?: Record<string, unknown>) {
   const syncing = useSyncExternalStore(
     subscribeSyncAction,
     getSharedSyncingSnapshot,

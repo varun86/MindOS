@@ -121,7 +121,8 @@ describe('ApiServer', () => {
         .post('/api/search/search')
         .send({ query: '', limit: 10 })
 
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
+      expect(response.body).toHaveProperty('error', 'INVALID_REQUEST')
     })
 
     it('should handle search errors', async () => {
@@ -193,7 +194,8 @@ describe('ApiServer', () => {
         .post('/api/index/index')
         .send({ path: '' })
 
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
+      expect(response.body).toHaveProperty('error', 'INVALID_REQUEST')
     })
 
     it('should handle indexing errors', async () => {

@@ -278,9 +278,11 @@
 **规则**：
 - CLI 测试需要使用临时 `HOME`，并写入隔离的 `.mindos/config.json`
 - ProcessManager / Desktop host 测试使用高位测试端口，不要复用产品默认端口
+- Web API 端口检查测试不要用随机高端口当作“未占用”代理；应通过 `server.listen(0)` 向 OS 申请真实空闲端口后再断言
+- Release smoke 里的 standalone server verifier 也不能使用随机端口段；应同样向 OS 申请空闲端口，否则本地 dev server 或其他测试进程会让 release 偶发失败
 - 断言启动逻辑时优先 mock/spawn test fixture，不依赖本机是否已有 MindOS 进程
 
-**验证**：`pnpm exec vitest run tests/unit/cli-update-root.test.ts packages/desktop/src/process-manager-hostname.test.ts`。
+**验证**：`pnpm exec vitest run tests/unit/cli-update-root.test.ts packages/desktop/src/process-manager-hostname.test.ts tests/package-publish-contract.test.ts`；`pnpm --filter @mindos/web exec vitest run __tests__/api/check-port.test.ts`；`node scripts/verify-standalone.mjs`。
 
 ### Expo mobile export 需要显式声明 pnpm 下的运行时依赖和资源
 
@@ -3926,6 +3928,16 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`packages/mindos/src/server.test.ts` 的 `returns client errors for invalid HTTP JSON bodies` 覆盖 400 invalid JSON 和 413 oversized body。
 
+### Retrieval API schema 校验错误不能返回 500（2026-06-09）
+
+**症状**：`@mindos/api` 的 search/index endpoint 收到空 query 或空 path 时，测试名写的是 should return 400，但旧断言和运行时都返回 500。release pre-push 在高并发测试压力下还会把这个脆弱路径表现成超时，掩盖真实客户端输入错误。
+
+**根因**：Express route 使用 Zod `schema.parse()` 抛出校验错误后统一进入通用 `errorHandler`，而 `errorHandler` 不识别 `ZodError`，默认当作 `INTERNAL_ERROR` 返回 500。
+
+**修复**：`packages/retrieval/api/src/middleware.ts` 识别 `ZodError` 并返回 `400 INVALID_REQUEST`，响应只暴露字段 path、message、code；同时 `asyncHandler` 用 try/catch 捕获真正的同步 throw。
+
+**防回归**：`packages/retrieval/api/src/middleware.test.ts` 覆盖 Zod error -> 400 和同步 throw；`packages/retrieval/api/src/server.test.ts` 覆盖 invalid search query / invalid index request 均返回 400。
+
 ### Workflow 名称不能直接拼进 YAML title（2026-05-10）
 
 **症状**：创建 workflow 时如果名称包含换行，例如 `Bad\nsteps:\n- id: injected`，服务端会把它直接替换到 `title: {TITLE}`，生成的 `.flow.yaml` 被注入额外字段或步骤；极端文件名也可能落到平台文件系统错误。
@@ -4208,14 +4220,15 @@ const visibleNodes = useMemo(() => {
 1. `configured && !enabled` 必须是 `paused`，不能当作 `off`；但 `paused` 只是自动化开关状态，优先级必须低于 `conflicts` / `lastError` / `unknown` / `unpushed`，否则会把用户真正要处理的问题藏起来。
 2. GET `/api/sync` 失败但已有旧状态时必须标记 `stale`，任何健康卡和底栏都不能继续给纯成功文案。
 3. 非数字 `unpushed` 要显示为 `unknown`，不能用 `Number(...) || 0` 隐式吞掉。
-4. 所有手动 Sync Now 入口必须共享一个 action in-flight 状态；锁冲突 `SYNC_LOCKED` 要显示友好文案，不能泄露 owner/pid。
+4. 所有手动 Sync Now 和首次 Connect 入口必须共享一个 action in-flight 状态；锁冲突 `SYNC_LOCKED` 要显示友好文案，不能泄露 owner/pid。
 5. 手动 sync 返回后必须刷新状态并按最终状态决定提示：有 conflicts/lastError/stale 时不能显示成功 toast。
 6. Settings 里隐藏 init 进度不是取消后端 Git 进程；UI 不能立刻暴露第二次 Connect，应显示后台仍在运行并等待原请求完成。
 7. `.gitignore` 保存必须补回 `*.sync-conflict` / `INSTRUCTION.md` 等受保护条目；冲突 preview 失败不能阻止 `Keep local`，因为保留本地不依赖远程备份文件。
 8. stale cached status 如果会落入未配置表单或 broken reset 分支，必须先显示 stale retry UI，不能继续暴露 Connect / Reset 这类会改 Git 配置的操作；但已配置仓库里的 `.gitignore` 保存成功 + 刷新失败仍应保留编辑器和 warning。
 9. 移动端 Sync 入口不能在 `off` / `synced` 时渲染成空按钮；必须有稳定图标，异常/待处理状态用 badge，aria-label 要用具体 sync label。
+10. Settings 里的 on/off/reset/update-intervals 等 mutating action 必须在 POST 成功后再做一次严格 GET 刷新；刷新失败时只能显示刷新失败 warning，不能复用旧缓存显示成功。
 
-**防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused attention 优先级、unknown 和 lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight、冲突/unknown 后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale、paused+conflicts、`.gitignore` 保存刷新、隐藏 init 进度、preview 失败后 Keep local、preview 成功后 Keep remote、auto-sync 开关和 interval 保存；`packages/web/__tests__/components/sync-status-bar.test.tsx` 覆盖移动端 sync 入口可见性和具体 aria label；`packages/web/__tests__/components/sync-popover.test.tsx` 覆盖 paused conflict recovery 和窄屏 popover clamp；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
+**防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused attention 优先级、unknown 和 lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight、冲突/unknown 后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale、paused+conflicts、`.gitignore` 保存刷新、隐藏 init 进度、preview 失败后 Keep local、preview 成功后 Keep remote、auto-sync 开关、interval 保存、reset 刷新失败、HTTPS token required 和首次 setup lock 格式化；`packages/web/__tests__/components/sync-status-bar.test.tsx` 覆盖移动端 sync 入口可见性和具体 aria label；`packages/web/__tests__/components/sync-popover.test.tsx` 覆盖 paused conflict recovery 和窄屏 popover clamp；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
 
 ### Git Sync reset/reconfigure/dirty 状态不能复用 paused 旧语义（2026-06-09）
 
@@ -4241,12 +4254,13 @@ const visibleNodes = useMemo(() => {
 
 **规则**：
 1. 自动提交前要保证 repo-local `user.email` / `user.name` 存在；只能写当前 mindRoot 的 local config，不能改用户全局 Git 配置。
-2. HTTPS remote 写入 `origin` 前必须剥离 username/password；显式 token 或 embedded password 只能交给 Git credential helper。
+2. HTTPS remote 写入 `origin` 或传给 CLI 子进程前必须剥离 username/password；显式 token 或 embedded password 只能交给 Git credential helper / `MINDOS_SYNC_TOKEN` 环境变量，不能出现在 `.git/config`、argv 或日志里。普通 HTTPS username 可以被剥离，但不能误当成 token 写入环境变量。
 3. credential helper 无法通过 `git credential fill` 验证 token 已存住时，必须明确失败并写 `sync-state.json`，禁止把 token fallback 到 inline remote URL。
-4. 若 `ls-remote` 显示远端已有 refs，init 必须 pull 后继续 auto-commit/push 本地待同步文件，只有完整首轮同步成功后才能写 `sync.enabled=true`。
+4. 若 `ls-remote` 显示远端已有 refs，init 必须先提交本地待同步文件，再用显式 merge 策略执行 `git pull --no-rebase --allow-unrelated-histories`，最后 push 本地 HEAD；只有完整首轮同步成功后才能写 `sync.enabled=true`。
 5. SSH 预检不能靠默认 key 文件名或 `SSH_AUTH_SOCK` 直接拒绝；自定义 config、硬件 key、平台 agent 要交给 `git ls-remote` 作为 source of truth，且 UI/API/CLI 都要接受 Git 原生 `ssh://git@host/org/repo.git`。
+6. 首次 merge pull 遇到同名文件冲突时，MindOS 要保留本地内容、把远端版本保存到 `<file>.sync-conflict`，并把冲突写入 sync state；不要让 Git 的 divergent-branch fatal 或未解决 index 把用户卡在半配置状态。
 
-**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote、`ssh://` remote 走 SSH 环境；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 和 `packages/mindos/src/server.test.ts` 覆盖 `ssh://` init；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
+**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、divergent histories merge、首轮冲突备份、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote、`ssh://` remote 走 SSH 环境；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 和 `packages/mindos/src/server.test.ts` 覆盖 `ssh://` init、HTTPS setup 表单 token required、embedded token 不进 argv，以及普通 username 不进 token env；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
 
 ### Git Sync daemon 不能只在启动时读取配置（2026-06-09）
 

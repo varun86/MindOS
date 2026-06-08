@@ -188,6 +188,9 @@ describe('product npm publish contract', () => {
   it('standalone verification exercises server-rendered Web pages, not only health', () => {
     const verifyStandalone = readText('scripts/verify-standalone.mjs');
 
+    expect(verifyStandalone).toContain('createTcpServer');
+    expect(verifyStandalone).toContain("server.listen(0, '127.0.0.1'");
+    expect(verifyStandalone).not.toContain('31000 + Math.floor(Math.random() * 5000)');
     expect(verifyStandalone).toContain("waitHttpOk('/', 30_000");
     expect(verifyStandalone).toContain('/api/health');
   });

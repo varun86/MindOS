@@ -528,6 +528,19 @@ export function SyncTab({ t, visible }: SyncTabProps) {
     }, 3000);
   }, []);
 
+  const refreshAfterAction = useCallback(async () => {
+    try {
+      await fetchStatus({ throwOnError: true });
+      return true;
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      const prefix = (syncT?.statusRefreshFailed as string)
+        ?? 'The change may have been saved, but MindOS could not refresh sync status. Retry status refresh before continuing.';
+      setMessage({ type: 'error', text: `${prefix}\n${formatSyncError(raw, syncT)}` });
+      return false;
+    }
+  }, [fetchStatus, syncT]);
+
   const clearResetConfirmation = useCallback(() => {
     setConfirmingReset(false);
     if (resetConfirmTimerRef.current) clearTimeout(resetConfirmTimerRef.current);
@@ -572,7 +585,8 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
-      await fetchStatus();
+      const refreshed = await refreshAfterAction();
+      if (!refreshed) return;
       showSuccess(status.enabled ? ((syncT?.autoSyncDisabled as string) ?? 'Auto-sync disabled') : ((syncT?.autoSyncEnabled as string) ?? 'Auto-sync enabled'));
     } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.toggleFailed as string) ?? 'Failed to toggle sync');
@@ -599,7 +613,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reset' }),
       });
-      await fetchStatus();
+      await refreshAfterAction();
     } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.resetFailed as string) ?? 'Failed to reset sync configuration');
       setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
@@ -618,7 +632,8 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-intervals', ...patch }),
       });
-      await fetchStatus();
+      const refreshed = await refreshAfterAction();
+      if (!refreshed) return;
       showSuccess((syncT?.settingsSaved as string) ?? 'Sync settings saved');
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Failed to update sync settings';
@@ -722,9 +737,12 @@ export function SyncTab({ t, visible }: SyncTabProps) {
             >
               {toggling && <Loader2 size={14} className="animate-spin" />}
               {confirmingReset
-                ? ((syncT?.resetConfirm as string) ?? 'Confirm reset?')
-                : ((syncT?.resetButton as string) ?? 'Reset & Re-configure')}
+                ? ((syncT?.resetConfirm as string) ?? 'Confirm forget settings?')
+                : ((syncT?.resetButton as string) ?? 'Forget local sync settings')}
             </button>
+            <p className="text-xs text-destructive/70">
+              {(syncT?.resetHelp as string) ?? 'Keeps your notes and Git repository. Clears MindOS sync settings so you can connect again.'}
+            </p>
             <SyncActionMessage message={message} />
           </div>
         </div>
@@ -847,9 +865,12 @@ export function SyncTab({ t, visible }: SyncTabProps) {
                 }`}
               >
                 {confirmingReset
-                  ? ((syncT?.resetConfirm as string) ?? 'Confirm reset?')
-                  : ((syncT?.resetButton as string) ?? 'Reset & Re-configure')}
+                  ? ((syncT?.resetConfirm as string) ?? 'Confirm forget settings?')
+                  : ((syncT?.resetButton as string) ?? 'Forget local sync settings')}
               </button>
+              <p className="basis-full text-xs text-muted-foreground">
+                {(syncT?.resetHelp as string) ?? 'Keeps your notes and Git repository. Clears MindOS sync settings so you can connect again.'}
+              </p>
             </>
           )}
         </div>

@@ -180,8 +180,8 @@ export async function handleSyncGet(
         provider: syncConfig.provider || 'git',
         remote: redactGitRemote(remote) || '(not configured)',
         branch: hasRepo && mindRoot ? (callGetBranch(services, mindRoot) || 'main') : 'main',
-        lastSync: null,
-        lastPull: null,
+        lastSync: state.lastSync || null,
+        lastPull: state.lastPull || null,
         unpushed: '?',
         conflicts,
         lastError: state.lastError || (!hasRepo
@@ -303,8 +303,9 @@ async function handleSyncInit(
   if (!isValidGitBranchName(branch)) {
     return json({ error: 'Invalid branch name' }, { status: 400 });
   }
-  const args = ['sync', 'init', '--non-interactive', '--remote', remote, '--branch', branch];
-  const envOverrides = payload.token ? { MINDOS_SYNC_TOKEN: payload.token } : undefined;
+  const normalizedRemote = normalizeHttpsRemoteCredentials(remote, payload.token?.trim());
+  const args = ['sync', 'init', '--non-interactive', '--remote', normalizedRemote.remote, '--branch', branch];
+  const envOverrides = normalizedRemote.token ? { MINDOS_SYNC_TOKEN: normalizedRemote.token } : undefined;
 
   try {
     await runCli(args, 120000, services, envOverrides);
@@ -784,6 +785,28 @@ export function redactGitRemote(remote: string | null | undefined): string | nul
     return parsed.toString();
   } catch {
     return remote.replace(/^(https?:\/\/)[^/@]+@/i, '$1');
+  }
+}
+
+function looksLikeAccessToken(value: string): boolean {
+  return /^(gh[pousr]_|github_pat_|glpat-|pat_)/i.test(value);
+}
+
+function normalizeHttpsRemoteCredentials(remote: string, token?: string): { remote: string; token?: string } {
+  if (!/^https?:\/\//i.test(remote)) return { remote, token };
+
+  try {
+    const parsed = new URL(remote);
+    const embeddedPassword = parsed.password ? decodeURIComponent(parsed.password) : '';
+    const embeddedUsername = parsed.username ? decodeURIComponent(parsed.username) : '';
+    parsed.username = '';
+    parsed.password = '';
+    return {
+      remote: parsed.toString(),
+      token: token || embeddedPassword || (looksLikeAccessToken(embeddedUsername) ? embeddedUsername : undefined),
+    };
+  } catch {
+    return { remote, token };
   }
 }
 

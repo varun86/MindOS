@@ -10,6 +10,7 @@
  */
 import { spawn } from 'child_process';
 import http from 'http';
+import { createServer as createTcpServer } from 'net';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -34,7 +35,24 @@ try {
   process.exit(1);
 }
 
-const port = 31000 + Math.floor(Math.random() * 5000);
+async function allocateFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createTcpServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const allocatedPort = typeof address === 'object' && address ? address.port : 0;
+      server.close((error) => {
+        if (error) reject(error);
+        else if (allocatedPort >= 1024) resolve(allocatedPort);
+        else reject(new Error(`Invalid allocated test port: ${allocatedPort}`));
+      });
+    });
+  });
+}
+
+const port = await allocateFreePort();
 const nodeBin = process.execPath;
 
 function waitHttpOk(pathname, timeoutMs, validate = () => true) {

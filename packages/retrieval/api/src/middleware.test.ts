@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
 import { errorHandler, notFoundHandler, asyncHandler } from './middleware.js'
 import type { Logger } from '@geminilight/mindos/foundation'
 
@@ -90,6 +91,41 @@ describe('Middleware', () => {
         { path: '/api/test' }
       )
     })
+
+    it('should return 400 for Zod validation errors', () => {
+      const mockLogger: Logger = {
+        error: vi.fn(),
+      } as any
+
+      const schema = z.object({ path: z.string().min(1) })
+      const result = schema.safeParse({ path: '' })
+      if (result.success) {
+        throw new Error('Expected schema validation to fail')
+      }
+
+      const req = { path: '/api/index/index' } as Request
+      const res = {
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      } as any
+      const next = vi.fn() as NextFunction
+
+      const handler = errorHandler(mockLogger)
+      handler(result.error, req, res, next)
+
+      expect(res.status).toHaveBeenCalledWith(400)
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'INVALID_REQUEST',
+        message: 'Invalid request body',
+        details: [
+          {
+            path: 'path',
+            message: 'String must contain at least 1 character(s)',
+            code: 'too_small',
+          },
+        ],
+      })
+    })
   })
 
   describe('notFoundHandler', () => {
@@ -163,9 +199,9 @@ describe('Middleware', () => {
 
     it('should handle synchronous errors', async () => {
       const error = new Error('Sync error')
-      const fn = async () => {
+      const fn = vi.fn(() => {
         throw error
-      }
+      })
       const req = {} as Request
       const res = {} as Response
       const next = vi.fn() as NextFunction

@@ -225,7 +225,8 @@ describe('SyncTab UX', () => {
 
     expect(host.textContent).toContain('Paused');
     expect(host.textContent).toContain('Enable Auto-sync');
-    expect(host.textContent).toContain('Reset & Re-configure');
+    expect(host.textContent).toContain('Forget local sync settings');
+    expect(host.textContent).toContain('Keeps your notes and Git repository');
     expect(host.textContent).not.toContain('Connect & Start Sync');
 
     await act(async () => {
@@ -495,6 +496,89 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('requires a token before starting private HTTPS setup and associates labels with inputs', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    const remoteInput = host.querySelector('#sync-remote-url') as HTMLInputElement | null;
+    expect(host.querySelector('label[for="sync-remote-url"]')?.textContent).toContain('Git Remote URL');
+
+    await act(async () => {
+      setInputValue(remoteInput, 'https://github.com/me/private.git');
+      await Promise.resolve();
+    });
+
+    const tokenInput = host.querySelector('#sync-access-token') as HTMLInputElement | null;
+    const branchInput = host.querySelector('#sync-branch') as HTMLInputElement | null;
+    expect(host.querySelector('label[for="sync-access-token"]')?.textContent).toContain('required for private HTTPS repos');
+    expect(host.querySelector('label[for="sync-branch"]')?.textContent).toContain('Branch');
+    expect(tokenInput).toBeTruthy();
+    expect(branchInput?.value).toBe('main');
+
+    let connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    expect(connectButton?.disabled).toBe(true);
+    expect(host.textContent).toContain('Private HTTPS repositories require an access token');
+
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(mockApiFetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      setInputValue(tokenInput, 'ghp_secret');
+      await Promise.resolve();
+    });
+
+    connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    expect(connectButton?.disabled).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('formats first-time setup lock errors without exposing lock internals', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    mockApiFetch.mockRejectedValue(new Error('SYNC_LOCKED: Sync is already running (owner=manual-sync, pid=123, startedAt=2026-06-09T01:02:03.000Z)'));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-remote-url') as HTMLInputElement | null, 'git@example.com:mind/repo.git');
+      await Promise.resolve();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync'));
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Sync is already running');
+    expect(host.textContent).toContain('Another sync operation is already running');
+    expect(host.textContent).not.toContain('pid=123');
+    expect(host.textContent).not.toContain('owner=manual-sync');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('rejects branch names that Git will reject before starting setup', async () => {
     const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
     const host = document.createElement('div');
@@ -739,8 +823,9 @@ describe('SyncTab UX', () => {
       await Promise.resolve();
     });
 
-    const resetButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Reset & Re-configure'));
+    const resetButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Forget local sync settings'));
     expect(resetButton).toBeTruthy();
+    expect(host.textContent).toContain('Keeps your notes and Git repository');
 
     await act(async () => {
       resetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -750,9 +835,9 @@ describe('SyncTab UX', () => {
     expect(mockApiFetch).not.toHaveBeenCalledWith('/api/sync', expect.objectContaining({
       body: JSON.stringify({ action: 'reset' }),
     }));
-    expect(host.textContent).toContain('Confirm reset?');
+    expect(host.textContent).toContain('Confirm forget settings?');
 
-    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm reset?'));
+    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm forget settings?'));
     await act(async () => {
       confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
@@ -762,6 +847,61 @@ describe('SyncTab UX', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
       body: JSON.stringify({ action: 'reset' }),
     }));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('surfaces refresh failure after reset without pretending setup state is current', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'reset') return { ok: true, enabled: false };
+      statusReads += 1;
+      if (statusReads > 1) throw new Error('status refresh failed');
+      return {
+        enabled: false,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Forget local sync settings'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Confirm forget settings?'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('could not refresh sync status');
+    expect(host.textContent).toContain('status refresh failed');
+    expect(host.textContent).toContain('Forget local sync settings');
 
     await act(async () => {
       root.unmount();
@@ -797,12 +937,12 @@ describe('SyncTab UX', () => {
       await Promise.resolve();
     });
 
-    const resetButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Reset & Re-configure'));
+    const resetButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Forget local sync settings'));
     await act(async () => {
       resetButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
-    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm reset?'));
+    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm forget settings?'));
     await act(async () => {
       confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
@@ -965,7 +1105,7 @@ describe('SyncTab UX', () => {
     expect(host.textContent).toContain('Sync status may be outdated');
     expect(host.textContent).toContain('status refresh failed');
     expect(host.textContent).toContain('Retry');
-    expect(host.textContent).not.toContain('Reset & Re-configure');
+    expect(host.textContent).not.toContain('Forget local sync settings');
 
     await act(async () => {
       root.unmount();
@@ -1040,6 +1180,55 @@ describe('SyncTab UX', () => {
     }));
     expect(host.textContent).toContain('Auto-sync disabled');
     expect(host.textContent).toContain('Paused');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not show auto-sync success when status refresh fails after toggle', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'on') return { ok: true, enabled: true };
+      statusReads += 1;
+      if (statusReads > 1) throw new Error('status refresh failed');
+      return {
+        enabled: false,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: '2026-06-05T10:00:00.000Z',
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Enable Auto-sync'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('could not refresh sync status');
+    expect(host.textContent).toContain('status refresh failed');
+    expect(host.textContent).not.toContain('Auto-sync enabled');
 
     await act(async () => {
       root.unmount();
@@ -1172,6 +1361,61 @@ describe('SyncTab UX', () => {
       body: JSON.stringify({ action: 'update-intervals', autoPullInterval: 600 }),
     }));
     expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === '10min')).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not show interval save success when status refresh fails after saving', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      if (body.action === 'update-intervals') return { ok: true, autoCommitInterval: 60, autoPullInterval: 300 };
+      statusReads += 1;
+      if (statusReads > 1) throw new Error('status refresh failed');
+      return {
+        enabled: true,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: '2026-06-05T10:00:00.000Z',
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.trim() === '30s')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      Array.from(host.querySelectorAll('[role="option"]'))
+        .find(option => option.textContent?.trim() === '60s')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('could not refresh sync status');
+    expect(host.textContent).toContain('status refresh failed');
+    expect(host.textContent).not.toContain('Sync settings saved');
 
     await act(async () => {
       root.unmount();
