@@ -498,6 +498,14 @@ function autoPullUnlocked(mindRoot, isSshUrl = false) {
 let activeWatcher = null;
 let activePullInterval = null;
 let activeShutdownHandler = null;
+let activeCommitTimer = null;
+let activeConfigPollInterval = null;
+let activeMindRoot = null;
+let activeAutoCommitInterval = null;
+let activeAutoPullInterval = null;
+let activeIsSshUrl = false;
+
+const DAEMON_CONFIG_POLL_MS = 5000;
 
 /**
  * Interactive sync init — configure remote git repo
@@ -742,50 +750,70 @@ export async function initSync(mindRoot, opts = {}) {
  * Start file watcher + periodic pull
  */
 export async function startSyncDaemon(mindRoot) {
-  if (activeWatcher) return null; // already running — idempotent guard
   const config = loadSyncConfig();
-  if (!config.enabled) return null;
-  if (!mindRoot || !isGitRepo(mindRoot)) return null;
+  if (!config.enabled) {
+    stopSyncDaemon();
+    return null;
+  }
+  if (!mindRoot || !isGitRepo(mindRoot)) {
+    stopSyncDaemon();
+    return null;
+  }
+
+  const normalizedMindRoot = resolve(mindRoot);
+  if (activeWatcher) {
+    if (activeMindRoot === normalizedMindRoot) {
+      refreshSyncDaemonConfig();
+      return null;
+    }
+    stopSyncDaemon();
+  }
 
   const remoteUrl = getRemoteUrl(mindRoot) || '';
-  const isSshUrl = isSSHUrl(remoteUrl);
+  activeIsSshUrl = isSSHUrl(remoteUrl);
+  activeMindRoot = normalizedMindRoot;
+  activeAutoCommitInterval = config.autoCommitInterval || 30;
+  activeAutoPullInterval = config.autoPullInterval || 300;
 
   const chokidar = await import('chokidar');
 
   // File watcher → debounced auto-commit + push
-  let commitTimer = null;
   const watcher = chokidar.watch(mindRoot, {
     ignored: [/(^|[/\\])\.git/, /node_modules/, /\.sync-conflict$/],
     persistent: true,
     ignoreInitial: true,
   });
   const runBackgroundCommit = () => {
-    runBackgroundSync(mindRoot, 'daemon-commit', () => autoCommitAndPushUnlocked(mindRoot, isSshUrl));
+    activeCommitTimer = null;
+    runBackgroundSync(mindRoot, 'daemon-commit', () => autoCommitAndPushUnlocked(mindRoot, activeIsSshUrl));
   };
   watcher.on('all', () => {
-    clearTimeout(commitTimer);
-    commitTimer = setTimeout(runBackgroundCommit, (config.autoCommitInterval || 30) * 1000);
+    refreshSyncDaemonConfig();
+    if (!activeWatcher) return;
+    if (activeCommitTimer) clearTimeout(activeCommitTimer);
+    activeCommitTimer = setTimeout(runBackgroundCommit, (activeAutoCommitInterval || 30) * 1000);
   });
 
   // Periodic pull
-  const runBackgroundPull = (operation) => {
-    runBackgroundSync(mindRoot, operation, () => autoPullUnlocked(mindRoot, isSshUrl));
-  };
-  const pullInterval = setInterval(() => runBackgroundPull('daemon-pull'), (config.autoPullInterval || 300) * 1000);
+  activePullInterval = setInterval(
+    () => runBackgroundPull(mindRoot, 'daemon-pull'),
+    (activeAutoPullInterval || 300) * 1000,
+  );
+  activeConfigPollInterval = setInterval(refreshSyncDaemonConfig, DAEMON_CONFIG_POLL_MS);
 
   // Pull on startup
-  runBackgroundPull('daemon-startup-pull');
+  runBackgroundPull(mindRoot, 'daemon-startup-pull');
 
   // Graceful shutdown: flush pending changes before exit
   let shutdownInProgress = false;
   const gracefulShutdown = () => {
     if (shutdownInProgress) return;
     shutdownInProgress = true;
-    if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+    if (activeCommitTimer) { clearTimeout(activeCommitTimer); activeCommitTimer = null; }
     runBackgroundSync(
       mindRoot,
       'daemon-shutdown-commit',
-      () => autoCommitAndPushUnlocked(mindRoot, isSshUrl),
+      () => autoCommitAndPushUnlocked(mindRoot, activeIsSshUrl),
       { waitMs: 1000 },
     );
     stopSyncDaemon();
@@ -794,16 +822,46 @@ export async function startSyncDaemon(mindRoot) {
   process.on('SIGINT', gracefulShutdown);
 
   activeWatcher = watcher;
-  activePullInterval = pullInterval;
   activeShutdownHandler = gracefulShutdown;
 
-  return { watcher, pullInterval, gracefulShutdown };
+  return { watcher, pullInterval: activePullInterval, gracefulShutdown };
+}
+
+function runBackgroundPull(mindRoot, operation) {
+  runBackgroundSync(mindRoot, operation, () => autoPullUnlocked(mindRoot, activeIsSshUrl));
+}
+
+function refreshSyncDaemonConfig() {
+  if (!activeMindRoot) return;
+  const config = loadSyncConfig();
+  if (!config.enabled || !isGitRepo(activeMindRoot)) {
+    stopSyncDaemon();
+    return;
+  }
+
+  const remoteUrl = getRemoteUrl(activeMindRoot) || '';
+  activeIsSshUrl = isSSHUrl(remoteUrl);
+  activeAutoCommitInterval = config.autoCommitInterval || 30;
+
+  const nextPullInterval = config.autoPullInterval || 300;
+  if (activeAutoPullInterval !== nextPullInterval) {
+    activeAutoPullInterval = nextPullInterval;
+    if (activePullInterval) clearInterval(activePullInterval);
+    activePullInterval = setInterval(
+      () => runBackgroundPull(activeMindRoot, 'daemon-pull'),
+      activeAutoPullInterval * 1000,
+    );
+  }
 }
 
 /**
  * Stop sync daemon
  */
 export function stopSyncDaemon() {
+  if (activeCommitTimer) {
+    clearTimeout(activeCommitTimer);
+    activeCommitTimer = null;
+  }
   if (activeWatcher) {
     activeWatcher.close();
     activeWatcher = null;
@@ -812,11 +870,19 @@ export function stopSyncDaemon() {
     clearInterval(activePullInterval);
     activePullInterval = null;
   }
+  if (activeConfigPollInterval) {
+    clearInterval(activeConfigPollInterval);
+    activeConfigPollInterval = null;
+  }
   if (activeShutdownHandler) {
     process.removeListener('SIGTERM', activeShutdownHandler);
     process.removeListener('SIGINT', activeShutdownHandler);
     activeShutdownHandler = null;
   }
+  activeMindRoot = null;
+  activeAutoCommitInterval = null;
+  activeAutoPullInterval = null;
+  activeIsSshUrl = false;
 }
 
 /**

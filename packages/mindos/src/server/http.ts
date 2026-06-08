@@ -154,6 +154,12 @@ export type MindosHttpServices = {
   listSkills(): { disabledSkills?: string[]; skillRoots: MindosSkillRoot[] };
   askStream(input: unknown): AsyncIterable<MindOSSSEvent>;
   documentExtraction?: ExtractPdfServices & ExtractDocxServices;
+  syncDaemon?: {
+    start?(mindRoot: string): void;
+    stop?(): void;
+    reconfigure?(mindRoot: string): void;
+    restart?(mindRoot: string): void;
+  };
 };
 
 export type MindosHttpServerOptions = {
@@ -163,6 +169,7 @@ export type MindosHttpServerOptions = {
   staticRoot?: string;
   services?: MindosHttpServices;
   runtime?: MindosRuntimeOptions;
+  syncDaemon?: MindosHttpServices['syncDaemon'];
 };
 
 type DefaultMindosHttpServicesOptions = MindosRuntimeOptions & {
@@ -170,6 +177,7 @@ type DefaultMindosHttpServicesOptions = MindosRuntimeOptions & {
   staticRoot?: string;
   mcpAgents?: Record<string, MindosMcpAgentDef>;
   documentExtraction?: ExtractPdfServices & ExtractDocxServices;
+  syncDaemon?: MindosHttpServices['syncDaemon'];
 };
 
 export type MindosHttpServer = {
@@ -199,6 +207,7 @@ export function createDefaultMindosHttpServices(options: DefaultMindosHttpServic
     writeSettings: (settings) => writeRuntimeSettings(settings, options),
     mcpAgents: options.mcpAgents ?? createDefaultMcpAgents(),
     documentExtraction: options.documentExtraction,
+    syncDaemon: options.syncDaemon,
     mcpTools: {
       readMcpConfig: () => ({ mcpServers: {} }),
       readMcpToolCache: () => null,
@@ -229,6 +238,7 @@ export function createMindosHttpServer(options: MindosHttpServerOptions = {}): M
     ...options.runtime,
     runtimeRoot: options.runtimeRoot,
     staticRoot: options.staticRoot,
+    syncDaemon: options.syncDaemon,
   });
   const server = createServer((req, res) => {
     void handleRequest(req, res, services, options.runtimeRoot);
@@ -477,6 +487,7 @@ async function handleRequest(
     if (route === 'POST /api/sync') {
       writeResponse(res, await handleSyncPost(await readJsonBody(req), {
         runtimeRoot: services.runtimeRoot,
+        syncDaemon: services.syncDaemon,
       }));
       return;
     }

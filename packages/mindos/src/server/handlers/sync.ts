@@ -53,6 +53,12 @@ export type MindosSyncServices = {
   nodeBin?: string;
   runtimeRoot?: string;
   projectRoot?: string;
+  syncDaemon?: {
+    start?(mindRoot: string): void;
+    stop?(): void;
+    reconfigure?(mindRoot: string): void;
+    restart?(mindRoot: string): void;
+  };
 };
 
 const DEFAULT_MINDOS_DIR = join(homedir(), '.mindos');
@@ -170,7 +176,7 @@ export async function handleSyncPost(
 
     switch (payload.action) {
       case 'init':
-        return await handleSyncInit(payload, services);
+        return await handleSyncInit(payload, config, services);
       case 'now':
         return await handleSyncNow(mindRoot, services);
       case 'on':
@@ -205,6 +211,8 @@ function handleSyncToggle(
   return withServerSyncLock(mindRoot, enabled ? 'sync-on' : 'sync-off', services, () => {
     config.sync = { ...(config.sync ?? {}), enabled };
     writeConfig(config, services);
+    if (enabled) notifySyncDaemon(services, 'restart', mindRoot);
+    else notifySyncDaemon(services, 'stop');
     return json({ ok: true, enabled });
   });
 }
@@ -217,12 +225,14 @@ function handleSyncReset(
     delete config.sync;
     writeConfig(config, services);
     try { writeState({}, services); } catch {}
+    notifySyncDaemon(services, 'stop');
     return json({ ok: true, enabled: false });
   });
 }
 
 async function handleSyncInit(
   payload: MindosSyncPostPayload,
+  config: MindosSyncConfig,
   services: MindosSyncServices,
 ): Promise<MindosServerResponse<Record<string, unknown> | { error: string }>> {
   const remote = payload.remote?.trim();
@@ -241,6 +251,7 @@ async function handleSyncInit(
 
   try {
     await runCli(args, 120000, services, envOverrides);
+    if (config.mindRoot) notifySyncDaemon(services, 'restart', config.mindRoot);
     return json({ success: true, message: 'Sync initialized' });
   } catch (error) {
     if (isSyncLockedError(error)) return syncLockedResponse(error);
@@ -386,11 +397,44 @@ function handleUpdateIntervals(
     if (commitInterval !== undefined) config.sync.autoCommitInterval = commitInterval;
     if (pullInterval !== undefined) config.sync.autoPullInterval = pullInterval;
     writeConfig(config, services);
+    if (config.sync.enabled) notifySyncDaemon(services, 'reconfigure', mindRoot);
     return json({
       autoCommitInterval: config.sync.autoCommitInterval || 30,
       autoPullInterval: config.sync.autoPullInterval || 300,
     });
   });
+}
+
+function notifySyncDaemon(
+  services: MindosSyncServices,
+  action: 'start' | 'stop' | 'reconfigure' | 'restart',
+  mindRoot?: string,
+): void {
+  try {
+    if (action === 'stop') {
+      services.syncDaemon?.stop?.();
+      return;
+    }
+    if (!mindRoot) return;
+    if (action === 'restart') {
+      if (services.syncDaemon?.restart) {
+        services.syncDaemon.restart(mindRoot);
+      } else {
+        services.syncDaemon?.stop?.();
+        services.syncDaemon?.start?.(mindRoot);
+      }
+      return;
+    }
+    if (action === 'reconfigure') {
+      if (services.syncDaemon?.reconfigure) services.syncDaemon.reconfigure(mindRoot);
+      else if (services.syncDaemon?.restart) services.syncDaemon.restart(mindRoot);
+      return;
+    }
+    services.syncDaemon?.start?.(mindRoot);
+  } catch {
+    // Sync config/state has already been persisted. Runtime daemon refresh is
+    // best-effort and will also be corrected by the daemon config poller.
+  }
 }
 
 function readConfig(services: MindosSyncServices): MindosSyncConfig {

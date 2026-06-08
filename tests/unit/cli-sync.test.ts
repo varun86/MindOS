@@ -21,6 +21,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   fs.rmSync(tempDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
@@ -43,6 +44,8 @@ async function importSync() {
     acquireSyncLock: (mindRoot: string, operation: string, options?: { waitMs?: number }) => { lockPath: string; token: string | null };
     releaseSyncLock: (lock: { lockPath: string; token: string | null; reentrant?: boolean }) => void;
     withSyncLock: <T>(mindRoot: string, operation: string, callback: () => T, options?: { waitMs?: number }) => T;
+    startSyncDaemon: (mindRoot: string) => Promise<unknown>;
+    stopSyncDaemon: () => void;
   };
 }
 
@@ -280,6 +283,138 @@ describe('mindos sync config persistence', () => {
 
     expect(JSON.stringify(calls)).not.toContain('ghp_secret@example.com');
     expect(fs.existsSync(configPath)).toBe(false);
+  });
+
+  it('stops a running daemon after sync is disabled in config', async () => {
+    vi.useFakeTimers();
+    const close = vi.fn();
+    const watcher = { on: vi.fn().mockReturnThis(), close };
+    const watch = vi.fn(() => watcher);
+    vi.doMock('chokidar', () => ({
+      __esModule: true,
+      default: { watch },
+      watch,
+    }));
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return {
+        ...actual,
+        execFileSync: vi.fn((_command: string, args: string[]) => {
+          if (args[0] === 'remote' && args[1] === 'get-url') return 'https://example.com/mind.git\n';
+          return '';
+        }),
+      };
+    });
+    const { startSyncDaemon, setSyncEnabled, stopSyncDaemon } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', autoCommitInterval: 10, autoPullInterval: 60 },
+    }), 'utf-8');
+
+    const daemon = await startSyncDaemon(mindRoot) as { watcher: { close: () => unknown } };
+    expect(daemon).not.toBeNull();
+    const closeSpy = vi.spyOn(daemon.watcher, 'close');
+    expect(close).not.toHaveBeenCalled();
+
+    setSyncEnabled(false);
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(closeSpy).toHaveBeenCalledOnce();
+    stopSyncDaemon();
+    vi.useRealTimers();
+  });
+
+  it('clears a pending daemon auto-commit when the daemon stops', async () => {
+    vi.useFakeTimers();
+    const calls: string[][] = [];
+    let changeHandler: (() => void) | undefined;
+    const close = vi.fn();
+    const watcher = {
+      on: vi.fn((event: string, handler: () => void) => {
+        if (event === 'all') changeHandler = handler;
+        return watcher;
+      }),
+      close,
+    };
+    const watch = vi.fn(() => watcher);
+    vi.doMock('chokidar', () => ({
+      __esModule: true,
+      default: { watch },
+      watch,
+    }));
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return {
+        ...actual,
+        execFileSync: vi.fn((_command: string, args: string[]) => {
+          calls.push(args);
+          if (args[0] === 'remote' && args[1] === 'get-url') return 'https://example.com/mind.git\n';
+          return '';
+        }),
+      };
+    });
+    const { startSyncDaemon, stopSyncDaemon } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', autoCommitInterval: 10, autoPullInterval: 60 },
+    }), 'utf-8');
+
+    const daemon = await startSyncDaemon(mindRoot) as { watcher: { close: () => unknown; emit?: (...args: unknown[]) => unknown } };
+    expect(daemon).not.toBeNull();
+    const closeSpy = vi.spyOn(daemon.watcher, 'close');
+    if (changeHandler) changeHandler();
+    else daemon.watcher.emit?.('all', 'change', path.join(mindRoot, 'note.md'));
+    stopSyncDaemon();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(closeSpy).toHaveBeenCalledOnce();
+    expect(calls.some(args => args[0] === 'add')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('reloads daemon pull interval after sync interval config changes', async () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const watcher = { on: vi.fn().mockReturnThis(), close: vi.fn() };
+    const watch = vi.fn(() => watcher);
+    vi.doMock('chokidar', () => ({
+      __esModule: true,
+      default: { watch },
+      watch,
+    }));
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return {
+        ...actual,
+        execFileSync: vi.fn((_command: string, args: string[]) => {
+          if (args[0] === 'remote' && args[1] === 'get-url') return 'https://example.com/mind.git\n';
+          return '';
+        }),
+      };
+    });
+    const { startSyncDaemon, stopSyncDaemon } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', autoCommitInterval: 10, autoPullInterval: 60 },
+    }), 'utf-8');
+
+    await startSyncDaemon(mindRoot);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+    fs.writeFileSync(configPath, JSON.stringify({
+      sync: { enabled: true, provider: 'git', autoCommitInterval: 10, autoPullInterval: 120 },
+    }), 'utf-8');
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 120_000);
+    stopSyncDaemon();
+    vi.useRealTimers();
   });
 
   it('rejects invalid branch names before configuring sync', async () => {

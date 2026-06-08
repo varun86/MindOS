@@ -348,6 +348,15 @@ export const run = async (args, flags) => {
       port: Number(webPort),
       runtimeRoot: PACKAGE_ROOT,
       staticRoot: STATIC_WEB_ROOT,
+      syncDaemon: {
+        start: (root) => { void startSyncDaemon(root).catch(() => {}); },
+        stop: () => { try { stopSyncDaemon(); } catch {} },
+        reconfigure: (root) => { void startSyncDaemon(root).catch(() => {}); },
+        restart: (root) => {
+          try { stopSyncDaemon(); } catch {}
+          void startSyncDaemon(root).catch(() => {});
+        },
+      },
     });
     await productServer.listen();
     console.log(`${green('✔ Product Server')} ${dim(productServer.url)}`);

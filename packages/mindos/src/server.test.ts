@@ -3098,6 +3098,7 @@ describe('MindOS product server contract', () => {
       conflicts: [{ file: 'note.md' }],
     };
     const cliCalls: Array<{ args: string[]; timeoutMs?: number; envOverrides?: Record<string, string | undefined> }> = [];
+    const daemonCalls: Array<{ action: string; mindRoot?: string }> = [];
     const services = {
       readConfig: () => config,
       writeConfig: (next: Record<string, any>) => { config = next; },
@@ -3110,6 +3111,11 @@ describe('MindOS product server contract', () => {
       syncLockDir: join(root, 'locks'),
       runCli: async (args: string[], timeoutMs?: number, envOverrides?: Record<string, string | undefined>) => {
         cliCalls.push({ args, timeoutMs, envOverrides });
+      },
+      syncDaemon: {
+        restart: (root: string) => { daemonCalls.push({ action: 'restart', mindRoot: root }); },
+        reconfigure: (root: string) => { daemonCalls.push({ action: 'reconfigure', mindRoot: root }); },
+        stop: () => { daemonCalls.push({ action: 'stop' }); },
       },
     };
 
@@ -3136,12 +3142,21 @@ describe('MindOS product server contract', () => {
       envOverrides: { MINDOS_SYNC_TOKEN: 'tok' },
     });
     expect(cliCalls[0].args).not.toContain('tok');
+    expect(daemonCalls).toContainEqual({ action: 'restart', mindRoot });
+
+    expect(await handleSyncPost({ action: 'update-intervals', autoCommitInterval: 60 }, services)).toMatchObject({
+      status: 200,
+      body: { autoCommitInterval: 60, autoPullInterval: 600 },
+    });
+    expect(config.sync.autoCommitInterval).toBe(60);
+    expect(daemonCalls).toContainEqual({ action: 'reconfigure', mindRoot });
 
     expect(await handleSyncPost({ action: 'off' }, services)).toMatchObject({
       status: 200,
       body: { ok: true, enabled: false },
     });
     expect(config.sync.enabled).toBe(false);
+    expect(daemonCalls).toContainEqual({ action: 'stop' });
 
     await expect(handleSyncGet(services)).resolves.toMatchObject({
       status: 200,
@@ -3309,11 +3324,13 @@ describe('MindOS product server contract', () => {
       lastError: 'Git repository not found',
       conflicts: [{ file: 'note.md' }],
     };
+    const daemonStop = vi.fn();
     const services = {
       readConfig: () => config,
       writeConfig: (next: Record<string, any>) => { config = next; },
       readState: () => state,
       writeState: (next: Record<string, any>) => { state = next; },
+      syncDaemon: { stop: daemonStop },
     };
 
     expect(await handleSyncPost({ action: 'reset' }, services)).toMatchObject({
@@ -3322,6 +3339,7 @@ describe('MindOS product server contract', () => {
     });
     expect(config.sync).toBeUndefined();
     expect(state).toEqual({});
+    expect(daemonStop).toHaveBeenCalledOnce();
   });
 
   it('rejects sync file operations through symlinks outside mindRoot', async () => {

@@ -4214,6 +4214,20 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
 
+### Git Sync daemon 不能只在启动时读取配置（2026-06-09）
+
+**症状**：用户在 Settings → Sync 点击 Enable/Disable、Reset & Re-configure 或修改自动提交/拉取间隔后，UI/API 显示配置已改变，但已经运行中的 watcher/timer 仍按旧配置工作；更严重时，用户关闭同步后，之前排队的 debounce commit 仍可能在几秒后执行并上传。
+
+**根因**：`startSyncDaemon()` 只在启动时读取一次 `config.sync`，`stopSyncDaemon()` 只关闭 watcher 和 pull interval，没有清理 pending commit timeout；Product Server handler 也只写 `config.json`，没有通知同进程 daemon。跨进程锁只能避免并发 Git 写入，不能代表运行态已经跟配置一致。
+
+**规则**：
+1. daemon 必须持有可清理的 watcher、pull interval、config poll interval 和 pending commit timeout；`stopSyncDaemon()` 要全部清掉。
+2. daemon 要定期轮询 `config.sync`，发现 disabled/reset/missing repo 时主动停止，发现 interval 改动时重建 pull timer。
+3. `/api/sync` 的 init/on/off/reset/update-intervals 在 Product Server 和 Next node route 中都要通知同进程 daemon；配置写入成功后，运行态要尽快 start/stop/reconfigure。
+4. 这类修复不能只看 `GET /api/sync` 状态；必须验证实际 watcher/timer 行为，尤其是关闭后 pending commit 不再执行。
+
+**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 config disabled 后 daemon close、stop 清理 pending commit、interval 配置变更后重建 pull timer；`packages/mindos/src/server.test.ts` 覆盖 sync init/update/off/reset 会通知 runtime daemon。
+
 ### Platform runtime 包不能暴露和主包同名的 `mindos` bin（2026-06-06）
 
 **症状**：`npm run release` 的 package smoke 阶段安装主包 tarball 与当前平台 tarball 后，`node_modules/.bin/mindos` 不存在，报错 `'mindos' binary not found after install`。主包 `bin/mindos-shim.cjs` 和平台包 `bin/mindos` 文件实际都存在。
