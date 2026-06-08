@@ -16,6 +16,18 @@ function isValidGitUrl(url: string): 'https' | 'ssh' | false {
   return false;
 }
 
+function redactGitUrl(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString();
+  } catch {
+    return url.replace(/^(https?:\/\/)[^/@]+@/i, '$1');
+  }
+}
+
 export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onInitComplete: () => void }) {
   const syncT = t.settings?.sync as Record<string, unknown> | undefined;
 
@@ -80,7 +92,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
     const submittedBranch = branchValue;
 
     clearStepTimers();
-    setConnectingRemote(submittedRemote);
+    setConnectingRemote(redactGitUrl(submittedRemote));
     setConnectStep(0);
     setError('');
 
@@ -291,7 +303,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
                 onClick={handleCancel}
                 className="inline-flex min-h-8 items-center rounded-md border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {(syncT?.cancel as string) ?? 'Cancel'}
+                {(syncT?.stopWaiting as string) ?? 'Stop waiting'}
               </button>
             )}
             {connectStep === 4 && (

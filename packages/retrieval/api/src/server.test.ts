@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import request from 'supertest'
 import net from 'node:net'
 import { ApiServer } from './server.js'
@@ -9,6 +9,20 @@ import { createError } from '@geminilight/mindos/foundation'
 describe('ApiServer', () => {
   let config: ApiConfig
   let mockCtx: ApiContext
+  let originalAnthropicAuthToken: string | undefined
+
+  beforeAll(() => {
+    originalAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN
+    delete process.env.ANTHROPIC_AUTH_TOKEN
+  })
+
+  afterAll(() => {
+    if (originalAnthropicAuthToken === undefined) {
+      delete process.env.ANTHROPIC_AUTH_TOKEN
+    } else {
+      process.env.ANTHROPIC_AUTH_TOKEN = originalAnthropicAuthToken
+    }
+  })
 
   beforeEach(() => {
     config = {

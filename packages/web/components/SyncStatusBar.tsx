@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, PlayCircle, XCircle } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SyncStatus } from './settings/types';
 import { getStatusLevel, getSyncLabel, type StatusLevel } from '@/lib/sync-ui';
@@ -15,6 +15,8 @@ export const DOT_COLORS: Record<StatusLevel, string> = {
   unpushed: 'bg-[var(--amber)]',
   conflicts: 'bg-error',       // #6 — conflicts more prominent than unpushed
   error: 'bg-error',
+  paused: 'bg-[var(--amber)]',
+  unknown: 'bg-[var(--amber)]',
   off: 'bg-muted-foreground/40',
   syncing: 'bg-[var(--amber)]',
 };
@@ -34,7 +36,7 @@ function useTick(intervalMs: number) {
 }
 
 export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncStatusBarProps) {
-  const { status, loaded, error: loadError, fetchStatus } = useSyncStatus();
+  const { status, loaded, error: loadError, stale, fetchStatus } = useSyncStatus();
   const [toast, setToast] = useState<string | null>(null);
   const prevLevelRef = useRef<StatusLevel>('off');
   const [hintDismissed, setHintDismissed] = useState(() => {
@@ -53,7 +55,7 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
   // Task G — detect first sync or recovery from error and show toast
   useEffect(() => {
     if (!loaded || syncing) return;
-    const currentLevel = getStatusLevel(status, false);
+    const currentLevel = stale && status ? 'error' : getStatusLevel(status, false);
     const prev = prevLevelRef.current;
     if (prev !== currentLevel) {
       const syncT = t.sidebar?.sync;
@@ -67,16 +69,26 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
       }
       prevLevelRef.current = currentLevel;
     }
-  }, [status, loaded, syncing, t]);
+  }, [status, loaded, syncing, stale, t]);
+
+  useEffect(() => {
+    if (!hintDismissed || !status || (!status.enabled && !status.configured)) return;
+    try { localStorage.removeItem('sync-hint-dismissed'); } catch (err) { console.warn("[SyncStatusBar] localStorage remove dismissed:", err); }
+    setHintDismissed(false);
+  }, [hintDismissed, status]);
 
   const handleSyncNow = (e: React.MouseEvent) => {
     e.stopPropagation();
     syncNow();
   };
+  const handleRetryStatus = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void fetchStatus();
+  };
 
   if (!loaded || collapsed) return null;
 
-  const level = getStatusLevel(status, syncing);
+  const level = stale && status ? 'error' : getStatusLevel(status, syncing);
 
   if (loadError && !status) {
     return (
@@ -121,7 +133,12 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
     );
   }
 
-  const { label, tooltip } = getSyncLabel(level, status, syncT);
+  const { label, tooltip } = stale && status
+    ? {
+      label: syncT?.syncStale ?? 'Sync status stale',
+      tooltip: loadError ?? (syncT?.syncStaleHint ?? 'MindOS could not refresh sync status. The displayed state may be outdated.'),
+    }
+    : getSyncLabel(level, status, syncT);
   const buttonTitle = syncError || tooltip;
 
   return (
@@ -144,22 +161,27 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
         {/* #2 — sync result flash */}
         {(syncResult === 'success' || toast) && <CheckCircle2 size={12} className="text-success animate-in fade-in duration-200" />}
         {syncResult === 'error' && <XCircle size={12} className="text-error animate-in fade-in duration-200" />}
-        {level === 'conflicts' ? (
+        {level === 'conflicts' || level === 'paused' ? (
           <button
             onClick={onOpenSyncSettings}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-error transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={syncT?.resolveConflictsHint ?? 'Open Settings > Sync to resolve conflicts'}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              level === 'conflicts' ? 'text-error' : 'text-[var(--amber-text)]'
+            }`}
+            title={level === 'conflicts'
+              ? (syncT?.resolveConflictsHint ?? 'Open Settings > Sync to resolve conflicts')
+              : (syncT?.syncPausedHint ?? 'Open Settings > Sync to enable auto-sync')
+            }
           >
-            <XCircle size={12} />
+            {level === 'conflicts' ? <XCircle size={12} /> : <PlayCircle size={12} />}
           </button>
         ) : (
           <button
-            onClick={handleSyncNow}
-            disabled={syncing}
+            onClick={stale ? handleRetryStatus : handleSyncNow}
+            disabled={!stale && syncing}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={syncT?.syncNow ?? 'Sync now'}
+            title={stale ? (syncT?.retry ?? 'Retry') : (syncT?.syncNow ?? 'Sync now')}
           >
-            <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+            <RefreshCw size={12} className={!stale && syncing ? 'animate-spin' : ''} />
           </button>
         )}
       </div>
@@ -168,8 +190,8 @@ export default function SyncStatusBar({ collapsed, onOpenSyncSettings }: SyncSta
 }
 
 // #7 — Minimal dot for collapsed sidebar
-export function SyncDot({ status, syncing }: { status: SyncStatus | null; syncing?: boolean }) {
-  const level = getStatusLevel(status, syncing ?? false);
+export function SyncDot({ status, syncing, stale }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean }) {
+  const level = stale && status ? 'error' : getStatusLevel(status, syncing ?? false);
   if (level === 'off') return null;
   return (
     <span
@@ -181,8 +203,8 @@ export function SyncDot({ status, syncing }: { status: SyncStatus | null; syncin
 }
 
 // #8 — Small dot for mobile header
-export function MobileSyncDot({ status, syncing }: { status: SyncStatus | null; syncing?: boolean }) {
-  const level = getStatusLevel(status, syncing ?? false);
+export function MobileSyncDot({ status, syncing, stale }: { status: SyncStatus | null; syncing?: boolean; stale?: boolean }) {
+  const level = stale && status ? 'error' : getStatusLevel(status, syncing ?? false);
   if (level === 'off' || level === 'synced') return null;  // only show when attention needed
   return (
     <span

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(__dirname, '../..');
-const shimPath = path.join(root, 'packages/mindos/bin/mindos-shim.cjs');
+const sourceShimPath = path.join(root, 'packages/mindos/bin/mindos-shim.cjs');
 
 let tempDir: string;
 
@@ -44,6 +44,16 @@ describe('mindos npm shim runtime fallback', () => {
       size: archive.length,
       sha256,
       urls: [pathToFileURL(archivePath).toString()],
+    }), 'utf-8');
+
+    const packageRoot = path.join(tempDir, 'node_modules', '@geminilight', 'mindos');
+    const packageBinDir = path.join(packageRoot, 'bin');
+    fs.mkdirSync(packageBinDir, { recursive: true });
+    const shimPath = path.join(packageBinDir, 'mindos-shim.cjs');
+    fs.copyFileSync(sourceShimPath, shimPath);
+    fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({
+      name: '@geminilight/mindos',
+      version: '0.0.0-test',
     }), 'utf-8');
 
     const cacheDir = path.join(tempDir, 'cache');

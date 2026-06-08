@@ -174,13 +174,9 @@ export async function handleSyncPost(
       case 'now':
         return await handleSyncNow(mindRoot, services);
       case 'on':
-        config.sync = { ...(config.sync ?? {}), enabled: true };
-        writeConfig(config, services);
-        return json({ ok: true, enabled: true });
+        return handleSyncToggle(mindRoot, config, services, true);
       case 'off':
-        config.sync = { ...(config.sync ?? {}), enabled: false };
-        writeConfig(config, services);
-        return json({ ok: true, enabled: false });
+        return handleSyncToggle(mindRoot, config, services, false);
       case 'gitignore-get':
         return handleGitignoreGet(mindRoot);
       case 'gitignore-save':
@@ -190,7 +186,7 @@ export async function handleSyncPost(
       case 'conflict-preview':
         return handleConflictPreview(mindRoot, payload);
       case 'update-intervals':
-        return handleUpdateIntervals(payload, config, services);
+        return handleUpdateIntervals(mindRoot, payload, config, services);
       default:
         return json({ error: `Unknown action: ${payload.action}` }, { status: 400 });
     }
@@ -198,6 +194,19 @@ export async function handleSyncPost(
     if (isSyncLockedError(error)) return syncLockedResponse(error);
     return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
+}
+
+function handleSyncToggle(
+  mindRoot: string,
+  config: MindosSyncConfig,
+  services: MindosSyncServices,
+  enabled: boolean,
+): MindosServerResponse<Record<string, unknown> | { error: string }> {
+  return withServerSyncLock(mindRoot, enabled ? 'sync-on' : 'sync-off', services, () => {
+    config.sync = { ...(config.sync ?? {}), enabled };
+    writeConfig(config, services);
+    return json({ ok: true, enabled });
+  });
 }
 
 function handleSyncReset(
@@ -255,11 +264,14 @@ async function handleSyncNow(
   }
 }
 
-function handleGitignoreGet(mindRoot: string): MindosServerResponse<{ content: string }> {
+function handleGitignoreGet(mindRoot: string): MindosServerResponse<{ content: string } | { error: string }> {
   try {
     return json({ content: readFileSync(resolveExistingSafe(mindRoot, '.gitignore'), 'utf-8') });
-  } catch {
-    return json({ content: '' });
+  } catch (error) {
+    if (isFsErrorCode(error, 'ENOENT')) return json({ content: '' });
+    const message = error instanceof Error ? error.message : String(error);
+    if (/access denied|outside root|absolute paths/i.test(message)) return json({ error: 'Access denied' }, { status: 403 });
+    return json({ error: message }, { status: 500 });
   }
 }
 
@@ -309,7 +321,10 @@ function handleResolveConflict(
   }
 
   return withServerSyncLock(mindRoot, 'resolve-conflict', services, () => {
-    if (strategy === 'keep-remote' && existsSync(conflictPath)) {
+    if (strategy === 'keep-remote' && !existsSync(conflictPath)) {
+      return json({ error: 'Remote conflict backup is missing' }, { status: 409 });
+    }
+    if (strategy === 'keep-remote') {
       writeFileSync(originalPath, readFileSync(conflictPath, 'utf-8'), 'utf-8');
     }
     if (existsSync(conflictPath)) {
@@ -349,6 +364,7 @@ function handleConflictPreview(
 }
 
 function handleUpdateIntervals(
+  mindRoot: string,
   payload: MindosSyncPostPayload,
   config: MindosSyncConfig,
   services: MindosSyncServices,
@@ -365,13 +381,15 @@ function handleUpdateIntervals(
     return json({ error: 'autoPullInterval must be an integer between 60 and 3600 seconds' }, { status: 400 });
   }
 
-  config.sync = config.sync ?? {};
-  if (commitInterval !== undefined) config.sync.autoCommitInterval = commitInterval;
-  if (pullInterval !== undefined) config.sync.autoPullInterval = pullInterval;
-  writeConfig(config, services);
-  return json({
-    autoCommitInterval: config.sync.autoCommitInterval || 30,
-    autoPullInterval: config.sync.autoPullInterval || 300,
+  return withServerSyncLock(mindRoot, 'update-intervals', services, () => {
+    config.sync = config.sync ?? {};
+    if (commitInterval !== undefined) config.sync.autoCommitInterval = commitInterval;
+    if (pullInterval !== undefined) config.sync.autoPullInterval = pullInterval;
+    writeConfig(config, services);
+    return json({
+      autoCommitInterval: config.sync.autoCommitInterval || 30,
+      autoPullInterval: config.sync.autoPullInterval || 300,
+    });
   });
 }
 

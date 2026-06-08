@@ -189,7 +189,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     stop({ nodeCount: fileTree.length, pathCount: paths.length });
     return paths;
   }, [fileTree]);
-  const { status: syncStatus, fetchStatus: syncStatusRefresh } = useSyncStatus();
+  const { status: syncStatus, stale: syncStatusStale, fetchStatus: syncStatusRefresh } = useSyncStatus();
 
   const currentFile = pathname.startsWith('/view/')
     ? pathname.slice('/view/'.length).split('/').map(decodeURIComponent).join('/')
@@ -545,6 +545,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         onDiscoverClick={(event) => handleRoutePanelClick(event, 'discover')}
         onSpacesClick={(event) => handleRoutePanelClick(event, 'files')}
         syncStatus={syncStatus}
+        syncStale={syncStatusStale}
         expanded={lp.railExpanded}
         onExpandedChange={handleExpandedChange}
         onSettingsClick={handleSettingsClick}
@@ -664,6 +665,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         railWidth={lp.railWidth}
         onOpenSyncSettings={openSyncSettings}
         syncStatus={syncStatus}
+        syncStale={syncStatusStale}
         onSyncStatusRefresh={syncStatusRefresh}
       />
 
@@ -678,7 +680,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         </Link>
         <div className="flex items-center gap-0.5">
           <button onClick={openSyncSettings} className="p-3 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent flex items-center justify-center" aria-label="Sync status">
-            <MobileSyncDot status={syncStatus} />
+            <MobileSyncDot status={syncStatus} stale={syncStatusStale} />
           </button>
           <button onClick={() => setMobileSearchOpen(true)} className="p-3 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent" aria-label={t.sidebar.searchTitle}>
             <Search size={20} />

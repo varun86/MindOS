@@ -17,10 +17,11 @@ interface SyncPopoverProps {
   railWidth: number;
   onOpenSyncSettings: () => void;
   syncStatus: SyncStatus | null;
+  syncStale?: boolean;
   onSyncStatusRefresh: () => Promise<void>;
 }
 
-export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, onOpenSyncSettings, syncStatus, onSyncStatusRefresh }: SyncPopoverProps) {
+export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, onOpenSyncSettings, syncStatus, syncStale, onSyncStatusRefresh }: SyncPopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const { t } = useLocale();
   const syncT = t.sidebar?.sync as Record<string, unknown> | undefined;
@@ -48,8 +49,14 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
 
   if (!open || !anchorRect) return null;
 
-  const level = getStatusLevel(syncStatus, syncing);
-  const { label: statusText, tooltip: statusDetail } = getSyncLabel(level, syncStatus, syncT);
+  const level = syncStale && syncStatus ? 'error' : getStatusLevel(syncStatus, syncing);
+  const { label: statusText, tooltip: statusDetail } = syncStale && syncStatus
+    ? {
+      label: (syncT?.syncStale as string) ?? 'Sync status stale',
+      tooltip: (syncT?.syncStaleHint as string) ?? 'MindOS could not refresh sync status. The displayed state may be outdated.',
+    }
+    : getSyncLabel(level, syncStatus, syncT);
+  const showRetryStatus = !!(syncStale && syncStatus);
 
   // Position: anchor near the button, avoid going off-screen top
   const popoverTop = Math.max(8, anchorRect.bottom - 180);
@@ -99,7 +106,15 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {level !== 'off' && level !== 'conflicts' && (
+          {showRetryStatus ? (
+            <PrimaryButton
+              onClick={() => { void onSyncStatusRefresh(); }}
+              className="flex min-h-9 items-center gap-1.5 px-3 text-xs"
+            >
+              <RefreshCw size={12} />
+              {(syncT?.retry as string) ?? 'Retry'}
+            </PrimaryButton>
+          ) : level !== 'off' && level !== 'conflicts' && level !== 'paused' && (
             <PrimaryButton
               onClick={syncNow}
               disabled={syncing}

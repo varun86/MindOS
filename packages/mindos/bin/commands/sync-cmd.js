@@ -106,6 +106,30 @@ export const run = async (args, flags) => {
     return;
   }
 
+  if (!status.enabled && status.configured) {
+    const ago = status.lastSync
+      ? (() => {
+          const diff = Date.now() - new Date(status.lastSync).getTime();
+          if (diff < 60000) return 'just now';
+          if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
+          return `${Math.floor(diff / 3600000)} hours ago`;
+        })()
+      : 'never';
+
+    console.log(`\n${bold('Sync Status')}`);
+    console.log(`  ${dim('Provider:')}    ${cyan(`${status.provider} (${status.remote})`)}`);
+    console.log(`  ${dim('Branch:')}      ${cyan(status.branch)}`);
+    console.log(`  ${dim('Last sync:')}   ${ago}`);
+    console.log(`  ${dim('Unpushed:')}    ${status.unpushed} commits`);
+    console.log(`  ${dim('Conflicts:')}   ${status.conflicts.length ? yellow(`${status.conflicts.length} file(s)`) : green('none')}`);
+    console.log(`  ${dim('Auto-sync:')}   ${yellow('● paused')} ${dim('Run `mindos sync on` to enable')}`);
+    if (status.lastError) {
+      console.log(`  ${dim('Last error:')}  ${red(status.lastError)}`);
+    }
+    console.log();
+    return;
+  }
+
   if (!status.enabled) {
     console.log(`\n${bold('Sync Status')}`);
     console.log(dim('  Not configured. Run `mindos sync init` to set up.\n'));

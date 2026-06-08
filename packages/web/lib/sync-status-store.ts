@@ -9,16 +9,19 @@ type SyncStatusSnapshot = {
   status: SyncStatus | null;
   loaded: boolean;
   error: string | null;
+  stale: boolean;
 };
 
 const SYNC_STATUS_POLL_INTERVAL = 30_000;
 
-let syncStatusSnapshot: SyncStatusSnapshot = { status: null, loaded: false, error: null };
+let syncStatusSnapshot: SyncStatusSnapshot = { status: null, loaded: false, error: null, stale: false };
 let syncStatusInFlight: Promise<void> | null = null;
 let syncStatusInFlightToken: symbol | null = null;
 let syncStatusInterval: ReturnType<typeof setInterval> | undefined;
 let syncStatusSubscribers = 0;
 const syncStatusListeners = new Set<() => void>();
+const syncActionListeners = new Set<() => void>();
+let sharedSyncing = false;
 
 function emitSyncStatus() {
   for (const listener of syncStatusListeners) listener();
@@ -33,6 +36,31 @@ function getSyncStatusSnapshot(): SyncStatusSnapshot {
   return syncStatusSnapshot;
 }
 
+function emitSyncAction() {
+  for (const listener of syncActionListeners) listener();
+}
+
+function setSharedSyncing(next: boolean) {
+  if (sharedSyncing === next) return;
+  sharedSyncing = next;
+  emitSyncAction();
+}
+
+function tryAcquireSharedSyncing() {
+  if (sharedSyncing) return false;
+  setSharedSyncing(true);
+  return true;
+}
+
+function getSharedSyncingSnapshot() {
+  return sharedSyncing;
+}
+
+function subscribeSyncAction(listener: () => void) {
+  syncActionListeners.add(listener);
+  return () => syncActionListeners.delete(listener);
+}
+
 export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
   if (syncStatusInFlight && !opts.force) return syncStatusInFlight;
   const requestToken = Symbol('sync-status-fetch');
@@ -42,12 +70,17 @@ export async function fetchSharedSyncStatus(opts: { force?: boolean } = {}) {
     try {
       const data = await apiFetch<SyncStatus>('/api/sync', { timeout: 10_000 });
       if (syncStatusInFlightToken === requestToken) {
-        setSyncStatusSnapshot({ status: data, loaded: true, error: null });
+        setSyncStatusSnapshot({ status: data, loaded: true, error: null, stale: false });
       }
     } catch (error) {
       if (syncStatusInFlightToken === requestToken) {
         const message = error instanceof Error ? error.message : String(error);
-        setSyncStatusSnapshot({ status: syncStatusSnapshot.status, loaded: true, error: message });
+        setSyncStatusSnapshot({
+          status: syncStatusSnapshot.status,
+          loaded: true,
+          error: message,
+          stale: syncStatusSnapshot.status !== null,
+        });
       }
     } finally {
       if (syncStatusInFlightToken === requestToken) {
@@ -103,24 +136,27 @@ function subscribeSyncStatus(listener: () => void) {
 }
 
 export function useSyncStatus() {
-  const { status, loaded, error } = useSyncExternalStore(
+  const { status, loaded, error, stale } = useSyncExternalStore(
     subscribeSyncStatus,
     getSyncStatusSnapshot,
     getSyncStatusSnapshot,
   );
   const fetchStatus = useCallback(() => fetchSharedSyncStatus({ force: true }), []);
 
-  return { status, loaded, error, fetchStatus };
+  return { status, loaded, error, stale, fetchStatus };
 }
 
 export function useSyncAction(refreshFn: () => Promise<void>, syncT?: Record<string, unknown>) {
-  const [syncing, setSyncing] = useState(false);
+  const syncing = useSyncExternalStore(
+    subscribeSyncAction,
+    getSharedSyncingSnapshot,
+    getSharedSyncingSnapshot,
+  );
   const [syncResult, setSyncResult] = useState<'success' | 'error' | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const syncNow = useCallback(async () => {
-    if (syncing) return;
-    setSyncing(true);
+    if (!tryAcquireSharedSyncing()) return;
     setSyncResult(null);
     setSyncError(null);
     try {
@@ -131,16 +167,27 @@ export function useSyncAction(refreshFn: () => Promise<void>, syncT?: Record<str
         timeout: SYNC_ACTION_TIMEOUT_MS,
       });
       await refreshFn();
-      setSyncResult('success');
+      const refreshedStatus = syncStatusSnapshot.status;
+      if (syncStatusSnapshot.stale && syncStatusSnapshot.error) {
+        setSyncError(formatSyncError(syncStatusSnapshot.error, syncT));
+        setSyncResult('error');
+      } else if (refreshedStatus?.conflicts?.length) {
+        setSyncResult(null);
+      } else if (refreshedStatus?.lastError) {
+        setSyncError(formatSyncError(refreshedStatus.lastError, syncT));
+        setSyncResult('error');
+      } else {
+        setSyncResult('success');
+      }
     } catch (error) {
       try { await refreshFn(); } catch {}
       const raw = error instanceof Error ? error.message : 'Sync failed';
       setSyncError(formatSyncError(raw, syncT));
       setSyncResult('error');
     } finally {
-      setSyncing(false);
+      setSharedSyncing(false);
     }
-  }, [syncing, refreshFn, syncT]);
+  }, [refreshFn, syncT]);
 
   useEffect(() => {
     if (syncResult !== 'success') return;
@@ -153,9 +200,11 @@ export function useSyncAction(refreshFn: () => Promise<void>, syncT?: Record<str
 
 export function resetSyncStatusStoreForTests() {
   stopSyncStatusPolling();
-  syncStatusSnapshot = { status: null, loaded: false, error: null };
+  syncStatusSnapshot = { status: null, loaded: false, error: null, stale: false };
   syncStatusInFlight = null;
   syncStatusInFlightToken = null;
   syncStatusSubscribers = 0;
   syncStatusListeners.clear();
+  syncActionListeners.clear();
+  sharedSyncing = false;
 }

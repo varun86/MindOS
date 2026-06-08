@@ -207,6 +207,113 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('does not report a stale cached status as backed up when refresh fails', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    const healthyStatus = {
+      enabled: true,
+      remote: 'git@github.com:me/mind.git',
+      branch: 'main',
+      lastSync: new Date().toISOString(),
+      unpushed: '0',
+      conflicts: [],
+      lastError: null,
+      autoCommitInterval: 30,
+      autoPullInterval: 300,
+    };
+    mockApiFetch.mockResolvedValueOnce(healthyStatus);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('All notes are backed up');
+
+    mockApiFetch.mockRejectedValueOnce(new Error('server unavailable'));
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible={false} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Sync status may be outdated');
+    expect(host.textContent).toContain('server unavailable');
+    expect(host.textContent).not.toContain('All notes are backed up');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('reloads .gitignore every time the editor is reopened', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let gitignoreReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'gitignore-get') {
+        gitignoreReads += 1;
+        return { content: gitignoreReads === 1 ? 'node_modules\n' : 'dist\n' };
+      }
+      return {
+        enabled: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const toggle = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Excluded files'));
+    expect(toggle).toBeTruthy();
+
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((host.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('node_modules\n');
+
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect((host.querySelector('textarea') as HTMLTextAreaElement | null)?.value).toBe('dist\n');
+    expect(gitignoreReads).toBe(2);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('surfaces conflict preview failures inline', async () => {
     const { SyncTab } = await import('@/components/settings/SyncTab');
     mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {

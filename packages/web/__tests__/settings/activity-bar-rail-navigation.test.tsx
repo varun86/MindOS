@@ -61,9 +61,15 @@ vi.mock('@/components/SyncStatusBar', () => ({
     syncing: 'bg-[var(--amber)]',
     error: 'bg-error',
     conflicts: 'bg-error',
+    paused: 'bg-[var(--amber)]',
+    unknown: 'bg-[var(--amber)]',
     off: 'bg-muted',
   },
-  getStatusLevel: () => 'synced',
+  getStatusLevel: (status: any) => {
+    if (!status) return 'off';
+    if (!status.enabled) return status.configured ? 'paused' : 'off';
+    return 'synced';
+  },
 }));
 
 function applyRailDecision(
@@ -635,6 +641,35 @@ describe('ActivityBar rail navigation', () => {
     expect(syncButton?.getAttribute('aria-haspopup')).toBe('dialog');
     expect(syncButton?.getAttribute('aria-expanded')).toBe('true');
     expect(syncButton?.getAttribute('aria-controls')).toBe('test-sync-popover');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps the sync rail trigger visible for paused configured repositories', async () => {
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+    const onSyncClick = vi.fn();
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={{ enabled: false, configured: true, remote: 'origin' } as any}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={onSyncClick}
+        />,
+      );
+    });
+
+    expect(host.querySelector('[aria-label="Sync"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();

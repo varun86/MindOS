@@ -4184,6 +4184,21 @@ const visibleNodes = useMemo(() => {
 
 **防回归**：`tests/unit/cli-sync.test.ts` 覆盖锁释放、旧 owner 不能误删新锁、dead pid stale recovery、manual sync 单锁覆盖；`packages/mindos/src/server.test.ts` 覆盖 direct sync file operations 遇锁 423 且不改文件/state、CLI `SYNC_LOCKED` 映射 423、init token 不进 argv。
 
+### Git Sync 设置页不能把 paused/stale/unknown 折叠成 success/off（2026-06-09）
+
+**症状**：Settings → Sync 中已经配置过远程仓库但关闭 auto-sync 时，入口会像未配置一样消失；状态刷新失败时，旧缓存仍可能显示 "All notes are backed up"；`unpushed: "?"` 这类无法确认的状态也可能被当成 0 个未上传变更。
+
+**根因**：前端多个入口各自推导状态，只有 `off/synced/error/conflicts/unpushed` 几个粗粒度状态。Settings、底栏、ActivityBar、Popover 和移动端 dot 没有共享同一个 status level 与 in-flight action，导致 paused、stale cache、unknown upstream、lock conflict、conflict-after-sync 等状态被误归类。
+
+**规则**：
+1. `configured && !enabled` 必须是 `paused`，不能当作 `off`；用户仍要能从全局 sync 入口回到 Settings → Sync 开启。
+2. GET `/api/sync` 失败但已有旧状态时必须标记 `stale`，任何健康卡和底栏都不能继续给纯成功文案。
+3. 非数字 `unpushed` 要显示为 `unknown`，不能用 `Number(...) || 0` 隐式吞掉。
+4. 所有手动 Sync Now 入口必须共享一个 action in-flight 状态；锁冲突 `SYNC_LOCKED` 要显示友好文案，不能泄露 owner/pid。
+5. 手动 sync 返回后必须刷新状态并按最终状态决定提示：有 conflicts/lastError/stale 时不能显示成功 toast。
+
+**防回归**：`packages/web/__tests__/core/sync-status.test.ts` 覆盖 paused/unknown/lock 文案；`packages/web/__tests__/core/sync-action.test.tsx` 覆盖全局 in-flight 与冲突后不显示成功；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 stale 状态和 `.gitignore` 重试；`packages/web/__tests__/settings/activity-bar-rail-navigation.test.tsx` 覆盖 paused repo 仍显示 Sync rail 入口。
+
 ### Platform runtime 包不能暴露和主包同名的 `mindos` bin（2026-06-06）
 
 **症状**：`npm run release` 的 package smoke 阶段安装主包 tarball 与当前平台 tarball 后，`node_modules/.bin/mindos` 不存在，报错 `'mindos' binary not found after install`。主包 `bin/mindos-shim.cjs` 和平台包 `bin/mindos` 文件实际都存在。

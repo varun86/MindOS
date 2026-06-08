@@ -30,6 +30,7 @@ interface ActivityBarProps {
   onWorkflowsClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
   onSpacesClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
   syncStatus: SyncStatus | null;
+  syncStale?: boolean;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onSettingsClick: () => void;
@@ -155,6 +156,7 @@ export default function ActivityBar({
   onWorkflowsClick,
   onSpacesClick,
   syncStatus,
+  syncStale,
   expanded,
   onExpandedChange,
   onSettingsClick,
@@ -282,8 +284,9 @@ export default function ActivityBar({
     });
   }, [activePanel, debouncedRailClick, onPanelChange, pathname]);
 
-  const syncLevel = getStatusLevel(syncStatus, false);
+  const syncLevel = syncStale && syncStatus ? 'error' : getStatusLevel(syncStatus, false);
   const showSyncDot = syncLevel !== 'off' && syncLevel !== 'synced';
+  const showSyncEntry = syncLevel !== 'off';
 
   const railWidth = expanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
 
@@ -422,7 +425,7 @@ export default function ActivityBar({
               <span className={`absolute ${expanded ? 'left-[26px] top-1.5' : 'top-1.5 right-1.5'} w-2 h-2 rounded-full bg-error`} />
             ) : undefined}
           />
-          {syncStatus?.enabled && syncStatus?.remote && syncStatus.remote !== '(not configured)' && (
+          {showSyncEntry && (
           <RailButton
             icon={<RefreshCw size={18} />}
             label={t.sidebar.syncLabel}

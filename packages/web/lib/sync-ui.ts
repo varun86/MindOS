@@ -2,7 +2,7 @@ import type { SyncStatus } from '@/components/settings/types';
 
 export const SYNC_ACTION_TIMEOUT_MS = 120_000;
 
-export type StatusLevel = 'synced' | 'unpushed' | 'conflicts' | 'error' | 'off' | 'syncing';
+export type StatusLevel = 'synced' | 'unpushed' | 'conflicts' | 'error' | 'paused' | 'unknown' | 'off' | 'syncing';
 
 export function timeAgo(iso: string | null | undefined, syncT?: Record<string, unknown>): string {
   if (!iso) return (syncT?.timeNever as string) ?? 'never';
@@ -21,11 +21,18 @@ export function getUnpushedCount(status: SyncStatus): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function hasUnknownUnpushedCount(status: SyncStatus): boolean {
+  const value = status.unpushed;
+  return typeof value === 'string' && value !== '' && !/^\d+$/.test(value);
+}
+
 export function getStatusLevel(status: SyncStatus | null, syncing: boolean): StatusLevel {
   if (syncing) return 'syncing';
-  if (!status || !status.enabled) return 'off';
+  if (!status) return 'off';
+  if (!status.enabled) return status.configured ? 'paused' : 'off';
   if (status.conflicts && status.conflicts.length > 0) return 'conflicts';
   if (status.lastError) return 'error';
+  if (hasUnknownUnpushedCount(status)) return 'unknown';
   if (getUnpushedCount(status) > 0) return 'unpushed';
   return 'synced';
 }
@@ -34,13 +41,24 @@ export function getStatusLevel(status: SyncStatus | null, syncing: boolean): Sta
 export function getSyncErrorHint(error: string, _remote?: string | null, syncT?: Record<string, unknown>): string {
   const lower = error.toLowerCase();
 
+  if (lower.includes('sync_locked') || lower.includes('sync is already running')) {
+    return (syncT?.hintSyncLocked as string) ?? 'Another sync operation is already running. Wait a moment, then try again.';
+  }
   if (lower.includes('permission denied') || lower.includes('publickey')) {
     return (syncT?.hintSshAuth as string) ?? 'SSH key may not be configured. Run: ssh-keygen -t ed25519 && ssh -T git@github.com';
   }
   if (lower.includes('host key') || lower.includes('known_hosts') || lower.includes('fingerprint')) {
     return (syncT?.hintSshHost as string) ?? 'Run: ssh-keyscan github.com >> ~/.ssh/known_hosts';
   }
-  if (lower.includes('authentication failed') || lower.includes('invalid credentials') || lower.includes('401') || lower.includes('403')) {
+  if (
+    lower.includes('authentication failed') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('could not read username') ||
+    lower.includes('terminal prompts disabled') ||
+    lower.includes('password authentication was removed') ||
+    lower.includes('401') ||
+    lower.includes('403')
+  ) {
     return (syncT?.hintHttpsAuth as string) ?? 'Access token may be expired or missing. Check Settings -> Developer settings -> Personal access tokens.';
   }
   if (lower.includes('timed out') || lower.includes('timeout') || lower.includes('could not resolve')) {
@@ -61,8 +79,16 @@ export function getSyncErrorHint(error: string, _remote?: string | null, syncT?:
 
 /** Classify a raw sync error and return a user-friendly message with action hint. */
 export function formatSyncError(raw: string, syncT?: Record<string, unknown>): string {
+  const message = normalizeSyncError(raw, syncT);
   const hint = getSyncErrorHint(raw, undefined, syncT);
-  return hint ? `${raw}\n${hint}` : raw;
+  return hint ? `${message}\n${hint}` : message;
+}
+
+function normalizeSyncError(raw: string, syncT?: Record<string, unknown>): string {
+  if (/SYNC_LOCKED/i.test(raw) || /Sync is already running/i.test(raw)) {
+    return (syncT?.syncLocked as string) ?? 'Sync is already running';
+  }
+  return raw;
 }
 
 /** Shared status label formatter — used by SyncStatusBar and SyncPopover. */
@@ -101,6 +127,18 @@ export function getSyncLabel(
       return {
         label: (syncT?.syncError as string) ?? 'Sync error',
         tooltip: status?.lastError || ((syncT?.syncError as string) ?? 'Sync error'),
+      };
+    case 'paused':
+      return {
+        label: (syncT?.syncPaused as string) ?? 'Sync paused',
+        tooltip: (syncT?.syncPausedHint as string)
+          ?? 'Auto-sync is disabled for this repository. Open Settings > Sync to enable it.',
+      };
+    case 'unknown':
+      return {
+        label: (syncT?.syncUnknown as string) ?? 'Sync status unknown',
+        tooltip: (syncT?.syncUnknownHint as string)
+          ?? 'MindOS could not confirm whether local changes have been uploaded. Open Settings > Sync for details.',
       };
     default: {
       const l = (syncT?.syncOff as string) ?? 'Sync off';

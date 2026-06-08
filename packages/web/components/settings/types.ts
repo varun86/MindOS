@@ -163,7 +163,7 @@ export interface SyncStatus {
   lastSync?: string | null;
   lastPull?: string | null;
   unpushed?: string;
-  conflicts?: Array<{ file: string; time: string }>;
+  conflicts?: Array<{ file: string; time: string; noBackup?: boolean }>;
   lastError?: string | null;
   autoCommitInterval?: number;
   autoPullInterval?: number;

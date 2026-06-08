@@ -5,15 +5,25 @@ import { RefreshCw, AlertCircle, CheckCircle2, Loader2, GitBranch, Check, Chevro
 import { PrimaryButton, SettingCard, Select } from './Primitives';
 import { apiFetch } from '@/lib/api';
 import type { SyncStatus, SyncTabProps } from './types';
-import { formatSyncError, getSyncErrorHint, getUnpushedCount, SYNC_ACTION_TIMEOUT_MS, timeAgo } from '@/lib/sync-ui';
-import { useSyncStatus } from '@/lib/sync-status-store';
+import { formatSyncError, getSyncErrorHint, getUnpushedCount, timeAgo } from '@/lib/sync-ui';
+import { useSyncAction, useSyncStatus } from '@/lib/sync-status-store';
 import SyncEmptyState from './SyncEmptyState';
 
 export { getSyncErrorHint, timeAgo } from '@/lib/sync-ui';
 
-function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>) {
+function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, staleError?: string | null) {
   const conflictCount = status.conflicts?.length ?? 0;
   const unpushedCount = getUnpushedCount(status);
+
+  if (staleError) {
+    return {
+      tone: 'error' as const,
+      title: (syncT?.healthStaleTitle as string) ?? 'Sync status may be outdated',
+      description: formatSyncError(staleError, syncT),
+      next: (syncT?.healthStaleNext as string) ?? 'Next: retry status refresh before trusting this state',
+      icon: <AlertCircle size={18} />,
+    };
+  }
 
   if (conflictCount > 0) {
     return {
@@ -72,8 +82,8 @@ function healthToneClass(tone: 'success' | 'warning' | 'error') {
 
 /* ── Conflict Row ──────────────────────────────────────────────── */
 
-function ConflictRow({ file, time, syncT, onResolved }: {
-  file: string; time: string; syncT?: Record<string, unknown>; onResolved: () => void;
+function ConflictRow({ file, time, noBackup, syncT, onResolved }: {
+  file: string; time: string; noBackup?: boolean; syncT?: Record<string, unknown>; onResolved: () => void;
 }) {
   const [resolving, setResolving] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -110,9 +120,7 @@ function ConflictRow({ file, time, syncT, onResolved }: {
   };
 
   const handleResolve = async (strategy: 'keep-local' | 'keep-remote') => {
-    if (!preview) {
-      setExpanded(true);
-      await loadPreview();
+    if (!preview || (strategy === 'keep-remote' && noBackup)) {
       return;
     }
     setRowError(null);
@@ -154,6 +162,11 @@ function ConflictRow({ file, time, syncT, onResolved }: {
             {(syncT?.viewDiffFirst as string) ?? 'View diff first'}
           </span>
         )}
+        {noBackup && (
+          <span className="text-2xs text-destructive">
+            {(syncT?.remoteBackupMissing as string) ?? 'Remote backup unavailable'}
+          </span>
+        )}
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
@@ -167,9 +180,12 @@ function ConflictRow({ file, time, syncT, onResolved }: {
           <button
             type="button"
             onClick={() => handleResolve('keep-remote')}
-            disabled={!!resolving || !preview}
+            disabled={!!resolving || !preview || !!noBackup}
             className="inline-flex min-h-8 items-center gap-1 px-2.5 py-1 rounded-md border border-border text-xs hover:bg-muted transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={(syncT?.keepRemoteHint as string) ?? 'Replace with remote version'}
+            title={noBackup
+              ? ((syncT?.remoteBackupMissingHint as string) ?? 'The remote version could not be saved for preview, so it cannot be applied from the UI.')
+              : ((syncT?.keepRemoteHint as string) ?? 'Replace with remote version')
+            }
           >
             {resolving === 'remote' ? <Loader2 size={10} className="animate-spin" /> : ((syncT?.keepRemote as string) ?? 'Keep remote')}
           </button>
@@ -184,7 +200,7 @@ function ConflictRow({ file, time, syncT, onResolved }: {
               <Loader2 size={13} className="animate-spin text-muted-foreground" />
             </div>
           ) : preview ? (
-            <div className="grid grid-cols-2 divide-x divide-border/50 text-2xs font-mono max-h-60 overflow-auto">
+            <div className="grid grid-cols-1 divide-y divide-border/50 text-2xs font-mono max-h-72 overflow-auto sm:grid-cols-2 sm:divide-x sm:divide-y-0">
               <div className="p-2">
                 <div className="text-muted-foreground mb-1 font-sans text-xs font-medium">
                   {(syncT?.localVersion as string) ?? 'Local (this device)'}
@@ -195,7 +211,12 @@ function ConflictRow({ file, time, syncT, onResolved }: {
                 <div className="text-muted-foreground mb-1 font-sans text-xs font-medium">
                   {(syncT?.remoteVersion as string) ?? 'Remote'}
                 </div>
-                <pre className="whitespace-pre-wrap text-foreground/80 leading-relaxed">{preview.remote || ((syncT?.emptyFile as string) ?? '(empty)')}</pre>
+                <pre className="whitespace-pre-wrap text-foreground/80 leading-relaxed">
+                  {noBackup
+                    ? ((syncT?.remoteBackupMissingHint as string) ?? 'The remote version could not be saved for preview, so it cannot be applied from the UI.')
+                    : (preview.remote || ((syncT?.emptyFile as string) ?? '(empty)'))
+                  }
+                </pre>
               </div>
             </div>
           ) : (
@@ -239,27 +260,36 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loaded = useRef(false);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const dirty = content !== saved;
 
-  useEffect(() => {
-    if (!open || loaded.current) return;
-    loaded.current = true;
+  const loadGitignore = useCallback(async () => {
     setLoading(true);
-    apiFetch<{ content: string }>('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'gitignore-get' }),
-    }).then(data => {
+    setError(null);
+    setLoadFailed(false);
+    setSaveOk(false);
+    try {
+      const data = await apiFetch<{ content: string }>('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'gitignore-get' }),
+      });
       setContent(data.content);
       setSaved(data.content);
-      setError(null);
-    }).catch((err) => {
+    } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.gitignoreLoadFailed as string) ?? 'Failed to load .gitignore');
       setError(formatSyncError(raw, syncT));
-    }).finally(() => setLoading(false));
-  }, [open]);
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [syncT]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadGitignore();
+  }, [open, loadGitignore]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -273,6 +303,7 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
       });
       setSaved(content);
       setSaveOk(true);
+      setLoadFailed(false);
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
       const raw = err instanceof Error ? err.message : ((syncT?.gitignoreSaveFailed as string) ?? 'Failed to save .gitignore');
@@ -307,12 +338,13 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
                 value={content}
                 onChange={e => setContent(e.target.value)}
                 rows={8}
+                disabled={loadFailed}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs font-mono leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
                 placeholder={(syncT?.gitignorePlaceholder as string) ?? '# Files to exclude from sync\n*.tmp\nsecret/'}
                 spellCheck={false}
               />
               <div className="flex items-center gap-2">
-                {dirty && (
+                {dirty && !loadFailed && (
                   <button
                     type="button"
                     onClick={handleSave}
@@ -321,6 +353,16 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
                   >
                     {saving && <Loader2 size={12} className="animate-spin" />}
                     {(syncT?.gitignoreSave as string) ?? 'Save'}
+                  </button>
+                )}
+                {loadFailed && (
+                  <button
+                    type="button"
+                    onClick={() => void loadGitignore()}
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <RefreshCw size={12} />
+                    {(syncT?.retry as string) ?? 'Retry'}
                   </button>
                 )}
                 {saveOk && (
@@ -351,11 +393,11 @@ function GitignoreEditor({ syncT }: { syncT?: Record<string, unknown> }) {
 
 export function SyncTab({ t, visible }: SyncTabProps) {
   const syncT = t.settings?.sync as Record<string, unknown> | undefined;
-  const { status, loaded, error: loadError, fetchStatus } = useSyncStatus();
-  const [syncing, setSyncing] = useState(false);
+  const { status, loaded, error: loadError, stale, fetchStatus } = useSyncStatus();
   const [toggling, setToggling] = useState(false);
   const [intervalSaving, setIntervalSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const { syncing, syncResult, syncError, syncNow } = useSyncAction(fetchStatus, syncT);
 
   const showSuccess = useCallback((text: string) => {
     setMessage({ type: 'success', text });
@@ -373,24 +415,19 @@ export function SyncTab({ t, visible }: SyncTabProps) {
     prevVisible.current = visible;
   }, [visible, fetchStatus]);
 
-  const handleSyncNow = async () => {
-    setSyncing(true);
-    setMessage(null);
-    try {
-      await apiFetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'now' }),
-        timeout: SYNC_ACTION_TIMEOUT_MS, // sync can take 60s+ for large repos
-      });
+  useEffect(() => {
+    if (syncResult === 'success') {
       showSuccess((syncT?.syncComplete as string) ?? 'Sync complete');
-      await fetchStatus();
-    } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : 'Sync failed';
-      setMessage({ type: 'error', text: formatSyncError(raw, syncT) });
-    } finally {
-      setSyncing(false);
+      return;
     }
+    if (syncResult === 'error' && syncError) {
+      setMessage({ type: 'error', text: syncError });
+    }
+  }, [showSuccess, syncError, syncResult, syncT]);
+
+  const handleSyncNow = () => {
+    setMessage(null);
+    void syncNow();
   };
 
   const handleToggle = async () => {
@@ -576,9 +613,9 @@ export function SyncTab({ t, visible }: SyncTabProps) {
   }
 
   const conflicts = status.conflicts || [];
-  const health = getSyncHealth(status, syncT);
+  const health = getSyncHealth(status, syncT, stale ? loadError : null);
   const unpushedCount = getUnpushedCount(status);
-  const showHealthSyncAction = conflicts.length === 0;
+  const showHealthSyncAction = !stale && conflicts.length === 0;
 
   return (
     <div className="space-y-4">
@@ -594,7 +631,16 @@ export function SyncTab({ t, visible }: SyncTabProps) {
               <p className="text-xs font-medium">{health.next}</p>
             </div>
           </div>
-          {showHealthSyncAction && (
+          {stale ? (
+            <button
+              type="button"
+              onClick={() => void fetchStatus()}
+              className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background/80 px-3 text-sm text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RefreshCw size={13} />
+              {(syncT?.retry as string) ?? 'Retry'}
+            </button>
+          ) : showHealthSyncAction && (
             <button
               type="button"
               onClick={handleSyncNow}
@@ -682,7 +728,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
           </p>
           <div className="space-y-2">
             {conflicts.map((c, i) => (
-              <ConflictRow key={i} file={c.file} time={c.time} syncT={syncT} onResolved={fetchStatus} />
+              <ConflictRow key={i} file={c.file} time={c.time} noBackup={c.noBackup} syncT={syncT} onResolved={fetchStatus} />
             ))}
           </div>
         </SettingCard>

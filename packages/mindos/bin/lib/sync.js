@@ -796,12 +796,29 @@ export function stopSyncDaemon() {
 export function getSyncStatus(mindRoot) {
   const config = loadSyncConfig();
   const state = loadSyncState();
+  const hasRepo = mindRoot ? isGitRepo(mindRoot) : false;
+  const remote = hasRepo && mindRoot ? getRemoteUrl(mindRoot) : null;
 
   if (!config.enabled) {
+    if (remote && mindRoot) {
+      return {
+        enabled: false,
+        configured: true,
+        provider: config.provider || 'git',
+        remote: redactGitRemote(remote),
+        branch: getBranch(mindRoot) || 'main',
+        lastSync: state.lastSync || null,
+        lastPull: state.lastPull || null,
+        unpushed: getUnpushedCount(mindRoot),
+        conflicts: state.conflicts || [],
+        lastError: state.lastError || null,
+        autoCommitInterval: config.autoCommitInterval || 30,
+        autoPullInterval: config.autoPullInterval || 300,
+      };
+    }
     return { enabled: false };
   }
 
-  const remote = mindRoot ? getRemoteUrl(mindRoot) : null;
   const branch = mindRoot ? getBranch(mindRoot) : null;
   const unpushed = mindRoot ? getUnpushedCount(mindRoot) : '?';
 

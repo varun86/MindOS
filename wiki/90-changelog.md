@@ -1,6 +1,15 @@
-<!-- Last verified: 2026-05-10 | Current version: v1.0.5 -->
+<!-- Last verified: 2026-06-09 | Current version: v1.0.18 -->
 
 # 变更日志 (CHANGELOG)
+
+## v1.0.18 (2026-06-09)
+
+### Git Sync / Settings
+
+- **Sync 设置状态机收口**：Settings、底栏、ActivityBar、Popover 和移动端 dot 统一识别 paused、stale、unknown、conflicts、locked 等状态；已配置但暂停的仓库不再像未配置一样消失，刷新失败时也不会继续显示“已备份”。
+- **手动同步入口统一**：所有 Sync Now 入口共享同一个 in-flight 状态；同步后会刷新最终状态，若进入冲突、错误或 stale 状态，不再弹出误导性的成功提示。
+- **冲突与 `.gitignore` 体验修复**：冲突 diff 在移动端上下排列，缺少远程备份时禁用 Keep remote 并解释原因；`.gitignore` 编辑器每次打开都会重新加载，加载失败时提供 Retry，避免基于旧内容继续保存。
+- **CLI/API 状态一致**：CLI `mindos sync` 会保留 paused 仓库的 remote/branch 元数据并提示 `mindos sync on`；Product API 对 sync on/off 与 interval 更新也走同一把 sync 锁，`.gitignore` 读取只在文件不存在时返回空内容，symlink/越界访问返回明确错误。
 
 ## v1.0.17 (2026-06-09)
 

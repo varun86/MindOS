@@ -31,6 +31,7 @@ async function importSync() {
     setSyncEnabled: (enabled: boolean) => void;
     getSyncStatus: (mindRoot?: string) => {
       enabled: boolean;
+      configured?: boolean;
       provider?: string;
       remote?: string;
       branch?: string;
@@ -171,6 +172,34 @@ describe('mindos sync config persistence', () => {
 
     expect(status.remote).toBe('https://example.com/me/mind.git');
     expect(status.remote).not.toContain('ghp_secret');
+  });
+
+  it('keeps configured repository metadata when auto-sync is paused', async () => {
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ sync: { enabled: false, provider: 'git' } }), 'utf-8');
+    const execFileSyncMock = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === 'remote' && args[1] === 'get-url') return 'git@example.com:mind/repo.git\n';
+      if (args[0] === 'rev-parse') return 'main\n';
+      if (args[0] === 'rev-list') return '2\n';
+      return '';
+    });
+    vi.doMock('node:child_process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:child_process')>();
+      return { ...actual, execFileSync: execFileSyncMock };
+    });
+    const { getSyncStatus } = await importSync();
+    const mindRoot = path.join(tempDir, 'mind');
+    fs.mkdirSync(path.join(mindRoot, '.git'), { recursive: true });
+
+    const status = getSyncStatus(mindRoot);
+
+    expect(status).toMatchObject({
+      enabled: false,
+      configured: true,
+      provider: 'git',
+      remote: 'git@example.com:mind/repo.git',
+      branch: 'main',
+    });
   });
 
   it('does not keep the legacy allow-empty conflict commit fallback', () => {

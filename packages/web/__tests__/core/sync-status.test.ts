@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getStatusLevel, getSyncLabel, timeAgo } from '@/lib/sync-ui';
+import { formatSyncError, getStatusLevel, getSyncLabel, timeAgo } from '@/lib/sync-ui';
 import type { SyncStatus } from '@/components/settings/types';
 
 /* ------------------------------------------------------------------ */
@@ -62,8 +62,12 @@ describe('getStatusLevel', () => {
     expect(getStatusLevel(null, false)).toBe('off');
   });
 
-  it('returns "off" when sync is not enabled', () => {
+  it('returns "off" when sync is not enabled and not configured', () => {
     expect(getStatusLevel({ ...base, enabled: false }, false)).toBe('off');
+  });
+
+  it('returns "paused" when sync is configured but disabled', () => {
+    expect(getStatusLevel({ ...base, enabled: false, configured: true }, false)).toBe('paused');
   });
 
   it('returns "error" when lastError is set', () => {
@@ -102,6 +106,10 @@ describe('getStatusLevel', () => {
     expect(getStatusLevel({ ...base, unpushed: '1' }, false)).toBe('unpushed');
   });
 
+  it('returns "unknown" when unpushed count cannot be read', () => {
+    expect(getStatusLevel({ ...base, unpushed: '?' }, false)).toBe('unknown');
+  });
+
   it('returns "synced" when everything is clean', () => {
     expect(getStatusLevel(base, false)).toBe('synced');
   });
@@ -138,5 +146,27 @@ describe('getSyncLabel', () => {
 
     expect(label.label).toBe('Resolve 2 conflicts');
     expect(label.tooltip).toContain('Open Settings > Sync');
+  });
+
+  it('uses paused language for configured disabled repositories', () => {
+    const label = getSyncLabel('paused', { ...base, enabled: false, configured: true });
+
+    expect(label.label).toBe('Sync paused');
+    expect(label.tooltip).toContain('Auto-sync is disabled');
+  });
+
+  it('uses unknown language when Git upstream cannot be inspected', () => {
+    const label = getSyncLabel('unknown', { ...base, unpushed: '?' });
+
+    expect(label.label).toBe('Sync status unknown');
+    expect(label.tooltip).toContain('could not confirm');
+  });
+
+  it('normalizes sync lock errors into user-facing guidance', () => {
+    const message = formatSyncError('SYNC_LOCKED: Sync is already running (owner=manual-sync, pid=123)');
+
+    expect(message).toContain('Sync is already running');
+    expect(message).not.toContain('pid=123');
+    expect(message).toContain('Another sync operation is already running');
   });
 });

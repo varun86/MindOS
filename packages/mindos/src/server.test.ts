@@ -3185,6 +3185,36 @@ describe('MindOS product server contract', () => {
     });
   });
 
+  it('does not clear a conflict when keep-remote is requested without a remote backup', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-missing-backup-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(join(mindRoot, '.git'), { recursive: true });
+    writeFileSync(join(mindRoot, 'note.md'), 'local', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md' }],
+      lastError: 'previous',
+    };
+    let writeStateCalled = false;
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => {
+        writeStateCalled = true;
+        state = next;
+      },
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-remote' }, services)).toMatchObject({
+      status: 409,
+      body: { error: 'Remote conflict backup is missing' },
+    });
+    expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('local');
+    expect(state).toEqual({ conflicts: [{ file: 'note.md' }], lastError: 'previous' });
+    expect(writeStateCalled).toBe(false);
+  });
+
   it('returns 423 without mutating direct sync file operations while the sync lock is owned', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-sync-lock-'));
     const mindRoot = join(root, 'mind');
@@ -3232,6 +3262,18 @@ describe('MindOS product server contract', () => {
     expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('local');
     expect(readFileSync(join(mindRoot, 'note.md.sync-conflict'), 'utf-8')).toBe('remote');
     expect(state).toEqual({ conflicts: [{ file: 'note.md' }], lastError: 'previous' });
+
+    expect(await handleSyncPost({ action: 'off' }, services)).toMatchObject({
+      status: 423,
+      body: { error: expect.stringContaining('SYNC_LOCKED') },
+    });
+    expect(config.sync).toEqual({ enabled: true, provider: 'git' });
+
+    expect(await handleSyncPost({ action: 'update-intervals', autoCommitInterval: 60 }, services)).toMatchObject({
+      status: 423,
+      body: { error: expect.stringContaining('SYNC_LOCKED') },
+    });
+    expect(config.sync).toEqual({ enabled: true, provider: 'git' });
 
     expect(await handleSyncPost({ action: 'reset' }, services)).toMatchObject({
       status: 423,
@@ -3306,6 +3348,11 @@ describe('MindOS product server contract', () => {
       body: { error: 'Access denied' },
     });
     expect(readFileSync(join(outside, '.gitignore'), 'utf-8')).toBe('outside\n');
+
+    expect(await handleSyncPost({ action: 'gitignore-get' }, services)).toMatchObject({
+      status: 403,
+      body: { error: 'Access denied' },
+    });
 
     expect(await handleSyncPost({ action: 'conflict-preview', remote: 'Linked/note.md' }, services)).toMatchObject({
       status: 400,
