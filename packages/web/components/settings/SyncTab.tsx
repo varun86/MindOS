@@ -835,14 +835,34 @@ export function SyncTab({ t, visible }: SyncTabProps) {
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {status.enabled ? (
-            <button
-              type="button"
-              onClick={handleToggle}
-              disabled={toggling}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {(syncT?.disableAutoSync as string) ?? 'Disable Auto-sync'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleToggle}
+                disabled={toggling || syncing}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {(syncT?.disableAutoSync as string) ?? 'Disable Auto-sync'}
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={toggling || syncing}
+                onBlur={() => { if (confirmingReset) clearResetConfirmation(); }}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  confirmingReset
+                    ? 'border-destructive/25 bg-destructive/10 text-destructive'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {confirmingReset
+                  ? ((syncT?.changeRepositoryConfirm as string) ?? 'Confirm change repository?')
+                  : ((syncT?.changeRepositoryButton as string) ?? 'Change repository')}
+              </button>
+              <p className="basis-full text-xs text-muted-foreground">
+                {(syncT?.changeRepositoryHelp as string) ?? 'Stops auto-sync and returns to setup so you can connect another remote. Notes and Git history stay on this device.'}
+              </p>
+            </>
           ) : (
             <>
               <PrimaryButton

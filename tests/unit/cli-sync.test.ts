@@ -339,9 +339,45 @@ describe('mindos sync config persistence', () => {
     expect(fs.readFileSync(path.join(mindRoot, 'note.md'), 'utf-8')).toBe('local\n');
     expect(fs.readFileSync(getSyncConflictBackupPath(mindRoot, 'note.md'), 'utf-8')).toBe('remote\n');
     expect(fs.readFileSync(path.join(mindRoot, 'note.md'), 'utf-8')).not.toContain('<<<<<<<');
+    expect(runGit(['show', 'main:note.md'], remotePath)).toBe('remote');
     const state = JSON.parse(fs.readFileSync(path.join(mindosDir, 'sync-state.json'), 'utf-8'));
     expect(state.conflicts).toEqual([expect.objectContaining({ file: 'note.md' })]);
+    expect(state.lastSync).toBeUndefined();
     expect(JSON.parse(fs.readFileSync(configPath, 'utf-8')).sync.enabled).toBe(true);
+  });
+
+  it('keeps manual sync conflicts local until the user resolves them', async () => {
+    const remotePath = createBareRemoteWithFiles({ 'note.md': 'base\n' });
+    const mindRoot = path.join(tempDir, 'mind');
+    runGit(['clone', remotePath, mindRoot], tempDir);
+    runGit(['checkout', '-B', 'main', 'origin/main'], mindRoot);
+    fs.writeFileSync(path.join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    commitAll(mindRoot, 'local edit');
+
+    const otherPath = path.join(tempDir, 'other');
+    runGit(['clone', remotePath, otherPath], tempDir);
+    runGit(['checkout', '-B', 'main', 'origin/main'], otherPath);
+    fs.writeFileSync(path.join(otherPath, 'note.md'), 'remote\n', 'utf-8');
+    commitAll(otherPath, 'remote edit');
+    runGit(['push', 'origin', 'main'], otherPath);
+
+    fs.mkdirSync(mindosDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      mindRoot,
+      sync: { enabled: true, provider: 'git', branch: 'main' },
+    }), 'utf-8');
+
+    const { manualSync, getSyncConflictBackupPath } = await importSync();
+    expect(() => manualSync(mindRoot)).not.toThrow();
+
+    expect(fs.readFileSync(path.join(mindRoot, 'note.md'), 'utf-8')).toBe('local\n');
+    expect(fs.readFileSync(getSyncConflictBackupPath(mindRoot, 'note.md'), 'utf-8')).toBe('remote\n');
+    expect(runGit(['show', 'main:note.md'], remotePath)).toBe('remote');
+    expect(runGit(['ls-tree', '-r', '--name-only', 'HEAD'], mindRoot).split('\n')).not.toContain('note.md.sync-conflict');
+    expect(fs.readFileSync(path.join(mindRoot, '.gitignore'), 'utf-8')).toContain('*.sync-conflict');
+    const state = JSON.parse(fs.readFileSync(path.join(mindosDir, 'sync-state.json'), 'utf-8'));
+    expect(state.conflicts).toEqual([expect.objectContaining({ file: 'note.md' })]);
+    expect(state.lastSync).toBeUndefined();
   });
 
   it('does not write HTTPS access tokens into the configured remote URL', async () => {

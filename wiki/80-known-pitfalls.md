@@ -4259,8 +4259,10 @@ const visibleNodes = useMemo(() => {
 4. 若 `ls-remote` 显示远端已有 refs，init 必须先提交本地待同步文件，再用显式 merge 策略执行 `git pull --no-rebase --allow-unrelated-histories`，最后 push 本地 HEAD；只有完整首轮同步成功后才能写 `sync.enabled=true`。
 5. SSH 预检不能靠默认 key 文件名或 `SSH_AUTH_SOCK` 直接拒绝；自定义 config、硬件 key、平台 agent 要交给 `git ls-remote` 作为 source of truth，且 UI/API/CLI 都要接受 Git 原生 `ssh://git@host/org/repo.git`。
 6. 首次 merge pull 遇到同名文件冲突时，MindOS 要保留本地内容、把远端版本保存到 `<file>.sync-conflict`，并把冲突写入 sync state；不要让 Git 的 divergent-branch fatal 或未解决 index 把用户卡在半配置状态。
+7. 只要 sync state 里记录了冲突，就不能继续把本地版本 push 到远端，也不能把这次标记成 `lastSync`；UI 说“请选择保留哪一版”时，远端必须还没被 MindOS 代替用户选择。
+8. `*.sync-conflict` 保护不能只在 init 时补 `.gitignore`。旧仓库、手动同步、daemon 同步和冲突处理前都要恢复保护条目，避免远端备份文件被 `git add -A` 提交。
 
-**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、divergent histories merge、首轮冲突备份、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote、`ssh://` remote 走 SSH 环境；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 和 `packages/mindos/src/server.test.ts` 覆盖 `ssh://` init、HTTPS setup 表单 token required、embedded token 不进 argv，以及普通 username 不进 token env；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
+**防回归**：`tests/unit/cli-sync.test.ts` 覆盖 repo-local identity fallback、远端已有内容后本地文件继续 push、divergent histories merge、首轮冲突备份但不 push、手动 sync 冲突不 push、不提交 `.sync-conflict` 备份、HTTPS credential stripping、普通 HTTPS username 不当作 token、credential helper 失败不写 inline token remote、`ssh://` remote 走 SSH 环境；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 和 `packages/mindos/src/server.test.ts` 覆盖 `ssh://` init、HTTPS setup 表单 token optional、embedded token 不进可见进度/argv，以及普通 username 不进 token env；`packages/web/__tests__/components/sync-popover.test.tsx` 和 `packages/web/__tests__/core/sync-status.test.ts` 覆盖 conflict/stale/i18n 状态入口。
 
 ### Git Sync daemon 不能只在启动时读取配置（2026-06-09）
 
@@ -4275,6 +4277,26 @@ const visibleNodes = useMemo(() => {
 4. 这类修复不能只看 `GET /api/sync` 状态；必须验证实际 watcher/timer 行为，尤其是关闭后 pending commit 不再执行。
 
 **防回归**：`tests/unit/cli-sync.test.ts` 覆盖 config disabled 后 daemon close、stop 清理 pending commit、interval 配置变更后重建 pull timer；`packages/mindos/src/server.test.ts` 覆盖 sync init/update/off/reset 会通知 runtime daemon。
+
+### Active Git Sync 必须能直接进入更换仓库流程（2026-06-09）
+
+**症状**：用户已经启用 Git Sync 后，Settings → Sync 的 Repository 卡片只提供 `Disable Auto-sync`。想更换远程仓库或重新配置 Git provider 时，必须先猜到“禁用自动同步 → 再点 Forget local sync settings → 再重新连接”的隐藏路径，表现为“选了之后改不了了”。
+
+**根因**：UI 把“暂停自动同步”和“更换仓库/重新连接”混在一个间接流程里；active、paused、broken 三个状态的可达操作不一致。后端 `sync init` 实际支持 `remote set-url origin`，但 active UI 没有暴露安全入口。
+
+**修复**：Active repository 状态直接显示 `Change repository`，第一次点击进入确认态，第二次才调用现有 `reset` API。文案明确它会停止自动同步并回到 setup，保留本机笔记和 Git 历史。
+
+**防回归**：`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 active sync 状态能看到 Change repository、首次点击不发 reset、确认后发 reset 并回到 Connect & Start Sync 表单。
+
+### Settings HTTPS Sync token 不能被 UI 单边强制（2026-06-09）
+
+**症状**：Settings → Sync 输入 HTTPS remote 后，如果没有填写 access token，Connect 按钮被禁用。公开 HTTPS 仓库、或本机已经配置 Git credential helper 的用户被挡住，但后端/CLI 实际可以处理这些场景。
+
+**根因**：UI 把“私有 HTTPS 仓库通常需要 token”误实现成“所有 HTTPS remote 必须有 token”。Product Server 和 CLI 的合同是 token optional：有 token 时写入 credential helper；没有 token 时交给 `git ls-remote` 和本机 Git 凭据判断是否可访问。
+
+**修复**：HTTPS token 字段改成 optional 提示；无 token 也能提交 init，body 不包含 `token` 字段。有 token 时继续提交 token；嵌入在 remote URL 里的 credential 只用于提交给后端清理，进度文案必须 redacted。用户只修改 token 时也要清掉旧的 hidden setup failure snapshot。
+
+**防回归**：`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖 HTTPS 无 token 可提交且不带 token 字段、有 token 时提交 token、embedded credential 不出现在进度文案、只改 token 会清掉旧失败快照。
 
 ### Platform runtime 包不能暴露和主包同名的 `mindos` bin（2026-06-06）
 

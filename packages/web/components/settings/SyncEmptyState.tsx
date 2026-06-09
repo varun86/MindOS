@@ -29,16 +29,6 @@ function redactGitUrl(url: string): string {
   }
 }
 
-function hasEmbeddedHttpsCredential(url: string): boolean {
-  if (!/^https?:\/\//i.test(url)) return false;
-  try {
-    const parsed = new URL(url);
-    return Boolean(parsed.username || parsed.password);
-  } catch {
-    return /^(https?:\/\/)[^/@]+@/i.test(url);
-  }
-}
-
 function isValidGitBranchName(input: string): boolean {
   const value = input.trim() || 'main';
   if (!value || value === '@') return false;
@@ -100,16 +90,13 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
   const branchValue = branch.trim() || 'main';
   const branchValid = isValidGitBranchName(branchValue);
   const showTokenField = urlType === 'https';
-  const httpsTokenMissing = urlType === 'https' && !token.trim() && !hasEmbeddedHttpsCredential(remoteUrl.trim());
   const disabledReason = !remoteUrl.trim()
     ? ((syncT?.connectNeedsUrl as string) ?? 'Paste a remote URL to continue')
     : !isValid
       ? ((syncT?.connectFixUrl as string) ?? 'Fix the Git URL to continue')
       : !branchValid
         ? ((syncT?.connectFixBranch as string) ?? 'Use a valid Git branch name')
-        : httpsTokenMissing
-          ? ((syncT?.connectNeedsToken as string) ?? 'Private HTTPS repositories require an access token. Use SSH if you do not want to store a token.')
-          : '';
+        : '';
 
   const clearStepTimers = () => {
     for (const timer of stepTimersRef.current) clearTimeout(timer);
@@ -164,7 +151,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
   }, []);
 
   const handleConnect = async () => {
-    if (setupLocked || !isValid || !branchValid || httpsTokenMissing) return;
+    if (setupLocked || !isValid || !branchValid) return;
     const runId = connectRunRef.current + 1;
     connectRunRef.current = runId;
     const controller = new AbortController();
@@ -273,7 +260,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
             {[
               (syncT?.setupStepRepo as string) ?? 'Create an empty private repo',
               (syncT?.setupStepUrl as string) ?? 'Paste its SSH or HTTPS URL',
-              (syncT?.setupStepToken as string) ?? 'HTTPS needs a token for private repos',
+              (syncT?.setupStepToken as string) ?? 'HTTPS can use a token for private repos',
             ].map((item) => (
               <div key={item} className="flex items-start gap-1.5">
                 <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-success/70" />
@@ -308,7 +295,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
           {!remoteUrl.trim() && (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-1.5">
               <span><code className="text-foreground/60 bg-muted/60 px-1 py-0.5 rounded text-2xs">SSH</code> {(syncT?.sshBrief as string) ?? 'one-time key setup, no token needed'}</span>
-              <span><code className="text-foreground/60 bg-muted/60 px-1 py-0.5 rounded text-2xs">HTTPS</code> {(syncT?.httpsBrief as string) ?? 'works anywhere, token required for private repos'}</span>
+              <span><code className="text-foreground/60 bg-muted/60 px-1 py-0.5 rounded text-2xs">HTTPS</code> {(syncT?.httpsBrief as string) ?? 'works anywhere; add a token for private repos'}</span>
             </div>
           )}
           {remoteUrl.trim() && !isValid && (
@@ -322,7 +309,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
         {showTokenField && (
           <Field
             htmlFor="sync-access-token"
-            label={<>{(syncT?.accessToken as string) ?? 'Access Token'} <span className="text-muted-foreground font-normal">{(syncT?.requiredForPrivateHttps as string) ?? '(required for private HTTPS repos)'}</span></>}
+            label={<>{(syncT?.accessToken as string) ?? 'Access Token'} <span className="text-muted-foreground font-normal">{(syncT?.requiredForPrivateHttps as string) ?? '(optional; needed for private HTTPS repos)'}</span></>}
             hint={undefined}
           >
             <div className="relative">
@@ -333,10 +320,11 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
                 onChange={e => {
                   setToken(e.target.value);
                   setError('');
+                  if (sharedInitSnapshot.finishReason === 'error') setSharedInitSnapshot(idleInitSnapshot);
                 }}
                 placeholder="ghp_xxxxxxxxxxxx"
                 disabled={setupLocked}
-                className={`pr-9 font-mono ${httpsTokenMissing ? 'border-destructive' : ''}`}
+                className="pr-9 font-mono"
               />
               <button
                 type="button"
@@ -349,7 +337,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {(syncT?.tokenHint as string) ?? 'Required for private GitHub/GitLab HTTPS repositories.'}{' '}
+              {(syncT?.tokenHint as string) ?? 'Optional for public repositories or machines that already have Git credentials. Private GitHub/GitLab HTTPS repositories usually need one.'}{' '}
               <a
                 href="https://github.com/settings/tokens/new?scopes=repo&description=MindOS+Sync"
                 target="_blank"
@@ -359,11 +347,6 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
                 {(syncT?.tokenLink as string) ?? 'Create a token (repo scope)'}
               </a>
             </p>
-            {httpsTokenMissing && (
-              <p className="text-xs text-destructive mt-1">
-                {(syncT?.tokenRequiredHint as string) ?? 'Private HTTPS repositories require a token. Use SSH if you do not want to store one.'}
-              </p>
-            )}
           </Field>
         )}
 
@@ -396,7 +379,7 @@ export default function SyncEmptyState({ t, onInitComplete }: { t: Messages; onI
           <div className="flex flex-wrap items-center gap-3">
             <PrimaryButton
               onClick={handleConnect}
-              disabled={!isValid || !branchValid || httpsTokenMissing}
+              disabled={!isValid || !branchValid}
               className="flex min-h-9 items-center gap-2"
             >
               {(syncT?.connectButton as string) ?? 'Connect & Start Sync'}

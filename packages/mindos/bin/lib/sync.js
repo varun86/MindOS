@@ -64,6 +64,10 @@ const SYNC_LOCK_ALIVE_HARD_STALE_MS = 30 * 60 * 1000;
 const SYNC_LOCK_RETRY_MS = 200;
 const SYNC_LOCK_DEFAULT_WAIT_MS = 5000;
 const activeSyncLockDepth = new Map();
+const SYSTEM_IGNORES = [
+  'INSTRUCTION.md',
+];
+const PROTECTED_SYNC_IGNORES = ['*.sync-conflict', ...SYSTEM_IGNORES];
 
 export class SyncLockedError extends Error {
   constructor(owner) {
@@ -424,6 +428,44 @@ export function getSyncGitignorePath(mindRoot) {
 
 // ── Core sync functions ─────────────────────────────────────────────────────
 
+function ensureProtectedSyncGitignore(mindRoot) {
+  const gitignorePath = getSyncGitignorePath(mindRoot);
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, [
+      '# MindOS auto-generated',
+      '.DS_Store',
+      'Thumbs.db',
+      '*.tmp',
+      '*.bak',
+      '*.swp',
+      '*.sync-conflict',
+      'node_modules/',
+      '.obsidian/',
+      '',
+      '# MindOS system files (regenerated on update, not user content)',
+      ...SYSTEM_IGNORES,
+      '',
+    ].join('\n'), 'utf-8');
+  } else {
+    const existing = readFileSync(gitignorePath, 'utf-8');
+    const existingLines = existing.split(/\r?\n/).map(line => line.trim());
+    const missing = PROTECTED_SYNC_IGNORES.filter(f => !existingLines.includes(f));
+    if (missing.length > 0) {
+      const append = '\n# MindOS system files (auto-added)\n' + missing.join('\n') + '\n';
+      writeFileSync(gitignorePath, existing.trimEnd() + '\n' + append, 'utf-8');
+    }
+  }
+
+  for (const file of PROTECTED_SYNC_IGNORES) {
+    try { execFileSync('git', ['rm', '--cached', '--ignore-unmatch', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
+  }
+}
+
+function stageSyncContentUnlocked(mindRoot) {
+  ensureProtectedSyncGitignore(mindRoot);
+  execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+}
+
 function autoCommitAndPush(mindRoot, isSshUrl = false) {
   return withSyncLock(mindRoot, 'commit-push', () => autoCommitAndPushUnlocked(mindRoot, isSshUrl));
 }
@@ -439,7 +481,7 @@ function commitPendingChangesUnlocked(mindRoot) {
   // local notes before MindOS has put them under version control.
   try {
     ensureGitIdentity(mindRoot);
-    execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+    stageSyncContentUnlocked(mindRoot);
     const status = gitExec(['status', '--porcelain'], mindRoot);
     if (status) {
       const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -486,6 +528,7 @@ function resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, failurePrefix = '
 
     // Keep the local file in place and save the remote version beside it so the
     // settings UI can offer an explicit keep-local / keep-remote choice.
+    ensureProtectedSyncGitignore(mindRoot);
     for (const file of conflicts) {
       try {
         const theirs = execFileSync('git', ['show', `:3:${file}`], { cwd: mindRoot, encoding: 'utf-8' });
@@ -495,7 +538,7 @@ function resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, failurePrefix = '
       }
       try { execFileSync('git', ['checkout', '--ours', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
     }
-    execFileSync('git', ['add', '-A'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
+    stageSyncContentUnlocked(mindRoot);
     try {
       execFileSync('git', ['-c', 'core.editor=true', 'commit', '--no-edit'], { cwd: mindRoot, stdio: 'pipe', timeout: 60000 });
     } catch (commitErr) {
@@ -542,6 +585,7 @@ function runBackgroundSync(mindRoot, operation, fn, options = {}) {
 
 function autoPullUnlocked(mindRoot, isSshUrl = false) {
   const sshEnv = isSshUrl ? getSshEnv() : {};
+  let hasConflicts = false;
   try {
     execFileSync('git', ['pull', '--rebase', '--autostash'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
     saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
@@ -552,9 +596,11 @@ function autoPullUnlocked(mindRoot, isSshUrl = false) {
       execFileSync('git', ['pull', '--no-rebase'], { cwd: mindRoot, stdio: 'pipe', env: { ...process.env, ...sshEnv }, timeout: 60000 });
       saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
     } catch (mergeErr) {
-      resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, 'Pull failed');
+      hasConflicts = resolveMergeConflictsKeepingLocal(mindRoot, mergeErr, 'Pull failed').length > 0;
     }
   }
+
+  if (hasConflicts) return { conflicts: true };
 
   // Retry any pending pushes (handles previous push failures)
   try {
@@ -704,42 +750,7 @@ export async function initSync(mindRoot, opts = {}) {
     }
 
     // 1b. Ensure .gitignore has system file exclusions
-    const gitignorePath = getSyncGitignorePath(mindRoot);
-    const SYSTEM_IGNORES = [
-      'INSTRUCTION.md',
-    ];
-    const PROTECTED_SYNC_IGNORES = ['*.sync-conflict', ...SYSTEM_IGNORES];
-    if (!existsSync(gitignorePath)) {
-      writeFileSync(gitignorePath, [
-        '# MindOS auto-generated',
-        '.DS_Store',
-        'Thumbs.db',
-        '*.tmp',
-        '*.bak',
-        '*.swp',
-        '*.sync-conflict',
-        'node_modules/',
-        '.obsidian/',
-        '',
-        '# MindOS system files (regenerated on update, not user content)',
-        ...SYSTEM_IGNORES,
-        '',
-      ].join('\n'), 'utf-8');
-    } else {
-      // Existing .gitignore: append missing system file entries.
-      const existing = readFileSync(gitignorePath, 'utf-8');
-      const existingLines = existing.split(/\r?\n/).map(line => line.trim());
-      const missing = PROTECTED_SYNC_IGNORES.filter(f => !existingLines.includes(f));
-      if (missing.length > 0) {
-        const append = '\n# MindOS system files (auto-added)\n' + missing.join('\n') + '\n';
-        writeFileSync(gitignorePath, existing.trimEnd() + '\n' + append, 'utf-8');
-      }
-    }
-
-    // Remove system files from git tracking if already committed
-    for (const file of PROTECTED_SYNC_IGNORES) {
-      try { execFileSync('git', ['rm', '--cached', '--ignore-unmatch', file], { cwd: mindRoot, stdio: 'pipe', timeout: 15000 }); } catch {}
-    }
+    ensureProtectedSyncGitignore(mindRoot);
 
     // Handle token for HTTPS
     if (token && remoteUrl.startsWith('https://')) {
@@ -838,14 +849,15 @@ export async function initSync(mindRoot, opts = {}) {
         }
         if (!nonInteractive) console.log(dim('Pulling from remote...'));
         commitPendingChangesUnlocked(mindRoot);
+        let hasConflicts = false;
         try {
           const pullEnv = isSshUrl ? { ...process.env, ...getSshEnv() } : process.env;
           execFileSync('git', ['pull', '--no-rebase', 'origin', syncConfig.branch, '--allow-unrelated-histories'], { cwd: mindRoot, stdio: nonInteractive ? 'pipe' : 'inherit', env: pullEnv, timeout: 120000 });
           saveSyncState({ ...loadSyncState(), lastPull: new Date().toISOString() });
         } catch (err) {
-          resolveMergeConflictsKeepingLocal(mindRoot, err, 'Initial pull failed');
+          hasConflicts = resolveMergeConflictsKeepingLocal(mindRoot, err, 'Initial pull failed').length > 0;
         }
-        pushHeadUnlocked(mindRoot, isSshUrl);
+        if (!hasConflicts) pushHeadUnlocked(mindRoot, isSshUrl);
       } else {
         if (!nonInteractive) console.log(dim('Pushing to remote...'));
         autoCommitAndPushUnlocked(mindRoot, isSshUrl);
@@ -1098,7 +1110,8 @@ export function manualSync(mindRoot) {
   withSyncLock(mindRoot, 'manual-sync', () => {
     const remoteUrl = getRemoteUrl(mindRoot) || '';
     const isSshUrl = isSSHUrl(remoteUrl);
-    autoPullUnlocked(mindRoot, isSshUrl);
+    const pullResult = autoPullUnlocked(mindRoot, isSshUrl);
+    if (pullResult?.conflicts) return;
     autoCommitAndPushUnlocked(mindRoot, isSshUrl); // throws on push failure → API returns error
   });
 }

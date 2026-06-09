@@ -191,7 +191,7 @@ describe('SyncTab UX', () => {
 
     expect(host.textContent).toContain('Start with a private Git repository');
     expect(host.textContent).toContain('Paste a remote URL to continue');
-    expect(host.textContent).toContain('HTTPS needs a token for private repos');
+    expect(host.textContent).toContain('HTTPS can use a token for private repos');
 
     await act(async () => {
       root.unmount();
@@ -496,8 +496,9 @@ describe('SyncTab UX', () => {
     });
   });
 
-  it('requires a token before starting private HTTPS setup and associates labels with inputs', async () => {
+  it('allows HTTPS setup without a token and associates labels with inputs', async () => {
     const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    mockApiFetch.mockResolvedValue({ success: true });
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -517,28 +518,111 @@ describe('SyncTab UX', () => {
 
     const tokenInput = host.querySelector('#sync-access-token') as HTMLInputElement | null;
     const branchInput = host.querySelector('#sync-branch') as HTMLInputElement | null;
-    expect(host.querySelector('label[for="sync-access-token"]')?.textContent).toContain('required for private HTTPS repos');
+    expect(host.querySelector('label[for="sync-access-token"]')?.textContent).toContain('optional; needed for private HTTPS repos');
     expect(host.querySelector('label[for="sync-branch"]')?.textContent).toContain('Branch');
     expect(tokenInput).toBeTruthy();
     expect(branchInput?.value).toBe('main');
 
-    let connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
-    expect(connectButton?.disabled).toBe(true);
-    expect(host.textContent).toContain('Private HTTPS repositories require an access token');
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    expect(connectButton?.disabled).toBe(false);
+    expect(host.textContent).toContain('Optional for public repositories');
+    expect(host.textContent).not.toContain('require an access token');
+
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledOnce();
+    const [, requestInit] = mockApiFetch.mock.calls[0] as [string, { body?: string }];
+    const body = JSON.parse(requestInit.body ?? '{}');
+    expect(body).toMatchObject({
+      action: 'init',
+      remote: 'https://github.com/me/private.git',
+      branch: 'main',
+    });
+    expect(body).not.toHaveProperty('token');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('submits an HTTPS access token when the user provides one', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    mockApiFetch.mockResolvedValue({ success: true });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-remote-url') as HTMLInputElement | null, 'https://github.com/me/private.git');
+      await Promise.resolve();
+    });
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-access-token') as HTMLInputElement | null, 'ghp_secret');
+      await Promise.resolve();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const [, requestInit] = mockApiFetch.mock.calls[0] as [string, { body?: string }];
+    const body = JSON.parse(requestInit.body ?? '{}');
+    expect(body.token).toBe('ghp_secret');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('redacts embedded HTTPS credentials from setup progress copy', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    let resolveInit!: () => void;
+    mockApiFetch.mockReturnValue(new Promise(resolve => {
+      resolveInit = () => resolve({ success: true });
+    }));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-remote-url') as HTMLInputElement | null, 'https://oauth2:ghp_secret@github.com/me/private.git');
+      await Promise.resolve();
+    });
+
+    const connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
+    expect(connectButton?.disabled).toBe(false);
 
     await act(async () => {
       connectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
-    expect(mockApiFetch).not.toHaveBeenCalled();
+
+    expect(mockApiFetch).toHaveBeenCalledOnce();
+    expect(host.textContent).toContain('Connecting to https://github.com/me/private.git');
+    expect(host.textContent).not.toContain('ghp_secret');
 
     await act(async () => {
-      setInputValue(tokenInput, 'ghp_secret');
+      resolveInit();
+      await Promise.resolve();
       await Promise.resolve();
     });
-
-    connectButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Connect & Start Sync')) as HTMLButtonElement | undefined;
-    expect(connectButton?.disabled).toBe(false);
 
     await act(async () => {
       root.unmount();
@@ -794,6 +878,80 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('clears a hidden HTTPS setup failure snapshot when the token changes', async () => {
+    const SyncEmptyState = (await import('@/components/settings/SyncEmptyState')).default;
+    let rejectInit!: (error: Error) => void;
+    mockApiFetch.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectInit = reject;
+    }));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-remote-url') as HTMLInputElement | null, 'https://github.com/me/private.git');
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Connect & Start Sync'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Hide progress'))
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      root.unmount();
+    });
+
+    await act(async () => {
+      rejectInit(new Error('Authentication failed'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const remountRoot = createRoot(host);
+    await act(async () => {
+      remountRoot.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Authentication failed');
+
+    await act(async () => {
+      setInputValue(host.querySelector('#sync-access-token') as HTMLInputElement | null, 'ghp_new');
+      await Promise.resolve();
+    });
+    expect(host.textContent).not.toContain('Authentication failed');
+
+    await act(async () => {
+      remountRoot.unmount();
+    });
+
+    const secondRemountRoot = createRoot(host);
+    await act(async () => {
+      secondRemountRoot.render(<SyncEmptyState t={messages.en} onInitComplete={vi.fn()} />);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain('Authentication failed');
+    expect((host.querySelector('#sync-remote-url') as HTMLInputElement | null)?.value).toBe('');
+
+    await act(async () => {
+      secondRemountRoot.unmount();
+    });
+  });
+
   it('requires confirmation before resetting a paused sync configuration', async () => {
     const { SyncTab } = await import('@/components/settings/SyncTab');
     mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
@@ -847,6 +1005,75 @@ describe('SyncTab UX', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
       body: JSON.stringify({ action: 'reset' }),
     }));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('lets users change the repository directly from an active sync configuration', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'reset') return { ok: true, enabled: false };
+      statusReads += 1;
+      if (statusReads > 1) {
+        return { enabled: false };
+      }
+      return {
+        enabled: true,
+        configured: true,
+        remote: 'git@github.com:me/old-mind.git',
+        branch: 'main',
+        lastSync: new Date().toISOString(),
+        unpushed: '0',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Change repository');
+    expect(host.textContent).toContain('connect another remote');
+    expect(host.textContent).toContain('git@github.com:me/old-mind.git');
+
+    const changeButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Change repository'));
+    expect(changeButton).toBeTruthy();
+
+    await act(async () => {
+      changeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: JSON.stringify({ action: 'reset' }),
+    }));
+    expect(host.textContent).toContain('Confirm change repository?');
+
+    const confirmButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Confirm change repository?'));
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/sync', expect.objectContaining({
+      body: JSON.stringify({ action: 'reset' }),
+    }));
+    expect(host.textContent).toContain('Connect & Start Sync');
+    expect(host.textContent).toContain('Paste a remote URL to continue');
 
     await act(async () => {
       root.unmount();
