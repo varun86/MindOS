@@ -1,6 +1,6 @@
 {
   "name": "@mindos/browser-extension",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "MindOS Web Clipper — save any web page to your knowledge base",
   "scripts": {
