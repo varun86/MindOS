@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CORS_HEADERS,
+  createDefaultSkillAgentRegistry,
   createDefaultMindosHttpServices,
   createMindosHttpServer,
   handleA2aAgentsGet,
@@ -533,8 +534,9 @@ describe('MindOS product server contract', () => {
   it('exposes the default MCP agent registry from the product HTTP runtime', async () => {
     const home = mkdtempSync(join(tmpdir(), 'mindos-product-agents-home-'));
     const root = mkdtempSync(join(tmpdir(), 'mindos-product-agents-root-'));
-    mkdirSync(join(home, '.claude'), { recursive: true });
-    mkdirSync(join(home, '.codex'), { recursive: true });
+    mkdirSync(join(home, '.claude', 'projects'), { recursive: true });
+    mkdirSync(join(home, '.codex', 'sessions'), { recursive: true });
+    mkdirSync(join(home, '.config', 'kilo'), { recursive: true });
     writeFileSync(join(home, '.claude.json'), JSON.stringify({
       mcpServers: {
         mindos: { type: 'stdio', command: 'mindos', args: ['mcp'] },
@@ -545,6 +547,16 @@ describe('MindOS product server contract', () => {
       'type = "stdio"',
       'command = "mindos"',
     ].join('\n'), 'utf-8');
+    writeFileSync(join(home, '.config', 'kilo', 'kilo.json'), JSON.stringify({
+      mcp: {
+        mindos: {
+          type: 'local',
+          command: ['mindos', 'mcp'],
+          environment: { MCP_TRANSPORT: 'stdio' },
+          enabled: true,
+        },
+      },
+    }), 'utf-8');
 
     const services = createDefaultMindosHttpServices({
       homeDir: home,
@@ -559,12 +571,13 @@ describe('MindOS product server contract', () => {
       projectRoot: root,
       env: {} as NodeJS.ProcessEnv,
       commandExists: () => false,
+      skillAgentRegistry: createDefaultSkillAgentRegistry(),
     });
 
-    expect(Object.keys(services.mcpAgents ?? {})).toHaveLength(26);
+    expect(Object.keys(services.mcpAgents ?? {})).toHaveLength(27);
     expect(response.status).toBe(200);
     const agents = response.body.agents;
-    expect(agents).toHaveLength(26);
+    expect(agents).toHaveLength(27);
     expect(agents.find((agent) => agent.key === 'mindos')).toMatchObject({
       present: true,
       installed: true,
@@ -578,6 +591,22 @@ describe('MindOS product server contract', () => {
       present: true,
       installed: true,
       configuredMcpServers: ['mindos'],
+    });
+    expect(agents.find((agent) => agent.key === 'kilo-code')).toMatchObject({
+      configKey: 'mcp',
+      entryStyle: 'kilo',
+      installed: true,
+      transport: 'stdio',
+      configPath: '~/.config/kilo/kilo.json',
+      configuredMcpServers: ['mindos'],
+      globalPath: '~/.config/kilo/kilo.jsonc',
+      skillMode: 'universal',
+      skillWorkspacePath: join(home, '.agents', 'skills'),
+    });
+    expect(agents.find((agent) => agent.key === 'warp')).toMatchObject({
+      configKey: 'mcpServers',
+      globalPath: '~/.warp/.mcp.json',
+      projectPath: '.warp/.mcp.json',
     });
   });
 
@@ -1812,6 +1841,16 @@ describe('MindOS product server contract', () => {
         globalNestedKey: 'mcp.clients',
         preferredTransport: 'stdio',
       },
+      'kilo-code': {
+        name: 'Kilo Code',
+        project: '.kilo/kilo.jsonc',
+        global: '~/.config/kilo/kilo.jsonc',
+        projectReadAlso: ['.kilo/kilo.json', 'kilo.jsonc', 'kilo.json'],
+        globalReadAlso: ['~/.config/kilo/kilo.json'],
+        key: 'mcp',
+        preferredTransport: 'stdio',
+        entryStyle: 'kilo',
+      },
     };
 
     await expect(handleMcpInstallPost({
@@ -1879,6 +1918,21 @@ describe('MindOS product server contract', () => {
     const copawConfig = JSON.parse(readFileSync(join(home, '.copaw', 'config.json'), 'utf-8'));
     expect(copawConfig.mcp.clients.mindos).toMatchObject({ type: 'stdio', command: 'mindos' });
 
+    await expect(handleMcpInstallPost({
+      agents: [{ key: 'kilo-code', scope: 'global' }],
+      transport: 'stdio',
+    }, { agents, homeDir: home })).resolves.toMatchObject({
+      status: 200,
+      body: { results: [{ agent: 'kilo-code', status: 'ok', path: '~/.config/kilo/kilo.jsonc', transport: 'stdio' }] },
+    });
+    const kiloConfig = JSON.parse(readFileSync(join(home, '.config', 'kilo', 'kilo.jsonc'), 'utf-8'));
+    expect(kiloConfig.mcp.mindos).toEqual({
+      type: 'local',
+      command: ['mindos', 'mcp'],
+      environment: { MCP_TRANSPORT: 'stdio' },
+      enabled: true,
+    });
+
     const specialAgents: Record<string, MindosMcpAgentDef> = {
       codex: {
         name: 'Codex',
@@ -1896,18 +1950,33 @@ describe('MindOS product server contract', () => {
         format: 'yaml',
         preferredTransport: 'http',
       },
+      'kilo-code': {
+        name: 'Kilo Code',
+        project: null,
+        global: '~/.config/kilo/kilo.jsonc',
+        key: 'mcp',
+        preferredTransport: 'http',
+        entryStyle: 'kilo',
+      },
     };
     await expect(handleMcpInstallPost({
       agents: [
         { key: 'codex', scope: 'global' },
         { key: 'hermes', scope: 'global' },
+        { key: 'kilo-code', scope: 'global' },
       ],
       transport: 'http',
       url: 'http://localhost:8781/mcp?label="main"',
       token: 'tok"line\nnext',
     }, { agents: specialAgents, homeDir: home })).resolves.toMatchObject({
       status: 200,
-      body: { results: [{ agent: 'codex', status: 'ok' }, { agent: 'hermes', status: 'ok' }] },
+      body: {
+        results: [
+          { agent: 'codex', status: 'ok' },
+          { agent: 'hermes', status: 'ok' },
+          { agent: 'kilo-code', status: 'ok' },
+        ],
+      },
     });
     const specialToml = readFileSync(join(home, '.codex', 'config.toml'), 'utf-8');
     expect(specialToml).toContain('url = "http://localhost:8781/mcp?label=\\"main\\""');
@@ -1915,6 +1984,13 @@ describe('MindOS product server contract', () => {
     const specialYaml = readFileSync(join(home, '.hermes', 'config.yaml'), 'utf-8');
     expect(specialYaml).toContain('url: "http://localhost:8781/mcp?label=\\"main\\""');
     expect(specialYaml).toContain('Authorization: "Bearer tok\\"line\\nnext"');
+    const specialKilo = JSON.parse(readFileSync(join(home, '.config', 'kilo', 'kilo.jsonc'), 'utf-8'));
+    expect(specialKilo.mcp.mindos).toEqual({
+      type: 'remote',
+      url: 'http://localhost:8781/mcp?label="main"',
+      headers: { Authorization: 'Bearer tok"line\nnext' },
+      enabled: true,
+    });
 
     expect(handleMcpUninstallPost({
       agents: [{ key: 'copaw', scope: 'global' }],

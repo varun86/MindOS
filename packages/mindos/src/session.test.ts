@@ -73,6 +73,11 @@ describe('MindOS session event contract', () => {
       'thinking_delta',
       'tool_start',
       'tool_end',
+      'runtime_permission_request',
+      'runtime_permission_resolved',
+      'user_question_start',
+      'user_question_answered',
+      'user_question_cancelled',
       'runtime_binding',
       'done',
       'error',
@@ -96,6 +101,36 @@ describe('MindOS session event contract', () => {
       runtime: 'codex',
       externalSessionId: 'thr_123',
       cwd: '/tmp/mind',
+    });
+    expect(parseMindosSseLine(encodeMindosSseEvent({
+      type: 'user_question_start',
+      runId: 'run_1',
+      toolCallId: 'tool_1',
+      questions: [{ header: 'Scope', question: 'Proceed?', options: [] }],
+    }).trim())).toEqual({
+      type: 'user_question_start',
+      runId: 'run_1',
+      toolCallId: 'tool_1',
+      questions: [{ header: 'Scope', question: 'Proceed?', options: [] }],
+    });
+    expect(parseMindosSseLine(encodeMindosSseEvent({
+      type: 'runtime_permission_request',
+      runId: 'run_1',
+      requestId: 'perm_1',
+      runtime: 'codex',
+      toolCallId: 'tool_1',
+      toolName: 'Bash',
+      input: { command: 'npm test' },
+      options: [{ id: 'accept', label: 'Allow once', intent: 'allow' }],
+    }).trim())).toEqual({
+      type: 'runtime_permission_request',
+      runId: 'run_1',
+      requestId: 'perm_1',
+      runtime: 'codex',
+      toolCallId: 'tool_1',
+      toolName: 'Bash',
+      input: { command: 'npm test' },
+      options: [{ id: 'accept', label: 'Allow once', intent: 'allow' }],
     });
     expect(parseMindosSseLine('event: ping')).toBeNull();
     expect(parseMindosSseLine('data: not-json')).toBeNull();

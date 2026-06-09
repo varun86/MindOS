@@ -542,6 +542,13 @@ export {
 } from './handlers/mcp-agents.js';
 
 export {
+  createDefaultMcpAgents,
+  createDefaultSkillAgentRegistry,
+  DEFAULT_MCP_AGENTS,
+  DEFAULT_SKILL_AGENT_REGISTRY,
+} from './mcp-agent-registry.js';
+
+export {
   handleMcpDirectToolsPost,
   handleMcpToolsGet,
   type MindosMcpConfigFile,

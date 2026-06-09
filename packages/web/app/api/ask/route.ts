@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest } from 'next/server';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
@@ -50,6 +51,15 @@ import {
   resolveSkillFile,
   resolveSkillReference,
 } from '@/lib/agent/skill-resolver';
+import { runWithAskUserQuestionBridge } from '@/lib/agent/user-question-bridge';
+import {
+  requestRuntimePermissionViaBridge,
+  runWithRuntimePermissionBridge,
+} from '@/lib/agent/runtime-permission-bridge';
+import {
+  createClaudePermissionPromptConfig,
+  resolveRuntimePermissionBaseUrl,
+} from '@/lib/agent/claude-permission-prompt';
 
 // generateSkillsXml is in lib/agent/skills-xml.ts (not inline: Next.js route export constraints)
 
@@ -323,13 +333,26 @@ export async function POST(req: NextRequest) {
 
     return createAskSseResponse(async (send) => {
       if (selectedNativeRuntime) {
-        await runMindosAgentRuntimeAskSession({
-          runtime: selectedNativeRuntime,
-          cwd: mindRoot,
-          prompt: externalPrompt,
-          signal: req.signal,
+        const runtimeRunId = randomUUID();
+        await runWithRuntimePermissionBridge({
+          runId: runtimeRunId,
           send,
-        });
+        }, () => runMindosAgentRuntimeAskSession({
+            runtime: selectedNativeRuntime,
+            cwd: mindRoot,
+            prompt: externalPrompt,
+            signal: req.signal,
+            send,
+            services: {
+              ...(selectedNativeRuntime.kind === 'claude' ? {
+                createClaudePermissionPrompt: () => createClaudePermissionPromptConfig({
+                  runId: runtimeRunId,
+                  baseUrl: resolveRuntimePermissionBaseUrl(req),
+                }),
+              } : {}),
+              requestRuntimePermission: requestRuntimePermissionViaBridge,
+            },
+          }));
         return;
       }
 
@@ -564,7 +587,11 @@ export async function POST(req: NextRequest) {
         maxSteps: stepLimit,
       });
 
-      await runMindosPiAgentAskSession({
+      const askRunId = randomUUID();
+      await runWithAskUserQuestionBridge({
+        runId: askRunId,
+        send: (event) => send(event as unknown as MindOSSSEvent),
+      }, () => runMindosPiAgentAskSession({
         session: {
           subscribe: (callback) => { session.subscribe(callback); },
           prompt: async (prompt, options) => { await session.prompt(prompt, options as any); },
@@ -592,7 +619,7 @@ export async function POST(req: NextRequest) {
           writeBaseUrlCompat(key, mode);
           console.log(`[ask] Proxy compat detected: ${key} → ${mode} (cached)`);
         },
-      });
+      }));
     }, (err) => {
       if (err instanceof Error && (err as any).code === 'TIMEOUT') return t.agentTimeout;
       return err instanceof Error ? err.message : String(err);

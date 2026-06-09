@@ -7,10 +7,13 @@ export type MindosMcpAgentDef = {
   name: string;
   project: string | null;
   global: string;
+  projectReadAlso?: string[];
+  globalReadAlso?: string[];
   key: string;
   preferredTransport: 'stdio' | 'http';
   format?: 'json' | 'toml' | 'yaml';
   globalNestedKey?: string;
+  entryStyle?: 'standard' | 'kilo';
 };
 
 export type MindosSkillAgentRegistration = {
@@ -58,6 +61,8 @@ export type MindosMcpInstallServices = {
   agents: Record<string, MindosMcpAgentDef>;
   homeDir?: string;
   env?: NodeJS.ProcessEnv;
+  requireAgentPresence?: boolean;
+  detectAgentPresence?: (agent: string) => boolean;
   readSettings?: () => { mcpPort?: number; disabledSkills?: string[] };
   recordSkillInstall?: (agent: string, skill: string, path: string) => void;
   resolveSkillWorkspaceProfile?: (agent: string) => MindosSkillWorkspaceProfile;
@@ -82,6 +87,12 @@ function parseJsonc(text: string): Record<string, unknown> {
 
 function expandHome(input: string, homeDir = homedir()): string {
   return input.startsWith('~/') || input.startsWith('~\\') ? resolve(homeDir, input.slice(2)) : input;
+}
+
+function configPathCandidates(agent: MindosMcpAgentDef, scope: 'global' | 'project'): string[] {
+  const primary = scope === 'global' ? agent.global : agent.project;
+  const readAlso = scope === 'global' ? agent.globalReadAlso : agent.projectReadAlso;
+  return [primary, ...(readAlso ?? [])].filter((entry): entry is string => !!entry);
 }
 
 function isUnsafeObjectKey(key: string): boolean {
@@ -312,10 +323,30 @@ function mergeYamlEntry(existing: string, sectionKey: string, serverName: string
 
 function buildEntry(
   transport: 'stdio' | 'http',
+  agent: MindosMcpAgentDef,
   services: MindosMcpInstallServices,
   url?: string,
   token?: string,
 ): Record<string, unknown> {
+  if (agent.entryStyle === 'kilo') {
+    if (transport === 'stdio') {
+      return {
+        type: 'local',
+        command: ['mindos', 'mcp'],
+        environment: { MCP_TRANSPORT: 'stdio' },
+        enabled: true,
+      };
+    }
+    const fallbackPort = Number(services.env?.MINDOS_MCP_PORT) || services.readSettings?.().mcpPort || 8781;
+    const entry: Record<string, unknown> = {
+      type: 'remote',
+      url: url || `http://localhost:${fallbackPort}/mcp`,
+      enabled: true,
+    };
+    if (token) entry.headers = { Authorization: `Bearer ${token}` };
+    return entry;
+  }
+
   if (transport === 'stdio') {
     return { type: 'stdio', command: 'mindos', args: ['mcp'], env: { MCP_TRANSPORT: 'stdio' } };
   }
@@ -379,8 +410,17 @@ export async function handleMcpInstallPost(
         continue;
       }
 
+      if (services.requireAgentPresence && !services.detectAgentPresence?.(key)) {
+        results.push({
+          agent: key,
+          status: 'error',
+          message: `${agent.name} was not detected on this machine. Install the agent first, then refresh.`,
+        });
+        continue;
+      }
+
       const absPath = expandHome(configPath, services.homeDir);
-      const entry = buildEntry(effectiveTransport, services, body.url, body.token);
+      const entry = buildEntry(effectiveTransport, agent, services, body.url, body.token);
 
       try {
         mkdirSync(dirname(absPath), { recursive: true });
@@ -467,36 +507,50 @@ export function handleMcpUninstallPost(
         continue;
       }
 
-      const configPath = scope === 'global' ? agent.global : agent.project;
-      if (!configPath) {
+      const configPaths = configPathCandidates(agent, scope);
+      if (configPaths.length === 0) {
         results.push({ agent: key, status: 'error', message: `${agent.name} does not support ${scope} scope` });
         continue;
       }
 
-      const absPath = expandHome(configPath, services.homeDir);
-      if (!existsSync(absPath)) {
+      const existingPaths = configPaths.filter((configPath) => existsSync(expandHome(configPath, services.homeDir)));
+      if (existingPaths.length === 0) {
         results.push({ agent: key, status: 'ok', message: 'Config file does not exist' });
         continue;
       }
 
+      const updatedPaths: string[] = [];
+      const errors: string[] = [];
       try {
-        if (agent.format === 'toml') {
-          writeFileSync(absPath, removeTomlEntry(readFileSync(absPath, 'utf-8'), agent.key, 'mindos'), 'utf-8');
-        } else {
-          const config = parseJsonc(readFileSync(absPath, 'utf-8'));
-          const container = scope === 'global' && agent.globalNestedKey
-            ? getNestedPath(config, agent.globalNestedKey)
-            : (() => {
-                assertSafeObjectKey(agent.key, 'agent config key');
-                return readOwnRecord(config, agent.key) ?? undefined;
-              })();
-          if (container && 'mindos' in container) {
-            delete container.mindos;
-            writeFileSync(absPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+        for (const configPath of existingPaths) {
+          const absPath = expandHome(configPath, services.homeDir);
+          try {
+            if (agent.format === 'toml') {
+              writeFileSync(absPath, removeTomlEntry(readFileSync(absPath, 'utf-8'), agent.key, 'mindos'), 'utf-8');
+            } else {
+              const config = parseJsonc(readFileSync(absPath, 'utf-8'));
+              const container = scope === 'global' && agent.globalNestedKey
+                ? getNestedPath(config, agent.globalNestedKey)
+                : (() => {
+                    assertSafeObjectKey(agent.key, 'agent config key');
+                    return readOwnRecord(config, agent.key) ?? undefined;
+                  })();
+              if (container && 'mindos' in container) {
+                delete container.mindos;
+                writeFileSync(absPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+              }
+            }
+            updatedPaths.push(configPath);
+          } catch (error) {
+            errors.push(`${configPath}: ${String(error)}`);
           }
         }
 
-        results.push({ agent: key, status: 'ok', path: configPath });
+        if (errors.length > 0) {
+          results.push({ agent: key, status: 'error', message: errors.join('; ') });
+        } else {
+          results.push({ agent: key, status: 'ok', path: updatedPaths[0] ?? configPaths[0] });
+        }
       } catch (error) {
         results.push({ agent: key, status: 'error', message: String(error) });
       }

@@ -11,6 +11,7 @@ export interface PlatformDef {
   id: string;
   name: string;
   icon: string;
+  iconFile?: string;
   fields: PlatformField[];
   guide?: string;
   guideUrl?: string;
@@ -52,7 +53,7 @@ export type PlatformStatus = {
 
 export const PLATFORMS: PlatformDef[] = [
   {
-    id: 'telegram', name: 'Telegram', icon: '📱',
+    id: 'telegram', name: 'Telegram', icon: '📱', iconFile: 'telegram.svg',
     guide: '1. Open Telegram → search @BotFather\n2. Send /newbot → follow prompts\n3. Copy the token below',
     purpose: 'Receive MindOS notifications and quick updates in Telegram.',
     purposeZh: '通过 Telegram 接收 MindOS 的通知和快速更新。',
@@ -65,7 +66,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'feishu', name: 'Feishu', icon: '🐦',
+    id: 'feishu', name: 'Feishu', icon: '🐦', iconFile: 'feishu.svg',
     guide: '1. open.feishu.cn → Create App\n2. Credentials page → copy App ID & Secret\n3. Enable Bot capability + add permissions',
     guideUrl: 'https://open.feishu.cn/',
     editHint: 'Need to update credentials? Edit and save below — MindOS will reconnect automatically.',
@@ -81,7 +82,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'discord', name: 'Discord', icon: '💬',
+    id: 'discord', name: 'Discord', icon: '💬', iconFile: 'discord.svg',
     guide: '1. discord.com/developers → New Application\n2. Bot tab → Reset Token → copy\n3. Enable Message Content Intent',
     purpose: 'Send MindOS updates into Discord channels and DMs.',
     purposeZh: '把 MindOS 的更新发送到 Discord 频道或私信。',
@@ -94,7 +95,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'slack', name: 'Slack', icon: '💼',
+    id: 'slack', name: 'Slack', icon: '💼', iconFile: 'slack.svg',
     guide: '1. api.slack.com/apps → Create New App\n2. OAuth & Permissions → add chat:write scope\n3. Install to Workspace → copy Bot Token',
     purpose: 'Route MindOS notifications into Slack channels and direct messages.',
     purposeZh: '把 MindOS 的通知发送到 Slack 频道或私信。',
@@ -107,7 +108,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'wecom', name: 'WeCom', icon: '🏢',
+    id: 'wecom', name: 'WeCom', icon: '🏢', iconFile: 'wecom.svg',
     guide: '1. Group chat → Add Robot → Custom\n2. Copy Webhook URL\n3. Extract the key parameter from URL',
     purpose: 'Deliver MindOS notifications into WeCom group chats.',
     purposeZh: '把 MindOS 通知投递到企业微信群聊。',
@@ -120,7 +121,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'dingtalk', name: 'DingTalk', icon: '🔔',
+    id: 'dingtalk', name: 'DingTalk', icon: '🔔', iconFile: 'dingtalk.svg',
     guide: '1. Group → Settings → Smart Assistant → Add Robot\n2. Select Custom (Webhook)\n3. Copy the full Webhook URL',
     purpose: 'Push MindOS notifications into DingTalk groups.',
     purposeZh: '把 MindOS 通知发送到钉钉群。',
@@ -133,7 +134,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'wechat', name: 'WeChat', icon: '💚',
+    id: 'wechat', name: 'WeChat', icon: '💚', iconFile: 'wechat.svg',
     guide: '1. Visit ilinkai.weixin.qq.com\n2. Register & create a bot application\n3. QR login in the console → copy Bot Token from dashboard',
     purpose: 'Send MindOS updates to WeChat via your configured bot.',
     purposeZh: '通过你配置好的机器人把 MindOS 更新发送到微信。',
@@ -146,7 +147,7 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
   {
-    id: 'qq', name: 'QQ', icon: '🐧',
+    id: 'qq', name: 'QQ', icon: '🐧', iconFile: 'qq.svg',
     guide: '1. q.qq.com → Create Bot\n2. Development tab → copy App ID & Secret\n3. Add group/C2C intents as needed',
     purpose: 'Deliver MindOS notifications through QQ bot channels.',
     purposeZh: '通过 QQ 机器人频道接收 MindOS 通知。',

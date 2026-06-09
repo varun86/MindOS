@@ -2,12 +2,12 @@ import { apiFetch } from '@/lib/api';
 import { isAiConfiguredForAsk, type SettingsJsonForAi } from '@/lib/settings-ai-client';
 
 /**
- * Check if AI is available by inspecting the active provider's API key.
+ * Check if AI is available by inspecting the active or explicitly selected provider.
  */
-export async function checkAiAvailable(): Promise<boolean> {
+export async function checkAiAvailable(providerOverride?: string | null): Promise<boolean> {
   try {
     const data = await apiFetch<SettingsJsonForAi>('/api/settings', { cache: 'no-store' });
-    return isAiConfiguredForAsk(data);
+    return isAiConfiguredForAsk(data, providerOverride);
   } catch {
     return false;
   }

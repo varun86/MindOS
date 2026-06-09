@@ -136,4 +136,9 @@ function ensureScaffoldFiles(slotDir: string, slot: MindSystemSlot): void {
   if (!fs.existsSync(instructionPath)) {
     fs.writeFileSync(instructionPath, INSTRUCTION_BY_SLOT[slot.key], 'utf-8');
   }
+
+  const draftsPath = path.join(slotDir, 'Drafts');
+  if (!fs.existsSync(draftsPath)) {
+    fs.mkdirSync(draftsPath);
+  }
 }

@@ -13,7 +13,6 @@ export interface MindSystemSlot {
   path: string;
   role: string;
   order: number;
-  primary: boolean;
   enabled: boolean;
 }
 
@@ -24,10 +23,10 @@ export interface MindSystemConfig {
 }
 
 const DEFAULT_MIND_SYSTEM_SLOTS: readonly MindSystemSlot[] = [
-  { key: 'dao', systemId: 'MIND_DAO', label: '道', path: 'MIND_DAO', role: 'world-model', order: 10, primary: true, enabled: true },
-  { key: 'fa', systemId: 'MIND_FA', label: '法', path: 'MIND_FA', role: 'principles', order: 20, primary: true, enabled: true },
-  { key: 'shu', systemId: 'MIND_SHU', label: '术', path: 'MIND_SHU', role: 'methods', order: 30, primary: true, enabled: true },
-  { key: 'qi', systemId: 'MIND_QI', label: '器', path: 'MIND_QI', role: 'tools-assets', order: 40, primary: true, enabled: true },
+  { key: 'dao', systemId: 'MIND_DAO', label: '道', path: 'MIND_DAO', role: 'world-model', order: 10, enabled: true },
+  { key: 'fa', systemId: 'MIND_FA', label: '法', path: 'MIND_FA', role: 'principles', order: 20, enabled: true },
+  { key: 'shu', systemId: 'MIND_SHU', label: '术', path: 'MIND_SHU', role: 'methods', order: 30, enabled: true },
+  { key: 'qi', systemId: 'MIND_QI', label: '器', path: 'MIND_QI', role: 'tools-assets', order: 40, enabled: true },
 ] as const;
 
 const SLOT_KEYS = new Set<MindSystemSlotKey>(DEFAULT_MIND_SYSTEM_SLOTS.map(slot => slot.key));

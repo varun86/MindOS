@@ -1,5 +1,9 @@
 // home + fileTree + fileImport + dirView + view + findInPage + importHistory
 
+function spaceDraftsPath(spacePath: string): string {
+  return `${spacePath.replace(/\/?$/, '/')}Drafts/`;
+}
+
 export const knowledgeEn = {
   home: {
     recentlyModified: 'Recently Modified',
@@ -36,6 +40,52 @@ export const knowledgeEn = {
     builtInSpacesTitle: 'Mind System',
     builtInSpacesDesc: 'MindOS maps built-in semantic modules to your local folders. The visible folders stay user-owned Markdown; the module registry stays in .mindos.',
     builtInSpacesReview: 'Review loop',
+    mindAssistant: {
+      label: 'Assistant',
+      spaceTitle: 'Assistants',
+      instructionReady: 'Instruction ready',
+      instructionMissing: 'Instruction missing',
+      customDrafts: (n: number) => `${n} draft${n === 1 ? '' : 's'}`,
+      runOnce: 'Run once',
+      view: 'View',
+      hide: 'Hide',
+      edit: 'Edit',
+      openSpace: 'Open',
+      openInstruction: 'Instruction',
+      openDrafts: 'Drafts',
+      moreAssistants: (n: number) => `+${n} assistant${n === 1 ? '' : 's'}`,
+      assistantCount: (n: number) => `${n} assistant${n === 1 ? '' : 's'}`,
+      viewAllAssistants: (n: number) => `View all ${n} assistants`,
+      showLessAssistants: 'Show less',
+      scheduleMode: {
+        manual: 'Manual',
+        daily: 'Daily',
+        weekly: 'Weekly',
+      },
+      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string) => `Act as the "${assistantName}" assistant for the MindOS space "${spaceTitle}" (${spacePath}).
+
+Assistant purpose: ${assistantDesc}
+
+Read this space's INSTRUCTION.md first, then inspect relevant notes in the same space. Produce one concise Markdown draft for the user to review. Do not overwrite existing canonical notes directly. If you write a file, write it under ${spaceDraftsPath(spacePath)} with a dated filename. Keep the draft focused, source-aware, and easy to accept or discard.`,
+    },
+    mindAssistants: {
+      dao: [
+        { id: 'daily-signal', name: 'Daily signal curator', desc: 'Turns direction, opportunity, and risk signals into a draft.' },
+        { id: 'decision-synthesizer', name: 'Decision synthesizer', desc: 'Distills recurring choices into durable judgments.' },
+      ],
+      fa: [
+        { id: 'rule-keeper', name: 'Rule keeper', desc: 'Collects confirmed rules, boundaries, and protocols.' },
+        { id: 'boundary-reviewer', name: 'Boundary reviewer', desc: 'Checks new notes against existing commitments and limits.' },
+      ],
+      shu: [
+        { id: 'method-organizer', name: 'Method organizer', desc: 'Turns repeated work into SOPs and checklists.' },
+        { id: 'checklist-builder', name: 'Checklist builder', desc: 'Converts loose methods into repeatable execution steps.' },
+      ],
+      qi: [
+        { id: 'tool-inventory', name: 'Tool inventory curator', desc: 'Keeps tools, templates, assets, and sources tidy.' },
+        { id: 'resource-auditor', name: 'Resource auditor', desc: 'Finds stale, duplicate, or under-described resources.' },
+      ],
+    },
     mindPillars: {
       dao: { title: 'Dao', desc: 'Values, direction, long-term judgment' },
       fa: { title: 'Fa', desc: 'Rules, boundaries, commitments' },
@@ -235,7 +285,10 @@ export const knowledgeEn = {
     dropOverlay: 'Drop to save to Inbox',
     dropOverlayFormats: 'PDF · Word · MD · TXT · CSV · JSON · Images',
     noMindRoot: 'Please configure your knowledge base first',
+    loadFailed: 'Failed to load Inbox.',
+    retry: 'Retry',
     saveFailed: 'Failed to save files. Check disk space and permissions.',
+    capturePartialFailed: 'Some items could not be saved. Check file permissions and formats.',
     organizeFailed: 'Could not read files for organizing. Check file permissions.',
     organizeNoAi: 'Configure an AI API key before running the Inbox Agent. Capture still works without AI.',
     organizeBusy: 'Inbox Agent is already running.',
@@ -593,6 +646,52 @@ export const knowledgeZh = {
     builtInSpacesTitle: 'Mind 系统',
     builtInSpacesDesc: 'MindOS 将内置语义模块映射到你的本地目录。可见目录仍由用户拥有，模块账本保存在 .mindos。',
     builtInSpacesReview: '复盘闭环',
+    mindAssistant: {
+      label: '助手',
+      spaceTitle: '助手',
+      instructionReady: '说明已就绪',
+      instructionMissing: '缺少说明',
+      customDrafts: (n: number) => `${n} 个草稿`,
+      runOnce: '运行一次',
+      view: '查看',
+      hide: '收起',
+      edit: '编辑',
+      openSpace: '打开空间',
+      openInstruction: '说明',
+      openDrafts: '草稿',
+      moreAssistants: (n: number) => `+${n} 个助手`,
+      assistantCount: (n: number) => `${n} 个助手`,
+      viewAllAssistants: (n: number) => `查看全部 ${n} 个助手`,
+      showLessAssistants: '收起',
+      scheduleMode: {
+        manual: '手动',
+        daily: '每日',
+        weekly: '每周',
+      },
+      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string) => `请作为 MindOS 空间「${spaceTitle}」（${spacePath}）里的「${assistantName}」助手工作。
+
+助手职责：${assistantDesc}
+
+请先读取这个空间的 INSTRUCTION.md，再查看同一空间内相关笔记。请产出一份简洁的 Markdown 草稿供用户确认，不要直接覆盖正式笔记。如果需要写入文件，请写到 ${spaceDraftsPath(spacePath)} 下，并使用带日期的文件名。草稿要聚焦、可追溯，并方便用户确认或丢弃。`,
+    },
+    mindAssistants: {
+      dao: [
+        { id: 'daily-signal', name: '每日信号整理', desc: '把方向、机会、风险信号整理成草稿。' },
+        { id: 'decision-synthesizer', name: '决策沉淀', desc: '把反复出现的选择沉淀成长期判断。' },
+      ],
+      fa: [
+        { id: 'rule-keeper', name: '规则整理', desc: '沉淀已确认的原则、边界和协议。' },
+        { id: 'boundary-reviewer', name: '边界复核', desc: '检查新内容是否触碰既有承诺和限制。' },
+      ],
+      shu: [
+        { id: 'method-organizer', name: '方法整理', desc: '把重复做法整理成 SOP 和 checklist。' },
+        { id: 'checklist-builder', name: '清单生成', desc: '把松散方法转成可复用执行步骤。' },
+      ],
+      qi: [
+        { id: 'tool-inventory', name: '工具整理', desc: '维护工具、模板、资产和资料源。' },
+        { id: 'resource-auditor', name: '资源巡检', desc: '发现过期、重复或说明不足的资源。' },
+      ],
+    },
     mindPillars: {
       dao: { title: '道', desc: '价值、方向、长期判断' },
       fa: { title: '法', desc: '规则、边界、承诺' },
@@ -792,7 +891,10 @@ export const knowledgeZh = {
     dropOverlay: '拖放到暂存台快速保存',
     dropOverlayFormats: 'PDF · Word · MD · TXT · CSV · JSON · 图片',
     noMindRoot: '请先配置知识库路径',
+    loadFailed: '加载 Inbox 失败。',
+    retry: '重试',
     saveFailed: '保存文件失败，请检查磁盘空间和权限。',
+    capturePartialFailed: '部分内容保存失败，请检查文件权限和格式。',
     organizeFailed: '无法读取文件进行整理，请检查文件权限。',
     organizeNoAi: '请先配置 AI API 密钥再运行 Inbox Agent。没有 AI 时仍可正常暂存内容。',
     organizeBusy: 'Inbox Agent 已经在运行。',

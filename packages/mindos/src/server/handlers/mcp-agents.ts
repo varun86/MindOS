@@ -1,13 +1,15 @@
 import { execFileSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync } from 'fs';
+import type { Dirent } from 'fs';
 import { homedir } from 'os';
-import { dirname, isAbsolute, join, resolve } from 'path';
+import { dirname, isAbsolute, join, normalize, resolve } from 'path';
 import { errorResponse, json, type MindosServerResponse } from '../response.js';
-import type { MindosMcpAgentDef } from './mcp-install.js';
+import type { MindosMcpAgentDef, MindosSkillAgentRegistration } from './mcp-install.js';
 
 export type MindosMcpAgentRegistryDef = MindosMcpAgentDef & {
   presenceCli?: string;
   presenceDirs?: string[];
+  skillDir?: string;
 };
 
 export type MindosCustomMcpAgentDef = {
@@ -22,6 +24,7 @@ export type MindosCustomMcpAgentDef = {
   presenceDirs: string[];
   presenceCli?: string;
   globalNestedKey?: string;
+  entryStyle?: 'standard' | 'kilo';
   skillDir?: string;
 };
 
@@ -89,6 +92,7 @@ export type MindosMcpAgentProfile = {
   format: 'json' | 'toml' | 'yaml';
   configKey: string;
   globalNestedKey?: string;
+  entryStyle?: 'standard' | 'kilo';
   globalPath: string;
   projectPath?: string | null;
   skillMode: 'universal' | 'additional' | 'unsupported';
@@ -132,6 +136,7 @@ export type MindosMcpAgentsServices = {
   resolveSkillWorkspaceProfile?(agentKey: string): MindosMcpAgentSkillProfile;
   scanCustomAgentSkills?(custom: MindosCustomMcpAgentDef): MindosMcpAgentInstalledSkills;
   loadMindosSkills?(): MindosMcpMindosSkills;
+  skillAgentRegistry?: Record<string, MindosSkillAgentRegistration>;
   fetchHead?(url: string, options: { signal: AbortSignal }): Promise<{ status: number }>;
 };
 
@@ -186,6 +191,7 @@ export async function handleMcpAgentsGet(
         format: agent.format ?? 'json',
         configKey: agent.key,
         globalNestedKey: agent.globalNestedKey,
+        entryStyle: agent.entryStyle,
         globalPath: agent.global,
         projectPath: agent.project,
         skillMode: skillProfile.mode,
@@ -428,9 +434,10 @@ function compareMcpAgents(a: MindosMcpAgentProfile, b: MindosMcpAgentProfile): n
 }
 
 function rankMcpAgent(agent: MindosMcpAgentProfile): number {
-  if (agent.installed) return 0;
+  if (agent.present && agent.installed) return 0;
   if (agent.present) return 1;
-  return 2;
+  if (agent.installed) return 2;
+  return 3;
 }
 
 function detectCustomAgentPresence(
@@ -474,25 +481,32 @@ function defaultDetectAgentInstalled(
   agent: MindosMcpAgentRegistryDef,
   services: MindosMcpAgentsServices,
 ): MindosMcpAgentInstallStatus {
-  for (const [scopeType, cfgPath] of [['global', agent.global], ['project', agent.project]] as Array<['global' | 'project', string | null | undefined]>) {
-    if (!cfgPath) continue;
-    const absPath = resolveAgentConfigPath(cfgPath, scopeType, services);
-    const pathExists = services.pathExists ?? existsSync;
-    if (!pathExists(absPath)) continue;
+  for (const scopeType of ['global', 'project'] as const) {
+    for (const cfgPath of configPathCandidates(agent, scopeType)) {
+      const absPath = resolveAgentConfigPath(cfgPath, scopeType, services);
+      const pathExists = services.pathExists ?? existsSync;
+      if (!pathExists(absPath)) continue;
 
-    try {
-      const readTextFile = services.readTextFile ?? readFileSyncUtf8;
-      const content = readTextFile(absPath);
-      const entry = readMindosMcpEntry(content, agent, scopeType);
-      if (!entry) continue;
-      const transport = entry.type === 'stdio' || entry.command ? 'stdio' : entry.url ? 'http' : 'unknown';
-      return { installed: true, scope: scopeType, transport, configPath: cfgPath, url: entry.url };
-    } catch {
-      continue;
+      try {
+        const readTextFile = services.readTextFile ?? readFileSyncUtf8;
+        const content = readTextFile(absPath);
+        const entry = readMindosMcpEntry(content, agent, scopeType);
+        if (!entry) continue;
+        const transport = isLocalMcpEntry(entry) ? 'stdio' : entry.url ? 'http' : 'unknown';
+        return { installed: true, scope: scopeType, transport, configPath: cfgPath, url: entry.url };
+      } catch {
+        continue;
+      }
     }
   }
 
   return { installed: false };
+}
+
+function configPathCandidates(agent: MindosMcpAgentRegistryDef, scopeType: 'global' | 'project'): string[] {
+  const primary = scopeType === 'global' ? agent.global : agent.project;
+  const readAlso = scopeType === 'global' ? agent.globalReadAlso : agent.projectReadAlso;
+  return [primary, ...(readAlso ?? [])].filter((entry): entry is string => !!entry);
 }
 
 function defaultDetectAgentConfiguredMcp(
@@ -501,20 +515,21 @@ function defaultDetectAgentConfiguredMcp(
 ): MindosMcpAgentConfiguredServers {
   const servers = new Set<string>();
   const sources: string[] = [];
-  for (const [scopeType, cfgPath] of [['global', agent.global], ['project', agent.project]] as Array<['global' | 'project', string | null | undefined]>) {
-    if (!cfgPath) continue;
-    const absPath = resolveAgentConfigPath(cfgPath, scopeType, services);
-    const pathExists = services.pathExists ?? existsSync;
-    if (!pathExists(absPath)) continue;
+  for (const scopeType of ['global', 'project'] as const) {
+    for (const cfgPath of configPathCandidates(agent, scopeType)) {
+      const absPath = resolveAgentConfigPath(cfgPath, scopeType, services);
+      const pathExists = services.pathExists ?? existsSync;
+      if (!pathExists(absPath)) continue;
 
-    try {
-      const readTextFile = services.readTextFile ?? readFileSyncUtf8;
-      const content = readTextFile(absPath);
-      const names = readMcpServerNames(content, agent, scopeType);
-      for (const name of names) servers.add(name);
-      if (names.length > 0) sources.push(`${scopeType}:${cfgPath}`);
-    } catch {
-      continue;
+      try {
+        const readTextFile = services.readTextFile ?? readFileSyncUtf8;
+        const content = readTextFile(absPath);
+        const names = readMcpServerNames(content, agent, scopeType);
+        for (const name of names) servers.add(name);
+        if (names.length > 0) sources.push(`${scopeType}:${cfgPath}`);
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -542,7 +557,7 @@ function readMindosMcpEntry(
   content: string,
   agent: MindosMcpAgentRegistryDef,
   scopeType: 'global' | 'project',
-): { type?: string; command?: string; url?: string } | null {
+): { type?: string; command?: unknown; url?: string } | null {
   if (agent.format === 'toml') return parseTomlMcpEntry(content, agent.key, 'mindos');
   if (agent.format === 'yaml') return parseYamlMcpEntry(content, agent.key, 'mindos');
   const config = parseJsonc(content);
@@ -553,9 +568,16 @@ function readMindosMcpEntry(
   if (!entry) return null;
   return {
     type: typeof entry.type === 'string' ? entry.type : undefined,
-    command: typeof entry.command === 'string' ? entry.command : undefined,
+    command: typeof entry.command === 'string' || Array.isArray(entry.command) ? entry.command : undefined,
     url: typeof entry.url === 'string' ? entry.url : undefined,
   };
+}
+
+function isLocalMcpEntry(entry: { type?: string; command?: unknown; url?: string }): boolean {
+  return entry.type === 'stdio'
+    || entry.type === 'local'
+    || typeof entry.command === 'string'
+    || Array.isArray(entry.command);
 }
 
 function parseTomlMcpEntry(
@@ -678,10 +700,89 @@ function defaultDetectAgentPresence(
   agent: MindosMcpAgentRegistryDef,
   services: MindosMcpAgentsServices,
 ): boolean {
+  if (agent.presenceCli && (services.commandExists ?? defaultCommandExists)(agent.presenceCli)) return true;
+  return agent.presenceDirs?.some((entry) => presencePathHasAgentSignal(entry, agent, services)) ?? false;
+}
+
+function presencePathHasAgentSignal(
+  entry: string,
+  agent: MindosMcpAgentRegistryDef,
+  services: MindosMcpAgentsServices,
+): boolean {
+  const candidatePath = expandHome(entry, services.homeDir);
   const pathExists = services.pathExists ?? existsSync;
-  const dirPresent = agent.presenceDirs?.some((entry) => pathExists(expandHome(entry, services.homeDir))) ?? false;
-  if (dirPresent) return true;
-  return agent.presenceCli ? (services.commandExists ?? defaultCommandExists)(agent.presenceCli) : false;
+  if (!pathExists(candidatePath)) return false;
+
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(candidatePath, { withFileTypes: true });
+  } catch {
+    return !configFileLooksMindosManagedOnly(candidatePath, agent, services);
+  }
+
+  if (entries.length === 0) return false;
+
+  const ignoredEntryNames = new Set(['.DS_Store', 'skills']);
+  for (const dirEntry of entries) {
+    if (ignoredEntryNames.has(dirEntry.name)) continue;
+    const childPath = join(candidatePath, dirEntry.name);
+    if (dirEntry.isFile() && configFileLooksMindosManagedOnly(childPath, agent, services)) continue;
+    return true;
+  }
+
+  return false;
+}
+
+function configFileLooksMindosManagedOnly(
+  filePath: string,
+  agent: MindosMcpAgentRegistryDef,
+  services: Pick<MindosMcpAgentsServices, 'homeDir' | 'readTextFile'>,
+): boolean {
+  const managedGlobalPaths = configPathCandidates(agent, 'global')
+    .map((candidate) => normalize(expandHome(candidate, services.homeDir)));
+  if (!managedGlobalPaths.includes(normalize(filePath))) return false;
+
+  let content = '';
+  try {
+    content = (services.readTextFile ?? readFileSyncUtf8)(filePath);
+  } catch {
+    return false;
+  }
+  if (!content.trim()) return true;
+
+  try {
+    if (agent.format === 'toml') {
+      const servers = parseTomlForServers(content, agent.key);
+      return servers.length === 0 || servers.every((server) => server === 'mindos');
+    }
+    if (agent.format === 'yaml') {
+      const servers = parseYamlForServers(content, agent.key);
+      return servers.length === 0 || servers.every((server) => server === 'mindos');
+    }
+
+    const parsed = parseJsonc(content);
+    const section = agent.globalNestedKey
+      ? readNestedRecord(parsed, agent.globalNestedKey)
+      : readOwnRecord(parsed, agent.key);
+    if (!section) return Object.keys(parsed).length === 0;
+    const serverNames = Object.keys(section);
+    if (!serverNames.every((server) => server === 'mindos')) return false;
+
+    if (!agent.globalNestedKey) {
+      const topKeys = Object.keys(parsed);
+      return topKeys.length === 0 || (topKeys.length === 1 && topKeys[0] === agent.key);
+    }
+
+    let current: Record<string, unknown> | null = parsed;
+    for (const part of agent.globalNestedKey.split('.').filter(Boolean)) {
+      if (!current || Object.keys(current).some((key) => key !== part)) return false;
+      const next: unknown = current[part];
+      current = next && typeof next === 'object' ? next as Record<string, unknown> : null;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function defaultSkillWorkspaceProfile(
@@ -689,10 +790,21 @@ function defaultSkillWorkspaceProfile(
   agent: MindosMcpAgentRegistryDef,
   services: MindosMcpAgentsServices,
 ): MindosMcpAgentSkillProfile {
+  const registration = services.skillAgentRegistry?.[agentKey];
+  if (registration?.mode === 'universal') {
+    return {
+      mode: registration.mode,
+      workspacePath: expandHome('~/.agents/skills', services.homeDir),
+    };
+  }
+
   const hiddenRoot = resolveHiddenRootPath(agent, services);
   return {
-    mode: agentKey === 'mindos' ? 'universal' : 'unsupported',
-    workspacePath: join(hiddenRoot, 'skills'),
+    mode: agentKey === 'mindos' ? 'universal' : registration?.mode ?? 'unsupported',
+    skillAgentName: registration?.skillAgentName,
+    workspacePath: agent.skillDir
+      ? expandHome(agent.skillDir, services.homeDir)
+      : join(hiddenRoot, 'skills'),
   };
 }
 

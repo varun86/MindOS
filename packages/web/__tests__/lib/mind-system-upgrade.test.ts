@@ -20,6 +20,7 @@ describe('default mind-system upgrade', () => {
         expect(fs.statSync(path.join(mindRoot, dir)).isDirectory()).toBe(true);
         expect(fs.existsSync(path.join(mindRoot, dir, 'README.md'))).toBe(true);
         expect(fs.existsSync(path.join(mindRoot, dir, 'INSTRUCTION.md'))).toBe(true);
+        expect(fs.statSync(path.join(mindRoot, dir, 'Drafts')).isDirectory()).toBe(true);
       }
 
       const config = JSON.parse(fs.readFileSync(path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH), 'utf-8'));
@@ -36,8 +37,10 @@ describe('default mind-system upgrade', () => {
     const mindRoot = mkTempMindRoot();
     try {
       fs.mkdirSync(path.join(mindRoot, 'MIND_DAO'), { recursive: true });
+      fs.mkdirSync(path.join(mindRoot, 'MIND_DAO', 'Drafts'), { recursive: true });
       fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'README.md'), '# Custom Dao\n', 'utf-8');
       fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), '# Custom Agent Rules\n', 'utf-8');
+      fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'Drafts', 'custom.md'), '# Existing Draft\n', 'utf-8');
 
       ensureDefaultMindSystemUpgrade(mindRoot);
       const result = ensureDefaultMindSystemUpgrade(mindRoot);
@@ -47,6 +50,7 @@ describe('default mind-system upgrade', () => {
       expect(result.existingPaths).toEqual([...DEFAULT_DIRS]);
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'README.md'), 'utf-8')).toBe('# Custom Dao\n');
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), 'utf-8')).toBe('# Custom Agent Rules\n');
+      expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'Drafts', 'custom.md'), 'utf-8')).toBe('# Existing Draft\n');
     } finally {
       cleanupMindRoot(mindRoot);
     }

@@ -3,12 +3,15 @@
 import { useSyncExternalStore, useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Table, Folder, FolderOpen, LayoutGrid, List, FilePlus, ScrollText, BookOpen, Copy, AlertTriangle, Sparkles, Loader2, Check } from 'lucide-react';
+import { FileText, Table, Folder, FolderOpen, LayoutGrid, List, FilePlus, ScrollText, BookOpen, Copy, AlertTriangle, Sparkles, Loader2, Check, Bot, Play, CheckCircle2, Pencil } from 'lucide-react';
 import Breadcrumb from '@/components/Breadcrumb';
 import { encodePath, relativeTime } from '@/lib/utils';
 import { FileNode, SYSTEM_FILES } from '@/lib/types';
 import type { SpacePreview } from '@/lib/core/types';
 import { useLocale } from '@/lib/stores/locale-store';
+import { openMindSystemAssistantRun } from '@/lib/mind-system-assistant-actions';
+import type { BuiltInMindSystemSpaceRecord } from '@/lib/space-records';
+import { resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
 
 async function copyPathToClipboard(path: string) {
   try { await navigator.clipboard.writeText(path); } catch { /* noop */ }
@@ -18,6 +21,7 @@ interface DirViewProps {
   dirPath: string;
   entries: FileNode[];
   spacePreview?: SpacePreview | null;
+  mindSystemSpace?: BuiltInMindSystemSpaceRecord | null;
 }
 
 function FileIcon({ node }: { node: FileNode }) {
@@ -417,6 +421,160 @@ function SpacePreviewSection({ preview, dirPath }: {
   );
 }
 
+const ASSISTANT_PREVIEW_LIMIT = 3;
+
+function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceRecord }) {
+  const { t } = useLocale();
+  const [showAllAssistants, setShowAllAssistants] = useState(false);
+  const [expandedAssistantId, setExpandedAssistantId] = useState<string | null>(null);
+  const pillar = t.home.mindPillars[space.slot.key];
+  const assistantCopies = resolveMindSystemAssistantCopies(
+    space.assistantSummary.assistants,
+    t.home.mindAssistants[space.slot.key],
+  );
+  const assistants = space.assistantSummary.assistants.map((assistant, index) => ({
+    ...assistant,
+    ...assistantCopies[index],
+  }));
+  const visibleAssistants = showAllAssistants ? assistants : assistants.slice(0, ASSISTANT_PREVIEW_LIMIT);
+  const hiddenAssistantCount = Math.max(0, assistants.length - ASSISTANT_PREVIEW_LIMIT);
+  const instructionReady = space.assistantSummary.instructionReady;
+  const draftCount = space.assistantSummary.draftCount;
+  const spaceTitle = pillar?.title ?? space.slot.label;
+
+  return (
+    <section
+      data-mind-system-dir-assistant={space.slot.key}
+      className="mb-5 rounded-lg border border-border/70 bg-card/55 px-4 py-4"
+      aria-label={`${t.home.mindAssistant.spaceTitle}: ${t.home.mindAssistant.assistantCount(assistants.length)}`}
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-base font-semibold text-[var(--amber)]"
+            aria-hidden="true"
+          >
+            {space.slot.label}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                <Bot size={13} className="text-[var(--amber)]/75" aria-hidden="true" />
+                {t.home.mindAssistant.spaceTitle}
+              </span>
+              <span className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                {t.home.mindAssistant.assistantCount(assistants.length)}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/70">
+              <span className={`inline-flex items-center gap-1 ${instructionReady ? 'text-[var(--success)]' : 'text-muted-foreground/60'}`}>
+                <CheckCircle2 size={11} aria-hidden="true" />
+                {instructionReady ? t.home.mindAssistant.instructionReady : t.home.mindAssistant.instructionMissing}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <FileText size={11} aria-hidden="true" />
+                {t.home.mindAssistant.customDrafts(draftCount)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+          <Link
+            href={`/view/${encodePath(`${space.slot.path}/INSTRUCTION.md`)}`}
+            className="inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t.home.mindAssistant.openInstruction}
+          </Link>
+          <Link
+            href={`/view/${encodePath(`${space.slot.path}/Drafts`)}`}
+            className="inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t.home.mindAssistant.openDrafts}
+          </Link>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-3">
+        {visibleAssistants.map((assistant) => {
+          const expanded = expandedAssistantId === assistant.id;
+          return (
+            <article
+              key={assistant.id}
+              data-mind-system-dir-assistant-item={assistant.id}
+              className="min-w-0 rounded-md border border-border/60 bg-background/35 p-3 transition-colors hover:border-[var(--amber)]/25 hover:bg-background/55"
+            >
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-semibold text-foreground">{assistant.name}</div>
+                  <div className="mt-1 inline-flex rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                    {t.home.mindAssistant.scheduleMode[assistant.schedule.mode]}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-mind-system-dir-run-once={assistant.id}
+                  onClick={() => openMindSystemAssistantRun({
+                    spaceTitle,
+                    assistantName: assistant.name,
+                    assistantDesc: assistant.desc,
+                    spacePath: space.slot.path,
+                    runPrompt: t.home.mindAssistant.runPrompt,
+                  })}
+                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[10px] font-medium text-[var(--amber)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                  aria-label={`${t.home.mindAssistant.runOnce}: ${assistant.name}`}
+                >
+                  <Play size={11} aria-hidden="true" />
+                  {t.home.mindAssistant.runOnce}
+                </button>
+              </div>
+              <p className="mt-2 line-clamp-2 min-h-8 text-[11px] leading-4 text-muted-foreground">
+                {assistant.desc}
+              </p>
+              {expanded && (
+                <div className="mt-2 rounded-md bg-muted/45 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
+                  <div className="truncate font-mono">{assistant.id}</div>
+                  <div>{t.home.mindAssistant.openDrafts}: {space.slot.path}/Drafts/</div>
+                </div>
+              )}
+              <div className="mt-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-mind-system-dir-view-assistant={assistant.id}
+                  onClick={() => setExpandedAssistantId(expanded ? null : assistant.id)}
+                  className="inline-flex h-7 items-center rounded-md px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-expanded={expanded}
+                >
+                  {expanded ? t.home.mindAssistant.hide : t.home.mindAssistant.view}
+                </button>
+                <Link
+                  href={`/view/${encodePath(`${space.slot.path}/INSTRUCTION.md`)}`}
+                  data-mind-system-dir-edit-assistant={assistant.id}
+                  className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Pencil size={10} aria-hidden="true" />
+                  {t.home.mindAssistant.edit}
+                </Link>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {hiddenAssistantCount > 0 && (
+        <button
+          type="button"
+          data-mind-system-dir-view-all-assistants={space.slot.key}
+          onClick={() => setShowAllAssistants(value => !value)}
+          className="mt-3 inline-flex h-8 items-center rounded-md px-2.5 text-[11px] font-medium text-[var(--amber)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-expanded={showAllAssistants}
+        >
+          {showAllAssistants
+            ? t.home.mindAssistant.showLessAssistants
+            : t.home.mindAssistant.viewAllAssistants(assistants.length)}
+        </button>
+      )}
+    </section>
+  );
+}
+
 // ─── Context Menu for DirView entries ─────────────────────────────────────────
 
 function DirContextMenu({ x, y, path, label, onClose }: {
@@ -457,7 +615,7 @@ function DirContextMenu({ x, y, path, label, onClose }: {
 
 // ─── DirView ──────────────────────────────────────────────────────────────────
 
-export default function DirView({ dirPath, entries, spacePreview }: DirViewProps) {
+export default function DirView({ dirPath, entries, spacePreview, mindSystemSpace }: DirViewProps) {
   const [view, setView] = useDirViewPref();
   const showHidden = useShowHiddenFiles();
   const { t } = useLocale();
@@ -519,6 +677,10 @@ export default function DirView({ dirPath, entries, spacePreview }: DirViewProps
       {/* Content */}
       <div className="flex-1 px-4 md:px-6 py-6">
         <div className="max-w-[860px] mx-auto">
+          {mindSystemSpace && (
+            <MindSystemAssistantStrip space={mindSystemSpace} />
+          )}
+
           {/* Space preview cards (always shown when there's a spacePreview) */}
           {spacePreview && (
             <SpacePreviewSection preview={spacePreview} dirPath={dirPath} />

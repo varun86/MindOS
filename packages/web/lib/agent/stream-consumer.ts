@@ -14,7 +14,7 @@
  * - content: concatenated text deltas (for display)
  * - parts: structured [TextPart | ReasoningPart | ToolCallPart] (for detailed view)
  */
-import type { Message, MessagePart, ToolCallPart, TextPart, ReasoningPart } from '@/lib/types';
+import type { Message, MessagePart, ToolCallPart, TextPart, ReasoningPart, AskUserQuestion, AskUserQuestionAnswer } from '@/lib/types';
 import { parseMindosSseLine } from '@geminilight/mindos/session';
 
 /** Tools that modify files — trigger files-changed notification on completion */
@@ -42,6 +42,49 @@ function notifyFilesChanged() {
   }
 }
 
+function parseSseLineAsRecord(line: string): Record<string, unknown> | null {
+  const parsed = parseMindosSseLine(line);
+  if (parsed) return parsed as Record<string, unknown>;
+  if (!line.startsWith('data:')) return null;
+  const payload = line.slice(5).trim();
+  if (!payload || payload === '[DONE]') return null;
+  try {
+    const fallback = JSON.parse(payload);
+    return fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+      ? fallback as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeUserQuestionAnswers(value: unknown): AskUserQuestionAnswer[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((answer) => ({
+    questionIndex: typeof answer.questionIndex === 'number' ? answer.questionIndex : -1,
+    question: typeof answer.question === 'string' ? answer.question : '',
+    kind: answer.kind === 'custom' || answer.kind === 'chat' || answer.kind === 'multi' ? answer.kind : 'option',
+    answer: typeof answer.answer === 'string' ? answer.answer : null,
+    ...(Array.isArray(answer.selected) ? { selected: answer.selected.filter((item): item is string => typeof item === 'string') } : {}),
+    ...(typeof answer.notes === 'string' ? { notes: answer.notes } : {}),
+    ...(typeof answer.preview === 'string' ? { preview: answer.preview } : {}),
+  }));
+}
+
+function normalizeRuntime(value: unknown): ToolCallPart['runtime'] | undefined {
+  return value === 'mindos' || value === 'acp' || value === 'codex' || value === 'claude'
+    ? value
+    : undefined;
+}
+
+function normalizeRuntimePermissionIntent(value: unknown): 'allow' | 'deny' | 'cancel' | undefined {
+  return value === 'allow' || value === 'deny' || value === 'cancel' ? value : undefined;
+}
+
 export async function consumeUIMessageStream(
   body: ReadableStream<Uint8Array>,
   onUpdate: (message: Message) => void,
@@ -65,8 +108,27 @@ export async function consumeUIMessageStream(
     const clonedParts: MessagePart[] = parts.map(p => {
       if (p.type === 'text') return { type: 'text' as const, text: p.text };
       if (p.type === 'reasoning') return { type: 'reasoning' as const, text: p.text };
+      if (p.type === 'image') return { ...p };
       // ToolCallPart — shallow copy safe (primitive fields, input is replaced not mutated)
-      return { ...p };
+      return {
+        ...p,
+        ...(p.userQuestion ? {
+          userQuestion: {
+            ...p.userQuestion,
+            questions: p.userQuestion.questions.map(q => ({
+              ...q,
+              options: q.options.map(o => ({ ...o })),
+            })),
+            ...(p.userQuestion.answers ? { answers: p.userQuestion.answers.map(a => ({ ...a, selected: a.selected ? [...a.selected] : undefined })) } : {}),
+          },
+        } : {}),
+        ...(p.runtimePermission ? {
+          runtimePermission: {
+            ...p.runtimePermission,
+            options: p.runtimePermission.options.map(option => ({ ...option })),
+          },
+        } : {}),
+      };
     });
     const textContent = clonedParts
       .filter((p): p is TextPart => p.type === 'text')
@@ -110,6 +172,26 @@ export async function consumeUIMessageStream(
     return tc;
   }
 
+  function normalizeUserQuestions(value: unknown): AskUserQuestion[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+      .map((question) => ({
+        question: typeof question.question === 'string' ? question.question : '',
+        header: typeof question.header === 'string' ? question.header : '',
+        multiSelect: question.multiSelect === true,
+        options: Array.isArray(question.options)
+          ? question.options
+              .filter((option): option is Record<string, unknown> => Boolean(option) && typeof option === 'object' && !Array.isArray(option))
+              .map(option => ({
+                label: typeof option.label === 'string' ? option.label : '',
+                description: typeof option.description === 'string' ? option.description : '',
+                ...(typeof option.preview === 'string' ? { preview: option.preview } : {}),
+              }))
+          : [],
+      }));
+  }
+
   try {
     while (true) {
       if (signal?.aborted) break;
@@ -126,16 +208,16 @@ export async function consumeUIMessageStream(
       for (const line of lines) {
         const trimmed = line.trim();
 
-        const event = parseMindosSseLine(trimmed);
-        if (!event) continue;
+        const eventRecord = parseSseLineAsRecord(trimmed);
+        if (!eventRecord) continue;
 
-        const type = event.type;
+        const type = typeof eventRecord.type === 'string' ? eventRecord.type : '';
 
         switch (type) {
           case 'text_delta': {
             // Regular text from assistant
             const part = findOrCreateTextPart('text');
-            part.text += (event.delta as string) ?? '';
+            part.text += (eventRecord.delta as string) ?? '';
             changed = true;
             break;
           }
@@ -147,18 +229,19 @@ export async function consumeUIMessageStream(
               parts.push(currentReasoningPart);
               currentTextId = null;
             }
-            currentReasoningPart.text += (event.delta as string) ?? '';
+            currentReasoningPart.text += (eventRecord.delta as string) ?? '';
             changed = true;
             break;
           }
 
           case 'tool_start': {
             // Beginning of tool execution
-            const toolCallId = event.toolCallId as string;
+            const toolCallId = eventRecord.toolCallId as string;
             if (!toolCallId) break;
-            const toolName = event.toolName as string;
+            const toolName = eventRecord.toolName as string;
             const tc = findOrCreateToolCall(toolCallId, toolName);
-            tc.input = event.args;
+            tc.input = eventRecord.args;
+            tc.runtime = normalizeRuntime(eventRecord.runtime);
             tc.state = 'running';
             changed = true;
             break;
@@ -166,24 +249,119 @@ export async function consumeUIMessageStream(
 
           case 'tool_end': {
             // Tool execution finished
-            const toolCallId = event.toolCallId as string;
+            const toolCallId = eventRecord.toolCallId as string;
             if (!toolCallId) break;
             // Use findOrCreateToolCall so tool_end still works even if tool_start was lost
-            const tc = findOrCreateToolCall(toolCallId, (event as Record<string, unknown>).toolName as string | undefined);
-            const output = event.output as string;
+            const tc = findOrCreateToolCall(toolCallId, eventRecord.toolName as string | undefined);
+            const output = eventRecord.output as string;
             tc.output = output ?? '';
-            tc.state = (event.isError ? 'error' : 'done');
+            tc.state = (eventRecord.isError ? 'error' : 'done');
             changed = true;
             // Notify when a file-modifying tool completes successfully
-            if (!event.isError && FILE_MUTATING_TOOLS.has(tc.toolName)) {
+            if (!eventRecord.isError && FILE_MUTATING_TOOLS.has(tc.toolName)) {
               notifyFilesChanged();
             }
             break;
           }
 
+          case 'runtime_permission_request': {
+            const toolCallId = eventRecord.toolCallId as string;
+            const runId = eventRecord.runId as string;
+            const requestId = eventRecord.requestId as string;
+            const runtime = normalizeRuntime(eventRecord.runtime);
+            if (!toolCallId || !runId || !requestId || (runtime !== 'codex' && runtime !== 'claude')) break;
+            const toolName = typeof eventRecord.toolName === 'string' && eventRecord.toolName ? eventRecord.toolName : 'approval_request';
+            const tc = findOrCreateToolCall(toolCallId, toolName);
+            tc.toolName = toolName;
+            tc.input = eventRecord.input;
+            tc.runtime = runtime;
+            tc.runtimePermission = {
+              runId,
+              requestId,
+              runtime,
+              status: 'waiting',
+              options: Array.isArray(eventRecord.options)
+                ? eventRecord.options
+                    .filter(isRecord)
+                    .map(option => ({
+                      id: typeof option.id === 'string' ? option.id : '',
+                      label: typeof option.label === 'string' ? option.label : '',
+                      ...(typeof option.description === 'string' ? { description: option.description } : {}),
+                      ...(normalizeRuntimePermissionIntent(option.intent) ? { intent: normalizeRuntimePermissionIntent(option.intent) } : {}),
+                    }))
+                    .filter(option => option.id && option.label)
+                : [],
+              ...(typeof eventRecord.reason === 'string' ? { reason: eventRecord.reason } : {}),
+            };
+            tc.state = 'running';
+            changed = true;
+            break;
+          }
+
+          case 'runtime_permission_resolved': {
+            const toolCallId = eventRecord.toolCallId as string;
+            if (!toolCallId) break;
+            const tc = findOrCreateToolCall(toolCallId, 'approval_request');
+            if (tc.runtimePermission) {
+              const decision = typeof eventRecord.decision === 'string' ? eventRecord.decision : '';
+              tc.runtimePermission.decision = decision;
+              tc.runtimePermission.status = eventRecord.cancelled === true
+                ? 'cancelled'
+                : decision === 'decline' || decision === 'deny' || decision === 'denied'
+                  ? 'denied'
+                  : 'approved';
+            }
+            tc.state = eventRecord.cancelled === true ? 'error' : 'done';
+            tc.output = typeof eventRecord.decision === 'string'
+              ? `Permission decision forwarded: ${eventRecord.decision}`
+              : 'Permission decision forwarded.';
+            changed = true;
+            break;
+          }
+
+          case 'user_question_start': {
+            const toolCallId = eventRecord.toolCallId as string;
+            const runId = eventRecord.runId as string;
+            if (!toolCallId || !runId) break;
+            const tc = findOrCreateToolCall(toolCallId, 'ask_user_question');
+            tc.toolName = 'ask_user_question';
+            tc.userQuestion = {
+              runId,
+              questions: normalizeUserQuestions(eventRecord.questions),
+              status: 'waiting',
+            };
+            tc.state = 'running';
+            changed = true;
+            break;
+          }
+
+          case 'user_question_answered': {
+            const toolCallId = eventRecord.toolCallId as string;
+            if (!toolCallId) break;
+            const tc = findOrCreateToolCall(toolCallId, 'ask_user_question');
+            if (tc.userQuestion) {
+              tc.userQuestion.status = 'submitted';
+              tc.userQuestion.answers = normalizeUserQuestionAnswers(eventRecord.answers);
+            }
+            changed = true;
+            break;
+          }
+
+          case 'user_question_cancelled': {
+            const toolCallId = eventRecord.toolCallId as string;
+            if (!toolCallId) break;
+            const tc = findOrCreateToolCall(toolCallId, 'ask_user_question');
+            if (tc.userQuestion) {
+              tc.userQuestion.status = 'cancelled';
+              tc.userQuestion.reason = typeof eventRecord.reason === 'string' ? eventRecord.reason : undefined;
+            }
+            changed = true;
+            break;
+          }
+
           case 'runtime_binding': {
-            const runtime = event.runtime;
-            const externalSessionId = event.externalSessionId;
+            const runtime = eventRecord.runtime;
+            const externalSessionId = eventRecord.externalSessionId;
             if (
               (runtime === 'acp' || runtime === 'codex' || runtime === 'claude') &&
               typeof externalSessionId === 'string' &&
@@ -192,7 +370,7 @@ export async function consumeUIMessageStream(
               options.onRuntimeBinding?.({
                 runtime,
                 externalSessionId,
-                ...(typeof event.cwd === 'string' ? { cwd: event.cwd } : {}),
+                ...(typeof eventRecord.cwd === 'string' ? { cwd: eventRecord.cwd } : {}),
               });
             }
             break;
@@ -200,7 +378,7 @@ export async function consumeUIMessageStream(
 
           case 'error': {
             // Stream error
-            const message = event.message as string;
+            const message = eventRecord.message as string;
             parts.push({
               type: 'text',
               text: `\n\n**Stream Error:** ${message}`,

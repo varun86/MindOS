@@ -18,7 +18,7 @@ import {
   type MindosRuntimeSettings,
 } from './runtime.js';
 import { MINDOS_SERVER_ROUTES } from './contract.js';
-import { createDefaultMcpAgents } from './mcp-agent-registry.js';
+import { createDefaultMcpAgents, createDefaultSkillAgentRegistry } from './mcp-agent-registry.js';
 import { handleA2aAgentsGet, handleA2aDelegationsGet, handleA2aDiscoverPost, handleA2aOptions, handleA2aPost } from './handlers/a2a.js';
 import {
   handleAcpConfigDelete,
@@ -565,6 +565,7 @@ async function handleRequest(
         env: process.env,
         mindRoot: services.mindRoot,
         projectRoot: services.runtimeRoot ?? process.cwd(),
+        skillAgentRegistry: createDefaultSkillAgentRegistry(),
       }));
       return;
     }
@@ -585,6 +586,7 @@ async function handleRequest(
         agents: services.mcpAgents ?? {},
         readSettings: services.readSettings,
         env: process.env,
+        skillAgentRegistry: createDefaultSkillAgentRegistry(),
       }));
       return;
     }

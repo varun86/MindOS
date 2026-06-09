@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WikiHomeContent from '@/components/WikiHomeContent';
 import type { MindSystemSlot } from '@/lib/mind-system';
+import type { BuiltInMindSystemSpaceRecord } from '@/lib/space-records';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -15,7 +16,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_DAO',
     role: 'world-model',
     order: 10,
-    primary: true,
     enabled: true,
   },
   {
@@ -25,7 +25,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_FA',
     role: 'principles',
     order: 20,
-    primary: true,
     enabled: true,
   },
   {
@@ -35,7 +34,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_SHU',
     role: 'methods',
     order: 30,
-    primary: true,
     enabled: true,
   },
   {
@@ -45,10 +43,36 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_QI',
     role: 'tools-assets',
     order: 40,
-    primary: true,
     enabled: true,
   },
 ];
+
+const assistantIds: Record<MindSystemSlot['key'], [string, string]> = {
+  dao: ['daily-signal', 'decision-synthesizer'],
+  fa: ['rule-keeper', 'boundary-reviewer'],
+  shu: ['method-organizer', 'checklist-builder'],
+  qi: ['tool-inventory', 'resource-auditor'],
+};
+
+function mindSystemRecords(
+  overrides: Partial<Record<MindSystemSlot['key'], Partial<BuiltInMindSystemSpaceRecord>>> = {},
+): BuiltInMindSystemSpaceRecord[] {
+  return mindSystemSlots.map(slot => ({
+    kind: 'builtin-mind-system',
+    slot,
+    fileCount: 0,
+    description: '',
+    assistantSummary: {
+      assistants: assistantIds[slot.key].map((id, index) => ({
+        id,
+        schedule: { mode: slot.key === 'dao' && index === 0 ? 'daily' : 'manual' },
+      })),
+      draftCount: 0,
+      instructionReady: true,
+    },
+    ...overrides[slot.key],
+  }));
+}
 
 describe('WikiHomeContent Mind System cards', () => {
   let host: HTMLDivElement;
@@ -76,7 +100,7 @@ describe('WikiHomeContent Mind System cards', () => {
   it('renders semantic Mind System cards that link to fixed MIND folders', async () => {
     await act(async () => {
       root = createRoot(host);
-      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSlots={mindSystemSlots} />);
+      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSpaces={mindSystemRecords()} />);
     });
 
     for (const slot of mindSystemSlots) {
@@ -89,7 +113,7 @@ describe('WikiHomeContent Mind System cards', () => {
   it('uses Chinese framed theme-color icons for the four Mind System cards', async () => {
     await act(async () => {
       root = createRoot(host);
-      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSlots={mindSystemSlots} />);
+      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSpaces={mindSystemRecords()} />);
     });
 
     for (const slot of mindSystemSlots) {
@@ -103,5 +127,66 @@ describe('WikiHomeContent Mind System cards', () => {
       expect(icon?.className).toContain('border-[var(--amber)]/35');
       expect(icon?.className).toContain('bg-[var(--amber-subtle)]');
     }
+  });
+
+  it('shows assistant summaries without a hidden primary run action', async () => {
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <WikiHomeContent
+          spaces={[]}
+          recent={[]}
+          mindSystemSpaces={mindSystemRecords({
+            dao: {
+              assistantSummary: {
+                assistants: [
+                  { id: 'daily-signal', schedule: { mode: 'daily' } },
+                  { id: 'decision-synthesizer', schedule: { mode: 'manual' } },
+                ],
+                draftCount: 2,
+                instructionReady: true,
+              },
+            },
+          })}
+        />,
+      );
+    });
+
+    const daoCard = host.querySelector<HTMLElement>('[data-mind-system-card="dao"]');
+
+    expect(daoCard?.textContent).toContain('Daily signal curator');
+    expect(daoCard?.textContent).toContain('2 assistants');
+    expect(daoCard?.textContent).toContain('Decision synthesizer');
+    expect(daoCard?.textContent).toContain('2 drafts');
+    expect(host.querySelector('[data-mind-system-run-once="dao"]')).toBeNull();
+  });
+
+  it('shows missing instruction state when a space has no INSTRUCTION.md', async () => {
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <WikiHomeContent
+          spaces={[]}
+          recent={[]}
+          mindSystemSpaces={mindSystemRecords({
+            dao: {
+              assistantSummary: {
+                assistants: [
+                  { id: 'daily-signal', schedule: { mode: 'daily' } },
+                  { id: 'decision-synthesizer', schedule: { mode: 'manual' } },
+                ],
+                draftCount: 0,
+                instructionReady: false,
+              },
+            },
+          })}
+        />,
+      );
+    });
+
+    const daoCard = host.querySelector<HTMLElement>('[data-mind-system-card="dao"]');
+
+    expect(daoCard?.textContent).toContain('Instruction missing');
+    expect(daoCard?.textContent).not.toContain('Instruction ready');
   });
 });

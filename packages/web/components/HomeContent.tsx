@@ -8,7 +8,7 @@ import OnboardingView from './OnboardingView';
 import Logo from './Logo';
 import GuideCard from './GuideCard';
 import AskContent from '@/components/ask/AskContent';
-import type { SpaceInfo } from '@/app/page';
+import type { SpaceInfo } from '@/lib/space-records';
 
 interface RecentFile {
   path: string;

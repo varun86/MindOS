@@ -14,7 +14,8 @@
 | Kimi Code | ✅ | ✅ | `~/.kimi/mcp.json` | `~/.agents/skills/` |
 | Codex | ✅ | ✅ | `~/.codex/config.toml`（TOML 格式，键名：`mcp_servers`） | `~/.agents/skills/` |
 | OpenCode | ✅ | ✅ | `~/.config/opencode/config.json` | `~/.agents/skills/` |
-| iFlow CLI | ✅ | ✅ | `~/.iflow/settings.json` | `~/.iflow/skills/` |
+| Kilo Code | ✅ | ✅ | `~/.config/kilo/kilo.jsonc`（键名：`mcp`，entry 类型：`local` / `remote`；兼容识别 `kilo.json`） | `~/.agents/skills/` |
+| Warp | ✅ | ✅ | `~/.warp/.mcp.json` | `~/.agents/skills/` |
 | Pi | ✅ | ✅ | `~/.pi/agent/mcp.json` | `~/.pi/skills/` |
 | Qoder | ✅ | ✅ | `~/.qoder.json` | `~/.qoder/skills/` |
 | Antigravity | ✅ | ✅ | `~/.gemini/antigravity/mcp_config.json` | `~/.antigravity/skills/` |
@@ -124,6 +125,21 @@ args = ["mcp"]
 
 [mcp_servers.mindos.env]
 MCP_TRANSPORT = "stdio"
+```
+
+**Kilo Code（`mcp` 键名，entry 使用 local / remote）：**
+
+```json
+{
+  "mcp": {
+    "mindos": {
+      "type": "local",
+      "command": ["mindos", "mcp"],
+      "environment": { "MCP_TRANSPORT": "stdio" },
+      "enabled": true
+    }
+  }
+}
 ```
 
 > 各 Agent 的配置文件路径不同，详见上方表格中的 **MCP 配置文件路径** 列。

@@ -54,6 +54,57 @@ export interface ToolCallPart {
   input: unknown;
   output?: string;
   state: 'pending' | 'running' | 'done' | 'error';
+  runtime?: AgentRuntimeKind;
+  userQuestion?: AskUserQuestionState;
+  runtimePermission?: RuntimePermissionState;
+}
+
+export interface RuntimePermissionOption {
+  id: string;
+  label: string;
+  description?: string;
+  intent?: 'allow' | 'deny' | 'cancel';
+}
+
+export interface RuntimePermissionState {
+  runId: string;
+  requestId: string;
+  runtime: Extract<AgentRuntimeKind, 'codex' | 'claude'>;
+  status: 'waiting' | 'approved' | 'denied' | 'cancelled';
+  options: RuntimePermissionOption[];
+  decision?: string;
+  reason?: string;
+}
+
+export interface AskUserQuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+export interface AskUserQuestion {
+  question: string;
+  header: string;
+  options: AskUserQuestionOption[];
+  multiSelect?: boolean;
+}
+
+export interface AskUserQuestionAnswer {
+  questionIndex: number;
+  question: string;
+  kind: 'option' | 'custom' | 'chat' | 'multi';
+  answer: string | null;
+  selected?: string[];
+  notes?: string;
+  preview?: string;
+}
+
+export interface AskUserQuestionState {
+  runId: string;
+  questions: AskUserQuestion[];
+  status: 'waiting' | 'submitted' | 'cancelled';
+  reason?: string;
+  answers?: AskUserQuestionAnswer[];
 }
 
 export interface TextPart {

@@ -7,11 +7,10 @@ import { Loader2, CheckCircle2, Circle, RefreshCw, AlertCircle } from 'lucide-re
 import { useLocale } from '@/lib/stores/locale-store';
 import { PLATFORMS, type PlatformStatus } from '@/lib/im/platforms';
 import AgentsContentChannelDetail from './AgentsContentChannelDetail';
+import { ChannelIcon } from './ChannelIcon';
 import { getCachedStatuses, setCachedStatuses } from './channel-detail/cache';
 
 export default function AgentsContentChannels() {
-  const { t } = useLocale();
-  const im = t.panels.im;
   const searchParams = useSearchParams();
   const platformId = searchParams.get('platform');
 
@@ -117,7 +116,8 @@ function ChannelsOverview() {
       {/* Platform grid — clickable */}
       <h2 className="text-sm font-medium text-foreground mb-4">{im.platformsTitle}</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {PLATFORMS.map(({ id, name, icon }) => {
+        {PLATFORMS.map((platform) => {
+          const { id, name } = platform;
           const status = getStatus(id);
           const isConnected = status?.connected ?? false;
 
@@ -127,7 +127,7 @@ function ChannelsOverview() {
               href={`/agents?tab=channels&platform=${id}`}
               className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm hover:border-[var(--amber)]/50 hover:bg-card/80 hover:shadow transition-all"
             >
-              <span className="text-xl shrink-0">{icon}</span>
+              <ChannelIcon platform={platform} size="md" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">{name}</div>
                 {isConnected && status?.botName ? (

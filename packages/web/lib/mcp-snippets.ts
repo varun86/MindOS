@@ -61,12 +61,19 @@ function buildYamlSnippet(sectionKey: string, entry: Record<string, unknown>): s
 }
 
 export function generateStdioSnippet(agent: AgentInfo): ConfigSnippet {
-  const stdioEntry: Record<string, unknown> = {
-    type: 'stdio',
-    command: 'mindos',
-    args: ['mcp'],
-    env: { MCP_TRANSPORT: 'stdio' },
-  };
+  const stdioEntry: Record<string, unknown> = agent.entryStyle === 'kilo'
+    ? {
+        type: 'local',
+        command: ['mindos', 'mcp'],
+        environment: { MCP_TRANSPORT: 'stdio' },
+        enabled: true,
+      }
+    : {
+        type: 'stdio',
+        command: 'mindos',
+        args: ['mcp'],
+        env: { MCP_TRANSPORT: 'stdio' },
+      };
 
   if (agent.format === 'toml') {
     const lines = [
@@ -102,11 +109,15 @@ export function generateHttpSnippet(
   maskedToken?: string,
 ): ConfigSnippet {
   // Full token for copy
-  const httpEntry: Record<string, unknown> = { url: endpoint };
+  const httpEntry: Record<string, unknown> = agent.entryStyle === 'kilo'
+    ? { type: 'remote', url: endpoint, enabled: true }
+    : { url: endpoint };
   if (token) httpEntry.headers = { Authorization: `Bearer ${token}` };
 
   // Masked token for display
-  const displayEntry: Record<string, unknown> = { url: endpoint };
+  const displayEntry: Record<string, unknown> = agent.entryStyle === 'kilo'
+    ? { type: 'remote', url: endpoint, enabled: true }
+    : { url: endpoint };
   if (maskedToken) displayEntry.headers = { Authorization: `Bearer ${maskedToken}` };
 
   const buildSnippet = (entry: Record<string, unknown>) => {

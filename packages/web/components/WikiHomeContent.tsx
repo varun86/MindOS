@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Brain, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
+import { Bot, Brain, CheckCircle2, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
 import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils';
 import { InboxSection } from '@/components/home/InboxSection';
-import type { SpaceInfo } from '@/app/page';
+import type { BuiltInMindSystemSpaceRecord, SpaceInfo } from '@/lib/space-records';
 import { Select } from '@/components/settings/Primitives';
-import type { MindSystemSlot } from '@/lib/mind-system';
+import { resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
 
 interface RecentFile {
   path: string;
@@ -19,7 +19,7 @@ interface RecentFile {
 interface WikiHomeContentProps {
   spaces: SpaceInfo[];
   recent: RecentFile[];
-  mindSystemSlots: MindSystemSlot[];
+  mindSystemSpaces: BuiltInMindSystemSpaceRecord[];
 }
 
 function triggerSearch() {
@@ -45,7 +45,7 @@ function getSpaceLatestMtime(spaceName: string, recentFiles: RecentFile[]): numb
 
 const SPACES_COLLAPSED = 6;
 
-export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: WikiHomeContentProps) {
+export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: WikiHomeContentProps) {
   const { t } = useLocale();
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'fileCount'>('recent');
   const [showAllSpaces, setShowAllSpaces] = useState(false);
@@ -65,14 +65,8 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
     return () => clearInterval(interval);
   }, [suggestions.length]);
 
-  // Sort spaces
-  const workspaceSpaces = useMemo(() => {
-    const mindSystemPaths = new Set(mindSystemSlots.map(slot => `${slot.path.replace(/\/+$/, '')}/`));
-    return spaces.filter(space => !mindSystemPaths.has(space.path));
-  }, [spaces, mindSystemSlots]);
-
   const sortedSpaces = useMemo(() => {
-    const sorted = [...workspaceSpaces];
+    const sorted = [...spaces];
     if (sortBy === 'recent') {
       sorted.sort((a, b) => {
         const aMtime = getSpaceLatestMtime(a.name, recent);
@@ -85,7 +79,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
       sorted.sort((a, b) => b.fileCount - a.fileCount);
     }
     return sorted;
-  }, [workspaceSpaces, recent, sortBy]);
+  }, [spaces, recent, sortBy]);
 
   const visibleSpaces = showAllSpaces ? sortedSpaces : sortedSpaces.slice(0, SPACES_COLLAPSED);
   const formatTime = (mtime: number) => relativeTime(mtime, t.home.relativeTime);
@@ -163,7 +157,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
       </div>
 
       {/* ══════════ Built-in Mind Spaces ══════════ */}
-      <BuiltInMindSpacesSection slots={mindSystemSlots} />
+      <BuiltInMindSpacesSection spaces={mindSystemSpaces} />
 
       {/* ══════════ Spaces Grid ══════════ */}
       <section className="mb-10">
@@ -174,13 +168,13 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
           <h2 className="text-[13px] font-semibold text-foreground tracking-wide">
             {t.home.spaces}
           </h2>
-          {workspaceSpaces.length > 0 && (
+          {spaces.length > 0 && (
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold rounded-full bg-muted text-muted-foreground tabular-nums">
-              {workspaceSpaces.length}
+              {spaces.length}
             </span>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {workspaceSpaces.length > 0 && (
+            {spaces.length > 0 && (
               <Select
                 size="sm"
                 value={sortBy}
@@ -201,7 +195,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
           </div>
         </div>
 
-        {workspaceSpaces.length === 0 ? (
+        {spaces.length === 0 ? (
           <div className="rounded-xl border border-border/40 bg-card/30 px-6 py-12 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--amber-subtle)] mb-4">
               <Brain size={22} className="text-[var(--amber)]/60" />
@@ -298,11 +292,16 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSlots }: Wik
   );
 }
 
-function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
+function BuiltInMindSpacesSection({
+  spaces,
+}: {
+  spaces: BuiltInMindSystemSpaceRecord[];
+}) {
   const { t } = useLocale();
-  const pillars = slots.map(slot => ({
-    ...slot,
-    data: t.home.mindPillars[slot.key],
+  const pillars = spaces.map(space => ({
+    ...space,
+    data: t.home.mindPillars[space.slot.key],
+    assistantCopies: resolveMindSystemAssistantCopies(space.assistantSummary.assistants, t.home.mindAssistants[space.slot.key]),
   }));
 
   if (pillars.length === 0) return null;
@@ -320,34 +319,75 @@ function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
-          const desc = pillar.data?.desc ?? pillar.role;
+          const desc = pillar.data?.desc ?? pillar.slot.role;
+          const draftCount = pillar.assistantSummary?.draftCount ?? 0;
+          const instructionReady = pillar.assistantSummary?.instructionReady ?? false;
+          const assistantCount = pillar.assistantCopies.length;
           return (
-            <Link
-              key={pillar.key}
-              href={`/view/${encodePath(pillar.path)}`}
-              aria-label={`${pillar.label} - ${desc}`}
-              data-mind-system-card={pillar.key}
-              className="group relative overflow-hidden rounded-lg border border-border/70 bg-card/60 p-3.5 transition-colors duration-150 hover:border-[var(--amber)]/35 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            <article
+              key={pillar.slot.key}
+              aria-label={`${pillar.slot.label} - ${desc}`}
+              data-mind-system-card={pillar.slot.key}
+              className="group relative overflow-hidden rounded-lg border border-border/70 bg-card/60 p-3.5 transition-[background-color,border-color,box-shadow] duration-150 hover:border-[var(--amber)]/35 hover:bg-card hover:shadow-sm"
             >
-              <span className="mb-3 flex items-start gap-3">
-                <span
-                  data-mind-system-icon={pillar.key}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-base font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]"
-                  aria-hidden="true"
-                >
-                  {pillar.label}
+              <Link
+                href={`/view/${encodePath(pillar.slot.path)}`}
+                className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="mb-3 flex items-start gap-3">
+                  <span
+                    data-mind-system-icon={pillar.slot.key}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-base font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]"
+                    aria-hidden="true"
+                  >
+                    {pillar.slot.label}
+                  </span>
+                  <span className="min-w-0 flex-1 pt-0.5">
+                    <span className="block text-sm font-semibold leading-5 text-foreground">{pillar.data?.title ?? pillar.slot.label}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/45">{pillar.slot.systemId}</span>
+                  </span>
                 </span>
-                <span className="min-w-0 flex-1 pt-0.5">
-                  <span className="block text-sm font-semibold leading-5 text-foreground">{pillar.data?.title ?? pillar.label}</span>
-                  <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/45">{pillar.systemId}</span>
+                <span className="block min-h-9 text-xs leading-relaxed text-muted-foreground">{desc}</span>
+              </Link>
+              <span className="mt-3 block border-t border-border/40 pt-2.5">
+                <span className="flex items-start gap-2">
+                  <Bot size={13} className="mt-0.5 shrink-0 text-[var(--amber)]/70" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-[var(--amber)]/10 px-1.5 py-px text-[10px] font-medium text-[var(--amber)]/80">
+                        {t.home.mindAssistant.label}
+                      </span>
+                      <span className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                        {t.home.mindAssistant.assistantCount(assistantCount)}
+                      </span>
+                    </span>
+                    <span className="mt-1 block truncate text-[10px] text-muted-foreground/60">
+                      {pillar.assistantCopies.map(assistant => assistant.name).join(' · ')}
+                    </span>
+                  </span>
+                </span>
+                <span className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] text-muted-foreground/65">
+                  <span className={`inline-flex items-center gap-1 ${instructionReady ? 'text-[var(--success)]' : 'text-muted-foreground/60'}`}>
+                    <CheckCircle2 size={11} aria-hidden="true" />
+                    {instructionReady ? t.home.mindAssistant.instructionReady : t.home.mindAssistant.instructionMissing}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <FileText size={11} aria-hidden="true" />
+                    {t.home.mindAssistant.customDrafts(draftCount)}
+                  </span>
                 </span>
               </span>
-              <span className="block min-h-9 text-xs leading-relaxed text-muted-foreground">{desc}</span>
               <span className="mt-3 flex items-center justify-between border-t border-border/40 pt-2">
-                <span className="truncate font-mono text-[10px] text-muted-foreground/45">{pillar.path}</span>
+                <Link
+                  href={`/view/${encodePath(pillar.slot.path)}`}
+                  className="inline-flex min-w-0 items-center gap-1 rounded-sm font-mono text-[10px] text-muted-foreground/45 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="truncate">{pillar.slot.path}</span>
+                  <span className="sr-only">{t.home.mindAssistant.openSpace}</span>
+                </Link>
                 <ArrowRight size={12} className="shrink-0 text-[var(--amber)]/45 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-[var(--amber)]" aria-hidden="true" />
               </span>
-            </Link>
+            </article>
           );
         })}
       </div>

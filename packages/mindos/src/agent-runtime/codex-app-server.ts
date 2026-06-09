@@ -14,6 +14,12 @@ export type CodexAppServerRequest = {
   params?: Record<string, unknown>;
 };
 
+export type CodexAppServerServerRequest = {
+  method: string;
+  id: number;
+  params?: Record<string, unknown>;
+};
+
 export type CodexAppServerNotification = {
   method: string;
   params?: Record<string, unknown>;
@@ -25,16 +31,26 @@ export type CodexAppServerResponse = {
   error?: { code?: number; message?: string; data?: unknown };
 };
 
-export type CodexAppServerMessage = CodexAppServerResponse | CodexAppServerNotification;
+export type CodexAppServerClientResponse = {
+  id: number;
+  result?: unknown;
+  error?: { code?: number; message?: string; data?: unknown };
+};
+
+export type CodexAppServerMessage =
+  | CodexAppServerResponse
+  | CodexAppServerNotification
+  | CodexAppServerServerRequest;
 
 export type CodexAppServerTransport = {
-  send(message: CodexAppServerRequest | CodexAppServerNotification): void | Promise<void>;
+  send(message: CodexAppServerRequest | CodexAppServerNotification | CodexAppServerClientResponse): void | Promise<void>;
   read(signal?: AbortSignal): AsyncIterable<CodexAppServerMessage>;
   close?(): void | Promise<void>;
 };
 
 export type CodexAppServerClientOptions = {
   clientInfo?: CodexAppServerClientInfo;
+  handleServerRequest?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown;
 };
 
 export type CodexTurnInput = Array<{ type: 'text'; text: string }>;
@@ -125,6 +141,10 @@ export function createCodexAppServerClient(
             }
             continue;
           }
+          if (isCodexServerRequest(message)) {
+            await respondToServerRequest(message);
+            continue;
+          }
           if (isCodexNotification(message)) notifications.push(message);
         }
       } catch (error) {
@@ -149,6 +169,24 @@ export function createCodexAppServerClient(
 
   const notify = async (method: string, params: Record<string, unknown> = {}): Promise<void> => {
     await transport.send({ method, params });
+  };
+
+  const respondToServerRequest = async (message: CodexAppServerServerRequest): Promise<void> => {
+    try {
+      const result = options.handleServerRequest
+        ? await options.handleServerRequest(message)
+        : defaultCodexServerRequestResult(message);
+      await transport.send({ id: message.id, result });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      await transport.send({
+        id: message.id,
+        error: {
+          code: -32000,
+          message: err.message || `Codex app-server request ${message.method} failed`,
+        },
+      });
+    }
   };
 
   return {
@@ -242,6 +280,9 @@ export function createCodexAppServerStdioTransport(options: {
 }
 
 export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppServerNotification): MindOSSSEvent[] {
+  const toolEvents = mapCodexRuntimeToolNotification(notification);
+  if (toolEvents.length > 0) return toolEvents;
+
   if (notification.method === 'error') {
     return [{ type: 'error', message: getCodexErrorMessage(notification.params, 'Codex app-server error') }];
   }
@@ -282,6 +323,38 @@ export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppS
   return [];
 }
 
+function mapCodexRuntimeToolNotification(notification: CodexAppServerNotification): MindOSSSEvent[] {
+  const method = notification.method;
+  const lower = method.toLowerCase();
+  if (!/(tool|command|exec|approval|permission|patch)/.test(lower)) return [];
+
+  const params = notification.params ?? {};
+  const toolCallId = getCodexToolCallId(method, params);
+  const toolName = getCodexToolName(method, params);
+  if (!toolCallId || !toolName) return [];
+
+  if (/(end|ended|complete|completed|result|output|failed|error|rejected|denied|approved|allowed)/.test(lower)) {
+    return [{
+      type: 'tool_end',
+      toolCallId,
+      output: getCodexToolOutput(params),
+      isError: /(failed|error|rejected|denied)/.test(lower) || params.isError === true || params.error !== undefined,
+    }];
+  }
+
+  if (/(start|started|begin|began|added|call|request|requested|created)/.test(lower)) {
+    return [{
+      type: 'tool_start',
+      toolCallId,
+      toolName,
+      args: getCodexToolInput(params),
+      runtime: 'codex',
+    }];
+  }
+
+  return [];
+}
+
 function formatCodexJsonRpcError(method: string, error: { code?: number; message?: string; data?: unknown }): string {
   const parts = [
     error.message?.trim() || `Codex app-server ${method} failed`,
@@ -300,11 +373,18 @@ function safeJson(value: unknown): string {
 }
 
 function isCodexResponse(message: CodexAppServerMessage): message is CodexAppServerResponse {
-  return typeof (message as CodexAppServerResponse).id === 'number';
+  return typeof (message as CodexAppServerResponse).id === 'number'
+    && typeof (message as CodexAppServerServerRequest).method !== 'string';
 }
 
 function isCodexNotification(message: CodexAppServerMessage): message is CodexAppServerNotification {
-  return typeof (message as CodexAppServerNotification).method === 'string';
+  return typeof (message as CodexAppServerNotification).method === 'string'
+    && typeof (message as CodexAppServerServerRequest).id !== 'number';
+}
+
+function isCodexServerRequest(message: CodexAppServerMessage): message is CodexAppServerServerRequest {
+  return typeof (message as CodexAppServerServerRequest).id === 'number'
+    && typeof (message as CodexAppServerServerRequest).method === 'string';
 }
 
 function isCodexTerminalTurnNotification(notification: CodexAppServerNotification): boolean {
@@ -332,6 +412,59 @@ function getThreadId(result: unknown, method: string): string {
 function getStringParam(params: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = params?.[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+function getCodexToolCallId(method: string, params: Record<string, unknown>): string {
+  const direct = getStringParam(params, 'toolCallId')
+    ?? getStringParam(params, 'callId')
+    ?? getStringParam(params, 'itemId')
+    ?? getStringParam(params, 'requestId')
+    ?? getStringParam(params, 'id');
+  if (direct) return direct;
+
+  const item = asRecord(params.item);
+  const nested = getStringField(item, 'id') ?? getStringField(item, 'callId');
+  return nested ?? `codex-${method}`;
+}
+
+function getCodexToolName(method: string, params: Record<string, unknown>): string {
+  const direct = getStringParam(params, 'toolName')
+    ?? getStringParam(params, 'name')
+    ?? getStringParam(params, 'tool')
+    ?? getStringParam(params, 'commandName');
+  if (direct) return direct;
+  if (getStringParam(params, 'command')) return 'Bash';
+  if (method.toLowerCase().includes('approval') || method.toLowerCase().includes('permission')) return 'approval_request';
+
+  const item = asRecord(params.item);
+  return getStringField(item, 'name') ?? getStringField(item, 'toolName') ?? method.split('/').at(-1) ?? method;
+}
+
+function getCodexToolInput(params: Record<string, unknown>): unknown {
+  return params.input
+    ?? params.arguments
+    ?? params.args
+    ?? params.command
+    ?? asRecord(params.item)?.input
+    ?? params;
+}
+
+function getCodexToolOutput(params: Record<string, unknown>): string {
+  const direct = getStringParam(params, 'output')
+    ?? getStringParam(params, 'result')
+    ?? getStringParam(params, 'message')
+    ?? getStringParam(params, 'text');
+  if (direct) return direct;
+
+  const error = asRecord(params.error);
+  const errorMessage = getStringField(error, 'message') ?? getStringField(error, 'detail');
+  if (errorMessage) return errorMessage;
+
+  const item = asRecord(params.item);
+  const itemOutput = getStringField(item, 'output') ?? getStringField(item, 'result');
+  if (itemOutput) return itemOutput;
+
+  return safeJson(params);
 }
 
 function getCodexTurnStatus(params: Record<string, unknown> | undefined): string | undefined {
@@ -364,4 +497,11 @@ function getCodexErrorMessage(params: Record<string, unknown> | undefined, fallb
 function getStringField(record: Record<string, unknown> | null, key: string): string | undefined {
   const value = record?.[key];
   return typeof value === 'string' && value ? value : undefined;
+}
+
+function defaultCodexServerRequestResult(request: CodexAppServerServerRequest): unknown {
+  if (/requestApproval|approval|permission/i.test(request.method)) {
+    return { decision: 'cancel' };
+  }
+  throw new Error(`Unhandled Codex app-server request: ${request.method}`);
 }

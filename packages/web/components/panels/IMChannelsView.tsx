@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Circle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { PLATFORMS, type PlatformStatus } from '@/lib/im/platforms';
+import { ChannelIcon } from '@/components/agents/ChannelIcon';
 
 /** Simple sidebar nav list for IM channels — icon + name + status dot. */
 export default function IMChannelsView() {
@@ -75,7 +76,8 @@ export default function IMChannelsView() {
 
       {/* Platform list */}
       <div className="flex flex-col">
-        {PLATFORMS.map(({ id, name, icon }) => {
+        {PLATFORMS.map((platform) => {
+          const { id, name } = platform;
           const status = getStatus(id);
           const isConnected = status?.connected ?? false;
           const isActive = activePlatform === id;
@@ -98,7 +100,7 @@ export default function IMChannelsView() {
                   aria-hidden
                 />
               )}
-              <span className="text-sm">{icon}</span>
+              <ChannelIcon platform={platform} size="sm" />
               <span className="text-sm flex-1 truncate text-foreground">{name}</span>
               {isConnected ? (
                 <CheckCircle2 size={14} className="text-success shrink-0" />

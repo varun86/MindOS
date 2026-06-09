@@ -142,6 +142,77 @@ describe('consumeUIMessageStream — status event handling', () => {
     expect(toolPart?.state).toBe('error');
   });
 
+  it('preserves native runtime metadata on tool calls', async () => {
+    const stream = makeStream(
+      {
+        type: 'tool_start',
+        toolCallId: 'tc1',
+        toolName: 'Bash',
+        runtime: 'claude',
+        args: {
+          command: 'mindos file delete "Profile.md"',
+          description: 'Delete a note',
+        },
+      },
+      { type: 'done' },
+    );
+
+    const result = await consumeUIMessageStream(stream, vi.fn());
+    const toolPart = result.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(toolPart).toMatchObject({
+      toolCallId: 'tc1',
+      toolName: 'Bash',
+      runtime: 'claude',
+      input: {
+        command: 'mindos file delete "Profile.md"',
+        description: 'Delete a note',
+      },
+    });
+  });
+
+  it('tracks runtime permission requests and resolutions as native tool state', async () => {
+    const stream = makeStream(
+      {
+        type: 'runtime_permission_request',
+        runId: 'run-1',
+        requestId: 'perm-1',
+        runtime: 'codex',
+        toolCallId: 'cmd-1',
+        toolName: 'Bash',
+        input: { command: 'mindos file delete "Profile.md"' },
+        options: [
+          { id: 'accept', label: 'Allow once', intent: 'allow' },
+          { id: 'decline', label: 'Deny', intent: 'deny' },
+        ],
+      },
+      {
+        type: 'runtime_permission_resolved',
+        runId: 'run-1',
+        requestId: 'perm-1',
+        runtime: 'codex',
+        toolCallId: 'cmd-1',
+        decision: 'accept',
+      },
+      { type: 'done' },
+    );
+
+    const result = await consumeUIMessageStream(stream, vi.fn());
+    const toolPart = result.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(toolPart).toMatchObject({
+      toolCallId: 'cmd-1',
+      toolName: 'Bash',
+      runtime: 'codex',
+      state: 'done',
+      runtimePermission: {
+        runId: 'run-1',
+        requestId: 'perm-1',
+        runtime: 'codex',
+        status: 'approved',
+        decision: 'accept',
+      },
+    });
+  });
+
   it.each(['append_to_file', 'edit_lines', 'move_file', 'append_csv'])(
     'notifies files changed when %s completes successfully',
     async (toolName) => {

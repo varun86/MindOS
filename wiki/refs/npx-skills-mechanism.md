@@ -22,6 +22,7 @@
 | `warp` | Warp | 终端 |
 
 > `replit` 和 `universal` 也使用 `.agents/skills/` 但设置了 `showInUniversalList: false`，不在通用列表中显示。
+> Kilo Code 在 `npx skills` 里仍有 `-a kilo` additional 标识；MindOS 内部按 Kilo 官方 `.agents/skills` 加载能力处理为 Universal，不再创建 `~/.kilocode/skills` 作为主路径。
 
 ### Additional Agents（32 个）
 
@@ -40,7 +41,6 @@
 | `droid` | Droid | `.factory/skills` |
 | `goose` | Goose | `.goose/skills` |
 | `junie` | Junie | `.junie/skills` |
-| `iflow-cli` | iFlow CLI | `.iflow/skills` |
 | `kilo` | Kilo Code | `.kilocode/skills` |
 | `kiro-cli` | Kiro CLI | `.kiro/skills` |
 | `kode` | Kode | `.kode/skills` |
@@ -132,7 +132,7 @@ npx skills add <source> -s <skill> -a universal -g -y
 **为什么不用 `--all`**：
 - `--all` 会为 ~32 个 additional agent 创建目录/symlink，多数用户只用 2-3 个 agent
 - 虽然无害，但 HOME 目录下多出大量 `~/.<agent>/` 空目录不够整洁
-- Universal 已覆盖 8 个主流 agent（Cursor, Cline, Gemini CLI 等），够用
+- MindOS 映射里的 Universal 已覆盖 9 个主流 agent（Cursor, Cline, Gemini CLI, Kilo Code, Warp 等），够用
 
 **什么时候需要 `-a`**：
 用户选了 MindOS 支持的 agent 中不在 Universal 列表里的：
@@ -147,9 +147,10 @@ npx skills add <source> -s <skill> -a universal -g -y
 | `gemini-cli` | ✅ Universal | ❌ |
 | `openclaw` | ❌ Additional | ✅ `-a openclaw` |
 | `codebuddy` | ❌ Additional | ✅ `-a codebuddy` |
-| `iflow-cli` | ❌ Additional | ✅ `-a iflow-cli` |
 | `kimi-cli` | ✅ Universal | ❌ |
 | `opencode` | ✅ Universal | ❌ |
+| `kilo-code` | ✅ Universal | ❌ |
+| `warp` | ✅ Universal | ❌ |
 | `pi` | ❌ Additional | ✅ `-a pi` |
 | `qoder` | ❌ Additional | ✅ `-a qoder` |
 | `augment` | ❌ Additional | ✅ `-a augment` |
@@ -174,9 +175,10 @@ npx skills add <source> -s <skill> -a universal -g -y
 | `gemini-cli` | `gemini-cli` | ✅ | ✅ |
 | `openclaw` | `openclaw` | ❌ | ✅ |
 | `codebuddy` | `codebuddy` | ❌ | ✅ |
-| `iflow-cli` | `iflow-cli` | ❌ | ✅ |
 | `kimi-cli` | `kimi-cli` | ✅ | ✅ |
 | `opencode` | `opencode` | ✅ | ✅ |
+| `kilo-code` | `universal` | ✅ | ✅ |
+| `warp` | `warp` | ✅ | ✅ |
 | `pi` | `pi` | ❌ | ✅ |
 | `qoder` | `qoder` | ❌ | ✅ |
 | `augment` | `augment` | ❌ | ✅ |

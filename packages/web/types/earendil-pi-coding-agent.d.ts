@@ -18,12 +18,23 @@ declare module '@earendil-works/pi-coding-agent' {
     label?: string;
     description?: string;
     promptSnippet?: string;
+    promptGuidelines?: string[];
     parameters: TParameters;
     execute: (
       toolCallId: string,
       params: unknown,
       signal?: AbortSignal,
       onUpdate?: unknown,
+      ctx?: {
+        hasUI?: boolean;
+        ui?: {
+          custom?: <T>(
+            factory: unknown,
+            options?: unknown,
+          ) => Promise<T>;
+        };
+        [key: string]: unknown;
+      },
     ) => Promise<AgentToolResult<TDetails>> | AgentToolResult<TDetails>;
   }
 
@@ -33,6 +44,9 @@ declare module '@earendil-works/pi-coding-agent' {
       description?: string;
       handler: (args: string, ctx: { ui: { notify(message: string, level?: string): void } }) => void | Promise<void>;
     }): void;
+    events: {
+      emit(event: string, payload?: unknown): void;
+    };
   }
 
   export class SettingsManager {

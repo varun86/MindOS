@@ -8,11 +8,17 @@ export type ClaudeCodeCliTransport = {
   close?(): void | Promise<void>;
 };
 
+export type ClaudeCodeCliPermissionPrompt = {
+  toolName: string;
+  mcpConfig: string | Record<string, unknown>;
+};
+
 export type ClaudeCodeCliClient = {
   startTurn(input: {
     prompt: string;
     cwd: string;
     sessionId?: string;
+    permissionPrompt?: ClaudeCodeCliPermissionPrompt;
     signal?: AbortSignal;
   }): AsyncIterable<ClaudeCodeCliEvent>;
   close?(): void | Promise<void>;
@@ -109,7 +115,11 @@ export function createClaudeCodeCliStdioTransport(options: {
   };
 }
 
-function buildClaudeCodeCliArgs(input: { prompt: string; sessionId?: string }): string[] {
+function buildClaudeCodeCliArgs(input: {
+  prompt: string;
+  sessionId?: string;
+  permissionPrompt?: ClaudeCodeCliPermissionPrompt;
+}): string[] {
   return [
     '--print',
     '--output-format',
@@ -118,6 +128,14 @@ function buildClaudeCodeCliArgs(input: { prompt: string; sessionId?: string }): 
     '--permission-mode',
     'default',
     ...(input.sessionId ? ['--resume', input.sessionId] : []),
+    ...(input.permissionPrompt ? [
+      '--mcp-config',
+      typeof input.permissionPrompt.mcpConfig === 'string'
+        ? input.permissionPrompt.mcpConfig
+        : JSON.stringify(input.permissionPrompt.mcpConfig),
+      '--permission-prompt-tool',
+      input.permissionPrompt.toolName,
+    ] : []),
     input.prompt,
   ];
 }
@@ -170,6 +188,7 @@ function mapClaudeContentBlock(
       toolCallId,
       toolName,
       args: block.input,
+      runtime: 'claude',
     }];
   }
 

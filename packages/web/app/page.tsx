@@ -1,57 +1,13 @@
 import fs from 'fs';
 import { readSetupPending } from '@/lib/setup-state';
-import { getRecentlyModified, getFileContent, getFileTree, getMindRoot } from '@/lib/fs';
+import { getRecentlyModified, getMindRoot } from '@/lib/fs';
 import { resolveExistingSafe } from '@/lib/core/security';
 import { getAllRenderers } from '@/lib/renderers/registry';
+import { listWorkspaceSpaces } from '@/lib/space-records';
 import HomeContent from '@/components/HomeContent';
 import ClientRedirect from '@/components/ClientRedirect';
-import type { FileNode } from '@/lib/core/types';
 
 export const dynamic = 'force-dynamic';
-
-export interface SpaceInfo {
-  name: string;
-  path: string;
-  fileCount: number;
-  description: string;  // first paragraph from README.md (after title)
-}
-
-function countFiles(node: FileNode): number {
-  if (node.type === 'file') return 1;
-  return (node.children ?? []).reduce((sum, c) => sum + countFiles(c), 0);
-}
-
-/** Extract the first non-empty paragraph after the title from a README.md */
-function extractDescription(spacePath: string): string {
-  try {
-    const content = getFileContent(spacePath + 'README.md');
-    const lines = content.split('\n');
-    // Skip title line (# ...) and blank lines, return first non-empty non-heading line
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      return trimmed;
-    }
-  } catch { /* README.md doesn't exist */ }
-  return '';
-}
-
-
-function getTopLevelDirs(tree?: FileNode[]): SpaceInfo[] {
-  try {
-    const nodes = tree ?? getFileTree();
-    return nodes
-      .filter(n => n.type === 'directory' && !n.name.startsWith('.'))
-      .map(n => ({
-        name: n.name,
-        path: n.path + '/',
-        fileCount: countFiles(n),
-        description: extractDescription(n.path + '/'),
-      }));
-  } catch {
-    return [];
-  }
-}
 
 function getExistingFiles(paths: string[]): string[] {
   try {
@@ -82,7 +38,7 @@ export default function HomePage() {
     .filter((p): p is string => !!p);
   const existingFiles = getExistingFiles(entryPaths);
 
-  const spaces = getTopLevelDirs();
+  const spaces = listWorkspaceSpaces();
 
   return <HomeContent recent={recent} existingFiles={existingFiles} spaces={spaces} />;
 }

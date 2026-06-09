@@ -24,7 +24,14 @@ describe('MindOS agent product contract', () => {
   it('owns system prompts inside the product runtime', () => {
     expect(AGENT_SYSTEM_PROMPT).toContain('You are MindOS');
     expect(AGENT_SYSTEM_PROMPT).toContain('Read Before Write');
+    expect(AGENT_SYSTEM_PROMPT).toContain('Delegation / Subagents');
+    expect(AGENT_SYSTEM_PROMPT).toContain('action: "list"');
+    expect(AGENT_SYSTEM_PROMPT).toContain('separate from ACP runtimes, A2A agents');
+    expect(AGENT_SYSTEM_PROMPT).toContain('Structured Clarification');
+    expect(AGENT_SYSTEM_PROMPT).toContain('ask_user_question');
     expect(CHAT_SYSTEM_PROMPT).toContain('Read-Only');
+    expect(CHAT_SYSTEM_PROMPT).not.toContain('Delegation / Subagents');
+    expect(CHAT_SYSTEM_PROMPT).not.toContain('ask_user_question');
     expect(CHAT_SYSTEM_PROMPT.length).toBeLessThan(AGENT_SYSTEM_PROMPT.length);
     expect(ORGANIZE_SYSTEM_PROMPT).toContain('organizing information');
   });

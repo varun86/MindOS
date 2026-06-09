@@ -7,6 +7,7 @@ import { checkAiAvailable } from '@/lib/space-ai-init';
 import { isAiReadableCaptureName } from '@/lib/capture-formats';
 import { buildInboxAgentPrompt } from '@/lib/inbox-agent-preset';
 import { toast } from '@/lib/toast';
+import { archiveInboxFiles } from '@/lib/inbox-client';
 
 export interface InboxOrganizeFile {
   name: string;
@@ -63,7 +64,7 @@ export function useInboxOrganizeController({
   aiOrganize: ReturnType<typeof useAiOrganize>;
   labels: InboxOrganizeLabels;
 }): InboxOrganizeController {
-  const organizedFileNamesRef = useRef<string[]>([]);
+  const organizedReadableFileNamesRef = useRef<string[]>([]);
 
   const requestInboxOrganize = useCallback<InboxOrganizeController['requestInboxOrganize']>(async (files, options = {}) => {
     if (files.length === 0) return { started: false, reason: 'empty' };
@@ -73,11 +74,11 @@ export function useInboxOrganizeController({
     }
 
     const prompt = buildInboxAgentPrompt(files.map(f => f.name));
-    organizedFileNamesRef.current = files.map(f => f.name);
+    organizedReadableFileNamesRef.current = [];
 
-    const aiReady = await checkAiAvailable();
+    const aiReady = await checkAiAvailable(options.providerOverride);
     if (!aiReady) {
-      organizedFileNamesRef.current = [];
+      organizedReadableFileNamesRef.current = [];
       toast.error(labels.organizeNoAi, 5000);
       window.dispatchEvent(new Event('mindos:organize-done'));
       return { started: false, reason: 'ai-unavailable' };
@@ -99,7 +100,7 @@ export function useInboxOrganizeController({
     }
 
     if (attachments.length === 0) {
-      organizedFileNamesRef.current = [];
+      organizedReadableFileNamesRef.current = [];
       toast.error(buildReadFailureMessage(labels, failed, skipped), 5000);
       window.dispatchEvent(new Event('mindos:organize-done'));
       return { started: false, reason: 'no-readable-files' };
@@ -109,6 +110,7 @@ export function useInboxOrganizeController({
       toast.error(buildReadFailureMessage(labels, failed, skipped), 5000);
     }
 
+    organizedReadableFileNamesRef.current = attachments.map(attachment => attachment.name);
     aiOrganize.start(attachments, prompt, 'inbox-organize', options);
     return { started: true };
   }, [aiOrganize, labels]);
@@ -123,25 +125,22 @@ export function useInboxOrganizeController({
   useEffect(() => {
     if (aiOrganize.phase === 'done') {
       const hasSuccessfulChanges = aiOrganize.changes.some(c => c.ok);
-      const names = organizedFileNamesRef.current;
-      if (hasSuccessfulChanges && names.length > 0) {
-        fetch('/api/inbox', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names }),
-        })
+      const hasFailedChanges = aiOrganize.changes.some(c => !c.ok);
+      const names = organizedReadableFileNamesRef.current;
+      if (hasSuccessfulChanges && !hasFailedChanges && names.length > 0) {
+        archiveInboxFiles(names, labels.organizeFailed)
           .then(() => {
             window.dispatchEvent(new Event('mindos:inbox-updated'));
           })
           .catch(() => { /* best-effort cleanup */ });
-        organizedFileNamesRef.current = [];
       }
+      organizedReadableFileNamesRef.current = [];
       window.dispatchEvent(new Event('mindos:organize-done'));
     } else if (aiOrganize.phase === 'error') {
-      organizedFileNamesRef.current = [];
+      organizedReadableFileNamesRef.current = [];
       window.dispatchEvent(new Event('mindos:organize-done'));
     }
-  }, [aiOrganize.phase, aiOrganize.changes]);
+  }, [aiOrganize.phase, aiOrganize.changes, labels.organizeFailed]);
 
   return useMemo(() => ({
     isOrganizing: aiOrganize.phase === 'organizing',

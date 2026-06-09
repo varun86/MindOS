@@ -14,6 +14,8 @@ const AGENT_INSTALL_URLS: Record<string, string> = {
   'cline': 'https://github.com/cline/cline',
   'trae': 'https://www.trae.ai/',
   'gemini-cli': 'https://github.com/google-gemini/gemini-cli',
+  'kilo-code': 'https://kilo.ai/',
+  'warp': 'https://www.warp.dev/',
   'augment': 'https://www.augmentcode.com/',
 };
 
@@ -40,6 +42,8 @@ export default function StepAgents({
   agentStatuses, s, settingsMcp,
 }: StepAgentsProps) {
   const toggleAgent = (key: string) => {
+    const agent = agents.find(a => a.key === key);
+    if (!agent?.present) return;
     setSelectedAgents(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -115,7 +119,7 @@ export default function StepAgents({
 
   const renderAgentRow = (agent: AgentEntry, i: number) => (
     <label key={agent.key}
-      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+      className={`flex items-center gap-3 px-4 py-3 transition-colors ${agent.present ? 'cursor-pointer hover:bg-muted/50' : 'cursor-not-allowed opacity-60'}`}
       style={{
         background: i % 2 === 0 ? 'var(--card)' : 'transparent',
         borderTop: i > 0 ? '1px solid var(--border)' : undefined,
@@ -125,7 +129,7 @@ export default function StepAgents({
         checked={selectedAgents.has(agent.key)}
         onChange={() => toggleAgent(agent.key)}
         className="form-check"
-        disabled={agentStatuses[agent.key]?.state === 'installing'}
+        disabled={!agent.present || agentStatuses[agent.key]?.state === 'installing'}
       />
       <span className="text-sm flex-1" style={{ color: 'var(--foreground)' }}>{agent.name}</span>
       {connectionMode.mcp && (
@@ -303,7 +307,7 @@ export default function StepAgents({
             <button
               type="button"
               onClick={() => setSelectedAgents(new Set(
-                agents.filter(a => a.installed || a.present).map(a => a.key)
+                agents.filter(a => a.present).map(a => a.key)
               ))}
               className="text-xs px-2.5 py-1 rounded-md border transition-colors hover:bg-muted/50"
               style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}>

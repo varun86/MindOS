@@ -32,6 +32,7 @@ function flatOptions(items: SelectItem[]): SelectOption[] {
 }
 
 interface CustomSelectProps {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   options: SelectItem[];
@@ -42,6 +43,7 @@ interface CustomSelectProps {
 }
 
 export default function CustomSelect({
+  id,
   value,
   onChange,
   options,
@@ -233,6 +235,7 @@ export default function CustomSelect({
   return (
     <div className="relative">
       <button
+        id={id}
         ref={btnRef}
         type="button"
         onClick={() => setOpen(v => !v)}

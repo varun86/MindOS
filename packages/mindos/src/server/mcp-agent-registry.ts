@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { MindosMcpAgentRegistryDef } from './handlers/mcp-agents.js';
+import type { MindosSkillAgentRegistration } from './handlers/mcp-install.js';
 
 function normalizeConfigRoot(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -10,9 +11,19 @@ function winAppDataRoot(): string {
   return normalizeConfigRoot(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'));
 }
 
+function winLocalAppDataRoot(): string {
+  return normalizeConfigRoot(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'));
+}
+
 function platformAppDataPath(options: { darwin: string; linux: string; win32: string }): string {
   if (process.platform === 'darwin') return options.darwin;
   if (process.platform === 'win32') return `${winAppDataRoot()}/${options.win32}`;
+  return options.linux;
+}
+
+function platformLocalAppDataPath(options: { darwin: string; linux: string; win32: string }): string {
+  if (process.platform === 'darwin') return options.darwin;
+  if (process.platform === 'win32') return `${winLocalAppDataRoot()}/${options.win32}`;
   return options.linux;
 }
 
@@ -32,6 +43,30 @@ const traeCnRoot = platformAppDataPath({
   darwin: '~/Library/Application Support/Trae CN',
   linux: '~/.config/Trae CN',
   win32: 'Trae CN',
+});
+
+const warpStableStateRoot = platformLocalAppDataPath({
+  darwin: '~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Stable',
+  linux: '~/.local/state/warp-terminal',
+  win32: 'warp/Warp/data',
+});
+
+const warpPreviewStateRoot = platformLocalAppDataPath({
+  darwin: '~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Preview',
+  linux: '~/.local/state/warp-terminal-preview',
+  win32: 'warp/WarpPreview/data',
+});
+
+const warpConfigRoot = platformLocalAppDataPath({
+  darwin: '~/.warp',
+  linux: '~/.config/warp-terminal',
+  win32: 'warp/Warp/config',
+});
+
+const warpDataRoot = platformAppDataPath({
+  darwin: '~/.warp',
+  linux: '~/.local/share/warp-terminal',
+  win32: 'warp/Warp/data',
 });
 
 export const DEFAULT_MCP_AGENTS: Record<string, MindosMcpAgentRegistryDef> = {
@@ -111,15 +146,6 @@ export const DEFAULT_MCP_AGENTS: Record<string, MindosMcpAgentRegistryDef> = {
     presenceCli: 'codebuddy',
     presenceDirs: ['~/.codebuddy/'],
   },
-  'iflow-cli': {
-    name: 'iFlow CLI',
-    project: '.iflow/settings.json',
-    global: '~/.iflow/settings.json',
-    key: 'mcpServers',
-    preferredTransport: 'stdio',
-    presenceCli: 'iflow',
-    presenceDirs: ['~/.iflow/'],
-  },
   'kimi-cli': {
     name: 'Kimi Code',
     project: '.kimi/mcp.json',
@@ -137,6 +163,45 @@ export const DEFAULT_MCP_AGENTS: Record<string, MindosMcpAgentRegistryDef> = {
     preferredTransport: 'stdio',
     presenceCli: 'opencode',
     presenceDirs: ['~/.config/opencode/'],
+  },
+  'kilo-code': {
+    name: 'Kilo Code',
+    project: '.kilo/kilo.jsonc',
+    global: '~/.config/kilo/kilo.jsonc',
+    projectReadAlso: [
+      '.kilo/kilo.json',
+      'kilo.jsonc',
+      'kilo.json',
+      '.kilocode/kilo.jsonc',
+      '.kilocode/kilo.json',
+      '.opencode/opencode.jsonc',
+      '.opencode/opencode.json',
+    ],
+    globalReadAlso: [
+      '~/.config/kilo/kilo.json',
+      '~/.config/kilo/opencode.jsonc',
+      '~/.config/kilo/opencode.json',
+      '~/.config/kilo/config.json',
+    ],
+    key: 'mcp',
+    preferredTransport: 'stdio',
+    entryStyle: 'kilo',
+    presenceCli: 'kilo',
+    presenceDirs: ['~/.config/kilo/', '~/.kilo/', '~/.kilocode/'],
+  },
+  'warp': {
+    name: 'Warp',
+    project: '.warp/.mcp.json',
+    global: '~/.warp/.mcp.json',
+    key: 'mcpServers',
+    preferredTransport: 'stdio',
+    presenceDirs: [
+      '~/.warp/',
+      `${warpStableStateRoot}/`,
+      `${warpPreviewStateRoot}/`,
+      `${warpConfigRoot}/`,
+      `${warpDataRoot}/`,
+    ],
   },
   'pi': {
     name: 'Pi',
@@ -267,6 +332,39 @@ export const DEFAULT_MCP_AGENTS: Record<string, MindosMcpAgentRegistryDef> = {
   },
 };
 
+export const DEFAULT_SKILL_AGENT_REGISTRY = {
+  'claude-code': { mode: 'additional', skillAgentName: 'claude-code' },
+  'cursor': { mode: 'universal' },
+  'windsurf': { mode: 'additional', skillAgentName: 'windsurf' },
+  'cline': { mode: 'universal' },
+  'trae': { mode: 'additional', skillAgentName: 'trae' },
+  'gemini-cli': { mode: 'universal' },
+  'openclaw': { mode: 'additional', skillAgentName: 'openclaw' },
+  'codebuddy': { mode: 'additional', skillAgentName: 'codebuddy' },
+  'kimi-cli': { mode: 'universal' },
+  'opencode': { mode: 'universal' },
+  'kilo-code': { mode: 'universal' },
+  'warp': { mode: 'universal' },
+  'pi': { mode: 'additional', skillAgentName: 'pi' },
+  'augment': { mode: 'additional', skillAgentName: 'augment' },
+  'qwen-code': { mode: 'additional', skillAgentName: 'qwen-code' },
+  'qoder': { mode: 'additional', skillAgentName: 'qoder' },
+  'trae-cn': { mode: 'additional', skillAgentName: 'trae-cn' },
+  'roo': { mode: 'additional', skillAgentName: 'roo' },
+  'github-copilot': { mode: 'universal' },
+  'codex': { mode: 'universal' },
+  'antigravity': { mode: 'additional', skillAgentName: 'antigravity' },
+  'qclaw': { mode: 'unsupported' },
+  'workbuddy': { mode: 'unsupported' },
+  'lingma': { mode: 'unsupported' },
+  'copaw': { mode: 'unsupported' },
+  'hermes': { mode: 'unsupported' },
+} satisfies Record<string, MindosSkillAgentRegistration>;
+
 export function createDefaultMcpAgents(): Record<string, MindosMcpAgentRegistryDef> {
   return { ...DEFAULT_MCP_AGENTS };
+}
+
+export function createDefaultSkillAgentRegistry() {
+  return { ...DEFAULT_SKILL_AGENT_REGISTRY };
 }

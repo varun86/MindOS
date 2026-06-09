@@ -323,7 +323,7 @@ Web 的 `packages/web/app/api/file/route.ts` 只保留 Next.js adapter：读取 
 
 ### 8. Agent 支持体系
 
-**MCP Agent：26 个**（`packages/web/lib/mcp-agents.ts` 为 Web/API 单一真实来源，`packages/mindos/bin/lib/mcp-agents.js` 为 CLI 同步入口）；**ACP 注册表：31+ 个**（独立计数）。
+**MCP Agent：27 个**（`packages/web/lib/mcp-agents.ts` 为 Web/API 单一真实来源，`packages/mindos/bin/lib/mcp-agents.js` 为 CLI 同步入口）；**ACP 注册表：30+ 个**（独立计数）。
 
 | # | Agent | 全局配置路径 | 格式 | 配置 Key | CLI |
 |---|-------|-------------|------|---------|-----|
@@ -336,31 +336,33 @@ Web 的 `packages/web/app/api/file/route.ts` 只保留 Next.js adapter：读取 
 | 7 | Gemini CLI | `~/.gemini/settings.json` | json | `mcpServers` | `gemini` |
 | 8 | OpenClaw | `~/.openclaw/mcp.json` | json | `mcpServers` | `openclaw` |
 | 9 | CodeBuddy | `~/.codebuddy/mcp.json` | json | `mcpServers` | `codebuddy` |
-| 10 | iFlow CLI | `~/.iflow/settings.json` | json | `mcpServers` | `iflow` |
-| 11 | Kimi Code | `~/.kimi/mcp.json` | json | `mcpServers` | `kimi` |
-| 12 | OpenCode | `~/.config/opencode/config.json` | json | `mcpServers` | `opencode` |
-| 13 | Pi | `~/.pi/agent/mcp.json` | json | `mcpServers` | `pi` |
-| 14 | Augment | `~/.augment/settings.json` | json | `mcpServers` | `auggie` |
-| 15 | Qwen Code | `~/.qwen/settings.json` | json | `mcpServers` | `qwen` |
-| 16 | Qoder | `~/.qoder.json` | json | `mcpServers` | `qoder` |
-| 17 | Trae CN | Application Support (平台相关) | json | `mcpServers` | `trae-cli` |
-| 18 | Roo Code | VS Code globalStorage | json | `mcpServers` | — |
-| 19 | GitHub Copilot | `Code/User/mcp.json` (平台相关) | json | **`servers`** | `code` |
-| 20 | Codex | `~/.codex/config.toml` | **toml** | **`mcp_servers`** | `codex` |
-| 21 | Antigravity | `~/.gemini/antigravity/mcp_config.json` | json | `mcpServers` | `agy` |
-| 22 | QClaw | `~/.qclaw/mcp.json` | json | `mcpServers` | `qclaw` |
-| 23 | WorkBuddy | `~/.workbuddy/mcp.json` | json | `mcpServers` | `workbuddy` |
-| 24 | Lingma | `~/.lingma/mcp.json` | json | `mcpServers` | — |
-| 25 | CoPaw | `~/.copaw/config.json` | json | **`mcp`** | `copaw` |
-| 26 | Hermes | `~/.hermes/config.yaml` | yaml | **`mcp_servers`** | `hermes` |
+| 10 | Kimi Code | `~/.kimi/mcp.json` | json | `mcpServers` | `kimi` |
+| 11 | OpenCode | `~/.config/opencode/config.json` | json | `mcpServers` | `opencode` |
+| 12 | Kilo Code | `~/.config/kilo/kilo.jsonc`（兼容读 `kilo.json`） | json/jsonc | **`mcp`** (`local` / `remote`) | `kilo` |
+| 13 | Warp | `~/.warp/.mcp.json` | json | `mcpServers` | — |
+| 14 | Pi | `~/.pi/agent/mcp.json` | json | `mcpServers` | `pi` |
+| 15 | Augment | `~/.augment/settings.json` | json | `mcpServers` | `auggie` |
+| 16 | Qwen Code | `~/.qwen/settings.json` | json | `mcpServers` | `qwen` |
+| 17 | Qoder | `~/.qoder.json` | json | `mcpServers` | `qoder` |
+| 18 | Trae CN | Application Support (平台相关) | json | `mcpServers` | `trae-cli` |
+| 19 | Roo Code | VS Code globalStorage | json | `mcpServers` | — |
+| 20 | GitHub Copilot | `Code/User/mcp.json` (平台相关) | json | **`servers`** | `code` |
+| 21 | Codex | `~/.codex/config.toml` | **toml** | **`mcp_servers`** | `codex` |
+| 22 | Antigravity | `~/.gemini/antigravity/mcp_config.json` | json | `mcpServers` | `agy` |
+| 23 | QClaw | `~/.qclaw/mcp.json` | json | `mcpServers` | `qclaw` |
+| 24 | WorkBuddy | `~/.workbuddy/mcp.json` | json | `mcpServers` | `workbuddy` |
+| 25 | Lingma | `~/.lingma/mcp.json` | json | `mcpServers` | — |
+| 26 | CoPaw | `~/.copaw/config.json` | json | **`mcp`** | `copaw` |
+| 27 | Hermes | `~/.hermes/config.yaml` | yaml | **`mcp_servers`** | `hermes` |
 
 **特殊格式 Agent：**
 - **GitHub Copilot**：配置 key 为 `servers`（非 `mcpServers`）
 - **Codex**：TOML 格式，key 为 `mcp_servers`
+- **Kilo Code**：JSON/JSONC 配置，key 为 `mcp`；stdio 写入 `{ type:'local', command:['mindos','mcp'], environment:{...}, enabled:true }`，HTTP 写入 `{ type:'remote', url, headers?, enabled:true }`
 - **CoPaw**：key 为 `mcp`，嵌套路径 `mcp.clients`
 - **Hermes**：YAML 格式，key 为 `mcp_servers`
 
-**所有 Agent 均使用 stdio 传输。** CLI 和 TS 注册表共享同一数据源（`packages/mindos/bin/lib/mcp-agents.js` 导入自 TS 编译产物）。
+**默认使用 stdio 传输；支持 HTTP 的路径按各 Agent 的配置格式写入。** Web / Product Server / CLI 三处注册表需保持同步。
 
 新增 Agent 支持时需改动的文件：
 

@@ -45,6 +45,11 @@ export async function POST(req: NextRequest) {
       try { revalidatePath('/', 'layout'); } catch { /* test env */ }
     }
 
+    if (result.saved.length === 0) {
+      const reason = result.skipped[0]?.reason ?? 'Web clip could not be saved';
+      return NextResponse.json({ ok: false, error: reason, skipped: result.skipped }, { status: 422 });
+    }
+
     return NextResponse.json({
       ok: true,
       title: clip.title,

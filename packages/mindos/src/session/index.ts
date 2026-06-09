@@ -45,8 +45,31 @@ export function createMindosSessionEvent<TData>(
 export type MindOSSSEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
-  | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
+  | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown; runtime?: 'mindos' | 'acp' | 'codex' | 'claude' }
   | { type: 'tool_end'; toolCallId: string; output: string; isError: boolean }
+  | {
+      type: 'runtime_permission_request';
+      runId: string;
+      requestId: string;
+      runtime: 'codex' | 'claude';
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      options: Array<{ id: string; label: string; description?: string; intent?: 'allow' | 'deny' | 'cancel' }>;
+      reason?: string;
+    }
+  | {
+      type: 'runtime_permission_resolved';
+      runId: string;
+      requestId: string;
+      runtime: 'codex' | 'claude';
+      toolCallId: string;
+      decision: string;
+      cancelled?: boolean;
+    }
+  | { type: 'user_question_start'; runId: string; toolCallId: string; questions: unknown }
+  | { type: 'user_question_answered'; runId: string; toolCallId: string; answers?: unknown }
+  | { type: 'user_question_cancelled'; runId: string; toolCallId: string; reason: string }
   | { type: 'runtime_binding'; runtime: 'acp' | 'codex' | 'claude'; externalSessionId: string; cwd?: string }
   | { type: 'done'; usage?: { input: number; output: number } }
   | { type: 'error'; message: string }
@@ -57,6 +80,11 @@ export const MINDOS_ASK_STREAM_EVENT_TYPES = [
   'thinking_delta',
   'tool_start',
   'tool_end',
+  'runtime_permission_request',
+  'runtime_permission_resolved',
+  'user_question_start',
+  'user_question_answered',
+  'user_question_cancelled',
   'runtime_binding',
   'done',
   'error',

@@ -6,6 +6,7 @@ import { ChevronRight, FileText, History, Inbox, ListChecks, Plus } from 'lucide
 import PanelHeader from './PanelHeader';
 import { useLocale } from '@/lib/stores/locale-store';
 import { loadHistory, type OrganizeHistoryEntry } from '@/lib/organize-history';
+import { fetchInboxFiles } from '@/lib/inbox-client';
 
 type InboxFile = {
   name: string;
@@ -29,6 +30,7 @@ export default function CapturePanel() {
   const [files, setFiles] = useState<InboxFile[]>([]);
   const [history, setHistory] = useState<OrganizeHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inboxError, setInboxError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<CapturePanelView>(() => getCurrentPanelView());
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -38,16 +40,16 @@ export default function CapturePanel() {
 
   const fetchInbox = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox');
-      if (!res.ok) return;
-      const data = await res.json() as { files?: InboxFile[] };
-      if (Array.isArray(data.files)) setFiles(data.files);
+      const nextFiles = await fetchInboxFiles(t.inbox.loadFailed);
+      setFiles(nextFiles);
+      setInboxError(null);
     } catch (error) {
       console.warn('[CapturePanel] fetch failed:', error);
+      setInboxError(error instanceof Error ? error.message : t.inbox.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const refresh = useCallback(() => {
     clearTimeout(refreshTimerRef.current);
@@ -86,7 +88,7 @@ export default function CapturePanel() {
 
   const agingCount = useMemo(() => files.filter(file => file.isAging).length, [files]);
   const previewFiles = useMemo(() => files.slice(0, 3), [files]);
-  const reviewDesc = loading ? t.inbox.sidebarLoadingDesc : t.inbox.sidebarQueueDesc(files.length);
+  const reviewDesc = inboxError ? t.inbox.loadFailed : loading ? t.inbox.sidebarLoadingDesc : t.inbox.sidebarQueueDesc(files.length);
 
   return (
     <div className="flex h-full flex-col">
@@ -136,6 +138,12 @@ export default function CapturePanel() {
             count={history.length}
           />
         </nav>
+
+        {inboxError && (
+          <div className="mt-3 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-2xs leading-relaxed text-error">
+            {inboxError}
+          </div>
+        )}
 
         {previewFiles.length > 0 && (
           <section className="mt-4">

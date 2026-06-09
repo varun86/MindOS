@@ -37,6 +37,7 @@ import { CAPTURE_ACCEPT } from '@/lib/capture-formats';
 import CustomSelect from '@/components/CustomSelect';
 import ProviderModelCapsule, { getPersistedProviderModel, type ProviderSelection } from '@/components/ask/ProviderModelCapsule';
 import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
+import { archiveInboxFiles, fetchInboxFiles, saveInboxFiles } from '@/lib/inbox-client';
 
 interface InboxFile {
   name: string;
@@ -88,6 +89,7 @@ export default function InboxView() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingUrls, setPendingUrls] = useState<string[]>([]);
   const [savingText, setSavingText] = useState(false);
+  const [inboxError, setInboxError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<InboxViewMode>(() => getInitialInboxViewMode());
   const [providerOverride, setProviderOverride] = useState<ProviderSelection>(
@@ -104,19 +106,17 @@ export default function InboxView() {
 
   const fetchInbox = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.files)) {
-        setFiles(data.files);
-        window.dispatchEvent(new CustomEvent('mindos:inbox-files', { detail: data.files }));
-      }
+      const nextFiles = await fetchInboxFiles(t.inbox.loadFailed);
+      setFiles(nextFiles);
+      setInboxError(null);
+      window.dispatchEvent(new CustomEvent('mindos:inbox-files', { detail: nextFiles }));
     } catch (err) {
       console.warn('[InboxView] fetch failed:', err);
+      setInboxError(err instanceof Error ? err.message : t.inbox.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const refreshHistory = useCallback(() => {
     setHistory(loadHistory());
@@ -165,12 +165,10 @@ export default function InboxView() {
 
   const handleDeleteFile = useCallback(async (name: string) => {
     try {
-      const res = await fetch('/api/inbox', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names: [name] }),
-      });
-      if (!res.ok) throw new Error('Failed to delete');
+      const result = await archiveInboxFiles([name], t.inbox.fileRemoveFailed);
+      if (!result.archived.some(item => item.original === name)) {
+        throw new Error(t.inbox.fileRemoveFailed);
+      }
       setFiles(prev => prev.filter(f => f.name !== name));
       window.dispatchEvent(new Event('mindos:inbox-updated'));
       toast.success(t.inbox.fileRemoved);
@@ -204,33 +202,50 @@ export default function InboxView() {
     const content = draftText.trim();
     if ((!content && pendingFiles.length === 0 && pendingUrls.length === 0) || savingText) return;
     setSavingText(true);
+    let savedAny = false;
+    let textSaveFailed = false;
     try {
       if (content) {
         const name = buildCaptureFileName(content, selectedIntent);
-        const res = await fetch('/api/inbox', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: 'text',
-            captureIntent: selectedIntent,
-            files: [{ name, content, encoding: 'text' }],
-          }),
-        });
-        if (!res.ok) throw new Error('Failed to save text');
+        const result = await saveInboxFiles(
+          [{ name, content, encoding: 'text' }],
+          t.inbox.saveFailed,
+          { source: 'text', captureIntent: selectedIntent },
+        );
+        if (result.saved.length > 0 && result.skipped.length === 0) {
+          savedAny = true;
+          setDraftText('');
+        } else {
+          textSaveFailed = true;
+        }
       }
+      const failedUrls: string[] = [];
       for (const url of pendingUrls) {
-        await clipUrlToInbox(url, t);
+        const result = await clipUrlToInbox(url, t);
+        if (result.ok) {
+          savedAny = true;
+        } else {
+          failedUrls.push(url);
+        }
       }
+      setPendingUrls(failedUrls);
       if (pendingFiles.length > 0) {
-        await quickDropToInbox(pendingFiles, t);
+        const result = await quickDropToInbox(pendingFiles, t);
+        if (result.saved.length > 0) {
+          savedAny = true;
+          const savedNames = new Set(result.saved.map(item => item.original));
+          setPendingFiles(prev => prev.filter(file => !savedNames.has(file.name)));
+        }
       }
-      setDraftText('');
-      setPendingUrls([]);
-      setPendingFiles([]);
-      await fetchInbox();
-      window.dispatchEvent(new Event('mindos:inbox-updated'));
-      if (content && pendingUrls.length === 0 && pendingFiles.length === 0) {
+      if (savedAny) {
+        await fetchInbox();
+        window.dispatchEvent(new Event('mindos:inbox-updated'));
+      }
+      if (content && !textSaveFailed && pendingUrls.length === 0 && pendingFiles.length === 0) {
         toast.success(t.inbox.textSaved, 3000);
+      }
+      if (textSaveFailed) {
+        toast.error(savedAny ? t.inbox.capturePartialFailed : t.inbox.saveFailed, 4000);
       }
     } catch {
       toast.error(t.inbox.saveFailed, 4000);
@@ -277,8 +292,8 @@ export default function InboxView() {
     [files, selectedPath],
   );
   const selectedUnderstanding = useMemo(
-    () => selectedFile ? buildUnderstanding(selectedFile, t.inbox, selectedIntent) : null,
-    [selectedFile, selectedIntent, t],
+    () => selectedFile ? buildUnderstanding(selectedFile, t.inbox, inferInboxFileIntent(selectedFile)) : null,
+    [selectedFile, t],
   );
   const intentOptions = useMemo(() => getIntentOptions(t.inbox), [t]);
   const intentSelectOptions = useMemo(() => intentOptions.map(intent => ({
@@ -472,6 +487,17 @@ export default function InboxView() {
             />
           </div>
 
+          {inboxError && (
+            <InboxErrorBanner
+              message={inboxError}
+              retryLabel={t.inbox.retry}
+              onRetry={() => {
+                setLoading(true);
+                void fetchInbox();
+              }}
+            />
+          )}
+
           <div className={activeView === 'queue' ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]' : 'max-w-[760px]'}>
             <div className="space-y-5">
               {activeView === 'capture' && (
@@ -528,8 +554,9 @@ export default function InboxView() {
                         >
                           {t.inbox.nextActionTitle}
                         </label>
-                        <div id="capture-next-action" className="min-w-[156px]">
+                        <div className="min-w-[156px]">
                           <CustomSelect
+                            id="capture-next-action"
                             value={selectedIntent}
                             onChange={(value) => setSelectedIntent(value as CaptureIntent)}
                             options={intentSelectOptions}
@@ -616,7 +643,7 @@ export default function InboxView() {
                           type="button"
                           onClick={handleCapture}
                           disabled={!hasPendingCapture || savingText}
-                          className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+                          className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {savingText ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
                           {savingText ? t.inbox.savingText : t.inbox.captureButton}
@@ -642,7 +669,22 @@ export default function InboxView() {
                     )}
                   </div>
                 </div>
-                {hasFiles ? (
+                {inboxError ? (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-foreground/70">{t.inbox.loadFailed}</p>
+                    <p className="mt-1 text-xs text-muted-foreground/55">{inboxError}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoading(true);
+                        void fetchInbox();
+                      }}
+                      className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {t.inbox.retry}
+                    </button>
+                  </div>
+                ) : hasFiles ? (
                   <div className="divide-y divide-border/50">
                     {files.map((file, idx) => (
                       <InboxFileRow
@@ -1120,6 +1162,32 @@ function InboxViewTab({
   );
 }
 
+function InboxErrorBanner({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-error/20 bg-error/5 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertCircle size={15} className="mt-0.5 shrink-0 text-error" />
+        <p className="min-w-0 text-xs leading-relaxed text-error">{message}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="shrink-0 rounded-lg border border-error/20 bg-background px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10 focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {retryLabel}
+      </button>
+    </div>
+  );
+}
+
 function ReviewFactRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-3 border-b border-border/35 px-4 py-2.5 last:border-b-0">
@@ -1214,6 +1282,21 @@ function inferSuggestedIntent(
     return 'reflect';
   }
   if (urls.length > 0 || wordCount > 80 || /\.(pdf|docx?|md|html?)\b/.test(fileNames)) {
+    return 'note';
+  }
+  return 'source';
+}
+
+function inferInboxFileIntent(file: InboxFile): CaptureIntent {
+  const lower = file.name.toLowerCase();
+  const ext = getFileExt(file.name);
+  if (/decision|adr|rule|preference|judgment|判断|决策|规则|偏好/.test(lower)) {
+    return 'judgment';
+  }
+  if (/reflect|reflection|lesson|复盘|反思|成长/.test(lower)) {
+    return 'reflect';
+  }
+  if (looksLikeCapturedArticle(lower) || ['md', 'markdown', 'html', 'htm', 'pdf', 'doc', 'docx', 'docm'].includes(ext)) {
     return 'note';
   }
   return 'source';

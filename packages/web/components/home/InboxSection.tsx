@@ -29,6 +29,8 @@ import { encodePath } from '@/lib/utils';
 import { quickDropToInbox, clipUrlToInbox, looksLikeUrl, extractUrlFromDrop, dragContainsUrl } from '@/lib/inbox-upload';
 import { loadHistory, type OrganizeHistoryEntry, type OrganizeSource } from '@/lib/organize-history';
 import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
+import { CAPTURE_ACCEPT } from '@/lib/capture-formats';
+import { archiveInboxFiles, fetchInboxFiles } from '@/lib/inbox-client';
 
 interface InboxFile {
   name: string;
@@ -55,6 +57,7 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
   const [history, setHistory] = useState<OrganizeHistoryEntry[]>([]);
   const [clipUrl, setClipUrl] = useState('');
   const [clipping, setClipping] = useState(false);
+  const [inboxError, setInboxError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clipInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
@@ -71,12 +74,10 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
 
   const handleDeleteFile = useCallback(async (name: string) => {
     try {
-      const res = await fetch('/api/inbox', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names: [name] }),
-      });
-      if (!res.ok) throw new Error('Failed to delete');
+      const result = await archiveInboxFiles([name], t.inbox.fileRemoveFailed);
+      if (!result.archived.some(item => item.original === name)) {
+        throw new Error(t.inbox.fileRemoveFailed);
+      }
       setFiles(prev => prev.filter(f => f.name !== name));
       window.dispatchEvent(new Event('mindos:inbox-updated'));
       toast.success(t.inbox.fileRemoved);
@@ -100,8 +101,8 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
     }
     setClipping(true);
     try {
-      await clipUrlToInbox(trimmed, t);
-      setClipUrl('');
+      const result = await clipUrlToInbox(trimmed, t);
+      if (result.ok) setClipUrl('');
     } finally {
       setClipping(false);
     }
@@ -127,18 +128,16 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
 
   const fetchInbox = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.files)) {
-        setFiles(data.files);
-      }
+      const nextFiles = await fetchInboxFiles(t.inbox.loadFailed);
+      setFiles(nextFiles);
+      setInboxError(null);
     } catch (err) {
       console.warn('[InboxSection] Failed to fetch inbox:', err);
+      setInboxError(err instanceof Error ? err.message : t.inbox.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const refreshHistory = useCallback(() => {
     setHistory(loadHistory().slice(0, HISTORY_LIMIT));
@@ -224,7 +223,7 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground rounded-md px-2 py-1 transition-all duration-150 ease-out hover:text-foreground hover:bg-muted/40 cursor-pointer"
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground rounded-md px-2 py-1 transition-all duration-150 ease-out hover:text-foreground hover:bg-muted/40 cursor-pointer focus-visible:ring-2 focus-visible:ring-ring"
               title={t.inbox.uploadButton}
             >
               <Upload size={12} />
@@ -233,7 +232,7 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
             <button
               onClick={handleOrganize}
               disabled={isOrganizing}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--amber)] bg-[var(--amber)]/[0.08] rounded-md px-2.5 py-1 transition-all duration-150 ease-out hover:bg-[var(--amber)]/[0.15] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--amber)] bg-[var(--amber)]/[0.08] rounded-md px-2.5 py-1 transition-all duration-150 ease-out hover:bg-[var(--amber)]/[0.15] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-ring"
               title={isOrganizing ? t.inbox.organizing : undefined}
             >
               {isOrganizing ? (
@@ -252,13 +251,33 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.csv,.json,.yaml,.yml,.xml,.html,.htm,.pdf,.doc,.docx,.docm"
+        accept={CAPTURE_ACCEPT}
         className="hidden"
         onChange={(e) => handleUpload(e.target.files)}
       />
 
+      {inboxError && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs text-error">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">{t.inbox.loadFailed}</p>
+            <p className="mt-0.5 truncate text-error/80">{inboxError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              void fetchInbox();
+            }}
+            className="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-error/10 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t.inbox.retry}
+          </button>
+        </div>
+      )}
+
       {/* File list */}
-      {hasFiles && (
+      {hasFiles && !inboxError && (
         <div className="rounded-xl bg-card/50 border border-border/10 p-1 mb-3">
           <div className="flex flex-col gap-px">
             {visibleFiles.map((file) => (
@@ -354,7 +373,7 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ease-out bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ease-out bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Upload size={12} />
                 {t.inbox.uploadButton}
@@ -411,7 +430,7 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handleClipUrl(clipUrl); }}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-[var(--amber)]/10 text-[var(--amber)] hover:bg-[var(--amber)]/20 transition-all duration-150 ease-out cursor-pointer"
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-[var(--amber)]/10 text-[var(--amber)] hover:bg-[var(--amber)]/20 transition-all duration-150 ease-out cursor-pointer focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Globe size={11} />
               {t.inbox.clipButton}
@@ -480,9 +499,14 @@ function InboxFileRow({ file, onDelete }: { file: InboxFile; onDelete: (name: st
         role="button"
         tabIndex={0}
         onClick={handleNavigate}
-        onKeyDown={(e) => { if (e.key === 'Enter') handleNavigate(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleNavigate();
+          }
+        }}
         onContextMenu={handleContextMenu}
-        className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all duration-150 ease-out hover:translate-x-0.5 hover:bg-muted/50 hover:shadow-sm hover:shadow-black/[0.03] group cursor-pointer"
+        className="group flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all duration-150 ease-out hover:translate-x-0.5 hover:bg-muted/50 hover:shadow-sm hover:shadow-black/[0.03] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span
           className={`w-[5px] h-[5px] rounded-full shrink-0 ring-2 ring-background ${
@@ -516,7 +540,8 @@ function InboxFileRow({ file, onDelete }: { file: InboxFile; onDelete: (name: st
         <button
           type="button"
           onClick={handleDelete}
-          className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 ease-out"
+          aria-label={t.inbox.removeFile}
+          className="hidden group-hover:flex group-focus-within:flex max-sm:flex items-center justify-center w-5 h-5 rounded shrink-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring"
           title={t.inbox.removeFile}
         >
           <X size={12} />

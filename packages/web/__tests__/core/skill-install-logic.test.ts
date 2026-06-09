@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 
 const UNIVERSAL_AGENTS = new Set([
   'amp', 'cline', 'codex', 'cursor', 'gemini-cli',
-  'github-copilot', 'kimi-cli', 'opencode', 'warp',
+  'github-copilot', 'kilo-code', 'kimi-cli', 'opencode', 'warp',
 ]);
 
 const SKILL_UNSUPPORTED = new Set<string>([]);
@@ -24,7 +24,6 @@ const SKILL_AGENT_REGISTRY: Record<string, { mode: 'universal' | 'additional' | 
   'gemini-cli': { mode: 'universal' },
   'openclaw': { mode: 'additional', skillAgentName: 'openclaw' },
   'codebuddy': { mode: 'additional', skillAgentName: 'codebuddy' },
-  'iflow-cli': { mode: 'additional', skillAgentName: 'iflow-cli' },
   'kimi-cli': { mode: 'universal' },
   'opencode': { mode: 'universal' },
   'pi': { mode: 'additional', skillAgentName: 'pi' },
@@ -35,6 +34,8 @@ const SKILL_AGENT_REGISTRY: Record<string, { mode: 'universal' | 'additional' | 
   'roo': { mode: 'additional', skillAgentName: 'roo' },
   'github-copilot': { mode: 'universal' },
   'codex': { mode: 'universal' },
+  'kilo-code': { mode: 'universal' },
+  'warp': { mode: 'universal' },
   'antigravity': { mode: 'additional', skillAgentName: 'antigravity' },
 };
 
@@ -93,7 +94,7 @@ describe('CLI skill install — agent filtering', () => {
   });
 
   it('keeps non-universal agents', () => {
-    expect(filterAgents(['claude-code', 'windsurf', 'trae'])).toEqual(['claude-code', 'windsurf', 'trae']);
+    expect(filterAgents(['claude-code', 'windsurf', 'trae', 'kilo-code'])).toEqual(['claude-code', 'windsurf', 'trae']);
   });
 
   it('handles mixed universal + non-universal', () => {
@@ -224,7 +225,7 @@ describe('CLI skill install — end-to-end scenarios', () => {
   });
 
   it('S10: kimi-cli + opencode are universal, should be filtered', () => {
-    const cmd = simulate('en', ['kimi-cli', 'opencode', 'iflow-cli']);
-    expect(cmd).toBe('npx skills add "GeminiLight/MindOS" --skill mindos -a iflow-cli -g -y');
+    const cmd = simulate('en', ['kimi-cli', 'opencode']);
+    expect(cmd).toBe('npx skills add "GeminiLight/MindOS" --skill mindos -a universal -g -y');
   });
 });

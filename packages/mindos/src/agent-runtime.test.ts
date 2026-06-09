@@ -183,6 +183,36 @@ describe('agent runtime adapters', () => {
       method: 'turn/failed',
       params: { error: { message: 'Provider env is missing' } },
     })).toEqual([{ type: 'error', message: 'Provider env is missing' }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/command/started',
+      params: {
+        id: 'cmd-1',
+        command: 'mindos file delete "Profile.md"',
+        description: 'Delete a note',
+      },
+    })).toEqual([{
+      type: 'tool_start',
+      toolCallId: 'cmd-1',
+      toolName: 'Bash',
+      args: 'mindos file delete "Profile.md"',
+      runtime: 'codex',
+    }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/permission/requested',
+      params: {
+        requestId: 'perm-1',
+        toolName: 'Bash',
+        command: 'mindos file delete "Profile.md"',
+      },
+    })).toEqual([{
+      type: 'tool_start',
+      toolCallId: 'perm-1',
+      toolName: 'Bash',
+      args: 'mindos file delete "Profile.md"',
+      runtime: 'codex',
+    }]);
   });
 
   it('includes the Codex JSON-RPC method, code, and data when a request fails', async () => {
@@ -372,6 +402,76 @@ describe('agent runtime adapters', () => {
     });
   });
 
+  it('answers Codex app-server approval requests through the runtime permission service', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const sent: unknown[] = [];
+    let requestedPermission: unknown;
+    const transport: CodexAppServerTransport & { sent: unknown[] } = {
+      sent,
+      send(message) {
+        sent.push(message);
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+        if (record.method === 'turn/start') {
+          queue.push({ id: record.id!, result: { turn: { id: 'turn-1' } } });
+          queue.push({
+            id: 99,
+            method: 'item/commandExecution/requestApproval',
+            params: {
+              itemId: 'cmd-1',
+              command: 'mindos file delete "Profile.md"',
+              reason: 'Delete a note',
+            },
+          });
+          queue.push({ method: 'item/agentMessage/delta', params: { delta: 'Deleted.' } });
+          queue.push({ method: 'turn/completed', params: { turn: { id: 'turn-1' }, status: 'completed' } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    const events: MindOSSSEvent[] = [];
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Delete it.',
+      send: (event) => events.push(event),
+      services: {
+        createCodexClient: ({ handleServerRequest }) => createCodexAppServerClient(transport, { handleServerRequest }),
+        requestRuntimePermission: async (request) => {
+          requestedPermission = request;
+          return { decision: 'accept' };
+        },
+      },
+    });
+
+    expect(requestedPermission).toMatchObject({
+      runtime: 'codex',
+      toolCallId: 'cmd-1',
+      toolName: 'Bash',
+      reason: 'Delete a note',
+      input: {
+        method: 'item/commandExecution/requestApproval',
+        command: 'mindos file delete "Profile.md"',
+      },
+    });
+    expect(transport.sent).toContainEqual({
+      id: 99,
+      result: { decision: 'accept' },
+    });
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Deleted.' });
+  });
+
   it('streams Claude Code CLI output and returns the session binding', async () => {
     const events: MindOSSSEvent[] = [];
     const transport = createFakeClaudeTransport([
@@ -403,6 +503,127 @@ describe('agent runtime adapters', () => {
     expect(events).toEqual([
       { type: 'runtime_binding', runtime: 'claude', externalSessionId: 'claude-session-1', cwd: '/tmp/mind' },
       { type: 'text_delta', delta: 'Hello' },
+      { type: 'done' },
+    ]);
+  });
+
+  it('adds a Claude Code permission prompt MCP bridge when configured', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-session-2' }),
+    ]);
+
+    const client = createClaudeCodeCliClient(transport);
+    const events = [];
+    for await (const event of client.startTurn({
+      prompt: 'Delete it.',
+      cwd: '/tmp/mind',
+      permissionPrompt: {
+        toolName: 'mindos_runtime_permission',
+        mcpConfig: {
+          mcpServers: {
+            mindos_runtime_permission: {
+              type: 'stdio',
+              command: 'node',
+              args: ['permission-server.mjs'],
+            },
+          },
+        },
+      },
+    })) {
+      events.push(event);
+    }
+
+    const argv = transport.argv ?? [];
+    expect(argv).toContain('--mcp-config');
+    expect(argv).toContain('--permission-prompt-tool');
+    expect(argv).toContain('mindos_runtime_permission');
+    const mcpConfigArg = argv[argv.indexOf('--mcp-config') + 1] ?? '';
+    expect(JSON.parse(mcpConfigArg)).toMatchObject({
+      mcpServers: {
+        mindos_runtime_permission: {
+          type: 'stdio',
+          command: 'node',
+        },
+      },
+    });
+    expect(events).toContainEqual({ type: 'done' });
+  });
+
+  it('passes the per-run Claude permission prompt service into the CLI adapter', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-session-3' }),
+    ]);
+
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      cwd: '/tmp/mind',
+      prompt: 'Delete it.',
+      send: () => {},
+      services: {
+        createClaudeClient: () => createClaudeCodeCliClient(transport),
+        createClaudePermissionPrompt: () => ({
+          toolName: 'mindos_runtime_permission',
+          mcpConfig: '{"mcpServers":{"mindos_runtime_permission":{"type":"stdio","command":"node"}}}',
+        }),
+      },
+    });
+
+    expect(transport.argv).toContain('--permission-prompt-tool');
+    expect(transport.argv).toContain('mindos_runtime_permission');
+  });
+
+  it('maps Claude Code Bash tool use into a native runtime tool event', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'toolu-1',
+            name: 'Bash',
+            input: {
+              command: 'mindos file delete "Profile.md"',
+              description: 'Delete a note',
+            },
+          }],
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu-1',
+            content: 'Deleted Profile.md',
+          }],
+        },
+      }),
+      JSON.stringify({ type: 'result', subtype: 'success' }),
+    ]);
+
+    const client = createClaudeCodeCliClient(transport);
+    const events = [];
+    for await (const event of client.startTurn({ prompt: 'Delete it.', cwd: '/tmp/mind' })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: 'tool_start',
+        toolCallId: 'toolu-1',
+        toolName: 'Bash',
+        args: {
+          command: 'mindos file delete "Profile.md"',
+          description: 'Delete a note',
+        },
+        runtime: 'claude',
+      },
+      {
+        type: 'tool_end',
+        toolCallId: 'toolu-1',
+        output: 'Deleted Profile.md',
+        isError: false,
+      },
       { type: 'done' },
     ]);
   });

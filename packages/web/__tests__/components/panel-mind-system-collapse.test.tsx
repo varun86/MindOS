@@ -30,7 +30,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_DAO',
     role: 'world-model',
     order: 10,
-    primary: true,
     enabled: true,
   },
   {
@@ -40,7 +39,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_FA',
     role: 'principles',
     order: 20,
-    primary: true,
     enabled: true,
   },
   {
@@ -50,7 +48,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_QI',
     role: 'tools',
     order: 40,
-    primary: false,
     enabled: true,
   },
 ];
@@ -110,6 +107,10 @@ function renderPanel(
   return root;
 }
 
+function renderFilesPanel(host: HTMLDivElement): Root {
+  return renderPanel(host);
+}
+
 function getMindSystemToggle(host: HTMLElement): HTMLButtonElement {
   const button = host.querySelector<HTMLButtonElement>(`button[aria-controls="${SLOT_LIST_ID}"]`);
   if (!button) throw new Error('Mind System toggle not found');
@@ -125,6 +126,7 @@ describe('Panel Mind System collapse', () => {
     localStorage.clear();
     root = null;
     vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
       json: async () => ({ files: [] }),
     })));
     host = document.createElement('div');
@@ -192,5 +194,64 @@ describe('Panel Mind System collapse', () => {
     expect(host.textContent).toContain('MIND_FA');
     expect(host.textContent).toContain('MIND_QI');
     expect(host.textContent).toContain('Projects');
+  });
+
+  it('keeps Mind System sidebar rows focused on navigation only', async () => {
+    await act(async () => {
+      root = renderPanel(host);
+    });
+
+    const openButton = host.querySelector<HTMLButtonElement>('[data-mind-system-sidebar-open="dao"]');
+    const runButton = host.querySelector<HTMLButtonElement>('[data-mind-system-sidebar-run-once="dao"]');
+
+    expect(openButton).not.toBeNull();
+    expect(openButton?.textContent).toContain('Values, direction, long-term judgment');
+    expect(openButton?.textContent).not.toContain('Daily signal curator');
+    expect(openButton?.textContent).not.toContain('+1 assistant');
+    expect(runButton).toBeNull();
+
+    await act(async () => {
+      openButton?.click();
+    });
+
+    expect(mockPush).toHaveBeenCalledWith('/view/MIND_DAO');
+  });
+
+  it('loads the Inbox badge count through the normalized Inbox client contract', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        files: [
+          { name: 'a.md', path: 'Inbox/a.md', size: 1, modifiedAt: new Date().toISOString(), isAging: false },
+          { name: 'b.md', path: 'Inbox/b.md', size: 1, modifiedAt: new Date().toISOString(), isAging: false },
+        ],
+      }),
+    })));
+
+    await act(async () => {
+      root = renderFilesPanel(host);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const inboxButtons = Array.from(host.querySelectorAll('button'))
+      .filter(button => button.textContent?.includes('Inbox'));
+    expect(inboxButtons.some(button => button.textContent?.includes('2'))).toBe(true);
+  });
+
+  it('clears the Inbox badge count when Inbox loading fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Inbox unavailable' }),
+    })));
+
+    await act(async () => {
+      root = renderFilesPanel(host);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const inboxButtons = Array.from(host.querySelectorAll('button'))
+      .filter(button => button.textContent?.includes('Inbox'));
+    expect(inboxButtons.some(button => button.textContent?.includes('2'))).toBe(false);
   });
 });

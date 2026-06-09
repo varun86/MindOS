@@ -44,7 +44,6 @@ describe('mind-system registry', () => {
             path: '世界模型',
             role: 'custom-world-model',
             order: 1,
-            primary: true,
             enabled: true,
           },
           shi: {
@@ -52,7 +51,6 @@ describe('mind-system registry', () => {
             path: '05 势',
             role: 'current-context',
             order: 50,
-            primary: false,
             enabled: true,
           },
           yan: {
@@ -60,7 +58,6 @@ describe('mind-system registry', () => {
             path: '99 验',
             role: 'review-loop',
             order: 990,
-            primary: false,
             enabled: true,
           },
         },

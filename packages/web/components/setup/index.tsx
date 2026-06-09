@@ -343,7 +343,8 @@ export default function SetupWizard() {
   const handleComplete = async () => {
     setSubmitting(true);
     setError('');
-    const agentKeys = Array.from(selectedAgents);
+    const presentAgentKeys = new Set(agents.filter(agent => agent.present).map(agent => agent.key));
+    const agentKeys = Array.from(selectedAgents).filter(key => presentAgentKeys.has(key));
 
     // Ensure auth token exists before saving (race: token generation may still be in-flight)
     let finalState = state;

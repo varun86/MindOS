@@ -48,6 +48,7 @@ export function getMindosWebPiRuntimePaths(input: {
       ...scanExtensionPaths(),
       path.join(webAppDir, 'lib', 'agent', 'kb-extension.ts'),
       path.join(webAppDir, 'node_modules', 'pi-mcp-adapter', 'index.ts'),
+      path.join(webAppDir, 'lib', 'agent', 'ask-user-question-bridge-extension.ts'),
       path.join(webAppDir, 'lib', 'im', 'index.ts'),
       path.join(webAppDir, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts'),
       path.join(webAppDir, 'lib', 'agent', 'web-search-extension.ts'),

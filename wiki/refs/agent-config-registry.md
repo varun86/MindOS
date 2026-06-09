@@ -45,9 +45,10 @@
 | `gemini-cli` | Gemini CLI | json | `mcpServers` | `~/.gemini/settings.json` | `.gemini/settings.json` | `stdio` | universal |
 | `openclaw` | OpenClaw | json | `mcpServers` | `~/.openclaw/mcp.json` | - | `stdio` | additional |
 | `codebuddy` | CodeBuddy | json | `mcpServers` | `~/.codebuddy/mcp.json` | - | `stdio` | additional |
-| `iflow-cli` | iFlow CLI | json | `mcpServers` | `~/.iflow/settings.json` | `.iflow/settings.json` | `stdio` | additional |
 | `kimi-cli` | Kimi Code | json | `mcpServers` | `~/.kimi/mcp.json` | `.kimi/mcp.json` | `stdio` | universal |
 | `opencode` | OpenCode | json | `mcpServers` | `~/.config/opencode/config.json` | - | `stdio` | universal |
+| `kilo-code` | Kilo Code | json/jsonc | `mcp` (`local` / `remote`) | `~/.config/kilo/kilo.jsonc`（兼容读 `kilo.json` / `opencode.json*` / `config.json`） | `.kilo/kilo.jsonc`（兼容读 `.kilo/kilo.json` / `kilo.json*` / `.kilocode/kilo.json*` / `.opencode/opencode.json*`） | `stdio` | universal |
+| `warp` | Warp | json | `mcpServers` | `~/.warp/.mcp.json` | `.warp/.mcp.json` | `stdio` | universal |
 | `pi` | Pi | json | `mcpServers` | `~/.pi/agent/mcp.json` | `.pi/settings.json` | `stdio` | additional |
 | `augment` | Augment | json | `mcpServers` | `~/.augment/settings.json` | `.augment/settings.json` | `stdio` | additional |
 | `qwen-code` | Qwen Code | json | `mcpServers` | `~/.qwen/settings.json` | `.qwen/settings.json` | `stdio` | additional |
@@ -60,26 +61,27 @@
 | `workbuddy` | WorkBuddy | json | `mcpServers` | `~/.workbuddy/mcp.json` | - | `stdio` | unsupported |
 | `lingma` | Lingma | json | `mcpServers` | `~/.lingma/mcp.json` | - | `stdio` | unsupported |
 | `copaw` | CoPaw | json | `mcp` (嵌套 `mcp.clients`) | `~/.copaw/config.json` | - | `stdio` | unsupported |
+| `hermes` | Hermes | yaml | `mcp_servers` | `~/.hermes/config.yaml` | - | `stdio` | unsupported |
 
 ---
 
 ## Skills 目录与加载机制（按 Agent）
 
 ### 1) Universal 模式（直接读取 `.agents/skills`）
-适用：`cursor`、`cline`、`gemini-cli`、`kimi-cli`、`opencode`、`github-copilot`、`codex`。
+适用：`cursor`、`cline`、`gemini-cli`、`kimi-cli`、`opencode`、`kilo-code`、`github-copilot`、`codex`、`warp`。
 
 - 项目级：`<project>/.agents/skills/<skill>/`
 - 全局（`-g`）：`~/.agents/skills/<skill>/`
 
 ### 2) Additional 模式（agent 目录 symlink 到 `.agents/skills`）
-适用：`claude-code`、`windsurf`、`trae`、`trae-cn`、`openclaw`、`codebuddy`、`iflow-cli`、`pi`、`augment`、`qwen-code`、`qoder`、`roo`、`antigravity`。
+适用：`claude-code`、`windsurf`、`trae`、`trae-cn`、`openclaw`、`codebuddy`、`pi`、`augment`、`qwen-code`、`qoder`、`roo`、`antigravity`。
 
 - `npx skills` 创建的 symlink 目录：`~/.<agent>/skills/<skill>` → `~/.agents/skills/<skill>`
 - 示例：`~/.claude/skills/<skill>`、`~/.windsurf/skills/<skill>`、`~/.trae/skills/<skill>`、`~/.roo/skills/<skill>` 等
 - 内容来源：链接到 `~/.agents/skills/<skill>`（或项目级 `.agents/skills/<skill>`）
 
 ### 3) Unsupported 模式（MCP 安装时自动复制 Skill 文件）
-适用：`qclaw`、`workbuddy`、`lingma`、`copaw`。
+适用：`qclaw`、`workbuddy`、`lingma`、`copaw`、`hermes`。
 
 - MCP 安装时将 skill 目录直接复制到 agent 根目录的 `skills/` 下
 - 不走 `npx skills` 工具链
@@ -108,6 +110,7 @@
 
 - json/jsonc：`parseJsonc`（支持 `//` 与 `/* */` 注释）
 - toml（codex）：`parseTomlMcpEntry`
+- yaml（hermes）：`parseYamlMcpEntry`
 - 判定入口：`config[agent.key].mindos`（或 TOML 对应 section）
 
 ### C. MCP 安装写入规则
@@ -118,6 +121,7 @@
 - 传输：
   - `stdio`：`{ type:'stdio', command:'mindos', args:['mcp'], env:{MCP_TRANSPORT:'stdio'} }`
   - `http`：`{ url, headers.Authorization? }`
+- Kilo Code 例外：`stdio` 写入 `{ type:'local', command:['mindos','mcp'], environment:{MCP_TRANSPORT:'stdio'}, enabled:true }`；`http` 写入 `{ type:'remote', url, headers?, enabled:true }`
 - HTTP 模式附带连通性验证（`tools/list`）
 
 ### D. MCP 运行状态读取
@@ -184,9 +188,10 @@
 - `gemini-cli`：`~/.gemini/`
 - `openclaw`：`~/.openclaw/`
 - `codebuddy`：`~/.codebuddy/`
-- `iflow-cli`：`~/.iflow/`
 - `kimi-cli`：`~/.kimi/`
 - `opencode`：`~/.config/opencode/`
+- `kilo-code`：`~/.config/kilo/`、`~/.kilo/`、`~/.kilocode/`
+- `warp`：`~/.warp/`、macOS `~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Stable/`、Linux `~/.local/state/warp-terminal/` / `~/.config/warp-terminal/` / `~/.local/share/warp-terminal/`、Windows `%LOCALAPPDATA%\warp\Warp\...` / `%APPDATA%\warp\Warp\data\`
 - `pi`：`~/.pi/`
 - `augment`：`~/.augment/`
 - `qwen-code`：`~/.qwen/`
@@ -199,6 +204,7 @@
 - `workbuddy`：`~/.workbuddy/`
 - `lingma`：`~/.lingma/`
 - `copaw`：`~/.copaw/`
+- `hermes`：`~/.hermes/`
 
 #### 推荐采集策略（后续实现）
 1. 以 `presenceDirs` 为起点扫描 agent 目录；
@@ -264,4 +270,3 @@ cd app && npx vitest run \
 - Skill 模式（universal/additional）在 `install-skill` 与 `setup` 中实现不一致
 - 文档写了“支持某 agent”，但 `MCP_AGENTS` 或 `SKILL_AGENT_REGISTRY` 未落盘
 - 统计口径误解：把进程级 token 统计误当成 per-agent 统计
-

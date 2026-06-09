@@ -444,6 +444,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^4.0.1
         version: 4.2.0
+      '@juicesharp/rpiv-ask-user-question':
+        specifier: 1.19.0
+        version: 1.19.0(@earendil-works/pi-coding-agent@0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.20.0)(zod@3.25.76))(@earendil-works/pi-tui@0.78.1)(typebox@1.1.38)
       '@larksuiteoapi/node-sdk':
         specifier: ^1.60.0
         version: 1.61.1
@@ -504,6 +507,9 @@ importers:
       grammy:
         specifier: ^1.42.0
         version: 1.42.0(encoding@0.1.13)
+      jiti:
+        specifier: 2.7.0
+        version: 2.7.0
       js-yaml:
         specifier: ^4.1.1
         version: 4.1.1
@@ -3032,6 +3038,22 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@juicesharp/rpiv-ask-user-question@1.19.0':
+    resolution: {integrity: sha512-BWuUoPxu9KyhdG52u5nrK1+ouHyzh25BTex/YnbjSBKlgAGMYrn/+VT7YML8cOmk/9M/FOPevQNjXKmWhubkOQ==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+      '@juicesharp/rpiv-i18n': '*'
+      typebox: '*'
+    peerDependenciesMeta:
+      '@juicesharp/rpiv-i18n':
+        optional: true
+
+  '@juicesharp/rpiv-config@1.19.0':
+    resolution: {integrity: sha512-/S4JKCzTXqqfiC85vjwCNf4DF3rI5TzA5oKlb5uiH72PUtSDZCtqjMUiOlYk4Xf64P3XabYu2tk+Y7zjMRozRw==}
+    peerDependencies:
+      typebox: '*'
 
   '@lancedb/vectordb-darwin-arm64@0.4.20':
     resolution: {integrity: sha512-ffP2K4sA5mQTgePyARw1y8dPN996FmpvyAYoWO+TSItaXlhcXvc+KVa5udNMCZMDYeEnEv2Xpj6k4PwW3oBz+A==}
@@ -7697,10 +7719,6 @@ packages:
 
   jimp-compact@0.16.1:
     resolution: {integrity: sha512-dZ6Ra7u1G8c4Letq/B5EzAxj4tLFHL+cGtdpR+PVm4yzPDj+lCk+AbivWt1eOM+ikzkowtyV7qSqX6qr3t71Ww==}
-
-  jiti@2.6.1:
-    resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
-    hasBin: true
 
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
@@ -14282,6 +14300,17 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@juicesharp/rpiv-ask-user-question@1.19.0(@earendil-works/pi-coding-agent@0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.20.0)(zod@3.25.76))(@earendil-works/pi-tui@0.78.1)(typebox@1.1.38)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.20.0)(zod@3.25.76)
+      '@earendil-works/pi-tui': 0.78.1
+      '@juicesharp/rpiv-config': 1.19.0(typebox@1.1.38)
+      typebox: 1.1.38
+
+  '@juicesharp/rpiv-config@1.19.0(typebox@1.1.38)':
+    dependencies:
+      typebox: 1.1.38
+
   '@lancedb/vectordb-darwin-arm64@0.4.20':
     optional: true
 
@@ -15605,7 +15634,7 @@ snapshots:
     dependencies:
       '@jridgewell/remapping': 2.3.5
       enhanced-resolve: 5.20.1
-      jiti: 2.6.1
+      jiti: 2.7.0
       lightningcss: 1.32.0
       magic-string: 0.30.21
       source-map-js: 1.2.1
@@ -20218,8 +20247,6 @@ snapshots:
       supports-color: 8.1.1
 
   jimp-compact@0.16.1: {}
-
-  jiti@2.6.1: {}
 
   jiti@2.7.0: {}
 

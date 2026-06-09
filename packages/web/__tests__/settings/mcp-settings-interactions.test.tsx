@@ -146,4 +146,107 @@ describe('MCP settings interactions', () => {
     });
     host.remove();
   });
+
+  it('does not allow MCP install selection for agents that were not detected', async () => {
+    const { default: AgentInstall } = await import('@/components/settings/McpAgentInstall');
+    const agents: AgentInfo[] = [{
+      key: 'cursor',
+      name: 'Cursor',
+      present: false,
+      installed: false,
+      hasProjectScope: false,
+      hasGlobalScope: true,
+      preferredTransport: 'stdio',
+      format: 'json',
+      configKey: 'mcpServers',
+      globalPath: '/tmp/cursor.json',
+    }];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <AgentInstall
+          agents={agents}
+          t={messages.en}
+          onRefresh={() => undefined}
+          mode="mcp"
+          status={{
+            running: true,
+            transport: 'http',
+            endpoint: 'http://localhost:8567/mcp',
+            port: 8567,
+            toolCount: 1,
+            authConfigured: false,
+            localIP: null,
+            connectionMode: { cli: true, mcp: true },
+          }}
+        />,
+      );
+    });
+
+    const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    expect(checkbox?.disabled).toBe(true);
+
+    await act(async () => {
+      checkbox?.click();
+      await Promise.resolve();
+    });
+
+    const installButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Install Selected')) as HTMLButtonElement | undefined;
+    expect(installButton?.disabled).toBe(true);
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/api/mcp/install', expect.anything());
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('shows the universal skill install flag for Kilo Code', async () => {
+    const { default: AgentInstall } = await import('@/components/settings/McpAgentInstall');
+    const agents: AgentInfo[] = [{
+      key: 'kilo-code',
+      name: 'Kilo Code',
+      present: true,
+      installed: false,
+      hasProjectScope: true,
+      hasGlobalScope: true,
+      preferredTransport: 'stdio',
+      format: 'json',
+      configKey: 'mcp',
+      entryStyle: 'kilo',
+      globalPath: '~/.config/kilo/kilo.jsonc',
+      projectPath: '.kilo/kilo.jsonc',
+      skillMode: 'universal',
+      skillWorkspacePath: '~/.agents/skills',
+    }];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <AgentInstall
+          agents={agents}
+          t={messages.en}
+          onRefresh={() => undefined}
+          mode="cli"
+          activeSkillName="mindos"
+        />,
+      );
+    });
+
+    expect(host.textContent).toContain('npx skills add GeminiLight/MindOS --skill mindos -a universal -g -y');
+    expect(host.textContent).not.toContain('-a kilo-code');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
 });

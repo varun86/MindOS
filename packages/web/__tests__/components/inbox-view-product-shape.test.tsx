@@ -14,7 +14,9 @@ vi.mock('@/lib/stores/locale-store', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+  default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+    <a {...props}>{children}</a>
+  ),
 }));
 
 const mockRouterPush = vi.fn();
@@ -333,6 +335,204 @@ describe('InboxView product shape', () => {
       method: 'POST',
       body: expect.stringContaining('https://example.com/article'),
     }));
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps a URL chip after clip failure', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/inbox/clip') {
+        return { ok: false, status: 422, json: async () => ({ error: 'Clip failed' }) };
+      }
+      return { ok: true, json: async () => ({ files: [] }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const textarea = host.querySelector('textarea');
+    expect(textarea).not.toBeNull();
+
+    await act(async () => {
+      const pasteEvent = new Event('paste', { bubbles: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          getData: (type: string) => type === 'text/plain' ? 'https://example.com/fail' : '',
+          files: [],
+        },
+      });
+      textarea!.dispatchEvent(pasteEvent);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('example.com/fail');
+
+    const captureButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Save to Inbox'));
+    expect(captureButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/inbox/clip', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('https://example.com/fail'),
+    }));
+    expect(host.textContent).toContain('example.com/fail');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps a pending file chip after upload save failure', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/inbox' && init?.method === 'POST') {
+        return { ok: false, status: 500, json: async () => ({ error: 'Disk write failed' }) };
+      }
+      return { ok: true, json: async () => ({ files: [] }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const textarea = host.querySelector('textarea');
+    expect(textarea).not.toBeNull();
+    const file = new File(['notes'], 'notes.md', { type: 'text/markdown' });
+
+    await act(async () => {
+      const pasteEvent = new Event('paste', { bubbles: true });
+      Object.defineProperty(pasteEvent, 'clipboardData', {
+        value: {
+          getData: () => '',
+          files: [file],
+        },
+      });
+      textarea!.dispatchEvent(pasteEvent);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('notes.md');
+
+    const captureButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Save to Inbox'));
+    expect(captureButton).not.toBeNull();
+
+    await act(async () => {
+      captureButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('notes.md');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('shows a retryable error when Inbox loading fails in the Review tab', async () => {
+    window.history.replaceState(null, '', '/capture#queue');
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'MIND_ROOT is not configured' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('MIND_ROOT is not configured');
+    expect(host.textContent).toContain('Retry');
+    expect(host.textContent).not.toContain('Nothing waiting');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps a queue row when archive response reports notFound', async () => {
+    window.history.replaceState(null, '', '/capture#queue');
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/inbox' && init?.method === 'DELETE') {
+        return {
+          ok: true,
+          json: async () => ({ archived: [], notFound: ['ghost.md'] }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          files: [
+            {
+              name: 'ghost.md',
+              path: 'Inbox/ghost.md',
+              size: 120,
+              modifiedAt: new Date().toISOString(),
+              isAging: false,
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(host.textContent).toContain('ghost');
+
+    const removeButton = Array.from(host.querySelectorAll('button[title="Remove from Inbox"]'))[0];
+    expect(removeButton).not.toBeUndefined();
+
+    await act(async () => {
+      removeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/inbox', expect.objectContaining({
+      method: 'DELETE',
+      body: JSON.stringify({ names: ['ghost.md'] }),
+    }));
+    expect(host.textContent).toContain('ghost');
 
     await act(async () => {
       root.unmount();

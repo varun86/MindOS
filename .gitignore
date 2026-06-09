@@ -89,6 +89,8 @@ image.png
 !packages/browser-extension/src/icons/*.png
 !packages/browser-extension/extension/icons/*.png
 !packages/web/public/icons/*.png
+!packages/web/public/agent-icons/*.png
+!packages/web/public/agent-icons/*.jpg
 !packages/mobile/assets/*.png
 !packages/desktop/src/icons/*.png
 !packages/desktop-tauri/src-tauri/icons/*.png

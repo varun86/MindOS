@@ -13,12 +13,14 @@ export type SettingsJsonForAi = {
   envOverrides?: Partial<Record<string, boolean>>;
 };
 
-export function isAiConfiguredForAsk(data: SettingsJsonForAi): boolean {
+export function isAiConfiguredForAsk(data: SettingsJsonForAi, providerOverride?: string | null): boolean {
   const providers = data.ai?.providers ?? [];
   const activeId = data.ai?.activeProvider;
   const env = data.envOverrides ?? {};
 
-  const current = activeId ? providers.find(p => p.id === activeId) : providers[0];
+  const current = providerOverride
+    ? providers.find(p => p.id === providerOverride || p.protocol === providerOverride)
+    : activeId ? providers.find(p => p.id === activeId) : providers[0];
   if (!current) return false;
 
   // Has API key directly

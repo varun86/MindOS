@@ -47,6 +47,21 @@ describe('isAiConfiguredForAsk', () => {
     ).toBe(false);
   });
 
+  it('uses provider override instead of the active provider when provided', () => {
+    expect(
+      isAiConfiguredForAsk({
+        ai: {
+          activeProvider: 'p_anthro01',
+          providers: [
+            { id: 'p_anthro01', name: 'Anthropic', protocol: 'anthropic', apiKey: '', model: 'claude-sonnet-4-6', baseUrl: '' },
+            { id: 'p_openai01', name: 'OpenAI', protocol: 'openai', apiKey: 'sk-openai-test', model: 'gpt-5.4', baseUrl: '' },
+          ],
+        },
+        envOverrides: {},
+      }, 'p_openai01'),
+    ).toBe(true);
+  });
+
   it('returns true when openai provider and openai key set', () => {
     expect(
       isAiConfiguredForAsk({

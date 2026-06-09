@@ -11,15 +11,44 @@
  * agent, add a single entry here — no separate table needed.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { join, normalize, resolve } from 'node:path';
 import { expandHome } from './path-expand.js';
 
 function winAppData(...segments) {
   const appData = process.env.APPDATA || resolve(process.env.USERPROFILE || '', 'AppData', 'Roaming');
   return resolve(appData, ...segments);
 }
+
+function winLocalAppData(...segments) {
+  const localAppData = process.env.LOCALAPPDATA || resolve(process.env.USERPROFILE || '', 'AppData', 'Local');
+  return resolve(localAppData, ...segments);
+}
+
+const warpStableStateRoot = process.platform === 'darwin'
+  ? '~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Stable/'
+  : process.platform === 'win32'
+    ? winLocalAppData('warp', 'Warp', 'data')
+    : '~/.local/state/warp-terminal/';
+
+const warpPreviewStateRoot = process.platform === 'darwin'
+  ? '~/Library/Group Containers/2BBY89MBSN.dev.warp/Library/Application Support/dev.warp.Warp-Preview/'
+  : process.platform === 'win32'
+    ? winLocalAppData('warp', 'WarpPreview', 'data')
+    : '~/.local/state/warp-terminal-preview/';
+
+const warpConfigRoot = process.platform === 'darwin'
+  ? '~/.warp/'
+  : process.platform === 'win32'
+    ? winLocalAppData('warp', 'Warp', 'config')
+    : '~/.config/warp-terminal/';
+
+const warpDataRoot = process.platform === 'darwin'
+  ? '~/.warp/'
+  : process.platform === 'win32'
+    ? winAppData('warp', 'Warp', 'data')
+    : '~/.local/share/warp-terminal/';
 
 export const MCP_AGENTS = {
   'claude-code': {
@@ -98,15 +127,6 @@ export const MCP_AGENTS = {
     presenceCli: 'codebuddy',
     presenceDirs: ['~/.codebuddy/'],
   },
-  'iflow-cli': {
-    name: 'iFlow CLI',
-    project: '.iflow/settings.json',
-    global: '~/.iflow/settings.json',
-    key: 'mcpServers',
-    preferredTransport: 'stdio',
-    presenceCli: 'iflow',
-    presenceDirs: ['~/.iflow/'],
-  },
   'kimi-cli': {
     name: 'Kimi Code',
     project: '.kimi/mcp.json',
@@ -124,6 +144,45 @@ export const MCP_AGENTS = {
     preferredTransport: 'stdio',
     presenceCli: 'opencode',
     presenceDirs: ['~/.config/opencode/'],
+  },
+  'kilo-code': {
+    name: 'Kilo Code',
+    project: '.kilo/kilo.jsonc',
+    global: '~/.config/kilo/kilo.jsonc',
+    projectReadAlso: [
+      '.kilo/kilo.json',
+      'kilo.jsonc',
+      'kilo.json',
+      '.kilocode/kilo.jsonc',
+      '.kilocode/kilo.json',
+      '.opencode/opencode.jsonc',
+      '.opencode/opencode.json',
+    ],
+    globalReadAlso: [
+      '~/.config/kilo/kilo.json',
+      '~/.config/kilo/opencode.jsonc',
+      '~/.config/kilo/opencode.json',
+      '~/.config/kilo/config.json',
+    ],
+    key: 'mcp',
+    preferredTransport: 'stdio',
+    entryStyle: 'kilo',
+    presenceCli: 'kilo',
+    presenceDirs: ['~/.config/kilo/', '~/.kilo/', '~/.kilocode/'],
+  },
+  'warp': {
+    name: 'Warp',
+    project: '.warp/.mcp.json',
+    global: '~/.warp/.mcp.json',
+    key: 'mcpServers',
+    preferredTransport: 'stdio',
+    presenceDirs: [
+      '~/.warp/',
+      warpStableStateRoot,
+      warpPreviewStateRoot,
+      warpConfigRoot,
+      warpDataRoot,
+    ],
   },
   'pi': {
     name: 'Pi',
@@ -291,7 +350,6 @@ export const SKILL_AGENT_REGISTRY = {
   'gemini-cli': { mode: 'universal' },
   'openclaw': { mode: 'additional', skillAgentName: 'openclaw' },
   'codebuddy': { mode: 'additional', skillAgentName: 'codebuddy' },
-  'iflow-cli': { mode: 'additional', skillAgentName: 'iflow-cli' },
   'kimi-cli': { mode: 'universal' },
   'opencode': { mode: 'universal' },
   'pi': { mode: 'additional', skillAgentName: 'pi' },
@@ -302,6 +360,8 @@ export const SKILL_AGENT_REGISTRY = {
   'roo': { mode: 'additional', skillAgentName: 'roo' },
   'github-copilot': { mode: 'universal' },
   'codex': { mode: 'universal' },
+  'kilo-code': { mode: 'universal' },
+  'warp': { mode: 'universal' },
   'antigravity': { mode: 'additional', skillAgentName: 'antigravity' },
   'qclaw': { mode: 'unsupported' },
   'workbuddy': { mode: 'unsupported' },
@@ -309,6 +369,159 @@ export const SKILL_AGENT_REGISTRY = {
   'copaw': { mode: 'unsupported' },
   'hermes': { mode: 'unsupported' },
 };
+
+function parseJsonc(text) {
+  let stripped = text.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*$)/gm, (match, comment) => comment ? '' : match);
+  stripped = stripped.replace(/\/\*[\s\S]*?\*\//g, '');
+  if (!stripped.trim()) return {};
+  return JSON.parse(stripped);
+}
+
+function readNestedRecord(obj, nestedPath) {
+  let current = obj;
+  for (const part of nestedPath.split('.').filter(Boolean)) {
+    if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, part)) return null;
+    current = current[part];
+  }
+  return current && typeof current === 'object' ? current : null;
+}
+
+function readOwnRecord(obj, key) {
+  if (!obj || typeof obj !== 'object' || !Object.prototype.hasOwnProperty.call(obj, key)) return null;
+  const value = obj[key];
+  return value && typeof value === 'object' ? value : null;
+}
+
+function parseYamlServerNames(content, sectionKey) {
+  const names = [];
+  let inSection = false;
+  let baseIndent = -1;
+  for (const line of content.split('\n')) {
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    const trimmed = line.trim();
+    if (indent === 0 && trimmed.startsWith(sectionKey + ':')) {
+      inSection = true;
+      baseIndent = -1;
+      continue;
+    }
+    if (indent === 0 && trimmed) {
+      inSection = false;
+      continue;
+    }
+    if (!inSection) continue;
+    if (baseIndent < 0) baseIndent = indent;
+    if (indent === baseIndent) {
+      const match = trimmed.match(/^([a-zA-Z0-9_-]+)\s*:/);
+      if (match) names.push(match[1]);
+    }
+  }
+  return names;
+}
+
+function parseTomlServerNames(content, sectionKey) {
+  const names = new Set();
+  const sectionPrefix = `${sectionKey}.`;
+  let inRootSection = false;
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      const section = trimmed.slice(1, -1).trim();
+      inRootSection = section === sectionKey;
+      if (section.startsWith(sectionPrefix)) {
+        const name = section.slice(sectionPrefix.length).split('.')[0]?.trim();
+        if (name) names.add(name);
+      }
+      continue;
+    }
+    if (!inRootSection) continue;
+    const match = trimmed.match(/^([a-zA-Z0-9_-]+)\s*=/);
+    if (match) names.add(match[1]);
+  }
+  return [...names];
+}
+
+function configPathCandidates(agent, scope) {
+  const primary = scope === 'global' ? agent.global : agent.project;
+  const readAlso = scope === 'global' ? agent.globalReadAlso : agent.projectReadAlso;
+  return [primary, ...(readAlso ?? [])].filter(Boolean);
+}
+
+function configFileLooksMindosManagedOnly(filePath, agent) {
+  const managedGlobalPaths = configPathCandidates(agent, 'global').map(candidate => normalize(expandHome(candidate)));
+  if (!managedGlobalPaths.includes(normalize(filePath))) return false;
+
+  let content = '';
+  try {
+    content = readFileSync(filePath, 'utf-8');
+  } catch {
+    return false;
+  }
+  if (!content.trim()) return true;
+
+  try {
+    if (agent.format === 'toml') {
+      const names = parseTomlServerNames(content, agent.key);
+      return names.length === 0 || names.every(name => name === 'mindos');
+    }
+    if (agent.format === 'yaml') {
+      const names = parseYamlServerNames(content, agent.key);
+      return names.length === 0 || names.every(name => name === 'mindos');
+    }
+
+    const parsed = parseJsonc(content);
+    const section = agent.globalNestedKey
+      ? readNestedRecord(parsed, agent.globalNestedKey)
+      : readOwnRecord(parsed, agent.key);
+    if (!section) return Object.keys(parsed).length === 0;
+    const serverNames = Object.keys(section);
+    if (!serverNames.every(name => name === 'mindos')) return false;
+
+    if (!agent.globalNestedKey) {
+      const topKeys = Object.keys(parsed);
+      return topKeys.length === 0 || (topKeys.length === 1 && topKeys[0] === agent.key);
+    }
+
+    let cursor = parsed;
+    for (const part of agent.globalNestedKey.split('.').filter(Boolean)) {
+      if (!cursor || Object.keys(cursor).some(key => key !== part)) return false;
+      cursor = cursor[part] && typeof cursor[part] === 'object' ? cursor[part] : null;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function presencePathHasAgentSignal(candidatePath, agent) {
+  if (!existsSync(candidatePath)) return false;
+  let stat;
+  try {
+    stat = statSync(candidatePath);
+  } catch {
+    return true;
+  }
+  if (stat.isFile()) return !configFileLooksMindosManagedOnly(candidatePath, agent);
+  if (!stat.isDirectory()) return true;
+
+  let entries = [];
+  try {
+    entries = readdirSync(candidatePath, { withFileTypes: true });
+  } catch {
+    return true;
+  }
+  if (entries.length === 0) return false;
+
+  const ignored = new Set(['.DS_Store', 'skills']);
+  for (const entry of entries) {
+    if (ignored.has(entry.name)) continue;
+    const entryPath = join(candidatePath, entry.name);
+    if (entry.isFile() && configFileLooksMindosManagedOnly(entryPath, agent)) continue;
+    return true;
+  }
+  return false;
+}
 
 export function detectAgentPresence(agentKey) {
   const agent = MCP_AGENTS[agentKey];
@@ -321,7 +534,7 @@ export function detectAgentPresence(agentKey) {
   }
   if (agent.presenceDirs?.some(d => {
     // Paths from winAppData() are already absolute; expandHome only handles ~/
-    try { return existsSync(d.startsWith('~') ? expandHome(d) : d); } catch { return false; }
+    try { return presencePathHasAgentSignal(d.startsWith('~') ? expandHome(d) : d, agent); } catch { return false; }
   })) return true;
   return false;
 }

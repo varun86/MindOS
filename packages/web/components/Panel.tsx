@@ -14,6 +14,7 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { listTrashAction } from '@/lib/actions';
 import { DEFAULT_LEFT_PANEL_WIDTH, LEFT_PANEL } from '@/lib/config/panel-sizes';
 import { encodePath } from '@/lib/utils';
+import { fetchInboxFiles } from '@/lib/inbox-client';
 
 const noop = () => {};
 
@@ -173,9 +174,9 @@ export default function Panel({
       listTrashAction().then(items => setTrashCount(items.length)).catch(() => {});
     };
     const fetchInbox = () => {
-      fetch('/api/inbox').then(r => r.json()).then(d => {
-        if (Array.isArray(d.files)) setInboxCount(d.files.length);
-      }).catch(() => {});
+      fetchInboxFiles(t.inbox.loadFailed)
+        .then(files => setInboxCount(files.length))
+        .catch(() => setInboxCount(0));
     };
     fetchTrash();
     fetchInbox();
@@ -185,7 +186,7 @@ export default function Panel({
       window.removeEventListener('mindos:files-changed', fetchTrash);
       window.removeEventListener('mindos:inbox-updated', fetchInbox);
     };
-  }, [activePanel]);
+  }, [activePanel, t.inbox.loadFailed]);
 
   // Double-click hint: show only until user has used it once.
   // Initialize false to match SSR; hydrate from localStorage in useEffect.
@@ -430,7 +431,7 @@ export default function Panel({
           <BuiltInMindSpaces
             title={t.sidebar.builtInSpacesTitle}
             description={t.sidebar.builtInSpacesDesc}
-            rootLabel={mindSystemSlots.filter(slot => slot.primary).map(slot => slot.label).join(' / ') || t.sidebar.builtInSpacesRoot}
+            rootLabel={mindSystemSlots.map(slot => slot.label).join(' / ') || t.sidebar.builtInSpacesRoot}
             slots={mindSystemSlots}
             onOpen={(path) => router.push(`/view/${encodePath(path)}`)}
           />
@@ -563,12 +564,13 @@ function BuiltInMindSpaces({
                 key={item.key}
                 type="button"
                 onClick={() => onOpen(item.path)}
-                className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-mind-system-sidebar-open={item.key}
+                className="flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-background/40 text-[11px] font-semibold text-[var(--amber)]">
                   {item.label}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>
+                <span className="block min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>
               </button>
             );
           })}

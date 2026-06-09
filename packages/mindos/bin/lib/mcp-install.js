@@ -39,6 +39,12 @@ function readNestedPath(obj, dotPath) {
   return current;
 }
 
+function configPathCandidates(agent, scope) {
+  const primary = scope === 'global' ? agent.global : agent.project;
+  const readAlso = scope === 'global' ? agent.globalReadAlso : agent.projectReadAlso;
+  return [primary, ...(readAlso ?? [])].filter(Boolean);
+}
+
 /**
  * Recursively copy a directory using pure Node.js (cross-platform).
  * Uses cpSync on Node >=16.7, falls back to manual walk otherwise.
@@ -110,6 +116,28 @@ function autoInstallSkillForAgent(agentKey, skillName) {
 }
 
 export { MCP_AGENTS };
+
+function buildMcpEntry(agent, transport, url, token) {
+  if (agent.entryStyle === 'kilo') {
+    if (transport === 'stdio') {
+      return {
+        type: 'local',
+        command: ['mindos', 'mcp'],
+        environment: { MCP_TRANSPORT: 'stdio' },
+        enabled: true,
+      };
+    }
+    return token
+      ? { type: 'remote', url, headers: { Authorization: `Bearer ${token}` }, enabled: true }
+      : { type: 'remote', url, enabled: true };
+  }
+
+  return transport === 'stdio'
+    ? { type: 'stdio', command: 'mindos', args: ['mcp'], env: { MCP_TRANSPORT: 'stdio' } }
+    : token
+      ? { url, headers: { Authorization: `Bearer ${token}` } }
+      : { url };
+}
 
 // ─── Interactive select (arrow keys) ──────────────────────────────────────────
 
@@ -293,8 +321,10 @@ export async function mcpInstall() {
         const present = detectAgentPresence(k);
         // Check if already configured
         let installed = false;
-        for (const cfgPath of [agent.global, agent.project]) {
-          if (!cfgPath) continue;
+        for (const cfgPath of [
+          ...configPathCandidates(agent, 'global'),
+          ...configPathCandidates(agent, 'project'),
+        ]) {
           const abs = expandHome(cfgPath);
           if (!existsSync(abs)) continue;
           try {
@@ -396,16 +426,10 @@ export async function mcpInstall() {
     rl2.close();
   }
 
-  // ── 4. build entry ─────────────────────────────────────────────────────────
-  const entry = transport === 'stdio'
-    ? { type: 'stdio', command: 'mindos', args: ['mcp'], env: { MCP_TRANSPORT: 'stdio' } }
-    : token
-      ? { url, headers: { Authorization: `Bearer ${token}` } }
-      : { url };
-
-  // ── 5. install for each selected agent ─────────────────────────────────────
+  // ── 4. install for each selected agent ─────────────────────────────────────
   for (const agentKey of agentKeys) {
     const agent = MCP_AGENTS[agentKey];
+    const entry = buildMcpEntry(agent, transport, url, token);
 
     // scope — default to global
     let isGlobal = hasGlobalFlag;

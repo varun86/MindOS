@@ -111,6 +111,7 @@ export interface AgentInfo {
   format: 'json' | 'toml' | 'yaml';
   configKey: string;
   globalNestedKey?: string;
+  entryStyle?: 'standard' | 'kilo';
   globalPath: string;
   projectPath?: string | null;
   skillMode?: 'universal' | 'additional' | 'unsupported';
