@@ -29,6 +29,7 @@ const clipSiteBadge = $<HTMLSpanElement>('clip-site');
 const clipSiteText = $<HTMLSpanElement>('clip-site-text');
 const clipWordsBadge = $<HTMLSpanElement>('clip-words');
 const clipWordsText = $<HTMLSpanElement>('clip-words-text');
+const clipStatus = $<HTMLSpanElement>('clip-status');
 const dirTrigger = $<HTMLButtonElement>('dir-trigger');
 const dirLabel = $<HTMLSpanElement>('dir-label');
 const dirPanel = $<HTMLDivElement>('dir-panel');
@@ -131,6 +132,21 @@ async function extractContent(): Promise<PageContent> {
   return result as PageContent;
 }
 
+async function loadClipContext() {
+  const [contentResult, dirsResult] = await Promise.allSettled([
+    extractContent(),
+    listDirs(config),
+  ]);
+
+  const content = contentResult.status === 'fulfilled' ? contentResult.value : null;
+  const dirs = dirsResult.status === 'fulfilled' ? dirsResult.value : [];
+  const errorMsg = contentResult.status === 'rejected'
+    ? (contentResult.reason instanceof Error ? contentResult.reason.message : 'Cannot read this page')
+    : undefined;
+
+  return { content, dirs, errorMsg };
+}
+
 /* ── Init ── */
 
 async function init() {
@@ -145,31 +161,25 @@ async function init() {
   // Configured — extract content
   showView(viewLoading);
 
-  let extractionError = '';
-
-  try {
-    [extractedContent, allDirs] = await Promise.all([
-      extractContent(),
-      listDirs(config),
-    ]);
-  } catch (err) {
-    extractionError = err instanceof Error ? err.message : 'Cannot read this page';
-    extractedContent = null;
-    allDirs = await listDirs(config).catch(() => []);
-  }
-
-  showClipView(extractionError);
+  const context = await loadClipContext();
+  extractedContent = context.content;
+  allDirs = context.dirs;
+  showClipView(context.errorMsg);
 }
 
 function showClipView(errorMsg?: string) {
   showView(viewClip);
 
-  if (errorMsg) {
+  const hasContent = !!extractedContent;
+
+  if (errorMsg && !hasContent) {
     showError(clipError, errorMsg);
     btnSave.disabled = true;
+    setClipStatus('Read failed', 'status-chip-neutral');
   } else {
     hideError(clipError);
-    btnSave.disabled = false;
+    btnSave.disabled = !hasContent;
+    setClipStatus(hasContent ? 'Ready' : 'Read failed', hasContent ? 'status-chip-success' : 'status-chip-neutral');
   }
 
   if (extractedContent) {
@@ -282,6 +292,9 @@ function renderDirPicker() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dir-item';
+    if (selectedPath === childPath) {
+      btn.classList.add('active');
+    }
     btn.appendChild(createSvgIcon('dir-item-icon', '12', 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'));
 
     const name = document.createElement('span');
@@ -309,6 +322,11 @@ function updateDirLabel() {
   } else {
     dirLabel.textContent = selectedPath.split('/').join(' / ');
   }
+}
+
+function setClipStatus(text: string, className: string) {
+  clipStatus.textContent = text;
+  clipStatus.className = `status-chip ${className}`;
 }
 
 function toggleDirPanel(show?: boolean) {
@@ -352,19 +370,10 @@ btnConnect.addEventListener('click', async () => {
   // Now extract content
   showView(viewLoading);
 
-  try {
-    [extractedContent, allDirs] = await Promise.all([
-      extractContent(),
-      listDirs(config),
-    ]);
-  } catch (err) {
-    extractedContent = null;
-    allDirs = [];
-    showClipView(err instanceof Error ? err.message : 'Cannot read this page');
-    return;
-  }
-
-  showClipView();
+  const context = await loadClipContext();
+  extractedContent = context.content;
+  allDirs = context.dirs;
+  showClipView(context.errorMsg);
 });
 
 // Save button
@@ -375,6 +384,7 @@ btnSave.addEventListener('click', async () => {
   }
 
   hideError(clipError);
+  setClipStatus('Saving…', 'status-chip-neutral');
   setButtonLoading(btnSave, true);
 
   // Override title if user edited
@@ -392,6 +402,7 @@ btnSave.addEventListener('click', async () => {
 
   if (result.error) {
     showError(clipError, result.error);
+    setClipStatus('Save failed', 'status-chip-neutral');
     return;
   }
 
@@ -405,6 +416,7 @@ btnSave.addEventListener('click', async () => {
 btnSettings.addEventListener('click', () => {
   setupUrl.value = config.mindosUrl;
   setupToken.value = config.authToken;
+  toggleDirPanel(false);
   showView(viewSetup);
 });
 
@@ -430,6 +442,14 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     toggleDirPanel(false);
   }
+});
+
+document.addEventListener('click', (e) => {
+  if (dirPanel.hidden) return;
+  const target = e.target as Node | null;
+  if (!target) return;
+  if (dirPanel.contains(target) || dirTrigger.contains(target)) return;
+  toggleDirPanel(false);
 });
 
 /* ── Error display helpers ── */
