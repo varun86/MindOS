@@ -281,8 +281,9 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, currentPath, on
         onDrop={handleRowDrop}
       >
         <button
+          type="button"
           onClick={toggle}
-          className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
           style={{ marginLeft: `${depth * 12 + 4}px` }}
           aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
           aria-expanded={open}
@@ -301,7 +302,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, currentPath, on
             e.dataTransfer.effectAllowed = 'copy';
           }}
           className={`
-            flex-1 flex items-center gap-1.5 px-1 py-1 rounded text-left min-w-0 pr-16
+            flex-1 flex min-h-7 items-center gap-1.5 rounded px-1 text-left min-w-0 pr-16
             text-sm transition-colors duration-100
             hover:bg-muted cursor-default
             ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}
@@ -329,7 +330,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, currentPath, on
               const rect = e.currentTarget.getBoundingClientRect();
               setContextMenu({ x: rect.left, y: rect.bottom + 4 });
             }}
-            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
             title="More"
           >
             <MoreHorizontal size={14} />
@@ -514,7 +515,7 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, currentPath, onNa
         onDragStart={handleDragStart}
         data-filepath={node.path}
         className={`
-          w-full flex items-center gap-1.5 px-2 py-1 rounded text-left
+          w-full flex min-h-7 items-center gap-1.5 rounded px-2 text-left
           text-sm transition-colors duration-100 cursor-default pr-16
           ${isActive
             ? 'bg-accent text-foreground'
@@ -535,7 +536,7 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, currentPath, onNa
             const rect = e.currentTarget.getBoundingClientRect();
             setContextMenu({ x: rect.left, y: rect.bottom + 4 });
           }}
-          className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
           title="More"
         >
           <MoreHorizontal size={14} />

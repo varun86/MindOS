@@ -2024,6 +2024,8 @@ mindos onboard
 
   4. **Icon button 只靠 `p-1/p-1.5` 撑开**：在 header、breadcrumb、Chat action bar 这种密集区域，`p-1` 会让实际命中框接近 icon 本身；用户快速划过时会感觉只有图标或下半部分能点。Tooltip 如果还有较长 hover delay，会进一步放大“没有反馈”的错觉。
 
+  5. **Electron 顶部拖拽层覆盖真实按钮**：macOS hidden titlebar 会注入 `body::before` 作为 28px 高的 `-webkit-app-region: drag` 区域。如果 rail/sidebar selector 漂移（例如实际是 `role="navigation"`，注入 CSS 仍写 `role="toolbar"`），Panel 顶部没有下移，透明拖拽层会吃掉 header 按钮上半部分点击。
+
 - **设计规则：**
   - **规则 1：可视包装元素 = 点击目标元素**
     - 如果 `<Link>` 或 `<button>` 有 padding、border、bg-color、rounded 样式，它们应该直接应用到该元素上，NOT 内部嵌套的 span
@@ -2044,6 +2046,7 @@ mindos onboard
     4. hover/focus-visible 样式是否覆盖整个可视区域？
     5. icon-only 按钮是否至少有明确的 h/w 命中框？
     6. tooltip 是否会在快速移动时滞后或残留？
+    7. Electron/macOS 下是否有 titlebar drag overlay 覆盖该区域？
     ```
 
 - **已修复的案例：**
@@ -2051,12 +2054,13 @@ mindos onboard
   - `Breadcrumb.tsx` 导航链接（P2）：添加了 box 样式 `px-2 py-0.5 rounded-md`
   - `FileChip.tsx` 删除按钮（P2）：增加 `p-1 rounded hover:bg-muted` 使其视觉清晰
   - `Breadcrumb.tsx` / `ViewPageClient.tsx` / Chat action buttons（2026-05-13）：icon button 统一为 `h-7/w-7` 或 `h-8/w-8` 命中框，Markdown 模式切换补齐 hover 背景，`ActionTooltip` 默认延迟降到 140ms
+  - `PanelHeader.tsx` / `FileTree.tsx` / desktop titlebar CSS（2026-06-09）：side panel header 去掉 `h-[46px]` + `py-3` 高度冲突，FileTree 行控件统一固定命中框，macOS titlebar CSS 同时匹配 `role="navigation"` 的 Activity Bar 与相邻 Panel
 
 - **预防策略：**
   - Code review：检查所有 `<Link>` 和 `<button>` 是否直接应用了 visual styles（px/py/bg/border/rounded）
   - 设计系统文档：记录标准按钮/链接模式
   - Visual QA：进行 "click everywhere" 测试，确保看到的区域都能点击
-  - 回归测试：`packages/web/__tests__/components/icon-button-hit-area.test.ts` 覆盖 header、breadcrumb、Chat action 与 tooltip delay 的基础约束
+  - 回归测试：`packages/web/__tests__/components/icon-button-hit-area.test.ts` 覆盖 header、breadcrumb、FileTree、Chat action 与 tooltip delay 的基础约束；`packages/desktop/src/titlebar-css.test.ts` 覆盖 macOS titlebar overlay selector
 
 ### 静默吞掉错误 — `.catch(() => {})` 导致用户无反馈
 

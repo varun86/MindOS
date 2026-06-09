@@ -43,6 +43,16 @@ const mindSystemSlots: MindSystemSlot[] = [
     primary: true,
     enabled: true,
   },
+  {
+    key: 'qi',
+    systemId: 'MIND_QI',
+    label: '器',
+    path: 'MIND_QI',
+    role: 'tools',
+    order: 40,
+    primary: false,
+    enabled: true,
+  },
 ];
 
 const mindSystemFileTree: FileNode[] = [
@@ -54,6 +64,24 @@ const mindSystemFileTree: FileNode[] = [
     children: [
       { type: 'file', name: 'README.md', path: 'MIND_DAO/README.md', extension: '.md' },
       { type: 'file', name: 'INSTRUCTION.md', path: 'MIND_DAO/INSTRUCTION.md', extension: '.md' },
+    ],
+  },
+  {
+    type: 'directory',
+    name: 'MIND_FA',
+    path: 'MIND_FA',
+    isSpace: true,
+    children: [
+      { type: 'file', name: 'INSTRUCTION.md', path: 'MIND_FA/INSTRUCTION.md', extension: '.md' },
+    ],
+  },
+  {
+    type: 'directory',
+    name: 'MIND_QI',
+    path: 'MIND_QI',
+    isSpace: true,
+    children: [
+      { type: 'file', name: 'INSTRUCTION.md', path: 'MIND_QI/INSTRUCTION.md', extension: '.md' },
     ],
   },
   {
@@ -118,6 +146,7 @@ describe('Panel Mind System collapse', () => {
 
     const toggle = getMindSystemToggle(host);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('data-state')).toBe('expanded');
     expect(host.querySelector(`#${SLOT_LIST_ID}`)).not.toBeNull();
 
     await act(async () => {
@@ -125,6 +154,7 @@ describe('Panel Mind System collapse', () => {
     });
 
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('data-state')).toBe('collapsed');
     expect(host.querySelector(`#${SLOT_LIST_ID}`)).toBeNull();
     expect(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY)).toBe('1');
     expect(mockPush).not.toHaveBeenCalled();
@@ -138,6 +168,7 @@ describe('Panel Mind System collapse', () => {
     });
 
     expect(getMindSystemToggle(host).getAttribute('aria-expanded')).toBe('false');
+    expect(getMindSystemToggle(host).getAttribute('data-state')).toBe('collapsed');
     expect(host.querySelector(`#${SLOT_LIST_ID}`)).toBeNull();
   });
 
@@ -148,6 +179,8 @@ describe('Panel Mind System collapse', () => {
 
     expect(host.textContent).toContain('Projects');
     expect(host.textContent).not.toContain('MIND_DAO');
+    expect(host.textContent).not.toContain('MIND_FA');
+    expect(host.textContent).not.toContain('MIND_QI');
   });
 
   it('keeps MIND folders in the ordinary file tree when Mind System slots are hidden', async () => {
@@ -156,6 +189,8 @@ describe('Panel Mind System collapse', () => {
     });
 
     expect(host.textContent).toContain('MIND_DAO');
+    expect(host.textContent).toContain('MIND_FA');
+    expect(host.textContent).toContain('MIND_QI');
     expect(host.textContent).toContain('Projects');
   });
 });

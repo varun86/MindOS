@@ -30,11 +30,21 @@ function getMaxDepth(nodes: FileNode[], current = 0): number {
 
 function filterMindSystemNodes(nodes: FileNode[], slots: MindSystemSlot[]): FileNode[] {
   if (slots.length === 0) return nodes;
-  const hiddenTopLevelPaths = new Set(slots.map(slot => slot.path.replace(/\/+$/, '')));
+  const hiddenTopLevelPaths = new Set(
+    slots
+      .flatMap(slot => [slot.path, slot.systemId])
+      .map(normalizeTopLevelPath)
+      .filter(Boolean),
+  );
   return nodes.filter((node) => {
     if (node.type !== 'directory') return true;
-    return !hiddenTopLevelPaths.has(node.path.replace(/\/+$/, ''));
+    const nodeTopLevel = normalizeTopLevelPath(node.path || node.name);
+    return !nodeTopLevel || !hiddenTopLevelPaths.has(nodeTopLevel);
   });
+}
+
+function normalizeTopLevelPath(value: string): string {
+  return value.replace(/^\/+|\/+$/g, '').split('/')[0] ?? '';
 }
 
 const DEFAULT_PANEL_WIDTH = DEFAULT_LEFT_PANEL_WIDTH;
@@ -518,11 +528,20 @@ function BuiltInMindSpaces({
       <button
         type="button"
         onClick={toggleCollapsed}
+        data-state={collapsed ? 'collapsed' : 'expanded'}
         aria-expanded={!collapsed}
         aria-controls={MIND_SYSTEM_SLOT_LIST_ID}
-        className="mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--amber)]/20 bg-[var(--amber-subtle)] px-2.5 py-2 text-left transition-colors hover:border-[var(--amber)]/35 hover:bg-[var(--amber-dim)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={`mb-1 flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          collapsed
+            ? 'border-border/70 bg-card hover:border-border hover:bg-muted'
+            : 'border-[var(--amber)]/20 bg-[var(--amber-subtle)] hover:border-[var(--amber)]/35 hover:bg-[var(--amber-dim)]'
+        }`}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber)]/10 text-xs font-semibold text-[var(--amber)]">
+        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors ${
+          collapsed
+            ? 'bg-muted text-muted-foreground'
+            : 'bg-[var(--amber)]/10 text-[var(--amber)]'
+        }`}>
           心
         </span>
         <span className="min-w-0 flex-1">

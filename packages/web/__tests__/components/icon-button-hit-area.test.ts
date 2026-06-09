@@ -30,6 +30,8 @@ describe('icon button hit areas', () => {
     const filesPanelSource = readSource('components/Panel.tsx');
     const agentsPanelSource = readSource('components/panels/AgentsPanel.tsx');
 
+    expect(panelHeaderSource).toContain('flex h-[46px] shrink-0 items-center');
+    expect(panelHeaderSource).not.toContain('px-4 py-3 h-[46px]');
     expect(panelHeaderSource).toContain('inline-flex h-8 w-8');
     expect(panelHeaderSource).not.toContain('className="p-1 rounded hover:bg-muted');
 
@@ -38,6 +40,18 @@ describe('icon button hit areas', () => {
 
     expect(agentsPanelSource).toContain('inline-flex h-8 w-8');
     expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
+  });
+
+  it('keeps file tree row controls on stable hit targets', () => {
+    const source = readSource('components/FileTree.tsx');
+
+    expect(source).toContain('type="button"');
+    expect(source).toContain('inline-flex h-7 w-7 shrink-0 items-center justify-center');
+    expect(source).toContain('inline-flex h-7 w-7 items-center justify-center');
+    expect(source).toContain('flex min-h-7 items-center');
+    expect(source).toContain('focus-visible:ring-2 focus-visible:ring-ring touch-manipulation');
+    expect(source).not.toContain('className="shrink-0 p-1 rounded hover:bg-muted');
+    expect(source).not.toContain('className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"');
   });
 
   it('keeps chat hover actions responsive and clickable beyond the icon glyph', () => {

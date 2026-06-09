@@ -1775,7 +1775,9 @@ async function bootApp(): Promise<void> {
         }
         /* Activity Bar (rail) + Side Panel: shift down together so separators align */
         [role="toolbar"][aria-label="Navigation"],
-        [role="toolbar"][aria-label="Navigation"] ~ aside[role="region"] {
+        [role="navigation"][aria-label="Navigation"],
+        [role="toolbar"][aria-label="Navigation"] ~ aside[role="region"],
+        [role="navigation"][aria-label="Navigation"] ~ aside[role="region"] {
           top: var(--electron-mac-titlebar-h) !important;
           height: calc(100vh - var(--electron-mac-titlebar-h)) !important;
         }

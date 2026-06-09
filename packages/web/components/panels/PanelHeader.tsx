@@ -16,12 +16,13 @@ export default function PanelHeader({
   onMaximize?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 h-[46px] border-b border-border shrink-0">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</span>
-      <div className="flex items-center gap-1">
+    <div className="relative z-10 flex h-[46px] shrink-0 items-center justify-between border-b border-border px-4">
+      <span className="relative z-10 text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</span>
+      <div className="relative z-10 flex items-center gap-1">
         {children}
         {onMaximize && (
           <button
+            type="button"
             onClick={onMaximize}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
             aria-label={maximized ? 'Restore panel' : 'Maximize panel'}
