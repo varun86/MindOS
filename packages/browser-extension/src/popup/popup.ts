@@ -5,8 +5,13 @@ import { loadConfig, saveConfig, isConfigured } from '../lib/storage';
 import { testConnection, listDirs, saveToInbox, createFile } from '../lib/api';
 import { toClipDocument } from '../lib/markdown';
 import type { ClipperConfig, PageContent } from '../lib/types';
-
-const INBOX_VALUE = '__inbox__';
+import {
+  formatDirLabel,
+  getBreadcrumbSegments,
+  getChildDirectories,
+  hasChildDirectories,
+  INBOX_VALUE,
+} from './dir-picker';
 
 /* ── DOM refs ── */
 
@@ -68,6 +73,13 @@ function setButtonLoading(btn: HTMLButtonElement, loading: boolean) {
   if (text) text.hidden = loading;
   if (spinner) spinner.hidden = !loading;
   btn.disabled = loading;
+}
+
+function setClipBusy(busy: boolean) {
+  clipTitle.disabled = busy;
+  dirTrigger.disabled = busy;
+  dirConfirm.disabled = busy;
+  btnSettings.disabled = busy;
 }
 
 /* ── Turndown instance ── */
@@ -140,11 +152,14 @@ async function loadClipContext() {
 
   const content = contentResult.status === 'fulfilled' ? contentResult.value : null;
   const dirs = dirsResult.status === 'fulfilled' ? dirsResult.value : [];
+  const dirsErrorMsg = dirsResult.status === 'rejected'
+    ? 'Could not load spaces. Saving to Inbox is still available.'
+    : undefined;
   const errorMsg = contentResult.status === 'rejected'
     ? (contentResult.reason instanceof Error ? contentResult.reason.message : 'Cannot read this page')
     : undefined;
 
-  return { content, dirs, errorMsg };
+  return { content, dirs, errorMsg, dirsErrorMsg };
 }
 
 /* ── Init ── */
@@ -164,22 +179,27 @@ async function init() {
   const context = await loadClipContext();
   extractedContent = context.content;
   allDirs = context.dirs;
-  showClipView(context.errorMsg);
+  showClipView(context.errorMsg, context.dirsErrorMsg);
 }
 
-function showClipView(errorMsg?: string) {
+function showClipView(errorMsg?: string, dirsErrorMsg?: string) {
   showView(viewClip);
 
   const hasContent = !!extractedContent;
+  const displayError = errorMsg ?? dirsErrorMsg;
 
-  if (errorMsg && !hasContent) {
-    showError(clipError, errorMsg);
+  if (displayError && !hasContent) {
+    showError(clipError, displayError);
     btnSave.disabled = true;
-    setClipStatus('Read failed', 'status-chip-neutral');
+    setClipStatus('Read failed', 'status-chip-error');
   } else {
-    hideError(clipError);
+    if (displayError) {
+      showError(clipError, displayError);
+    } else {
+      hideError(clipError);
+    }
     btnSave.disabled = !hasContent;
-    setClipStatus(hasContent ? 'Ready' : 'Read failed', hasContent ? 'status-chip-success' : 'status-chip-neutral');
+    setClipStatus(hasContent ? 'Ready' : 'Read failed', hasContent ? 'status-chip-success' : 'status-chip-error');
   }
 
   if (extractedContent) {
@@ -206,6 +226,7 @@ function showClipView(errorMsg?: string) {
   browsingPath = '';
   updateDirLabel();
   toggleDirPanel(false);
+  setClipBusy(false);
 }
 
 /** Render the hierarchical directory picker at the current browsing level */
@@ -238,13 +259,13 @@ function createSvgIcon(className: string, size: string, pathData?: string, polyl
 
 function renderDirPicker() {
   // Breadcrumb
-  const segments = browsingPath ? browsingPath.split('/') : [];
+  const segments = getBreadcrumbSegments(browsingPath);
   dirBreadcrumb.replaceChildren();
 
   // Root / Inbox button
   const rootBtn = document.createElement('button');
   rootBtn.type = 'button';
-  rootBtn.textContent = '/ Inbox';
+  rootBtn.textContent = 'Inbox';
   rootBtn.className = selectedPath === INBOX_VALUE && !browsingPath ? 'active' : '';
   rootBtn.addEventListener('click', () => {
     browsingPath = '';
@@ -275,19 +296,12 @@ function renderDirPicker() {
   });
 
   // Child directories at current level
-  const prefix = browsingPath ? browsingPath + '/' : '';
-  const children = allDirs
-    .filter(p => {
-      if (!p.startsWith(prefix)) return false;
-      const rest = p.slice(prefix.length);
-      return rest.length > 0 && !rest.includes('/');
-    })
-    .sort();
+  const children = getChildDirectories(allDirs, browsingPath);
 
   dirList.replaceChildren();
   for (const childPath of children) {
     const childName = childPath.split('/').pop() || childPath;
-    const hasChildren = allDirs.some(p => p.startsWith(childPath + '/'));
+    const hasChildren = hasChildDirectories(allDirs, childPath);
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -295,6 +309,7 @@ function renderDirPicker() {
     if (selectedPath === childPath) {
       btn.classList.add('active');
     }
+    btn.setAttribute('aria-label', hasChildren ? `Open ${childPath}` : `Select ${childPath}`);
     btn.appendChild(createSvgIcon('dir-item-icon', '12', 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'));
 
     const name = document.createElement('span');
@@ -307,21 +322,21 @@ function renderDirPicker() {
     }
 
     btn.addEventListener('click', () => {
-      browsingPath = childPath;
       selectedPath = childPath;
       updateDirLabel();
-      renderDirPicker();
+      if (hasChildren) {
+        browsingPath = childPath;
+        renderDirPicker();
+        return;
+      }
+      toggleDirPanel(false);
     });
     dirList.appendChild(btn);
   }
 }
 
 function updateDirLabel() {
-  if (selectedPath === INBOX_VALUE) {
-    dirLabel.textContent = 'Inbox';
-  } else {
-    dirLabel.textContent = selectedPath.split('/').join(' / ');
-  }
+  dirLabel.textContent = formatDirLabel(selectedPath);
 }
 
 function setClipStatus(text: string, className: string) {
@@ -350,30 +365,33 @@ btnConnect.addEventListener('click', async () => {
   hideError(setupError);
   setButtonLoading(btnConnect, true);
 
-  const testConfig: ClipperConfig = {
-    mindosUrl: url,
-    authToken: token,
-  };
+  try {
+    const testConfig: ClipperConfig = {
+      mindosUrl: url,
+      authToken: token,
+    };
 
-  const result = await testConnection(testConfig);
+    const result = await testConnection(testConfig);
+    if (!result.ok) {
+      showError(setupError, result.error || 'Connection failed');
+      return;
+    }
 
-  if (!result.ok) {
+    // Save and proceed
+    config = await saveConfig(testConfig);
+
+    // Now extract content
+    showView(viewLoading);
+
+    const context = await loadClipContext();
+    extractedContent = context.content;
+    allDirs = context.dirs;
+    showClipView(context.errorMsg, context.dirsErrorMsg);
+  } catch {
+    showError(setupError, 'Could not save connection settings');
+  } finally {
     setButtonLoading(btnConnect, false);
-    showError(setupError, result.error || 'Connection failed');
-    return;
   }
-
-  // Save and proceed
-  config = await saveConfig(testConfig);
-  setButtonLoading(btnConnect, false);
-
-  // Now extract content
-  showView(viewLoading);
-
-  const context = await loadClipContext();
-  extractedContent = context.content;
-  allDirs = context.dirs;
-  showClipView(context.errorMsg);
 });
 
 // Save button
@@ -384,32 +402,39 @@ btnSave.addEventListener('click', async () => {
   }
 
   hideError(clipError);
-  setClipStatus('Saving…', 'status-chip-neutral');
+  setClipStatus('Saving…', 'status-chip-loading');
   setButtonLoading(btnSave, true);
+  setClipBusy(true);
 
-  // Override title if user edited
-  const content = { ...extractedContent, title: clipTitle.value.trim() || extractedContent.title };
-  const isInbox = selectedPath === INBOX_VALUE;
+  try {
+    // Override title if user edited
+    const content = { ...extractedContent, title: clipTitle.value.trim() || extractedContent.title };
+    const isInbox = selectedPath === INBOX_VALUE;
 
-  const doc = toClipDocument(content, isInbox ? '' : selectedPath, (html) => turndown.turndown(html));
+    const doc = toClipDocument(content, isInbox ? '' : selectedPath, (html) => turndown.turndown(html));
 
-  // Route to Inbox API or File API based on user choice
-  const result = isInbox
-    ? await saveToInbox(config, doc.fileName, doc.markdown)
-    : await createFile(config, selectedPath, doc.fileName, doc.markdown);
+    // Route to Inbox API or File API based on user choice
+    const result = isInbox
+      ? await saveToInbox(config, doc.fileName, doc.markdown)
+      : await createFile(config, selectedPath, doc.fileName, doc.markdown);
 
-  setButtonLoading(btnSave, false);
+    if (result.error) {
+      showError(clipError, result.error);
+      setClipStatus('Save failed', 'status-chip-error');
+      return;
+    }
 
-  if (result.error) {
-    showError(clipError, result.error);
-    setClipStatus('Save failed', 'status-chip-neutral');
-    return;
+    // Success!
+    const displayPath = isInbox ? `Inbox/${doc.fileName}` : `${selectedPath}/${doc.fileName}`;
+    successDetail.textContent = displayPath;
+    showView(viewSuccess);
+  } catch {
+    showError(clipError, 'Save failed unexpectedly');
+    setClipStatus('Save failed', 'status-chip-error');
+  } finally {
+    setButtonLoading(btnSave, false);
+    setClipBusy(false);
   }
-
-  // Success!
-  const displayPath = isInbox ? `Inbox/${doc.fileName}` : `${selectedPath}/${doc.fileName}`;
-  successDetail.textContent = displayPath;
-  showView(viewSuccess);
 });
 
 // Settings button — go back to setup
@@ -434,7 +459,11 @@ btnClipAnother.addEventListener('click', () => {
 dirTrigger.addEventListener('click', () => toggleDirPanel());
 
 // DirPicker — confirm selection
-dirConfirm.addEventListener('click', () => toggleDirPanel(false));
+dirConfirm.addEventListener('click', () => {
+  selectedPath = browsingPath || INBOX_VALUE;
+  updateDirLabel();
+  toggleDirPanel(false);
+});
 
 // DirPicker — Esc to close panel
 document.addEventListener('keydown', (e) => {

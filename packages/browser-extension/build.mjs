@@ -1,8 +1,11 @@
 import { build, context } from 'esbuild';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { cpSync, mkdirSync, rmSync } from 'fs';
 
 const isWatch = process.argv.includes('--watch');
 const OUT = 'extension';
+const ROOT = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('esbuild').BuildOptions} */
 const shared = {
@@ -13,27 +16,27 @@ const shared = {
 };
 
 async function run() {
-  rmSync(OUT, { recursive: true, force: true });
-  mkdirSync(`${OUT}/popup`, { recursive: true });
-  mkdirSync(`${OUT}/background`, { recursive: true });
-  mkdirSync(`${OUT}/content`, { recursive: true });
-  mkdirSync(`${OUT}/icons`, { recursive: true });
+  rmSync(resolve(ROOT, OUT), { recursive: true, force: true });
+  mkdirSync(resolve(ROOT, OUT, 'popup'), { recursive: true });
+  mkdirSync(resolve(ROOT, OUT, 'background'), { recursive: true });
+  mkdirSync(resolve(ROOT, OUT, 'content'), { recursive: true });
+  mkdirSync(resolve(ROOT, OUT, 'icons'), { recursive: true });
 
   // Copy static assets
-  cpSync('src/manifest.json', `${OUT}/manifest.json`);
-  cpSync('src/popup/popup.html', `${OUT}/popup/popup.html`);
-  cpSync('src/popup/popup.css', `${OUT}/popup/popup.css`);
-  cpSync('src/icons', `${OUT}/icons`, { recursive: true });
+  cpSync(resolve(ROOT, 'src/manifest.json'), resolve(ROOT, OUT, 'manifest.json'));
+  cpSync(resolve(ROOT, 'src/popup/popup.html'), resolve(ROOT, OUT, 'popup/popup.html'));
+  cpSync(resolve(ROOT, 'src/popup/popup.css'), resolve(ROOT, OUT, 'popup/popup.css'));
+  cpSync(resolve(ROOT, 'src/icons'), resolve(ROOT, OUT, 'icons'), { recursive: true });
 
   // ESM entries (popup + service worker)
   const esmOptions = {
     ...shared,
     format: 'esm',
     entryPoints: [
-      { in: 'src/popup/popup.ts', out: 'popup/popup' },
-      { in: 'src/background/service-worker.ts', out: 'background/service-worker' },
+      { in: resolve(ROOT, 'src/popup/popup.ts'), out: 'popup/popup' },
+      { in: resolve(ROOT, 'src/background/service-worker.ts'), out: 'background/service-worker' },
     ],
-    outdir: OUT,
+    outdir: resolve(ROOT, OUT),
   };
 
   // Content script must be IIFE — executeScript needs it to return
@@ -41,8 +44,8 @@ async function run() {
   const contentOptions = {
     ...shared,
     format: 'iife',
-    entryPoints: ['src/content/extractor.ts'],
-    outfile: `${OUT}/content/extractor.js`,
+    entryPoints: [resolve(ROOT, 'src/content/extractor.ts')],
+    outfile: resolve(ROOT, OUT, 'content/extractor.js'),
   };
 
   if (isWatch) {
