@@ -56,7 +56,7 @@ import type { SearchPrewarmResponse } from './types';
 import { effectiveMindRoot } from './mind-root';
 import { extractPdfText } from './core/pdf-text';
 import { telemetry } from './telemetry';
-import { ensureMindSystemConfig } from './mind-system';
+import { ensureDefaultMindSystemUpgrade } from './mind-system-upgrade';
 
 // ─── Root helpers ─────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ function removeSearchIndexFileLazy(filePath: string): void {
 
 function buildCache(root: string): FileTreeCache {
   const stop = telemetry.startTimer('tree.cache.build');
-  ensureMindSystemConfig(root);
+  ensureDefaultMindSystemUpgrade(root);
   const tree = buildFileTree(root);
   const allFiles: string[] = [];
   let directoryCount = 0;

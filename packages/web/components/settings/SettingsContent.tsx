@@ -46,12 +46,25 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   const { t, locale, setLocale } = useLocale();
   const router = useRouter();
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataLoaded = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const loadRequestId = useRef(0);
   const saveInFlight = useRef(false);
   const saveAgain = useRef(false);
   const latestData = useRef<SettingsData | null>(null);
+
+  const showTransientStatus = useCallback((next: 'saved' | 'error') => {
+    if (statusTimer.current) {
+      clearTimeout(statusTimer.current);
+      statusTimer.current = null;
+    }
+    setStatus(next);
+    statusTimer.current = setTimeout(() => {
+      statusTimer.current = null;
+      setStatus('idle');
+    }, 2500);
+  }, []);
 
   const [font, setFont] = useState('inter');
   const [fontSize, setFontSize] = useState('15px');
@@ -184,12 +197,14 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildSettingsSaveBody(savingPayload)),
         });
-        setStatus('saved');
-        window.dispatchEvent(new Event('mindos:settings-changed'));
-        setTimeout(() => setStatus('idle'), 2500);
+        if (!saveAgain.current) {
+          showTransientStatus('saved');
+          window.dispatchEvent(new Event('mindos:settings-changed'));
+        }
       } catch {
-        setStatus('error');
-        setTimeout(() => setStatus('idle'), 2500);
+        if (!saveAgain.current) {
+          showTransientStatus('error');
+        }
       }
 
       nextPayload = saveAgain.current ? latestData.current : null;
@@ -229,6 +244,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   // Flush unsaved changes on unmount (modal variant: SettingsModal returns null when !open)
   useEffect(() => {
     return () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
       if (pendingData.current) {
         clearTimeout(saveTimer.current);
         const d = pendingData.current;

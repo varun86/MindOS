@@ -469,6 +469,7 @@ export function createMindosUploadedFileParts(
 
 export type MindosExternalRuntimePromptInput = {
   prompt: string;
+  mode?: 'chat' | 'agent' | 'organize';
   fileContext?: MindosAskFileContext;
   uploadedParts?: string[];
   recalledKnowledge?: Array<{ path: string; content: string }>;
@@ -477,6 +478,14 @@ export type MindosExternalRuntimePromptInput = {
 export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePromptInput): string {
   const prompt = input.prompt.trim();
   const contextSections: string[] = [];
+  const modeGuidance = getExternalRuntimeModeGuidance(input.mode);
+
+  if (modeGuidance) {
+    contextSections.push([
+      '## MindOS Runtime Mode',
+      modeGuidance,
+    ].join('\n'));
+  }
 
   if (input.fileContext?.contextParts.length) {
     contextSections.push([
@@ -522,6 +531,19 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
     '## MindOS Turn Context',
     ...contextSections,
   ].filter(Boolean).join('\n\n');
+}
+
+function getExternalRuntimeModeGuidance(mode: MindosExternalRuntimePromptInput['mode']): string | null {
+  if (mode === 'chat') {
+    return 'MindOS composer mode: chat. Treat this as read-oriented unless the user explicitly asks you to modify files.';
+  }
+  if (mode === 'organize') {
+    return 'MindOS composer mode: organize. Prioritize classification, cleanup, and knowledge organization tasks.';
+  }
+  if (mode === 'agent') {
+    return 'MindOS composer mode: agent. The user expects you to complete the requested task using your local runtime capabilities.';
+  }
+  return null;
 }
 
 export function safeParseMindosJsonObject(raw: string | undefined): Record<string, unknown> {

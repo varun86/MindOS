@@ -28,6 +28,7 @@ import * as syncCmd from '../bin/commands/sync-cmd.js';
 import * as gatewayCmd from '../bin/commands/gateway.js';
 import * as onboardCmd from '../bin/commands/onboard.js';
 import * as configCmd from '../bin/commands/config.js';
+import * as authCmd from '../bin/commands/auth.js';
 import * as doctorCmd from '../bin/commands/doctor.js';
 import * as updateCmd from '../bin/commands/update.js';
 import * as uninstallCmd from '../bin/commands/uninstall.js';
@@ -56,6 +57,7 @@ const commandModules = [
   gatewayCmd,
   onboardCmd,
   configCmd,
+  authCmd,
   channelCmd,
   feishuWsCmd,
   doctorCmd,
@@ -80,6 +82,7 @@ const moduleByDisplayName = {
   mcp: mcpCmd,
   init: onboardCmd,
   config: configCmd,
+  auth: authCmd,
   channel: channelCmd,
   'feishu-ws': feishuWsCmd,
   doctor: doctorCmd,

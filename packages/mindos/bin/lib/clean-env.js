@@ -17,6 +17,7 @@ const STRIP_PREFIXES = ['MINDOS_', 'MIND_'];
 const STRIP_EXACT = [
   'AUTH_TOKEN',
   'WEB_PASSWORD',
+  'WEB_SESSION_SECRET',
   'NODE_OPTIONS', // may contain --inspect or old module paths
 ];
 

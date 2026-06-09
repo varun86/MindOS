@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLoginRedirectTarget,
   resolveLoginMode,
+  resolveWebSessionSecret,
   sanitizeLoginRedirect,
   WEB_SESSION_COOKIE_NAME,
   WEB_SESSION_MAX_AGE_SECONDS,
@@ -32,5 +33,10 @@ describe('auth-session helpers', () => {
     expect(resolveLoginMode('expired', false)).toBe('reauth');
     expect(resolveLoginMode(null, true)).toBe('reauth');
     expect(resolveLoginMode(null, false)).toBe('login');
+  });
+
+  it('prefers a stable Web session secret over the Web UI password', () => {
+    expect(resolveWebSessionSecret('password-secret', 'session-secret')).toBe('session-secret');
+    expect(resolveWebSessionSecret('password-secret', '')).toBe('password-secret');
   });
 });

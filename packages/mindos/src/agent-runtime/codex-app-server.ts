@@ -174,7 +174,7 @@ export function createCodexAppServerClient(
       await request('turn/start', params, input.signal);
       for await (const notification of notifications) {
         yield notification;
-        if (notification.method === 'turn/completed' || notification.method === 'turn/failed') break;
+        if (isCodexTerminalTurnNotification(notification)) break;
       }
     },
     async interruptTurn(input) {
@@ -201,15 +201,37 @@ export function createCodexAppServerStdioTransport(options: {
     env: { ...process.env, ...(options.env ?? {}) },
   });
   const lines = createInterface({ input: child.stdout });
+  let stderr = '';
+  let spawnError: Error | null = null;
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  child.once('error', (error) => {
+    spawnError = error;
+  });
+  const childClose = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    child.once('close', (code, signal) => resolve({ code, signal }));
+  });
 
   return {
     send(message) {
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
     async *read() {
-      for await (const line of lines) {
-        if (typeof line !== 'string' || !line.trim()) continue;
-        yield JSON.parse(line) as CodexAppServerMessage;
+      try {
+        for await (const line of lines) {
+          if (typeof line !== 'string' || !line.trim()) continue;
+          yield JSON.parse(line) as CodexAppServerMessage;
+        }
+        const result = await childClose;
+        if (spawnError) throw spawnError;
+        if (result.code && result.code !== 0) {
+          throw new Error(stderr.trim() || `Codex app-server exited with code ${result.code}`);
+        }
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message) throw err;
+        throw new Error(stderr.trim() || 'Codex app-server stopped unexpectedly');
       }
     },
     close() {
@@ -221,7 +243,7 @@ export function createCodexAppServerStdioTransport(options: {
 
 export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppServerNotification): MindOSSSEvent[] {
   if (notification.method === 'error') {
-    return [{ type: 'error', message: getCodexNotificationErrorMessage(notification.params) ?? 'Codex app-server error' }];
+    return [{ type: 'error', message: getCodexErrorMessage(notification.params, 'Codex app-server error') }];
   }
 
   if (notification.method === 'item/agentMessage/delta') {
@@ -246,20 +268,15 @@ export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppS
   }
 
   if (notification.method === 'turn/completed') {
-    const turn = asRecord(notification.params?.turn);
-    const status = getStringParam(notification.params, 'status')
-      ?? (typeof turn?.status === 'string' ? turn.status : undefined);
-    if (status && status !== 'completed') {
-      return [{
-        type: 'error',
-        message: getCodexNotificationErrorMessage(notification.params) ?? `Codex turn ${status}`,
-      }];
+    const status = getCodexTurnStatus(notification.params);
+    if (status && status !== 'completed' && status !== 'success') {
+      return [{ type: 'error', message: getCodexErrorMessage(notification.params, `Codex turn ${status}`) }];
     }
     return [{ type: 'done' }];
   }
 
   if (notification.method === 'turn/failed') {
-    return [{ type: 'error', message: getCodexNotificationErrorMessage(notification.params) ?? 'Codex turn failed' }];
+    return [{ type: 'error', message: getCodexErrorMessage(notification.params, 'Codex turn failed') }];
   }
 
   return [];
@@ -290,24 +307,16 @@ function isCodexNotification(message: CodexAppServerMessage): message is CodexAp
   return typeof (message as CodexAppServerNotification).method === 'string';
 }
 
+function isCodexTerminalTurnNotification(notification: CodexAppServerNotification): boolean {
+  return (
+    notification.method === 'error'
+    || notification.method === 'turn/completed'
+    || notification.method === 'turn/failed'
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
-}
-
-function getNestedString(value: unknown, keys: string[]): string | undefined {
-  let current: unknown = value;
-  for (const key of keys) {
-    const record = asRecord(current);
-    if (!record) return undefined;
-    current = record[key];
-  }
-  return typeof current === 'string' && current.trim() ? current : undefined;
-}
-
-function getCodexNotificationErrorMessage(params: Record<string, unknown> | undefined): string | undefined {
-  return getStringParam(params, 'message')
-    ?? getNestedString(params, ['error', 'message'])
-    ?? getNestedString(params, ['turn', 'error', 'message']);
 }
 
 function getThreadId(result: unknown, method: string): string {
@@ -323,4 +332,36 @@ function getThreadId(result: unknown, method: string): string {
 function getStringParam(params: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = params?.[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+function getCodexTurnStatus(params: Record<string, unknown> | undefined): string | undefined {
+  const direct = getStringParam(params, 'status');
+  if (direct) return direct;
+  const turn = asRecord(params?.turn);
+  const nested = turn?.status;
+  return typeof nested === 'string' ? nested : undefined;
+}
+
+function getCodexErrorMessage(params: Record<string, unknown> | undefined, fallback: string): string {
+  const direct = getStringParam(params, 'message') ?? getStringParam(params, 'errorMessage');
+  if (direct) return direct;
+
+  const error = asRecord(params?.error);
+  const errorMessage = getStringField(error, 'message') ?? getStringField(error, 'detail');
+  if (errorMessage) return errorMessage;
+
+  const turn = asRecord(params?.turn);
+  const turnError = asRecord(turn?.error);
+  const turnMessage = getStringField(turnError, 'message')
+    ?? getStringField(turnError, 'detail')
+    ?? getStringField(turn, 'message');
+  if (turnMessage) return turnMessage;
+
+  const status = getCodexTurnStatus(params);
+  return status ? `${fallback}: ${status}` : fallback;
+}
+
+function getStringField(record: Record<string, unknown> | null, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' && value ? value : undefined;
 }

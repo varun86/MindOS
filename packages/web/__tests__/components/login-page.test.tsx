@@ -44,8 +44,9 @@ describe('LoginPage', () => {
     expect(host.textContent).toContain('Re-enter your password');
     expect(host.textContent).toContain('Your browser session expired');
     expect(host.textContent).toContain('Returning to /agents?tab=mcp');
-    expect(host.textContent).toContain('mindos config set webPassword');
+    expect(host.textContent).toContain('mindos auth reset-web-password');
     expect(host.textContent).toContain('mindos config unset webPassword');
+    expect(host.textContent).toContain('Existing signed-in browser sessions are kept');
   });
 
   it('uses re-auth copy when this browser has authenticated before even without an expired cookie reason', async () => {

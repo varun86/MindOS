@@ -1,12 +1,25 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { randomBytes } from 'crypto';
 import { parseAcpAgentOverrides } from './acp/agent-descriptors';
 import { type ProviderId, PROVIDER_PRESETS, isProviderId, getApiKeyFromEnv } from './agent/providers';
 import { type Provider, parseProviders, findProvider, migrateProviders, isProviderEntryId } from './custom-endpoints';
 import { effectiveMindRoot } from './mind-root';
 
 const SETTINGS_PATH = path.join(os.homedir(), '.mindos', 'config.json');
+
+function createWebSessionSecret(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function ensureWebSessionSecret(config: Record<string, unknown>, legacySessionSecret?: unknown): void {
+  if (typeof config.webPassword !== 'string' || !config.webPassword) return;
+  if (typeof config.webSessionSecret === 'string' && config.webSessionSecret.trim()) return;
+  config.webSessionSecret = typeof legacySessionSecret === 'string' && legacySessionSecret
+    ? legacySessionSecret
+    : createWebSessionSecret();
+}
 
 export interface AiConfig {
   activeProvider: string;    // provider entry ID (p_*)
@@ -339,6 +352,7 @@ export function writeSettings(settings: ServerSettings): void {
     if (settings.setupPort) merged.setupPort = settings.setupPort;
     else delete merged.setupPort;
   }
+  ensureWebSessionSecret(merged, existing.webPassword);
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
 }
 

@@ -19,10 +19,13 @@ function parseCookieValue(setCookie: string, name: string): string {
 
 describe('POST /api/auth', () => {
   const originalWebPassword = process.env.WEB_PASSWORD;
+  const originalWebSessionSecret = process.env.WEB_SESSION_SECRET;
 
   afterEach(() => {
     if (originalWebPassword === undefined) delete process.env.WEB_PASSWORD;
     else process.env.WEB_PASSWORD = originalWebPassword;
+    if (originalWebSessionSecret === undefined) delete process.env.WEB_SESSION_SECRET;
+    else process.env.WEB_SESSION_SECRET = originalWebSessionSecret;
   });
 
   it('rejects requests when WEB_PASSWORD is not configured', async () => {
@@ -62,16 +65,18 @@ describe('POST /api/auth', () => {
 
   it('sets a signed HttpOnly Web session cookie for the correct password', async () => {
     process.env.WEB_PASSWORD = 'secret';
+    process.env.WEB_SESSION_SECRET = 'stable-session-secret';
     const { POST } = await import('@/app/api/auth/route');
 
     const res = await POST(makeAuthRequest({ password: 'secret' }));
     const setCookie = res.headers.get('set-cookie') ?? '';
     const token = parseCookieValue(setCookie, 'mindos-session');
-    const payload = await verifyJwt(token, 'secret');
+    const payload = await verifyJwt(token, 'stable-session-secret');
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(payload?.sub).toBe('user');
+    expect(await verifyJwt(token, 'secret')).toBeNull();
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Lax');
     expect(setCookie).toContain('Max-Age=604800');

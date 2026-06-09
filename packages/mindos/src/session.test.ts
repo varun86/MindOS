@@ -290,6 +290,7 @@ describe('MindOS session event contract', () => {
   it('builds external runtime prompts with explicit MindOS turn context', () => {
     const prompt = buildMindosExternalRuntimePrompt({
       prompt: 'Summarize the attached plan.',
+      mode: 'chat',
       fileContext: {
         contextParts: ['## Attached: Plan.md\n\nAlpha plan'],
         failedFiles: ['Missing.md'],
@@ -300,6 +301,8 @@ describe('MindOS session event contract', () => {
 
     expect(prompt).toContain('Summarize the attached plan.');
     expect(prompt).toContain('## MindOS Turn Context');
+    expect(prompt).toContain('MindOS composer mode: chat');
+    expect(prompt).toContain('Treat this as read-oriented unless the user explicitly asks you to modify files.');
     expect(prompt).toContain('## Attached MindOS Context');
     expect(prompt).toContain('## Attached: Plan.md');
     expect(prompt).toContain('## Uploaded Files');

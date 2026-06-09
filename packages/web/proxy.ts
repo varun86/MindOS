@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJwt } from '@/lib/jwt';
-import { buildLoginRedirectTarget, WEB_SESSION_COOKIE_NAME } from '@/lib/auth-session';
+import { buildLoginRedirectTarget, resolveWebSessionSecret, WEB_SESSION_COOKIE_NAME } from '@/lib/auth-session';
 
 /** CORS headers for /api/* routes (React Native mobile app + cross-origin agents). */
 function corsHeaders(): Record<string, string> {
@@ -23,6 +23,9 @@ function withCors(res: NextResponse): NextResponse {
 export async function proxy(req: NextRequest) {
   const authToken = process.env.AUTH_TOKEN;     // API bearer token (for Agents / MCP)
   const webPassword = process.env.WEB_PASSWORD; // Web UI login password (for browser users)
+  const webSessionSecret = webPassword
+    ? resolveWebSessionSecret(webPassword, process.env.WEB_SESSION_SECRET)
+    : '';
   const pathname = req.nextUrl.pathname;
 
   function next(): NextResponse {
@@ -51,7 +54,7 @@ export async function proxy(req: NextRequest) {
     // Exempt authenticated web UI sessions (valid JWT cookie = logged-in browser user)
     if (webPassword) {
       const token = req.cookies.get(WEB_SESSION_COOKIE_NAME)?.value ?? '';
-      if (token && await verifyJwt(token, webPassword)) return withCors(NextResponse.next());
+      if (token && await verifyJwt(token, webSessionSecret)) return withCors(NextResponse.next());
     }
 
     // External / cross-origin requests must provide a bearer token
@@ -71,7 +74,7 @@ export async function proxy(req: NextRequest) {
 
   // Verify JWT session cookie
   const token = req.cookies.get(WEB_SESSION_COOKIE_NAME)?.value ?? '';
-  const session = token ? await verifyJwt(token, webPassword) : null;
+  const session = token ? await verifyJwt(token, webSessionSecret) : null;
   if (session) return next();
 
   // Not authenticated: redirect to /login

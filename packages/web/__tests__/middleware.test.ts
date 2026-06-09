@@ -86,10 +86,13 @@ describe('middleware — CORS headers on /api/* routes', () => {
 
 describe('middleware — Web UI protection (WEB_PASSWORD)', () => {
   const original = process.env.WEB_PASSWORD;
+  const originalSessionSecret = process.env.WEB_SESSION_SECRET;
 
   afterEach(() => {
     if (original === undefined) delete process.env.WEB_PASSWORD;
     else process.env.WEB_PASSWORD = original;
+    if (originalSessionSecret === undefined) delete process.env.WEB_SESSION_SECRET;
+    else process.env.WEB_SESSION_SECRET = originalSessionSecret;
   });
 
   it('allows all requests when WEB_PASSWORD is not set', async () => {
@@ -140,6 +143,21 @@ describe('middleware — Web UI protection (WEB_PASSWORD)', () => {
 
     expect(location.searchParams.get('reason')).toBe('expired');
     expect(location.searchParams.get('redirect')).toBe('/wiki');
+  });
+
+  it('keeps existing sessions valid when the Web UI password changes', async () => {
+    process.env.WEB_PASSWORD = 'new-password';
+    process.env.WEB_SESSION_SECRET = 'stable-session-secret';
+    const token = await signJwt({
+      sub: 'user',
+      exp: Math.floor(Date.now() / 1000) + 60,
+    }, 'stable-session-secret');
+
+    const res = await middleware(makePageRequest('/wiki', {
+      cookie: `mindos-session=${token}`,
+    }));
+
+    expect(res.status).toBe(200);
   });
 
   it('allows /login page without cookie', async () => {

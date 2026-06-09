@@ -446,7 +446,9 @@ Step 8: Review   →  总览确认 → 完成
 
 - `redirect` 只接受同源相对路径，并保留 query string。
 - `reason=expired` 或浏览器曾成功登录过时，文案使用“重新输入密码 / 会话已锁定”语境。
-- “忘记密码”不做云端找回；说明这是本地 `webPassword`，只能在运行 MindOS 的机器上通过 CLI / 配置重置。
+- “忘记密码”不做云端找回；说明这是本地 `webPassword`，只能在运行 MindOS 的机器上通过 `mindos auth reset-web-password` 重置。
+- 重置 `webPassword` 不应踢掉已有浏览器会话；session JWT 使用独立的 `webSessionSecret` 签名，密码只用于新登录校验。
+- 兼容旧 cookie：老配置首次补 `webSessionSecret` 时使用当前 `webPassword` 作为 legacy secret，避免升级或重置时让既有会话失效。
 
 ```
 ┌──────────────────────────────────────────────┐

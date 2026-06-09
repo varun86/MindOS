@@ -212,6 +212,36 @@ describe('agent runtime adapters', () => {
     );
   });
 
+  it('maps Codex app-server error notifications into visible stream errors', () => {
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'error',
+      params: { message: 'STAFF_KEY is not configured' },
+    })).toEqual([{ type: 'error', message: 'STAFF_KEY is not configured' }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'error',
+      params: {
+        error: {
+          code: 'auth_missing',
+          message: 'Sign in to Codex',
+        },
+      },
+    })).toEqual([{ type: 'error', message: 'Sign in to Codex' }]);
+  });
+
+  it('does not treat failed Codex turn/completed notifications as done', () => {
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'turn/completed',
+      params: {
+        turn: {
+          id: 'turn-1',
+          status: 'failed',
+          error: { message: 'model unavailable' },
+        },
+      },
+    })).toEqual([{ type: 'error', message: 'model unavailable' }]);
+  });
+
   it('ends a Codex turn stream after turn/failed', async () => {
     const queue = new AsyncQueue<CodexAppServerMessage>();
     const sent: unknown[] = [];
@@ -252,6 +282,48 @@ describe('agent runtime adapters', () => {
 
     expect(notifications).toEqual([
       { method: 'turn/failed', params: { message: 'model unavailable' } },
+    ]);
+  });
+
+  it('ends a Codex turn stream after app-server error notifications', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const transport: CodexAppServerTransport = {
+      send(message) {
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+        if (record.method === 'turn/start') {
+          queue.push({ id: record.id!, result: { turn: { id: 'turn-1' } } });
+          queue.push({ method: 'error', params: { message: 'STAFF_KEY is not configured' } });
+          queue.push({ method: 'turn/completed', params: { turn: { id: 'turn-1', status: 'failed' } } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    const client = createCodexAppServerClient(transport);
+    await client.initialize();
+    const thread = await client.startThread({ cwd: '/tmp/mind' });
+    const notifications = [];
+    for await (const notification of client.startTurn({
+      threadId: thread.threadId,
+      cwd: '/tmp/mind',
+      input: [{ type: 'text', text: 'Summarize this repo.' }],
+    })) {
+      notifications.push(notification);
+    }
+
+    expect(notifications).toEqual([
+      { method: 'error', params: { message: 'STAFF_KEY is not configured' } },
     ]);
   });
 

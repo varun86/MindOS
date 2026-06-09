@@ -183,7 +183,7 @@ function LoginForm() {
               <p>{loginT?.forgotIntro ?? 'MindOS cannot recover this local Web password.'}</p>
               <p>{loginT?.forgotReset ?? 'On the machine running MindOS, reset it with:'}</p>
               <code className="block overflow-x-auto rounded-md border border-border bg-muted/60 px-2.5 py-2 font-mono text-[11px] text-foreground">
-                mindos config set webPassword &lt;new-password&gt;
+                mindos auth reset-web-password
               </code>
               <p>{loginT?.forgotDisable ?? 'To temporarily remove the login gate, use:'}</p>
               <code className="block overflow-x-auto rounded-md border border-border bg-muted/60 px-2.5 py-2 font-mono text-[11px] text-foreground">

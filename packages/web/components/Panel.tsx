@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect, useCallback, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
 import type { PanelId } from '@/lib/navigation-panel';
 import type { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
@@ -28,10 +28,21 @@ function getMaxDepth(nodes: FileNode[], current = 0): number {
   return max;
 }
 
+function filterMindSystemNodes(nodes: FileNode[], slots: MindSystemSlot[]): FileNode[] {
+  if (slots.length === 0) return nodes;
+  const hiddenTopLevelPaths = new Set(slots.map(slot => slot.path.replace(/\/+$/, '')));
+  return nodes.filter((node) => {
+    if (node.type !== 'directory') return true;
+    return !hiddenTopLevelPaths.has(node.path.replace(/\/+$/, ''));
+  });
+}
+
 const DEFAULT_PANEL_WIDTH = DEFAULT_LEFT_PANEL_WIDTH;
 const MIN_PANEL_WIDTH = LEFT_PANEL.MIN;
 const MAX_PANEL_WIDTH_RATIO = LEFT_PANEL.MAX_RATIO;
 const MAX_PANEL_WIDTH_ABS = LEFT_PANEL.MAX_ABS;
+const MIND_SYSTEM_COLLAPSED_KEY = 'mindos.sidebar.mindSystemCollapsed';
+const MIND_SYSTEM_SLOT_LIST_ID = 'mind-system-sidebar-slots';
 
 interface PanelProps {
   activePanel: PanelId | null;
@@ -84,9 +95,13 @@ export default function Panel({
 
   // File tree depth control: null = manual (no override), number = forced max open depth
   const [maxOpenDepth, setMaxOpenDepth] = useState<number | null>(null);
+  const ordinaryFileTree = useMemo(
+    () => filterMindSystemNodes(fileTree, mindSystemSlots),
+    [fileTree, mindSystemSlots],
+  );
   const treeMaxDepth = useMemo(
-    () => (activePanel === 'files' ? getMaxDepth(fileTree) : 0),
-    [activePanel, fileTree],
+    () => (activePanel === 'files' ? getMaxDepth(ordinaryFileTree) : 0),
+    [activePanel, ordinaryFileTree],
   );
 
   // "New" dropdown popover
@@ -409,7 +424,7 @@ export default function Panel({
             slots={mindSystemSlots}
             onOpen={(path) => router.push(`/view/${encodePath(path)}`)}
           />
-          <FileTree nodes={fileTree} onNavigate={onNavigate} maxOpenDepth={maxOpenDepth} onImport={onImport} />
+          <FileTree nodes={ordinaryFileTree} onNavigate={onNavigate} maxOpenDepth={maxOpenDepth} onImport={onImport} />
         </div>
         {/* Inbox quick entry — always visible above sync bar */}
         <button
@@ -474,7 +489,25 @@ function BuiltInMindSpaces({
   onOpen: (path: string) => void;
 }) {
   const { t } = useLocale();
+  const [collapsed, setCollapsed] = useState(false);
   const visibleSlots = slots.length > 0 ? slots : [];
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY) === '1');
+    } catch { /* localStorage unavailable */ }
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(MIND_SYSTEM_COLLAPSED_KEY, next ? '1' : '0');
+      } catch { /* localStorage unavailable */ }
+      return next;
+    });
+  }, []);
+
   if (visibleSlots.length === 0) return null;
 
   return (
@@ -484,7 +517,9 @@ function BuiltInMindSpaces({
       </div>
       <button
         type="button"
-        onClick={() => onOpen(visibleSlots[0].path)}
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        aria-controls={MIND_SYSTEM_SLOT_LIST_ID}
         className="mb-1 flex w-full items-center gap-2 rounded-lg border border-[var(--amber)]/20 bg-[var(--amber-subtle)] px-2.5 py-2 text-left transition-colors hover:border-[var(--amber)]/35 hover:bg-[var(--amber-dim)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber)]/10 text-xs font-semibold text-[var(--amber)]">
@@ -494,25 +529,32 @@ function BuiltInMindSpaces({
           <span className="block truncate text-xs font-semibold text-foreground">{rootLabel}</span>
           <span className="block truncate text-2xs text-muted-foreground/70">{description}</span>
         </span>
+        <ChevronDown
+          size={13}
+          className={`shrink-0 text-muted-foreground/60 transition-transform duration-150 ${collapsed ? '-rotate-90' : ''}`}
+          aria-hidden="true"
+        />
       </button>
-      <div className="space-y-0.5">
-        {visibleSlots.map((item) => {
-          const copy = t.home.mindPillars[item.key];
-          return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => onOpen(item.path)}
-            className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-background/40 text-[11px] font-semibold text-[var(--amber)]">
-              {item.label}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>
-            <span className="max-w-[70px] truncate text-2xs text-muted-foreground/45 group-hover:text-muted-foreground/70">{item.path}</span>
-          </button>
-        );})}
-      </div>
+      {!collapsed && (
+        <div id={MIND_SYSTEM_SLOT_LIST_ID} className="space-y-0.5">
+          {visibleSlots.map((item) => {
+            const copy = t.home.mindPillars[item.key];
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onOpen(item.path)}
+                className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-background/40 text-[11px] font-semibold text-[var(--amber)]">
+                  {item.label}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

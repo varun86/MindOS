@@ -86,6 +86,8 @@ export const run = (args, flags) => {
       display.authToken = maskKey(display.authToken);
     if (display.webPassword)
       display.webPassword = maskKey(display.webPassword);
+    if (display.webSessionSecret)
+      display.webSessionSecret = maskKey(display.webSessionSecret);
 
     if (flags.json) {
       console.log(JSON.stringify(display, null, 2));

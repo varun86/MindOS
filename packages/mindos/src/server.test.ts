@@ -2960,6 +2960,7 @@ describe('MindOS product server contract', () => {
       MIND_ROOT: '/old/mind',
       AUTH_TOKEN: 'secret-token',
       WEB_PASSWORD: 'secret-password',
+      WEB_SESSION_SECRET: 'secret-session',
       NODE_OPTIONS: '--inspect',
     };
     const scheduledExit: number[] = [];
@@ -2986,6 +2987,7 @@ describe('MindOS product server contract', () => {
     expect((spawned[0].options.env as Record<string, string | undefined>).MINDOS_WEB_PORT).toBeUndefined();
     expect((spawned[0].options.env as Record<string, string | undefined>).MIND_ROOT).toBeUndefined();
     expect((spawned[0].options.env as Record<string, string | undefined>).AUTH_TOKEN).toBeUndefined();
+    expect((spawned[0].options.env as Record<string, string | undefined>).WEB_SESSION_SECRET).toBeUndefined();
     expect((spawned[0].options.env as Record<string, string | undefined>).NODE_OPTIONS).toBeUndefined();
     expect(scheduledExit).toEqual([1500]);
 
@@ -3004,6 +3006,7 @@ describe('MindOS product server contract', () => {
     expect((spawned[1].options.env as Record<string, string | undefined>).MINDOS_OLD_WEB_PORT).toBeUndefined();
     expect((spawned[1].options.env as Record<string, string | undefined>).MINDOS_PROJECT_ROOT).toBeUndefined();
     expect((spawned[1].options.env as Record<string, string | undefined>).WEB_PASSWORD).toBeUndefined();
+    expect((spawned[1].options.env as Record<string, string | undefined>).WEB_SESSION_SECRET).toBeUndefined();
     expect(scheduledExit).toEqual([1500]);
   });
 
@@ -3025,7 +3028,7 @@ describe('MindOS product server contract', () => {
     const response = handleUninstallPost({ removeConfig: false }, {
       cliPath: '/opt/mindos/bin/cli.js',
       nodeBin: '/usr/local/bin/node',
-      env: { PATH: '/usr/bin', MIND_ROOT: '/private/mind', AUTH_TOKEN: 'secret' },
+      env: { PATH: '/usr/bin', MIND_ROOT: '/private/mind', AUTH_TOKEN: 'secret', WEB_SESSION_SECRET: 'secret-session' },
       spawn,
     });
 
@@ -3044,6 +3047,7 @@ describe('MindOS product server contract', () => {
     expect(childEnv.PATH).toBe('/usr/bin');
     expect(childEnv.MIND_ROOT).toBeUndefined();
     expect(childEnv.AUTH_TOKEN).toBeUndefined();
+    expect(childEnv.WEB_SESSION_SECRET).toBeUndefined();
   });
 
   it('applies init templates idempotently from the product runtime', () => {
@@ -4425,8 +4429,8 @@ describe('MindOS product server contract', () => {
           expect.objectContaining({
             id: 'claude',
             kind: 'claude',
-            status: 'missing',
-            sourceAgentId: 'claude-code',
+            status: 'available',
+            sourceAgentId: 'claude',
             mcpAgentKey: 'claude-code',
           }),
           expect.objectContaining({ id: 'gemini', kind: 'acp', status: 'available' }),

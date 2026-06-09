@@ -178,6 +178,7 @@ function cleanMindosEnv(source: NodeJS.ProcessEnv | Record<string, string | unde
   }
   delete cleaned.AUTH_TOKEN;
   delete cleaned.WEB_PASSWORD;
+  delete cleaned.WEB_SESSION_SECRET;
   delete cleaned.NODE_OPTIONS;
   return cleaned;
 }

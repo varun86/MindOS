@@ -3,6 +3,11 @@ export const WEB_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 export type LoginMode = 'login' | 'reauth';
 
+export function resolveWebSessionSecret(webPassword: string, webSessionSecret?: string): string {
+  const stableSecret = webSessionSecret?.trim();
+  return stableSecret || webPassword;
+}
+
 export function sanitizeLoginRedirect(rawRedirect: string | null | undefined): string {
   if (!rawRedirect) return '/';
   return rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')

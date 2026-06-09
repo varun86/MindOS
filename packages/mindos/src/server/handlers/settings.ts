@@ -24,6 +24,7 @@ export type MindosServerSettings = {
   embedding?: MindosEmbeddingSettings;
   mindRoot?: string;
   webPassword?: string;
+  webSessionSecret?: string;
   authToken?: string;
   allowNetworkAccess?: boolean;
   port?: number;
@@ -99,6 +100,14 @@ function maskToken(token: string | undefined): string {
     return `${parts[0]}-${parts.slice(1, -1).map(() => '••••').join('-')}-${parts[parts.length - 1]}`;
   }
   return token.length > 8 ? `${token.slice(0, 4)}••••••••${token.slice(-4)}` : '***set***';
+}
+
+function ensureWebSessionSecret(settings: MindosServerSettings, legacySessionSecret?: unknown): void {
+  if (typeof settings.webPassword !== 'string' || !settings.webPassword) return;
+  if (typeof settings.webSessionSecret === 'string' && settings.webSessionSecret.trim()) return;
+  settings.webSessionSecret = typeof legacySessionSecret === 'string' && legacySessionSecret
+    ? legacySessionSecret
+    : randomBytes(32).toString('base64url');
 }
 
 function maskWebSearchKey(value: string | undefined) {
@@ -284,7 +293,9 @@ export function handleSettingsPost(
       startMode: body.startMode ?? current.startMode,
       connectionMode: resolveConnectionMode(current.connectionMode, body.connectionMode),
       baseUrlCompat: current.baseUrlCompat,
+      webSessionSecret: current.webSessionSecret,
     };
+    ensureWebSessionSecret(next, current.webPassword);
 
     services.writeSettings(next);
     if (JSON.stringify(next.ai) !== JSON.stringify(current.ai)) {

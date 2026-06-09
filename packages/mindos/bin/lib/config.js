@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CONFIG_PATH } from './constants.js';
 import { stripBom } from './jsonc.js';
+import { ensureWebSessionSecret } from './auth-session-secret.js';
 
 let loaded = false;
 
@@ -16,6 +17,18 @@ export function loadConfig() {
     return;
   }
 
+  if (typeof config.webPassword === 'string' && config.webPassword) {
+    const prevSecret = config.webSessionSecret;
+    ensureWebSessionSecret(config, config.webPassword);
+    if (config.webSessionSecret !== prevSecret) {
+      try {
+        writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      } catch {
+        // If persistence fails, still expose the in-memory secret for this process.
+      }
+    }
+  }
+
   const set = (key, val) => {
     if (val && !process.env[key]) process.env[key] = String(val);
   };
@@ -26,6 +39,7 @@ export function loadConfig() {
   set('AUTH_TOKEN',         config.authToken);
   set('MINDOS_AUTH_TOKEN',  config.authToken);
   set('WEB_PASSWORD',       config.webPassword);
+  set('WEB_SESSION_SECRET', config.webSessionSecret);
   set('AI_PROVIDER',        config.ai?.provider);
   // Remote URL: allows CLI to operate against a remote MindOS instance
   if (config.url && !process.env.MINDOS_URL) {

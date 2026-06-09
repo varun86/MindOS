@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { signJwt } from '@/lib/jwt';
-import { WEB_SESSION_COOKIE_NAME, WEB_SESSION_MAX_AGE_SECONDS } from '@/lib/auth-session';
+import { resolveWebSessionSecret, WEB_SESSION_COOKIE_NAME, WEB_SESSION_MAX_AGE_SECONDS } from '@/lib/auth-session';
 
 // Allowed CORS origins for cross-origin auth (Capacitor, Electron remote).
 // Localhost variants are always allowed; custom origins can be added here.
@@ -61,9 +61,10 @@ export async function POST(req: NextRequest) {
   const { password } = body as { password?: string };
   if (password !== webPassword) return withCors(NextResponse.json({ ok: false }, { status: 401 }), req);
 
+  const sessionSecret = resolveWebSessionSecret(webPassword, process.env.WEB_SESSION_SECRET);
   const token = await signJwt(
     { sub: 'user', exp: Math.floor(Date.now() / 1000) + WEB_SESSION_MAX_AGE_SECONDS },
-    webPassword,
+    sessionSecret,
   );
 
   const isHttps = req.headers.get('x-forwarded-proto') === 'https';

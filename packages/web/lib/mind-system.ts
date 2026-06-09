@@ -8,6 +8,7 @@ export type MindSystemSlotKey = 'dao' | 'fa' | 'shu' | 'qi';
 
 export interface MindSystemSlot {
   key: MindSystemSlotKey;
+  systemId: string;
   label: string;
   path: string;
   role: string;
@@ -18,14 +19,15 @@ export interface MindSystemSlot {
 
 export interface MindSystemConfig {
   version: 1;
+  enabled: boolean;
   slots: Record<MindSystemSlotKey, MindSystemSlot>;
 }
 
 const DEFAULT_MIND_SYSTEM_SLOTS: readonly MindSystemSlot[] = [
-  { key: 'dao', label: '道', path: '01 道', role: 'world-model', order: 10, primary: true, enabled: true },
-  { key: 'fa', label: '法', path: '02 法', role: 'principles', order: 20, primary: true, enabled: true },
-  { key: 'shu', label: '术', path: '03 术', role: 'methods', order: 30, primary: true, enabled: true },
-  { key: 'qi', label: '器', path: '04 器', role: 'tools-assets', order: 40, primary: true, enabled: true },
+  { key: 'dao', systemId: 'MIND_DAO', label: '道', path: 'MIND_DAO', role: 'world-model', order: 10, primary: true, enabled: true },
+  { key: 'fa', systemId: 'MIND_FA', label: '法', path: 'MIND_FA', role: 'principles', order: 20, primary: true, enabled: true },
+  { key: 'shu', systemId: 'MIND_SHU', label: '术', path: 'MIND_SHU', role: 'methods', order: 30, primary: true, enabled: true },
+  { key: 'qi', systemId: 'MIND_QI', label: '器', path: 'MIND_QI', role: 'tools-assets', order: 40, primary: true, enabled: true },
 ] as const;
 
 const SLOT_KEYS = new Set<MindSystemSlotKey>(DEFAULT_MIND_SYSTEM_SLOTS.map(slot => slot.key));
@@ -33,6 +35,7 @@ const SLOT_KEYS = new Set<MindSystemSlotKey>(DEFAULT_MIND_SYSTEM_SLOTS.map(slot 
 export function defaultMindSystemConfig(): MindSystemConfig {
   return {
     version: 1,
+    enabled: true,
     slots: Object.fromEntries(
       DEFAULT_MIND_SYSTEM_SLOTS.map(slot => [slot.key, { ...slot }]),
     ) as Record<MindSystemSlotKey, MindSystemSlot>,
@@ -64,6 +67,7 @@ export function readMindSystemConfig(mindRoot: string): MindSystemConfig {
 
 export function listMindSystemSlots(mindRoot: string): MindSystemSlot[] {
   const config = readMindSystemConfig(mindRoot);
+  if (!config.enabled) return [];
   return Object.values(config.slots)
     .filter(slot => slot.enabled && mindSystemPathExists(mindRoot, slot))
     .map(slot => ({ ...slot }))
@@ -97,11 +101,14 @@ function parseMindSystemConfig(raw: unknown): MindSystemConfig | null {
 
 function mergeMindSystemConfig(raw: unknown): MindSystemConfig {
   const defaults = defaultMindSystemConfig();
+  const enabled = raw && typeof raw === 'object' && 'enabled' in raw && typeof (raw as { enabled?: unknown }).enabled === 'boolean'
+    ? (raw as { enabled: boolean }).enabled
+    : defaults.enabled;
   const rawSlots = raw && typeof raw === 'object' && 'slots' in raw
     ? (raw as { slots?: unknown }).slots
     : undefined;
 
-  if (!rawSlots || typeof rawSlots !== 'object') return defaults;
+  if (!rawSlots || typeof rawSlots !== 'object') return { ...defaults, enabled };
 
   const slots = { ...defaults.slots };
   for (const [key, value] of Object.entries(rawSlots as Record<string, unknown>)) {
@@ -110,31 +117,9 @@ function mergeMindSystemConfig(raw: unknown): MindSystemConfig {
     const override = value as Record<string, unknown>;
     slots[key as MindSystemSlotKey] = {
       ...current,
-      label: safeString(override.label, current.label),
-      path: safePath(override.path, current.path),
-      role: safeString(override.role, current.role),
-      order: safeNumber(override.order, current.order),
-      primary: typeof override.primary === 'boolean' ? override.primary : current.primary,
       enabled: typeof override.enabled === 'boolean' ? override.enabled : current.enabled,
     };
   }
 
-  return { version: 1, slots };
-}
-
-function safeString(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
-}
-
-function safePath(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') return fallback;
-  const trimmed = value.trim();
-  if (!trimmed || path.isAbsolute(trimmed) || trimmed.includes('\0')) return fallback;
-  const normalized = trimmed.replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '');
-  if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized.includes('/../')) return fallback;
-  return normalized;
-}
-
-function safeNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return { version: 1, enabled, slots };
 }

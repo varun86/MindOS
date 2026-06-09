@@ -11,6 +11,7 @@ export const MINDOS_CORE_COMMANDS = [
   'mcp',
   'init',
   'config',
+  'auth',
   'channel',
   'feishu-ws',
   'doctor',

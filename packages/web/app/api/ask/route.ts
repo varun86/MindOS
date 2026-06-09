@@ -315,6 +315,7 @@ export async function POST(req: NextRequest) {
     }
     const externalPrompt = buildMindosExternalRuntimePrompt({
       prompt: lastUserContent,
+      mode: askMode,
       fileContext,
       uploadedParts,
       recalledKnowledge,

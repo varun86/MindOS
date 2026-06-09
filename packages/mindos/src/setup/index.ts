@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { homedir, platform } from 'node:os';
 import path from 'node:path';
 import { json, type MindosServerResponse } from '../server/response.js';
@@ -37,6 +38,7 @@ export type MindosSetupSettings = {
   mcpPort?: number;
   authToken?: string;
   webPassword?: string;
+  webSessionSecret?: string;
   startMode?: 'dev' | 'start' | 'daemon';
   setupPending?: boolean;
   setupPort?: number;
@@ -96,6 +98,17 @@ const DEFAULT_PROVIDER_PRESETS: Record<string, MindosSetupProviderPreset> = {
   'lm-studio': { name: 'LM Studio', defaultModel: '' },
   vllm: { name: 'vLLM', defaultModel: '' },
 };
+
+function resolveWebSessionSecret(current: MindosSetupSettings, webPassword: string): string | undefined {
+  if (!webPassword) return current.webSessionSecret;
+  if (typeof current.webSessionSecret === 'string' && current.webSessionSecret.trim()) {
+    return current.webSessionSecret;
+  }
+  if (typeof current.webPassword === 'string' && current.webPassword) {
+    return current.webPassword;
+  }
+  return randomBytes(32).toString('base64url');
+}
 
 export function buildMindosSetupState(
   services: MindosSetupServices,
@@ -190,6 +203,7 @@ export function applyMindosSetupConfig(
     mcpPort,
     authToken: authToken ?? current.authToken,
     webPassword: webPassword ?? '',
+    webSessionSecret: resolveWebSessionSecret(current, resolvedWebPassword),
     startMode: current.startMode,
     setupPending: false,
     setupPort: undefined,

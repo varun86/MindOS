@@ -39,6 +39,7 @@ MindOS configuration is stored at `~/.mindos/config.json`, auto-generated during
 | `mcpPort` | `8781` | Optional. MCP server port. |
 | `authToken` | — | Optional. Protects App `/api/*` and MCP `/mcp` with bearer token auth. For Agent / MCP clients. Recommended when exposed to a network. |
 | `webPassword` | — | Optional. Protects the web UI with a login page. For browser access. Independent from `authToken`. |
+| `webSessionSecret` | auto-generated / migrated | Internal. Signs browser login sessions; legacy configs migrate from the existing `webPassword` to keep old sessions, then stay stable when `webPassword` is reset. |
 | `startMode` | `start` | Start mode: `daemon` (background service, auto-starts on boot), `start` (foreground), or `dev`. |
 | `ai.provider` | `anthropic` | Active provider: `anthropic` or `openai`. |
 | `ai.providers.anthropic.apiKey` | — | Anthropic API key. |
@@ -59,4 +60,4 @@ MindOS configuration is stored at `~/.mindos/config.json`, auto-generated during
 - Shell env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) take precedence over config file values.
 - Run `mindos config set <key> <val>` to update a single field without editing the file.
 - Run `mindos config show` to view current config with API keys masked.
-- If you forget the Web UI password, run `mindos config set webPassword <new-password>` on the machine running MindOS, then restart MindOS. To temporarily remove the login gate, run `mindos config unset webPassword`, then restart.
+- If you forget the Web UI password, run `mindos auth reset-web-password` on the machine running MindOS. This only resets the local Web UI gate; it does not delete or encrypt local Markdown files, and existing browser sessions are kept. To temporarily remove the login gate, run `mindos config unset webPassword`, then restart.

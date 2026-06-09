@@ -220,4 +220,82 @@ describe('SettingsContent save lifecycle', () => {
     });
     host.remove();
   });
+
+  it('does not surface a stale save error when a queued save later succeeds', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    const firstPost = deferred<Record<string, never>>();
+    const secondPost = deferred<Record<string, never>>();
+    const postBodies: Array<Record<string, any>> = [];
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(makeSettings('p_initial'));
+      if (url === '/api/settings' && opts?.method === 'POST') {
+        postBodies.push(JSON.parse(String(opts.body)));
+        if (postBodies.length === 1) return firstPost.promise;
+        if (postBodies.length === 2) return secondPost.promise;
+        return Promise.resolve({});
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="ai" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.clearAllTimers();
+    postBodies.length = 0;
+
+    const [firstButton, secondButton] = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent === 'first' || button.textContent === 'second');
+
+    await act(async () => {
+      firstButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      secondButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      firstPost.reject(new Error('first save failed'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies.map((body) => body.ai.activeProvider)).toEqual(['p_first', 'p_second']);
+    expect(host.textContent).not.toContain('Save failed');
+    expect(dispatchSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      secondPost.resolve({});
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'mindos:settings-changed' }));
+    expect(host.textContent).not.toContain('Save failed');
+    dispatchSpy.mockRestore();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
 });

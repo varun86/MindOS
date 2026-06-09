@@ -51,8 +51,8 @@ describe('MindOS copy alignment', () => {
 
     expect(knowledgeEn.home.builtInSpacesTitle).toBe('Mind System');
     expect(knowledgeZh.home.builtInSpacesTitle).toBe('Mind 系统');
-    expect(Object.keys(knowledgeEn.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi', 'shi', 'yan']);
-    expect(Object.keys(knowledgeZh.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi', 'shi', 'yan']);
+    expect(Object.keys(knowledgeEn.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
+    expect(Object.keys(knowledgeZh.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
   });
 
   it('packages every built-in MindOS skill reference used by SKILL.md', () => {

@@ -105,6 +105,49 @@ describe('MindOS setup domain operations', () => {
     });
   });
 
+  it('keeps Web sessions stable when setup writes the Web UI password', () => {
+    const withExisting = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '/home/tester/mind',
+      authToken: 'token',
+      webPassword: 'old-password',
+      webSessionSecret: 'stable-session-secret',
+    });
+
+    expect(applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      webPassword: 'new-password',
+    }, withExisting.services)).toMatchObject({ status: 200 });
+    expect(withExisting.state.settings.webPassword).toBe('new-password');
+    expect(withExisting.state.settings.webSessionSecret).toBe('stable-session-secret');
+
+    const legacyWithoutSecret = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '/home/tester/mind',
+      authToken: 'token',
+      webPassword: 'old-password',
+    });
+
+    expect(applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      webPassword: 'new-password',
+    }, legacyWithoutSecret.services)).toMatchObject({ status: 200 });
+    expect(legacyWithoutSecret.state.settings.webSessionSecret).toBe('old-password');
+
+    const withoutExisting = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '/home/tester/mind',
+      authToken: 'token',
+      webPassword: '',
+    });
+
+    expect(applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      webPassword: 'new-password',
+    }, withoutExisting.services)).toMatchObject({ status: 200 });
+    expect(withoutExisting.state.settings.webSessionSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
   it('patches guide state through a known-field whitelist', () => {
     const { services, state } = makeMutableServices({
       ai: { activeProvider: '', providers: [] },

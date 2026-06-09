@@ -315,22 +315,32 @@ function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
       >
         {t.home.builtInSpacesTitle}
       </SectionTitle>
-      <div className="rounded-xl border border-[var(--amber)]/20 bg-[var(--amber-subtle)] p-4">
-        <div className="mb-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          {t.home.builtInSpacesDesc}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {pillars.map((pillar) => (
+      <div className="mb-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+        {t.home.builtInSpacesDesc}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+        {pillars.map((pillar) => {
+          const desc = pillar.data?.desc ?? pillar.role;
+          return (
             <Link
               key={pillar.key}
               href={`/view/${encodePath(pillar.path)}`}
-              className="rounded-lg border border-border/60 bg-card/50 px-3 py-3 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/35 hover:bg-card"
+              aria-label={`${pillar.label} - ${desc}`}
+              className="group relative overflow-hidden rounded-lg border border-border/70 bg-card/55 px-3.5 py-3.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="mb-1 block text-sm font-semibold text-foreground">{pillar.label}</span>
-              <span className="block text-xs leading-relaxed text-muted-foreground">{pillar.data?.desc ?? pillar.role}</span>
+              <span className="absolute inset-x-0 top-0 h-px bg-[var(--amber)]/30 opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+              <span className="mb-3 flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/30 bg-[var(--amber-subtle)] text-sm font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]">
+                  {pillar.label}
+                </span>
+                <span className="min-w-0 pt-0.5">
+                  <span className="block text-sm font-semibold text-foreground">{pillar.data?.title ?? pillar.label}</span>
+                </span>
+              </span>
+              <span className="block text-xs leading-relaxed text-muted-foreground">{desc}</span>
             </Link>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </section>
   );
