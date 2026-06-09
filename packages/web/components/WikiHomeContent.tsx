@@ -327,16 +327,14 @@ function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
               href={`/view/${encodePath(pillar.path)}`}
               aria-label={`${pillar.label} - ${desc}`}
               data-mind-system-card={pillar.key}
-              className="group relative overflow-hidden rounded-xl border border-border/70 bg-card/65 p-3.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/45 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group relative overflow-hidden rounded-lg border border-border/70 bg-card/60 p-3.5 transition-colors duration-150 hover:border-[var(--amber)]/35 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="absolute inset-x-0 top-0 h-px bg-[var(--amber)]/35 opacity-75 transition-opacity group-hover:opacity-100" aria-hidden="true" />
               <span className="mb-3 flex items-start gap-3">
                 <span
                   data-mind-system-icon={pillar.key}
-                  className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/45 bg-[var(--amber-subtle)] text-lg font-semibold text-[var(--amber)] shadow-sm transition-colors group-hover:border-[var(--amber)]/65 group-hover:bg-[var(--amber-dim)]"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-base font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]"
                   aria-hidden="true"
                 >
-                  <span className="absolute inset-1 rounded-md border border-[var(--amber)]/15" aria-hidden="true" />
                   {pillar.label}
                 </span>
                 <span className="min-w-0 flex-1 pt-0.5">

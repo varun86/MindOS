@@ -96,11 +96,11 @@ describe('WikiHomeContent Mind System cards', () => {
       const card = host.querySelector<HTMLAnchorElement>(`[data-mind-system-card="${slot.key}"]`);
       const icon = host.querySelector<HTMLElement>(`[data-mind-system-icon="${slot.key}"]`);
 
-      expect(card?.className).toContain('rounded-xl');
-      expect(card?.className).toContain('hover:border-[var(--amber)]/45');
+      expect(card?.className).toContain('rounded-lg');
+      expect(card?.className).toContain('hover:border-[var(--amber)]/35');
       expect(icon?.textContent).toBe(slot.label);
-      expect(icon?.className).toContain('h-11 w-11');
-      expect(icon?.className).toContain('border-[var(--amber)]/45');
+      expect(icon?.className).toContain('h-9 w-9');
+      expect(icon?.className).toContain('border-[var(--amber)]/35');
       expect(icon?.className).toContain('bg-[var(--amber-subtle)]');
     }
   });
