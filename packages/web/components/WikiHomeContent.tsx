@@ -318,7 +318,7 @@ function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
       <div className="mb-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
         {t.home.builtInSpacesDesc}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
           const desc = pillar.data?.desc ?? pillar.role;
           return (
@@ -326,18 +326,29 @@ function BuiltInMindSpacesSection({ slots }: { slots: MindSystemSlot[] }) {
               key={pillar.key}
               href={`/view/${encodePath(pillar.path)}`}
               aria-label={`${pillar.label} - ${desc}`}
-              className="group relative overflow-hidden rounded-lg border border-border/70 bg-card/55 px-3.5 py-3.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-mind-system-card={pillar.key}
+              className="group relative overflow-hidden rounded-xl border border-border/70 bg-card/65 p-3.5 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--amber)]/45 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="absolute inset-x-0 top-0 h-px bg-[var(--amber)]/30 opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+              <span className="absolute inset-x-0 top-0 h-px bg-[var(--amber)]/35 opacity-75 transition-opacity group-hover:opacity-100" aria-hidden="true" />
               <span className="mb-3 flex items-start gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/30 bg-[var(--amber-subtle)] text-sm font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]">
+                <span
+                  data-mind-system-icon={pillar.key}
+                  className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/45 bg-[var(--amber-subtle)] text-lg font-semibold text-[var(--amber)] shadow-sm transition-colors group-hover:border-[var(--amber)]/65 group-hover:bg-[var(--amber-dim)]"
+                  aria-hidden="true"
+                >
+                  <span className="absolute inset-1 rounded-md border border-[var(--amber)]/15" aria-hidden="true" />
                   {pillar.label}
                 </span>
-                <span className="min-w-0 pt-0.5">
-                  <span className="block text-sm font-semibold text-foreground">{pillar.data?.title ?? pillar.label}</span>
+                <span className="min-w-0 flex-1 pt-0.5">
+                  <span className="block text-sm font-semibold leading-5 text-foreground">{pillar.data?.title ?? pillar.label}</span>
+                  <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/45">{pillar.systemId}</span>
                 </span>
               </span>
-              <span className="block text-xs leading-relaxed text-muted-foreground">{desc}</span>
+              <span className="block min-h-9 text-xs leading-relaxed text-muted-foreground">{desc}</span>
+              <span className="mt-3 flex items-center justify-between border-t border-border/40 pt-2">
+                <span className="truncate font-mono text-[10px] text-muted-foreground/45">{pillar.path}</span>
+                <ArrowRight size={12} className="shrink-0 text-[var(--amber)]/45 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-[var(--amber)]" aria-hidden="true" />
+              </span>
             </Link>
           );
         })}

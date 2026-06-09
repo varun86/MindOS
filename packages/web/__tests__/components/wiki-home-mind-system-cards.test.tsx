@@ -85,4 +85,23 @@ describe('WikiHomeContent Mind System cards', () => {
       expect(card?.textContent).toContain(slot.label);
     }
   });
+
+  it('uses Chinese framed theme-color icons for the four Mind System cards', async () => {
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSlots={mindSystemSlots} />);
+    });
+
+    for (const slot of mindSystemSlots) {
+      const card = host.querySelector<HTMLAnchorElement>(`[data-mind-system-card="${slot.key}"]`);
+      const icon = host.querySelector<HTMLElement>(`[data-mind-system-icon="${slot.key}"]`);
+
+      expect(card?.className).toContain('rounded-xl');
+      expect(card?.className).toContain('hover:border-[var(--amber)]/45');
+      expect(icon?.textContent).toBe(slot.label);
+      expect(icon?.className).toContain('h-11 w-11');
+      expect(icon?.className).toContain('border-[var(--amber)]/45');
+      expect(icon?.className).toContain('bg-[var(--amber-subtle)]');
+    }
+  });
 });
