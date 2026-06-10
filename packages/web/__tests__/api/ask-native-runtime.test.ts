@@ -453,6 +453,7 @@ describe('/api/ask native runtime routing', () => {
     await vi.advanceTimersByTimeAsync(3000);
     const res = await responsePromise;
     const body = await res.json();
+    vi.useRealTimers();
 
     expect(res.status).toBe(409);
     expect(body).toMatchObject({
@@ -463,7 +464,7 @@ describe('/api/ask native runtime routing', () => {
     expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
   });
 
-  it('uses the bundled Claude SDK path when Claude verification hangs without a cached CLI path', async () => {
+  it('does not start Claude when verification hangs without a cached local CLI path', async () => {
     vi.useFakeTimers();
     mockResolveCommandPath.mockImplementation(async () => new Promise(() => {}));
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -476,28 +477,21 @@ describe('/api/ask native runtime routing', () => {
     }));
 
     await vi.advanceTimersByTimeAsync(3000);
-    await vi.advanceTimersByTimeAsync(1500);
     const res = await responsePromise;
-    const text = await res.text();
+    const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(text).toContain('native ok');
-    expect(capturedNativeOptions?.runtime).toEqual({
-      id: 'claude',
-      name: 'Claude Code',
-      kind: 'claude',
-      binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      ok: false,
+      error: { message: 'Claude Code is still being verified. Please retry in a moment.' },
     });
+    expect(capturedNativeOptions).toBeNull();
+    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
   });
 
-  it('resolves a real Claude CLI path before launching when runtime health returned the SDK sentinel', async () => {
-    let resolveCalls = 0;
+  it('uses the real Claude CLI path returned by runtime health before launching', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => {
       if (command !== 'claude') return null;
-      resolveCalls += 1;
-      if (resolveCalls === 1) {
-        return await new Promise<string>((resolve) => setTimeout(() => resolve('/usr/local/bin/claude'), 50));
-      }
       return '/usr/local/bin/claude';
     });
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });

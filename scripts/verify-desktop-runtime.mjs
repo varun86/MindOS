@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -64,6 +64,10 @@ if (process.env.MINDOS_BUNDLE_LOCAL_EMBEDDING_RUNTIME !== '1') {
   for (const rel of optionalLocalEmbeddingRuntimeFiles) {
     if (existsSync(join(runtimeRoot, rel))) failures.push(`optional local embedding runtime should not be bundled by default: ${rel}`);
   }
+}
+
+for (const rel of findClaudeAgentSdkNativePackages(runtimeRoot)) {
+  failures.push(`Claude Agent SDK native runtime must not be bundled: ${rel}`);
 }
 
 if (existsSync(mainBundle)) {
@@ -138,6 +142,28 @@ function listPackageNames(nodeModulesDir) {
     packageNames.push(entry.name);
   }
   return packageNames;
+}
+
+function findClaudeAgentSdkNativePackages(rootDir) {
+  const found = [];
+  if (!existsSync(rootDir)) return found;
+  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
+    const full = join(rootDir, entry.name);
+    if (!entry.isDirectory()) continue;
+    if (isClaudeAgentSdkNativePackageDir(full, entry.name)) {
+      found.push(relative(runtimeRoot, full));
+      continue;
+    }
+    found.push(...findClaudeAgentSdkNativePackages(full));
+  }
+  return found;
+}
+
+function isClaudeAgentSdkNativePackageDir(dir, name) {
+  return (
+    basename(dirname(dir)) === '@anthropic-ai'
+    && name.startsWith('claude-agent-sdk-')
+  ) || name.startsWith('@anthropic-ai+claude-agent-sdk-');
 }
 
 function dirSize(dir) {

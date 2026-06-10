@@ -10,6 +10,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { binaryName, buildBunBinary } from './build-bun-binary.mjs';
 import { writeRuntimeManifest as writeSharedRuntimeManifest } from './runtime-manifest.mjs';
+import { pruneClaudeAgentSdkNativePackages } from '../packages/desktop/scripts/prepare-mindos-bundle.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -47,6 +48,10 @@ for (const target of selected) {
   writePlatformRuntimeManifest(packageDir, target, targetBuildBinary);
   pruneKoffi(packageDir, target);
   pruneMarioClipboardPackages(packageDir, target);
+  const removedClaudeNativePackages = pruneClaudeAgentSdkNativePackages(packageDir);
+  if (removedClaudeNativePackages > 0) {
+    console.log(`[build-platform-packages] Removed ${removedClaudeNativePackages} Claude Agent SDK native package(s) from ${target.key}`);
+  }
   if (targetBuildBinary) {
     buildBunBinary({
       runtimeRoot: packageDir,

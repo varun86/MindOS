@@ -2,7 +2,11 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'os';
 import path from 'path';
 import { describe, expect, it, afterEach } from 'vitest';
-import { copyAppForBundledRuntime, materializeStandaloneAssets } from '../scripts/prepare-mindos-bundle.mjs';
+import {
+  copyAppForBundledRuntime,
+  materializeStandaloneAssets,
+  pruneClaudeAgentSdkNativePackages,
+} from '../scripts/prepare-mindos-bundle.mjs';
 import { getStandaloneAppRequiredEntries } from '../scripts/runtime-health-contract.mjs';
 
 function writeStandaloneApp(appDir: string, omit: string[] = []) {
@@ -406,6 +410,40 @@ describe('materializeStandaloneAssets', () => {
     for (const packageName of ['@huggingface/transformers', 'onnxruntime-web', 'onnxruntime-node']) {
       expect(existsSync(path.join(appDir, '.next', 'standalone', 'node_modules', packageName))).toBe(false);
     }
+  });
+
+  it('does not bundle Claude Agent SDK native platform packages', () => {
+    const appDir = makeTemp('mindos-app-claude-sdk-native-prune-');
+    writeStandaloneApp(appDir);
+
+    const nativePackage = path.join(
+      appDir,
+      '.next',
+      'standalone',
+      'node_modules',
+      '@anthropic-ai',
+      'claude-agent-sdk-darwin-arm64',
+    );
+    mkdirSync(nativePackage, { recursive: true });
+    writeFileSync(path.join(nativePackage, 'package.json'), JSON.stringify({
+      name: '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+      version: '0.3.170',
+    }));
+    writeFileSync(path.join(nativePackage, 'claude'), 'native-binary-placeholder');
+
+    materializeStandaloneAssets(appDir);
+
+    expect(existsSync(nativePackage)).toBe(false);
+  });
+
+  it('prunes pnpm-layout Claude Agent SDK native package directories', () => {
+    const root = makeTemp('mindos-claude-sdk-native-pnpm-prune-');
+    const nativePackage = path.join(root, 'node_modules', '.pnpm', '@anthropic-ai+claude-agent-sdk-darwin-arm64@0.3.170');
+    mkdirSync(nativePackage, { recursive: true });
+    writeFileSync(path.join(nativePackage, 'package.json'), '{}');
+
+    expect(pruneClaudeAgentSdkNativePackages(root)).toBe(1);
+    expect(existsSync(nativePackage)).toBe(false);
   });
 
   it('keeps optional local embedding runtime packages when explicitly requested', () => {

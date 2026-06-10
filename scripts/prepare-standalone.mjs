@@ -45,7 +45,10 @@ if (!existsSync(standaloneServerJs)) {
 
 // ── Step 1: Materialize static + public into standalone dir ──────────────────
 // Reuse the same logic Desktop uses.
-import { materializeStandaloneAssets } from '../packages/desktop/scripts/prepare-mindos-bundle.mjs';
+import {
+  materializeStandaloneAssets,
+  pruneClaudeAgentSdkNativePackages,
+} from '../packages/desktop/scripts/prepare-mindos-bundle.mjs';
 materializeStandaloneAssets(appDir);
 copyRuntimeDependencyClosure(resolve(standaloneAppDir, 'node_modules'), runtimeDependencySeeds);
 
@@ -67,6 +70,10 @@ if (existsSync(standaloneNodeModules)) {
 const removedRuntimeEntries = pruneRuntimeNodeModules(publishableNodeModules);
 if (removedRuntimeEntries > 0) {
   console.log(`[prepare-standalone] Pruned ${removedRuntimeEntries} dev-only runtime dependency file(s)/dir(s)`);
+}
+const removedClaudeNativePackages = pruneClaudeAgentSdkNativePackages(publishableNodeModules);
+if (removedClaudeNativePackages > 0) {
+  console.log(`[prepare-standalone] Removed ${removedClaudeNativePackages} Claude Agent SDK native package(s) from standalone output`);
 }
 
 verifyDocumentExtractionRuntime(destDir, publishableNodeModules);

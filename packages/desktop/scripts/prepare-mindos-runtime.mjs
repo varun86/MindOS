@@ -14,7 +14,12 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, read
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { gunzipSync } from 'zlib';
-import { RUNTIME_DEPENDENCY_SEEDS, copyAppForBundledRuntime, materializeStandaloneAssets } from './prepare-mindos-bundle.mjs';
+import {
+  RUNTIME_DEPENDENCY_SEEDS,
+  copyAppForBundledRuntime,
+  materializeStandaloneAssets,
+  pruneClaudeAgentSdkNativePackages,
+} from './prepare-mindos-bundle.mjs';
 import { writeRuntimeManifest } from '../../../scripts/runtime-manifest.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -445,6 +450,10 @@ function removeSymlinks(dir) {
 const symlinkCount = removeSymlinks(dest) || 0;
 if (symlinkCount > 0) {
   console.log(`[prepare-mindos-runtime] Removed ${symlinkCount} symlinks from runtime bundle`);
+}
+const removedClaudeNativePackages = pruneClaudeAgentSdkNativePackages(dest);
+if (removedClaudeNativePackages > 0) {
+  console.log(`[prepare-mindos-runtime] Removed ${removedClaudeNativePackages} Claude Agent SDK native package(s) from runtime bundle`);
 }
 
 const productManifest = JSON.parse(readFileSync(productPkg, 'utf-8'));

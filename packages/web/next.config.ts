@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
       './node_modules/onnxruntime-node/**',
       './node_modules/@img/**',
       './node_modules/sharp/**',
+      './node_modules/@anthropic-ai/claude-agent-sdk-*/**',
     ],
   },
   outputFileTracingIncludes: {

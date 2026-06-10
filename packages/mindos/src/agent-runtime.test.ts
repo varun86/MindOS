@@ -1427,7 +1427,7 @@ describe('agent runtime adapters', () => {
     });
   });
 
-  it('uses Claude Agent SDK by default and returns the session binding', async () => {
+  it('uses Claude Agent SDK bridge with a detected local CLI path and returns the session binding', async () => {
     const events: MindOSSSEvent[] = [];
     const sdk = createFakeClaudeSdk([
       { type: 'system', subtype: 'init', session_id: 'claude-sdk-session', cwd: '/tmp/mind' },
@@ -1436,7 +1436,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     const result = await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Review this.',
       runtimeEnv: { PATH: '/usr/bin', CLAUDE_CODE_OAUTH_TOKEN: 'runtime-token' } as NodeJS.ProcessEnv,
@@ -1452,6 +1452,7 @@ describe('agent runtime adapters', () => {
         cwd: '/tmp/mind',
         outputFormat: 'stream-json',
         permissionMode: 'default',
+        pathToClaudeCodeExecutable: '/usr/local/bin/claude',
         env: {
           PATH: '/usr/bin',
           CLAUDE_CODE_OAUTH_TOKEN: 'runtime-token',
@@ -1467,6 +1468,28 @@ describe('agent runtime adapters', () => {
       { type: 'text_delta', delta: 'Hello from SDK' },
       { type: 'done' },
     ]);
+  });
+
+  it('does not start Claude Code without a detected local CLI path', async () => {
+    const events: MindOSSSEvent[] = [];
+    const loadClaudeSdk = vi.fn(async () => createFakeClaudeSdk([]));
+
+    const result = await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      cwd: '/tmp/mind',
+      prompt: 'Review this.',
+      send: (event) => events.push(event),
+      services: {
+        loadClaudeSdk,
+      },
+    });
+
+    expect(loadClaudeSdk).not.toHaveBeenCalled();
+    expect(result.error?.message).toContain('requires a local claude executable');
+    expect(events).toContainEqual({
+      type: 'error',
+      message: expect.stringContaining('MindOS does not bundle the Claude Agent SDK native runtime'),
+    });
   });
 
   it('passes a detected Claude Code CLI path to the Claude Agent SDK', async () => {
@@ -1522,7 +1545,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Run secret command.',
       send: (event) => events.push(event),
@@ -1563,7 +1586,7 @@ describe('agent runtime adapters', () => {
     let promptCreated = false;
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Use SDK only.',
       send: () => {},
@@ -1612,7 +1635,7 @@ describe('agent runtime adapters', () => {
     }));
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Delete it.',
       send: () => {},
@@ -1680,7 +1703,7 @@ describe('agent runtime adapters', () => {
     }));
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Ask first.',
       send: () => {},
@@ -1823,7 +1846,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     const result = await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Review this.',
       send: (event) => events.push(event),
@@ -1857,7 +1880,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Read only.',
       permissionMode: 'readonly',
@@ -1943,7 +1966,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Delete it.',
       send: () => {},
@@ -2158,7 +2181,7 @@ describe('agent runtime adapters', () => {
     ]);
 
     await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', externalSessionId: 'claude-existing' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude', externalSessionId: 'claude-existing' },
       cwd: '/tmp/mind',
       prompt: 'Continue.',
       send: () => {},
@@ -2178,7 +2201,7 @@ describe('agent runtime adapters', () => {
     };
 
     const result = await runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', externalSessionId: 'claude-existing' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude', externalSessionId: 'claude-existing' },
       cwd: '/tmp/mind',
       prompt: 'Continue.',
       send: (event) => events.push(event),
@@ -2208,7 +2231,7 @@ describe('agent runtime adapters', () => {
     const events: MindOSSSEvent[] = [];
 
     const resultPromise = runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', externalSessionId: 'claude-existing' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude', externalSessionId: 'claude-existing' },
       cwd: '/tmp/mind',
       prompt: 'Hang.',
       timeoutMs: 100,
@@ -2247,7 +2270,7 @@ describe('agent runtime adapters', () => {
     const events: MindOSSSEvent[] = [];
 
     const resultPromise = runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', externalSessionId: 'claude-existing' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude', externalSessionId: 'claude-existing' },
       cwd: '/tmp/mind',
       prompt: 'Hang without observing the signal.',
       timeoutMs: 100,
@@ -2307,7 +2330,7 @@ describe('agent runtime adapters', () => {
     const events: MindOSSSEvent[] = [];
 
     const resultPromise = runMindosAgentRuntimeAskSession({
-      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code' },
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Hang in SDK.',
       timeoutMs: 100,

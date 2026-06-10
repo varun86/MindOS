@@ -35,6 +35,8 @@ describe('product npm publish contract', () => {
       bin?: Record<string, string>;
       files?: string[];
       scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     }>('packages/mindos/package.json');
 
     expect(pkg.name).toBe('@geminilight/mindos');
@@ -97,6 +99,8 @@ describe('product npm publish contract', () => {
     expect(pkg.scripts?.build).toBe('tsc && pnpm run build:protocols');
     expect(pkg.scripts?.['build:protocols']).toBe('node ../../scripts/build-product-protocols.mjs');
     expect(pkg.scripts?.['type-check']).toBe('tsc --noEmit');
+    expect(pkg.dependencies).not.toHaveProperty('@anthropic-ai/claude-agent-sdk');
+    expect(pkg.devDependencies).toHaveProperty('@anthropic-ai/claude-agent-sdk');
   });
 
   it('keeps product staging cleanup explicit and source-safe', () => {
@@ -158,6 +162,7 @@ describe('product npm publish contract', () => {
     expect(prepareStandalone).toContain('prunePackageLocks');
     expect(prepareStandalone).toContain('pruneStandalonePayload');
     expect(prepareStandalone).toContain('pruneRuntimeNodeModules');
+    expect(prepareStandalone).toContain('pruneClaudeAgentSdkNativePackages');
     expect(prepareStandalone).toContain('copyRuntimeDependencyClosure');
     expect(prepareStandalone).toContain('extract-pdf.cjs');
     expect(prepareStandalone).toContain('extract-docx.cjs');

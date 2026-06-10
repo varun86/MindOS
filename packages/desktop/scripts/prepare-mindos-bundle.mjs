@@ -57,6 +57,7 @@ export function materializeStandaloneAssets(appDir, options = {}) {
     targetPlatform: options.targetPlatform ?? process.platform,
     targetArch: options.targetArch ?? process.arch,
   });
+  pruneClaudeAgentSdkNativePackages(standaloneDir);
   prunePackageDevelopmentPayload(standaloneDir);
   pruneOptionalLocalEmbeddingRuntime(standaloneDir, {
     bundleLocalEmbeddingRuntime: options.bundleLocalEmbeddingRuntime === true
@@ -597,6 +598,30 @@ export function copyAppForBundledRuntime(sourceAppDir, destAppDir) {
   mkdirSync(destAppDir, { recursive: true });
   copyFiltered(sourceAppDir, destAppDir, '');
   fixTurbopackHashedExternals(destAppDir);
+  pruneClaudeAgentSdkNativePackages(path.join(destAppDir, '.next', 'standalone'));
+}
+
+export function pruneClaudeAgentSdkNativePackages(rootDir) {
+  if (!existsSync(rootDir)) return 0;
+  let removed = 0;
+  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
+    const child = path.join(rootDir, entry.name);
+    if (!entry.isDirectory()) continue;
+    if (isClaudeAgentSdkNativePackageDir(child, entry.name)) {
+      rmSync(child, { recursive: true, force: true });
+      removed += 1;
+      continue;
+    }
+    removed += pruneClaudeAgentSdkNativePackages(child);
+  }
+  return removed;
+}
+
+function isClaudeAgentSdkNativePackageDir(dir, name) {
+  return (
+    path.basename(path.dirname(dir)) === '@anthropic-ai'
+    && name.startsWith('claude-agent-sdk-')
+  ) || name.startsWith('@anthropic-ai+claude-agent-sdk-');
 }
 
 /**

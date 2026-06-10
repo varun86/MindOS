@@ -20,6 +20,27 @@ WORK="/tmp/mindos-runtime-build-$$"
 ARCHIVE="/tmp/mindos-runtime-${VERSION}.tar.gz"
 rm -rf "$WORK"
 
+find_claude_sdk_native_packages() {
+  find "$1" -type d \( \
+    -path '*/node_modules/@anthropic-ai/claude-agent-sdk-*' -o \
+    -path '*/__node_modules/@anthropic-ai/claude-agent-sdk-*' -o \
+    -path '*/.pnpm/@anthropic-ai+claude-agent-sdk-*' \
+  \) -print 2>/dev/null || true
+}
+
+prune_claude_sdk_native_packages() {
+  local root="$1"
+  local removed=0
+  while IFS= read -r package_dir; do
+    [ -z "$package_dir" ] && continue
+    rm -rf "$package_dir"
+    removed=$((removed + 1))
+  done < <(find_claude_sdk_native_packages "$root")
+  if [ "$removed" -gt 0 ]; then
+    echo "  Removed ${removed} Claude Agent SDK native package(s)"
+  fi
+}
+
 echo "📦 Building MindOS runtime v${VERSION}..."
 
 # ── Web server (standalone Next.js) ──
@@ -100,6 +121,7 @@ node scripts/runtime-manifest.mjs \
   --platform runtime-archive \
   --layout runtime-archive \
   --package-name "@geminilight/mindos-runtime"
+prune_claude_sdk_native_packages "$WORK"
 
 # ── Package (flat, no outer directory) ──
 echo "  Creating archive..."
@@ -133,6 +155,12 @@ fi
 PKG_VER=$(node -p "require('$VERIFY/package.json').version" 2>/dev/null || echo "")
 if [ "$PKG_VER" != "$VERSION" ]; then
   echo "  ❌ Version mismatch: package.json=$PKG_VER, expected=$VERSION"
+  ERRORS=$((ERRORS + 1))
+fi
+
+if BAD_CLAUDE_NATIVE=$(find_claude_sdk_native_packages "$VERIFY" | head -20); [ -n "$BAD_CLAUDE_NATIVE" ]; then
+  echo "  ❌ Claude Agent SDK native package(s) should not be bundled:"
+  echo "$BAD_CLAUDE_NATIVE" | sed 's/^/     /'
   ERRORS=$((ERRORS + 1))
 fi
 

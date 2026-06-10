@@ -38,7 +38,7 @@ export type MindosAgentRuntimeAskServices = {
   }): CodexAppServerClient | Promise<CodexAppServerClient>;
   createClaudeClient?(options: { cwd: string; signal?: AbortSignal }): ClaudeCodeCliClient | Promise<ClaudeCodeCliClient>;
   createClaudeCliClient?(options: { cwd: string; signal?: AbortSignal; command?: string; env?: NodeJS.ProcessEnv }): ClaudeCodeCliClient | Promise<ClaudeCodeCliClient>;
-  createClaudeSdkClient?(options: { cwd: string; signal?: AbortSignal; env?: NodeJS.ProcessEnv }): ClaudeCodeCliClient | Promise<ClaudeCodeCliClient>;
+  createClaudeSdkClient?(options: { cwd: string; signal?: AbortSignal; command: string; env?: NodeJS.ProcessEnv }): ClaudeCodeCliClient | Promise<ClaudeCodeCliClient>;
   loadClaudeSdk?(): ClaudeCodeSdkModule | Promise<ClaudeCodeSdkModule>;
   createClaudePermissionPrompt?(options: {
     cwd: string;
@@ -491,6 +491,8 @@ async function resolveCodexClient(
 }
 
 async function resolveClaudeClient(options: MindosAgentRuntimeAskOptions): Promise<ResolvedClaudeClient> {
+  const command = requireClaudeLocalCliPath(options);
+
   if (options.services?.createClaudeClient) {
     return {
       client: await options.services.createClaudeClient({ cwd: options.cwd, signal: options.signal }),
@@ -511,17 +513,19 @@ async function resolveClaudeClient(options: MindosAgentRuntimeAskOptions): Promi
   }
 
   return {
-    client: await resolveClaudeCliClient(options),
+    client: await resolveClaudeCliClient(options, command),
     usesCliPermissionPrompt: true,
     source: 'cli',
   };
 }
 
 async function resolveClaudeSdkClient(options: MindosAgentRuntimeAskOptions): Promise<ClaudeCodeCliClient> {
+  const command = requireClaudeLocalCliPath(options);
   if (options.services?.createClaudeSdkClient) {
     return options.services.createClaudeSdkClient({
       cwd: options.cwd,
       signal: options.signal,
+      command,
       ...(options.runtimeEnv ? { env: options.runtimeEnv } : {}),
     });
   }
@@ -531,34 +535,39 @@ async function resolveClaudeSdkClient(options: MindosAgentRuntimeAskOptions): Pr
     : await loadClaudeCodeSdkModule();
   return createClaudeCodeSdkClient({
     sdk,
-    ...(isNativeCliBinaryPath(options.runtime.binaryPath) ? { pathToClaudeCodeExecutable: options.runtime.binaryPath } : {}),
+    pathToClaudeCodeExecutable: command,
     ...(options.runtimeEnv ? { env: options.runtimeEnv } : {}),
     requestRuntimePermission: options.services?.requestRuntimePermission,
     requestUserQuestion: options.services?.requestUserQuestion,
   });
 }
 
-async function resolveClaudeCliClient(options: MindosAgentRuntimeAskOptions): Promise<ClaudeCodeCliClient> {
-  const command = isNativeCliBinaryPath(options.runtime.binaryPath)
-    ? options.runtime.binaryPath
-    : undefined;
+async function resolveClaudeCliClient(
+  options: MindosAgentRuntimeAskOptions,
+  command = requireClaudeLocalCliPath(options),
+): Promise<ClaudeCodeCliClient> {
   if (options.services?.createClaudeCliClient) {
     return options.services.createClaudeCliClient({
       cwd: options.cwd,
       signal: options.signal,
-      ...(command ? { command } : {}),
+      command,
       ...(options.runtimeEnv ? { env: options.runtimeEnv } : {}),
     });
   }
 
   return createClaudeCodeCliClient(createClaudeCodeCliStdioTransport({
-    ...(command ? { command } : {}),
+    command,
     ...(options.runtimeEnv ? { env: options.runtimeEnv } : {}),
   }));
 }
 
 function isNativeCliBinaryPath(value: string | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0 && !value.startsWith('sdk:');
+}
+
+function requireClaudeLocalCliPath(options: MindosAgentRuntimeAskOptions): string {
+  if (isNativeCliBinaryPath(options.runtime.binaryPath)) return options.runtime.binaryPath;
+  throw new Error('Claude Code requires a local claude executable detected by MindOS. MindOS does not bundle the Claude Agent SDK native runtime.');
 }
 
 async function handleCodexServerRequest(

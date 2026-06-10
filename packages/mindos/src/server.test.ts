@@ -5208,46 +5208,58 @@ describe('MindOS product server contract', () => {
     });
   });
 
-  it('marks Claude unavailable when SDK import succeeds but no SDK native binary or CLI is available', async () => {
+  it('marks Claude unavailable when only the old SDK sentinel is provided', async () => {
     const result = await checkClaudeRuntimeHealth({
       binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
-      importSdk: async () => ({ query: () => ({}) }),
-      resolveSdkNativeBinary: () => ({
-        platformKey: 'darwin-arm64',
-        candidates: ['@anthropic-ai/claude-agent-sdk-darwin-arm64/claude'],
-        reason: 'Claude Agent SDK native CLI binary for darwin-arm64 was not found.',
-      }),
+      importSdk: async () => {
+        throw new Error('should not import SDK without a local CLI path');
+      },
       checkCliVersion: async () => {
-        throw new Error('should not check cli without a cli path');
+        throw new Error('should not check CLI without a local CLI path');
       },
     });
 
     expect(result).toMatchObject({
       status: 'error',
-      reason: expect.stringContaining('darwin-arm64'),
+      reason: expect.stringContaining('requires a local claude executable'),
       diagnosticHints: [
-        'Install Claude Code globally or reinstall @anthropic-ai/claude-agent-sdk with optional dependencies enabled.',
+        'Install Claude Code locally and restart MindOS so the server process can resolve the claude command.',
       ],
     });
   });
 
-  it('keeps Claude available through a real CLI path when the SDK native binary is missing', async () => {
+  it('keeps Claude available through a real CLI path when the SDK bridge is available', async () => {
     const result = await checkClaudeRuntimeHealth({
       binaryPath: '/Users/tester/.local/bin/claude',
       importSdk: async () => ({ query: () => ({}) }),
-      resolveSdkNativeBinary: () => ({
-        platformKey: 'darwin-arm64',
-        candidates: ['@anthropic-ai/claude-agent-sdk-darwin-arm64/claude'],
-        reason: 'Claude Agent SDK native CLI binary for darwin-arm64 was not found.',
-      }),
       checkCliVersion: async () => ({ status: 'available' }),
     });
 
     expect(result).toMatchObject({
       status: 'available',
       diagnosticHints: [
-        expect.stringContaining('native binary is unavailable'),
+        'Claude Agent SDK bridge is available and will use the local Claude Code CLI at /Users/tester/.local/bin/claude.',
       ],
+    });
+  });
+
+  it('keeps Claude available through CLI fallback when the SDK bridge is unavailable', async () => {
+    const result = await checkClaudeRuntimeHealth({
+      binaryPath: '/Users/tester/.local/bin/claude',
+      importSdk: async () => {
+        throw new Error('SDK missing');
+      },
+      checkCliVersion: async () => {
+        return { status: 'available' };
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: 'available',
+      diagnosticHints: expect.arrayContaining([
+        expect.stringContaining('Claude Code CLI is available at /Users/tester/.local/bin/claude'),
+        expect.stringContaining('SDK missing'),
+      ]),
     });
   });
 
@@ -5288,9 +5300,9 @@ describe('MindOS product server contract', () => {
             id: 'claude',
             kind: 'claude',
             adapter: 'claude-sdk',
-            status: 'available',
-            binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
+            status: 'missing',
             availability: expect.objectContaining({
+              reason: expect.stringContaining('Claude Code executable was not detected'),
               sources: ['native-health'],
             }),
           }),
@@ -5368,7 +5380,8 @@ describe('MindOS product server contract', () => {
     });
   });
 
-  it('detects Claude through the bundled SDK without waiting for a slow CLI path lookup', async () => {
+  it('marks Claude missing when CLI path lookup times out instead of using a bundled SDK runtime', async () => {
+    vi.useFakeTimers();
     const detectLocalAcpAgents = vi.fn(async () => ({
       installed: [{ id: 'gemini', name: 'Gemini CLI', binaryPath: '/usr/local/bin/gemini' }],
       notInstalled: [],
@@ -5376,7 +5389,7 @@ describe('MindOS product server contract', () => {
     const resolveRuntimeCommand = vi.fn(async () => new Promise<string | null>(() => {}));
     const checkNativeRuntimeHealth = vi.fn(async () => ({ status: 'available' as const }));
 
-    const res = await handleAgentRuntimesGet(new URLSearchParams('runtime=claude'), {
+    const result = handleAgentRuntimesGet(new URLSearchParams('runtime=claude'), {
       now: () => Date.parse('2026-06-09T00:00:00.000Z'),
       readSettings: () => ({ acpAgents: {} }),
       detectLocalAcpAgents,
@@ -5384,26 +5397,22 @@ describe('MindOS product server contract', () => {
       checkNativeRuntimeHealth,
     });
 
+    await vi.advanceTimersByTimeAsync(5000);
+    const res = await result;
+    vi.useRealTimers();
+
     expect(detectLocalAcpAgents).not.toHaveBeenCalled();
     expect(resolveRuntimeCommand).toHaveBeenCalledWith('claude');
-    expect(checkNativeRuntimeHealth).toHaveBeenCalledTimes(1);
-    expect(checkNativeRuntimeHealth).toHaveBeenCalledWith({
-      runtime: 'claude',
-      agent: expect.objectContaining({
-        id: 'claude',
-        binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
-      }),
-      timeoutMs: 20000,
-    });
+    expect(checkNativeRuntimeHealth).not.toHaveBeenCalled();
     expect(res).toMatchObject({
       status: 200,
       body: {
         runtime: expect.objectContaining({
           id: 'claude',
           kind: 'claude',
-          status: 'available',
-          binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
+          status: 'missing',
           availability: expect.objectContaining({
+            reason: expect.stringContaining('executable detection timed out'),
             sources: ['native-health'],
           }),
         }),
@@ -5411,12 +5420,8 @@ describe('MindOS product server contract', () => {
     });
   });
 
-  it('falls back to a detected Claude CLI path when SDK-only health is unavailable', async () => {
-    const checkNativeRuntimeHealth = vi.fn(async ({ agent }) => (
-      agent.binaryPath.startsWith('sdk:')
-        ? { status: 'error' as const, reason: 'SDK native binary missing.' }
-        : { status: 'available' as const }
-    ));
+  it('uses a detected Claude CLI path without probing SDK-only health', async () => {
+    const checkNativeRuntimeHealth = vi.fn(async () => ({ status: 'available' as const }));
 
     const res = await handleAgentRuntimesGet(new URLSearchParams('runtime=claude'), {
       now: () => Date.parse('2026-06-09T00:00:00.000Z'),
@@ -5430,10 +5435,7 @@ describe('MindOS product server contract', () => {
       checkNativeRuntimeHealth,
     });
 
-    expect(checkNativeRuntimeHealth).toHaveBeenCalledWith(expect.objectContaining({
-      runtime: 'claude',
-      agent: expect.objectContaining({ binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk' }),
-    }));
+    expect(checkNativeRuntimeHealth).toHaveBeenCalledTimes(1);
     expect(checkNativeRuntimeHealth).toHaveBeenCalledWith(expect.objectContaining({
       runtime: 'claude',
       agent: expect.objectContaining({ binaryPath: '/Users/tester/.local/bin/claude' }),
@@ -5445,11 +5447,6 @@ describe('MindOS product server contract', () => {
           id: 'claude',
           status: 'available',
           binaryPath: '/Users/tester/.local/bin/claude',
-          availability: expect.objectContaining({
-            diagnosticHints: [
-              expect.stringContaining('SDK native binary is unavailable'),
-            ],
-          }),
         }),
       },
     });

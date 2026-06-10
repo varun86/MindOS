@@ -99,7 +99,7 @@ export function resolveClaudeCodeSdkNativeBinaryPath(input: {
   return {
     platformKey,
     candidates,
-    reason: `Claude Agent SDK native CLI binary for ${platformKey} was not found. Reinstall @anthropic-ai/claude-agent-sdk without --omit=optional, or install the global claude command.`,
+    reason: `Claude Agent SDK native CLI binary for ${platformKey} was not found. Install the local Claude Code CLI or pass options.pathToClaudeCodeExecutable.`,
   };
 }
 

@@ -24,7 +24,7 @@ describe('/api/agent-runtimes', () => {
   it('returns MindOS, native Codex/Claude descriptors, and available ACP runtimes', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => {
       if (command === 'codex') return '/usr/local/bin/codex';
-      if (command === 'claude') return null;
+      if (command === 'claude') return '/usr/local/bin/claude';
       return null;
     });
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
@@ -95,7 +95,7 @@ describe('/api/agent-runtimes', () => {
         permissionOwner: 'external',
         sessionOwner: 'external',
         status: 'available',
-        binaryPath: 'sdk:@anthropic-ai/claude-agent-sdk',
+        binaryPath: '/usr/local/bin/claude',
         availability: expect.objectContaining({
           sources: ['native-health'],
         }),
@@ -118,7 +118,7 @@ describe('/api/agent-runtimes', () => {
     ]));
     const claudeRuntime = body.runtimes.find((runtime: any) => runtime.id === 'claude');
     expect(claudeRuntime?.availability?.diagnosticHints ?? []).not.toContain(
-      'Global claude command was not detected; CLI fallback will be unavailable until it is installed or on MindOS server PATH.',
+      'Install Claude Code locally or add claude to the PATH used to start MindOS.',
     );
     expect(body.installed).toHaveLength(2);
     expect(body.notInstalled).toHaveLength(1);

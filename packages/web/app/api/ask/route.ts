@@ -81,8 +81,6 @@ import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
 import { isAbortLikeError } from '@/lib/agent/run-cancellation';
 
 const NATIVE_ASK_HEALTH_GATE_TIMEOUT_MS = 3000;
-const CLAUDE_SDK_BINARY_PATH = 'sdk:@anthropic-ai/claude-agent-sdk';
-const CLAUDE_ASK_CLI_PATH_TIMEOUT_MS = 1500;
 
 function agentRunErrorStatus(error: unknown, signal?: AbortSignal): 'failed' | 'canceled' | 'timed_out' {
   if (signal?.aborted || isAbortLikeError(error)) return 'canceled';
@@ -431,22 +429,17 @@ function runtimeSelectionWithBinaryPath(
   };
 }
 
-async function resolveClaudeCliPathForAsk(): Promise<string | null> {
-  return await Promise.race([
-    resolveCommandPath('claude').catch(() => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), CLAUDE_ASK_CLI_PATH_TIMEOUT_MS)),
-  ]);
+function isNativeRuntimeBinaryPath(binaryPath: string | undefined): binaryPath is string {
+  return typeof binaryPath === 'string' && binaryPath.trim().length > 0 && !binaryPath.startsWith('sdk:');
 }
 
-async function runtimeSelectionWithDetectedBinaryPath(
+function runtimeSelectionWithVerifiedBinaryPath(
   runtime: MindosAgentRuntimeSelection,
   descriptor?: AgentRuntimeDescriptor,
-): Promise<MindosAgentRuntimeSelection> {
-  if (runtime.kind === 'claude' && (!descriptor?.binaryPath || descriptor.binaryPath.startsWith('sdk:'))) {
-    const cliPath = await resolveClaudeCliPathForAsk();
-    return runtimeSelectionWithBinaryPath(runtime, cliPath ?? descriptor?.binaryPath ?? CLAUDE_SDK_BINARY_PATH);
-  }
-  return runtimeSelectionWithBinaryPath(runtime, descriptor?.binaryPath);
+): MindosAgentRuntimeSelection | null {
+  const binaryPath = descriptor?.binaryPath;
+  if (!isNativeRuntimeBinaryPath(binaryPath)) return null;
+  return runtimeSelectionWithBinaryPath(runtime, binaryPath);
 }
 
 async function resolveAvailableNativeRuntime(
@@ -464,15 +457,10 @@ async function resolveAvailableNativeRuntime(
   ]);
   if (!res) {
     const cachedDescriptor = getCachedAvailableNativeRuntimeDescriptor(runtime.kind, runtime.id);
-    if (cachedDescriptor) {
+    const cachedRuntime = runtimeSelectionWithVerifiedBinaryPath(runtime, cachedDescriptor ?? undefined);
+    if (cachedRuntime) {
       return {
-        runtime: await runtimeSelectionWithDetectedBinaryPath(runtime, cachedDescriptor),
-        unavailableReason: null,
-      };
-    }
-    if (runtime.kind === 'claude') {
-      return {
-        runtime: await runtimeSelectionWithDetectedBinaryPath(runtime),
+        runtime: cachedRuntime,
         unavailableReason: null,
       };
     }
@@ -497,8 +485,15 @@ async function resolveAvailableNativeRuntime(
   }
   if (descriptor.status === 'available') {
     rememberAvailableNativeRuntimeDescriptor(descriptor);
+    const verifiedRuntime = runtimeSelectionWithVerifiedBinaryPath(runtime, descriptor);
+    if (!verifiedRuntime) {
+      return {
+        runtime: null,
+        unavailableReason: `${descriptor.name} is unavailable. MindOS could not resolve a local executable path.`,
+      };
+    }
     return {
-      runtime: await runtimeSelectionWithDetectedBinaryPath(runtime, descriptor),
+      runtime: verifiedRuntime,
       unavailableReason: null,
     };
   }
