@@ -138,6 +138,52 @@ function formatAskUserQuestionSummary(part: ToolCallPart): string {
   return formatInput(part.input);
 }
 
+function shortToolName(toolName: string): string {
+  const parts = toolName.split('__');
+  return parts[parts.length - 1] || toolName;
+}
+
+function isAskUserQuestionToolName(toolName: string): boolean {
+  return shortToolName(toolName).replace(/[-_\s]/g, '').toLowerCase() === 'askuserquestion';
+}
+
+function extractQuestionPayload(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  if (Array.isArray(input.questions)) return input.questions;
+  if (isRecord(input.input) && Array.isArray(input.input.questions)) return input.input.questions;
+  if (isRecord(input.params) && Array.isArray(input.params.questions)) return input.params.questions;
+  if (isRecord(input.arguments) && Array.isArray(input.arguments.questions)) return input.arguments.questions;
+  return undefined;
+}
+
+function buildReadOnlyUserQuestion(part: ToolCallPart): ToolCallPart['userQuestion'] | undefined {
+  if (!isAskUserQuestionToolName(part.toolName) || part.userQuestion) return part.userQuestion;
+  const payload = extractQuestionPayload(part.input);
+  if (!Array.isArray(payload) || payload.length === 0) return undefined;
+  const questions = payload
+    .filter(isRecord)
+    .map((question) => ({
+      question: typeof question.question === 'string' ? question.question : '',
+      header: typeof question.header === 'string' ? question.header : '',
+      multiSelect: question.multiSelect === true,
+      options: Array.isArray(question.options)
+        ? question.options.filter(isRecord).map((option) => ({
+          label: typeof option.label === 'string' ? option.label : '',
+          description: typeof option.description === 'string' ? option.description : '',
+          ...(typeof option.preview === 'string' ? { preview: option.preview } : {}),
+        }))
+        : [],
+    }));
+  if (questions.length === 0) return undefined;
+  return {
+    runId: '',
+    questions,
+    status: 'waiting',
+    readOnly: true,
+    ...(part.runtime ? { runtime: part.runtime } : {}),
+  };
+}
+
 function runtimeLabel(runtime: ToolCallPart['runtime']): string {
   if (runtime === 'claude') return 'Claude Code';
   if (runtime === 'codex') return 'Codex';
@@ -506,36 +552,42 @@ function parseToolOutput(output: string | undefined): { header: string; stats: s
 }
 
 export default function ToolCallBlock({ part }: { part: ToolCallPart }) {
-  const hasDiff = DIFF_TOOLS.has(part.toolName);
-  const hasUserQuestion = part.toolName === 'ask_user_question' || Boolean(part.userQuestion);
-  const hasNativeRuntimeTool = isNativeRuntimeTool(part);
-  const isDone = part.state === 'done';
+  const derivedUserQuestion = buildReadOnlyUserQuestion(part);
+  const displayPart = derivedUserQuestion && derivedUserQuestion !== part.userQuestion
+    ? { ...part, userQuestion: derivedUserQuestion }
+    : part;
+  const hasDiff = DIFF_TOOLS.has(displayPart.toolName);
+  const hasUserQuestion = isAskUserQuestionToolName(displayPart.toolName) || Boolean(displayPart.userQuestion);
+  const hasNativeRuntimeTool = isNativeRuntimeTool(displayPart);
+  const isDone = displayPart.state === 'done';
   // Auto-expand diff tools when completed
   const [manualToggle, setManualToggle] = useState<boolean | null>(null);
   const expanded = manualToggle ?? (hasUserQuestion || hasNativeRuntimeTool || (hasDiff && isDone));
 
-  const IconComponent = TOOL_ICONS[part.toolName] ?? WrenchIcon;
-  const isDestructive = isDestructiveToolCall(part);
-  const isSubagent = part.toolName === 'subagent';
+  const IconComponent = isAskUserQuestionToolName(displayPart.toolName)
+    ? MessageSquareMore
+    : TOOL_ICONS[displayPart.toolName] ?? WrenchIcon;
+  const isDestructive = isDestructiveToolCall(displayPart);
+  const isSubagent = displayPart.toolName === 'subagent';
 
-  const parsed = useMemo(() => parseToolOutput(part.output), [part.output]);
+  const parsed = useMemo(() => parseToolOutput(displayPart.output), [displayPart.output]);
 
   // For collapsed header: show file path from input + stats
   const filePath = useMemo(() => {
-    if (!part.input || typeof part.input !== 'object') return '';
-    const obj = part.input as Record<string, unknown>;
+    if (!displayPart.input || typeof displayPart.input !== 'object') return '';
+    const obj = displayPart.input as Record<string, unknown>;
     return (obj.path as string) ?? '';
-  }, [part.input]);
+  }, [displayPart.input]);
 
   const headerLabel = hasUserQuestion
-    ? formatAskUserQuestionSummary(part)
+    ? formatAskUserQuestionSummary(displayPart)
     : hasNativeRuntimeTool
-      ? formatNativeRuntimeSummary(part)
+      ? formatNativeRuntimeSummary(displayPart)
     : isSubagent
-    ? formatSubagentSummary(part.input)
+    ? formatSubagentSummary(displayPart.input)
     : filePath
       ? `${filePath.split('/').pop() ?? filePath}${parsed.stats ? ` (${parsed.stats})` : ''}`
-      : formatInput(part.input);
+      : formatInput(displayPart.input);
 
   return (
     <div className={`my-1.5 box-border min-w-0 max-w-full overflow-hidden rounded-lg border text-xs font-mono ${
@@ -552,12 +604,12 @@ export default function ToolCallBlock({ part }: { part: ToolCallPart }) {
         {expanded ? <ChevronDown size={12} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={12} className="shrink-0 text-muted-foreground" />}
         {isDestructive && <AlertTriangle size={11} className="shrink-0 text-[var(--amber)]" />}
         <IconComponent size={12} className={`shrink-0 ${isDestructive ? 'text-[var(--amber)]' : 'text-muted-foreground'}`} />
-        <span className={`font-medium ${isDestructive ? 'text-[var(--amber)]' : 'text-foreground'}`}>{part.toolName}</span>
+        <span className={`font-medium ${isDestructive ? 'text-[var(--amber)]' : 'text-foreground'}`}>{displayPart.toolName}</span>
         <span className="text-muted-foreground truncate flex-1">{headerLabel}</span>
         <span className="shrink-0 ml-auto">
-          {part.state === 'pending' || part.state === 'running' ? (
+          {displayPart.state === 'pending' || displayPart.state === 'running' ? (
             <Loader2 size={12} className="animate-spin text-[var(--amber)]" />
-          ) : part.state === 'done' ? (
+          ) : displayPart.state === 'done' ? (
             <CheckCircle2 size={12} className="text-success" />
           ) : (
             <XCircle size={12} className="text-error" />
@@ -568,17 +620,17 @@ export default function ToolCallBlock({ part }: { part: ToolCallPart }) {
         <div className="border-t border-border/30">
           {/* Diff view for file-mutating tools — only when done and has diff */}
           {hasUserQuestion ? (
-            <AskUserQuestionBlock part={part} />
+            <AskUserQuestionBlock part={displayPart} />
           ) : hasNativeRuntimeTool ? (
             <NativeRuntimeToolDetails
-              part={part}
-              running={part.state === 'running'}
+              part={displayPart}
+              running={displayPart.state === 'running'}
             />
           ) : isSubagent ? (
             <SubagentToolDetails
-              input={part.input}
-              output={part.output}
-              running={part.state === 'running'}
+              input={displayPart.input}
+              output={displayPart.output}
+              running={displayPart.state === 'running'}
             />
           ) : hasDiff && isDone && parsed.diffLines.length > 0 ? (
             <div className="max-h-64 overflow-y-auto">
@@ -613,19 +665,19 @@ export default function ToolCallBlock({ part }: { part: ToolCallPart }) {
           ) : (
             /* Fallback: show input (always), output when available */
             <div className="px-2.5 pb-2.5 pt-1.5 space-y-1.5">
-              {part.state === 'running' && (
+              {displayPart.state === 'running' && (
                 <div className="text-muted-foreground/60 text-2xs flex items-center gap-1.5">
                   <Loader2 size={10} className="animate-spin" /> Running...
                 </div>
               )}
               <div className="text-muted-foreground leading-relaxed">
                 <span className="font-semibold text-foreground/70">Input: </span>
-                <span className="break-all whitespace-pre-wrap">{JSON.stringify(part.input, null, 2)}</span>
+                <span className="break-all whitespace-pre-wrap">{JSON.stringify(displayPart.input, null, 2)}</span>
               </div>
-              {part.output !== undefined && part.output !== '' && (
+              {displayPart.output !== undefined && displayPart.output !== '' && (
                 <div className="text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-foreground/70">Output: </span>
-                  <span className="break-all whitespace-pre-wrap">{part.output.length > 500 ? part.output.slice(0, 500) + '…' : part.output}</span>
+                  <span className="break-all whitespace-pre-wrap">{displayPart.output.length > 500 ? displayPart.output.slice(0, 500) + '…' : displayPart.output}</span>
                 </div>
               )}
             </div>

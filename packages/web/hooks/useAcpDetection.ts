@@ -32,8 +32,8 @@ interface AcpDetectionState {
   refresh: () => void;
 }
 
-const STORAGE_KEY = 'mindos:acp-detection:v2';
-const LEGACY_STORAGE_KEY = 'mindos:acp-detection';
+const STORAGE_KEY = 'mindos:acp-detection:v3';
+const LEGACY_STORAGE_KEYS = ['mindos:acp-detection:v2', 'mindos:acp-detection'];
 const STALE_TTL_MS = 30 * 60 * 1000;
 const REVALIDATE_TTL_MS = 30 * 60 * 1000;
 const DETECTION_TIMEOUT_MS = 30000;
@@ -66,7 +66,9 @@ export function readAcpDetectionCacheFromStorage(): DetectionCache | null {
     return {
       installed: parsed.installed as DetectedAgent[],
       notInstalled: parsed.notInstalled as NotInstalledAgent[],
-      ...(Array.isArray(parsed.runtimes) ? { runtimes: parsed.runtimes as AgentRuntimeDescriptor[] } : {}),
+      ...(Array.isArray(parsed.runtimes)
+        ? { runtimes: (parsed.runtimes as AgentRuntimeDescriptor[]).filter((runtime) => runtime.kind === 'acp') }
+        : {}),
       ts: parsed.ts,
     };
   } catch {
@@ -76,25 +78,22 @@ export function readAcpDetectionCacheFromStorage(): DetectionCache | null {
 
 function writeStorage(installed: DetectedAgent[], notInstalled: NotInstalledAgent[], runtimes: AgentRuntimeDescriptor[]) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ installed, notInstalled, runtimes, ts: Date.now() }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      installed,
+      notInstalled,
+      runtimes: runtimes.filter((runtime) => runtime.kind === 'acp'),
+      ts: Date.now(),
+    }));
   } catch { /* quota exceeded */ }
-}
-
-function hasUnavailableNativeRuntime(cache: DetectionCache | null): boolean {
-  return (cache?.runtimes ?? []).some((runtime) => (
-    (runtime.kind === 'codex' || runtime.kind === 'claude') &&
-    (runtime.status === 'error' || runtime.status === 'signed-out' || runtime.status === 'missing')
-  ));
 }
 
 export function useAcpDetection(): AcpDetectionState {
   const [initialCache] = useState<DetectionCache | null>(() => readAcpDetectionCacheFromStorage());
-  const [shouldRevalidateInitialCache] = useState(() => hasUnavailableNativeRuntime(initialCache));
   const cached = useRef<DetectionCache | null>(initialCache);
   const [installedAgents, setInstalledAgents] = useState<DetectedAgent[]>(() => initialCache?.installed ?? []);
   const [notInstalledAgents, setNotInstalledAgents] = useState<NotInstalledAgent[]>(() => initialCache?.notInstalled ?? []);
   const [runtimes, setRuntimes] = useState<AgentRuntimeDescriptor[]>(() => initialCache?.runtimes ?? []);
-  const [loading, setLoading] = useState(() => !initialCache || shouldRevalidateInitialCache);
+  const [loading, setLoading] = useState(() => !initialCache);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState(0);
   const inflight = useRef(false);
@@ -103,7 +102,9 @@ export function useAcpDetection(): AcpDetectionState {
 
   const refresh = useCallback(() => {
     try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-    try { sessionStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* ignore */ }
+    for (const key of LEGACY_STORAGE_KEYS) {
+      try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+    }
     cached.current = null;
     forceRef.current = true;
     setTrigger((n) => n + 1);
@@ -120,8 +121,7 @@ export function useAcpDetection(): AcpDetectionState {
     forceRef.current = false;
 
     const fresh = cached.current &&
-      Date.now() - cached.current.ts < REVALIDATE_TTL_MS &&
-      !hasUnavailableNativeRuntime(cached.current);
+      Date.now() - cached.current.ts < REVALIDATE_TTL_MS;
     if (fresh && trigger === 0) return;
 
     if (inflight.current) return;
@@ -136,7 +136,7 @@ export function useAcpDetection(): AcpDetectionState {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DETECTION_TIMEOUT_MS);
 
-    fetch(`/api/agent-runtimes${isForce ? '?force=1' : ''}`, { signal: controller.signal })
+    fetch(`/api/agent-runtimes?scope=acp${isForce ? '&force=1' : ''}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

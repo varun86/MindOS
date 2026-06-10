@@ -9,8 +9,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function normalizeRuntime(value: unknown): 'codex' | 'claude' {
-  return value === 'codex' ? 'codex' : 'claude';
+function normalizeRuntime(value: unknown): 'codex' | 'claude' | null {
+  if (value === 'codex' || value === 'claude') return value;
+  return null;
 }
 
 function normalizeIntent(value: unknown): MindosRuntimePermissionOption['intent'] | undefined {
@@ -42,16 +43,20 @@ export async function POST(req: NextRequest) {
   const runId = typeof body.runId === 'string' ? body.runId : '';
   const toolCallId = typeof body.toolCallId === 'string' && body.toolCallId.trim()
     ? body.toolCallId
-    : `runtime-permission-${Date.now().toString(36)}`;
+    : `runtime-permission-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const toolName = typeof body.toolName === 'string' && body.toolName.trim()
     ? body.toolName
     : 'approval_request';
   if (!runId) {
     return NextResponse.json({ error: 'runId is required.' }, { status: 400 });
   }
+  const runtime = normalizeRuntime(body.runtime);
+  if (!runtime) {
+    return NextResponse.json({ error: 'runtime must be codex or claude.' }, { status: 400 });
+  }
 
   const result = await requestRuntimePermissionForRun(runId, {
-    runtime: normalizeRuntime(body.runtime),
+    runtime,
     toolCallId,
     toolName,
     input: body.input ?? {},

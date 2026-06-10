@@ -170,7 +170,64 @@ describe('consumeUIMessageStream — status event handling', () => {
     });
   });
 
-  it('tracks runtime permission requests and resolutions as native tool state', async () => {
+  it('appends native runtime tool output deltas while keeping the tool running', async () => {
+    const stream = makeStream(
+      {
+        type: 'tool_start',
+        toolCallId: 'cmd-1',
+        toolName: 'Bash',
+        runtime: 'codex',
+        args: { command: 'printf hello' },
+      },
+      { type: 'tool_delta', toolCallId: 'cmd-1', toolName: 'Bash', runtime: 'codex', delta: 'hello' },
+      { type: 'tool_delta', toolCallId: 'cmd-1', toolName: 'Bash', runtime: 'codex', delta: '\n' },
+      { type: 'tool_end', toolCallId: 'cmd-1', output: 'hello\n', isError: false },
+      { type: 'done' },
+    );
+
+    const updates: Array<{ parts: unknown[] }> = [];
+    const result = await consumeUIMessageStream(stream, (message) => {
+      updates.push({ parts: message.parts });
+    });
+    const afterDelta = updates.find((message) => {
+      const part = message.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+      return part?.output === 'hello\n';
+    })?.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(afterDelta).toMatchObject({
+      state: 'running',
+      output: 'hello\n',
+    });
+
+    const toolPart = result.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(toolPart).toMatchObject({
+      state: 'done',
+      output: 'hello\n',
+    });
+  });
+
+  it('keeps streamed Codex command output when completion only carries a generic status', async () => {
+    const stream = makeStream(
+      {
+        type: 'tool_start',
+        toolCallId: 'cmd-1',
+        toolName: 'Bash',
+        runtime: 'codex',
+        args: { command: 'printf hello' },
+      },
+      { type: 'tool_delta', toolCallId: 'cmd-1', toolName: 'Bash', runtime: 'codex', delta: 'hello\n' },
+      { type: 'tool_end', toolCallId: 'cmd-1', output: 'Codex item completed', isError: false },
+      { type: 'done' },
+    );
+
+    const result = await consumeUIMessageStream(stream, vi.fn());
+    const toolPart = result.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(toolPart).toMatchObject({
+      state: 'done',
+      output: 'hello\n',
+    });
+  });
+
+  it('tracks runtime permission requests and resolutions without completing the underlying tool', async () => {
     const stream = makeStream(
       {
         type: 'runtime_permission_request',
@@ -193,16 +250,30 @@ describe('consumeUIMessageStream — status event handling', () => {
         toolCallId: 'cmd-1',
         decision: 'accept',
       },
+      { type: 'tool_end', toolCallId: 'cmd-1', output: 'Deleted Profile.md', isError: false },
       { type: 'done' },
     );
 
-    const result = await consumeUIMessageStream(stream, vi.fn());
+    const updates: Array<{ parts: unknown[] }> = [];
+    const result = await consumeUIMessageStream(stream, (message) => {
+      updates.push({ parts: message.parts });
+    });
+    const afterResolved = updates.find((message) => {
+      const part = message.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+      return part?.runtimePermission?.status === 'approved';
+    })?.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
+    expect(afterResolved).toMatchObject({
+      state: 'running',
+      runtimePermission: { status: 'approved', decision: 'accept' },
+    });
+
     const toolPart = result.parts.find((p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call');
     expect(toolPart).toMatchObject({
       toolCallId: 'cmd-1',
       toolName: 'Bash',
       runtime: 'codex',
       state: 'done',
+      output: 'Deleted Profile.md',
       runtimePermission: {
         runId: 'run-1',
         requestId: 'perm-1',

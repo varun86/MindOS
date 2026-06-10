@@ -103,6 +103,8 @@ export interface AskUserQuestionState {
   runId: string;
   questions: AskUserQuestion[];
   status: 'waiting' | 'submitted' | 'cancelled';
+  readOnly?: boolean;
+  runtime?: AgentRuntimeKind;
   reason?: string;
   answers?: AskUserQuestionAnswer[];
 }
@@ -153,9 +155,31 @@ export interface AgentRuntimeCapabilities {
   supportsArchive: boolean;
   supportsInterrupt: boolean;
   supportsModelList: boolean;
+  supportsApprovals: boolean;
+  supportsUserInput: boolean;
+  supportsToolEvents: boolean;
+  supportsRuntimeStatus: boolean;
+  supportsDiffs: boolean;
+  supportsCheckpoints: boolean;
+  supportsBackgroundRuns: boolean;
+  supportsMcpConfig: boolean;
 }
 
+export type AgentRuntimeAdapter =
+  | 'mindos'
+  | 'codex-app-server'
+  | 'claude-cli'
+  | 'claude-sdk'
+  | 'acp';
+
+export type AgentRuntimeOwner = 'mindos' | 'external';
+
 export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
+  adapter: AgentRuntimeAdapter;
+  modelOwner: AgentRuntimeOwner;
+  authOwner: AgentRuntimeOwner;
+  permissionOwner: AgentRuntimeOwner;
+  sessionOwner: AgentRuntimeOwner;
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
   description?: string;

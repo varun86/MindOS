@@ -37,6 +37,10 @@ export type MindosAgentRuntimeAskServices = {
     request: MindosRuntimePermissionRequest,
     options?: { signal?: AbortSignal },
   ): Promise<MindosRuntimePermissionResult>;
+  requestUserQuestion?(
+    request: MindosRuntimeUserQuestionRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<MindosRuntimeUserQuestionResult>;
 };
 
 export type MindosRuntimePermissionOption = {
@@ -60,6 +64,41 @@ export type MindosRuntimePermissionResult = {
   cancelled?: boolean;
 };
 
+export type MindosRuntimeUserQuestionOption = {
+  label: string;
+  description: string;
+  preview?: string;
+};
+
+export type MindosRuntimeUserQuestion = {
+  question: string;
+  header: string;
+  options: MindosRuntimeUserQuestionOption[];
+  multiSelect?: boolean;
+};
+
+export type MindosRuntimeUserQuestionAnswer = {
+  questionIndex: number;
+  question: string;
+  kind: 'option' | 'custom' | 'chat' | 'multi';
+  answer: string | null;
+  selected?: string[];
+  notes?: string;
+  preview?: string;
+};
+
+export type MindosRuntimeUserQuestionRequest = {
+  runtime: 'codex' | 'claude';
+  toolCallId: string;
+  questions: MindosRuntimeUserQuestion[];
+};
+
+export type MindosRuntimeUserQuestionResult = {
+  answers: MindosRuntimeUserQuestionAnswer[];
+  cancelled?: boolean;
+  error?: string;
+};
+
 export type MindosAgentRuntimeAskOptions = {
   runtime: MindosAgentRuntimeSelection;
   cwd: string;
@@ -73,6 +112,18 @@ export type MindosAgentRuntimeAskResult = {
   externalSessionId?: string;
   error?: Error;
 };
+
+type CodexPendingServerRequestKind = 'permission' | 'question';
+
+type CodexPendingServerRequest = {
+  requestId: number;
+  toolCallId: string;
+  kind: CodexPendingServerRequestKind;
+  abortController: AbortController;
+  cleanup(): void;
+};
+
+type CodexPendingServerRequests = Map<string, CodexPendingServerRequest>;
 
 export async function runMindosAgentRuntimeAskSession(
   options: MindosAgentRuntimeAskOptions,
@@ -127,10 +178,11 @@ async function runClaudeAskSession(options: MindosAgentRuntimeAskOptions): Promi
 async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {
   let client: CodexAppServerClient | undefined;
   let threadId = options.runtime.externalSessionId;
+  const pendingServerRequests: CodexPendingServerRequests = new Map();
 
   try {
     client = await resolveCodexClient(options, async (request) => {
-      return handleCodexServerRequest(request, options);
+      return handleCodexServerRequest(request, options, pendingServerRequests);
     });
     await client.initialize();
     const thread = threadId
@@ -155,6 +207,9 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
         input: [{ type: 'text', text: options.prompt }],
         signal: options.signal,
       })) {
+        if (notification.method === 'serverRequest/resolved') {
+          abortCodexPendingServerRequest(notification.params, pendingServerRequests);
+        }
         for (const event of mapCodexAppServerNotificationToSseEvents(notification)) {
           options.send(event);
         }
@@ -169,6 +224,7 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
     options.send({ type: 'error', message: `Codex native runtime error: ${err.message}` });
     return { error: err, ...(threadId ? { externalSessionId: threadId } : {}) };
   } finally {
+    abortAllCodexPendingServerRequests(pendingServerRequests);
     await client?.close?.();
   }
 }
@@ -198,15 +254,31 @@ async function resolveClaudeClient(options: MindosAgentRuntimeAskOptions): Promi
 async function handleCodexServerRequest(
   request: CodexAppServerServerRequest,
   options: MindosAgentRuntimeAskOptions,
+  pendingServerRequests?: CodexPendingServerRequests,
 ): Promise<unknown> {
+  if (isCodexUserInputRequest(request)) {
+    return handleCodexUserInputRequest(request, options, pendingServerRequests);
+  }
+
   if (!isCodexApprovalRequest(request)) {
     throw new Error(`Unhandled Codex app-server request: ${request.method}`);
   }
 
   const permissionRequest = buildCodexPermissionRequest(request);
-  const result = options.services?.requestRuntimePermission
-    ? await options.services.requestRuntimePermission(permissionRequest, { signal: options.signal })
-    : { decision: 'cancel', cancelled: true };
+  const result = await withCodexPendingServerRequest(
+    request,
+    {
+      kind: 'permission',
+      toolCallId: permissionRequest.toolCallId,
+      signal: options.signal,
+      pendingServerRequests,
+    },
+    async (signal) => (
+      options.services?.requestRuntimePermission
+        ? await options.services.requestRuntimePermission(permissionRequest, { signal })
+        : { decision: 'cancel', cancelled: true }
+    ),
+  );
 
   if (request.method === 'item/permissions/requestApproval') {
     return codexPermissionsApprovalResult(request, result);
@@ -217,11 +289,145 @@ async function handleCodexServerRequest(
   };
 }
 
+async function handleCodexUserInputRequest(
+  request: CodexAppServerServerRequest,
+  options: MindosAgentRuntimeAskOptions,
+  pendingServerRequests?: CodexPendingServerRequests,
+): Promise<unknown> {
+  const questionRequest = buildCodexUserQuestionRequest(request);
+  const result = await withCodexPendingServerRequest(
+    request,
+    {
+      kind: 'question',
+      toolCallId: questionRequest.toolCallId,
+      signal: options.signal,
+      pendingServerRequests,
+    },
+    async (signal) => (
+      options.services?.requestUserQuestion
+        ? await options.services.requestUserQuestion(questionRequest, { signal })
+        : { answers: [], cancelled: true, error: 'no_bridge' }
+    ),
+  );
+
+  if (result.cancelled) {
+    return { cancelled: true, answers: [], error: result.error ?? 'cancelled' };
+  }
+
+  return {
+    answers: result.answers.map((answer) => ({
+      questionIndex: answer.questionIndex,
+      question: answer.question,
+      answer: answer.answer,
+      ...(answer.selected ? { selected: answer.selected } : {}),
+      ...(answer.kind ? { kind: answer.kind } : {}),
+    })),
+  };
+}
+
+function isCodexUserInputRequest(request: CodexAppServerServerRequest): boolean {
+  return request.method === 'item/tool/requestUserInput'
+    || request.method === 'tool/requestUserInput';
+}
+
 function isCodexApprovalRequest(request: CodexAppServerServerRequest): boolean {
   return request.method === 'item/commandExecution/requestApproval'
     || request.method === 'item/fileChange/requestApproval'
     || request.method === 'item/permissions/requestApproval'
     || /approval|permission/i.test(request.method);
+}
+
+async function withCodexPendingServerRequest<T>(
+  request: CodexAppServerServerRequest,
+  input: {
+    kind: CodexPendingServerRequestKind;
+    toolCallId: string;
+    signal?: AbortSignal;
+    pendingServerRequests?: CodexPendingServerRequests;
+  },
+  callback: (signal?: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (!input.pendingServerRequests) return callback(input.signal);
+
+  const abortController = new AbortController();
+  const abortFromParent = () => abortController.abort();
+  if (input.signal?.aborted) {
+    abortController.abort();
+  } else {
+    input.signal?.addEventListener('abort', abortFromParent, { once: true });
+  }
+
+  const keys = codexServerRequestKeys(request);
+  const pending: CodexPendingServerRequest = {
+    requestId: request.id,
+    toolCallId: input.toolCallId,
+    kind: input.kind,
+    abortController,
+    cleanup: () => {
+      input.signal?.removeEventListener('abort', abortFromParent);
+      for (const key of keys) {
+        if (input.pendingServerRequests?.get(key) === pending) {
+          input.pendingServerRequests.delete(key);
+        }
+      }
+    },
+  };
+
+  for (const key of keys) input.pendingServerRequests.set(key, pending);
+
+  try {
+    return await callback(abortController.signal);
+  } finally {
+    pending.cleanup();
+  }
+}
+
+function abortCodexPendingServerRequest(
+  params: Record<string, unknown> | undefined,
+  pendingServerRequests: CodexPendingServerRequests,
+): boolean {
+  const keys = codexServerRequestResolvedKeys(params);
+  for (const key of keys) {
+    const pending = pendingServerRequests.get(key);
+    if (!pending) continue;
+    pending.abortController.abort();
+    pending.cleanup();
+    return true;
+  }
+  return false;
+}
+
+function abortAllCodexPendingServerRequests(pendingServerRequests: CodexPendingServerRequests): void {
+  const pending = new Set(pendingServerRequests.values());
+  pendingServerRequests.clear();
+  for (const request of pending) {
+    request.abortController.abort();
+    request.cleanup();
+  }
+}
+
+function codexServerRequestKeys(request: CodexAppServerServerRequest): string[] {
+  const params = request.params ?? {};
+  return uniqueStrings([
+    String(request.id),
+    getIdLike(params, 'requestId'),
+    getIdLike(params, 'serverRequestId'),
+    getIdLike(params, 'jsonrpcId'),
+    getIdLike(params, 'itemId'),
+    getIdLike(params, 'callId'),
+    getIdLike(params, 'id'),
+  ]);
+}
+
+function codexServerRequestResolvedKeys(params: Record<string, unknown> | undefined): string[] {
+  return uniqueStrings([
+    getIdLike(params, 'requestId'),
+    getIdLike(params, 'serverRequestId'),
+    getIdLike(params, 'jsonrpcId'),
+    getIdLike(params, 'itemId'),
+    getIdLike(params, 'callId'),
+    getIdLike(params, 'id'),
+  ]);
 }
 
 function buildCodexPermissionRequest(request: CodexAppServerServerRequest): MindosRuntimePermissionRequest {
@@ -253,6 +459,65 @@ function buildCodexPermissionRequest(request: CodexAppServerServerRequest): Mind
       reason: getString(params, 'reason') ?? getString(params, 'message'),
     } : {}),
   };
+}
+
+function buildCodexUserQuestionRequest(request: CodexAppServerServerRequest): MindosRuntimeUserQuestionRequest {
+  const params = request.params ?? {};
+  const toolCallId = getString(params, 'itemId')
+    ?? getString(params, 'requestId')
+    ?? getString(params, 'callId')
+    ?? getString(params, 'id')
+    ?? `codex-question-${request.id}`;
+  const questions = normalizeCodexUserQuestions(params);
+
+  return {
+    runtime: 'codex',
+    toolCallId,
+    questions: questions.length > 0 ? questions : [{
+      question: getString(params, 'message') ?? getString(params, 'reason') ?? 'Codex needs your input to continue.',
+      header: getString(params, 'title') ?? 'Codex input',
+      options: [
+        { label: 'Continue', description: 'Allow Codex to continue with this request.' },
+        { label: 'Cancel', description: 'Cancel this request.' },
+      ],
+    }],
+  };
+}
+
+function normalizeCodexUserQuestions(params: Record<string, unknown>): MindosRuntimeUserQuestion[] {
+  const rawQuestions = Array.isArray(params.questions)
+    ? params.questions
+    : isRecord(params.input) && Array.isArray(params.input.questions)
+      ? params.input.questions
+      : [];
+  return rawQuestions
+    .filter(isRecord)
+    .map((question, index) => ({
+      question: getString(question, 'question') ?? getString(question, 'text') ?? getString(question, 'message') ?? `Question ${index + 1}`,
+      header: getString(question, 'header') ?? getString(question, 'title') ?? `Question ${index + 1}`,
+      multiSelect: question.multiSelect === true || question.multiselect === true,
+      options: normalizeCodexUserQuestionOptions(question.options),
+    }));
+}
+
+function normalizeCodexUserQuestionOptions(value: unknown): MindosRuntimeUserQuestionOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((option): MindosRuntimeUserQuestionOption[] => {
+    if (typeof option === 'string' && option.trim()) {
+      return [{ label: option, description: option }];
+    }
+    if (!isRecord(option)) return [];
+    const label = getString(option, 'label')
+      ?? getString(option, 'value')
+      ?? getString(option, 'title')
+      ?? (option.isOther === true ? 'Other' : undefined);
+    if (!label) return [];
+    return [{
+      label,
+      description: getString(option, 'description') ?? getString(option, 'hint') ?? label,
+      ...(getString(option, 'preview') ? { preview: getString(option, 'preview') } : {}),
+    }];
+  });
 }
 
 function getCodexPermissionOptions(params: Record<string, unknown>, method: string): MindosRuntimePermissionOption[] {
@@ -326,6 +591,21 @@ function codexPermissionsApprovalResult(
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getIdLike(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
 }
 
 function getString(record: Record<string, unknown>, key: string): string | undefined {

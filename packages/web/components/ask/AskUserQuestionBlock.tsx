@@ -45,6 +45,13 @@ function footerHint(answeredCount: number, total: number, submitting: boolean): 
   return `${total - answeredCount} remaining`;
 }
 
+function runtimeLabel(runtime: ToolCallPart['runtime']): string {
+  if (runtime === 'claude') return 'Claude Code';
+  if (runtime === 'codex') return 'Codex';
+  if (runtime === 'acp') return 'ACP Agent';
+  return 'Local runtime';
+}
+
 function draftFromAnswer(answer: AskUserQuestionAnswer): AnswerDraft {
   if (answer.kind === 'multi') return { mode: 'multi', selected: answer.selected ?? [] };
   if (answer.kind === 'custom') return { mode: 'custom', value: answer.answer ?? '' };
@@ -103,6 +110,7 @@ function buildAnswers(questions: AskUserQuestion[], drafts: Record<string, Answe
 export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
   const questionState = part.userQuestion;
   const questions = questionState?.questions ?? [];
+  const readOnly = questionState?.readOnly === true;
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>(() => draftsFromAnswers(questionState?.answers));
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -117,7 +125,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
     () => questions.filter((question, index) => isAnswered(question, drafts[answerKey(index)])).length,
     [drafts, questions],
   );
-  const canSubmit = questions.length > 0 && answeredCount === questions.length && questionState?.status === 'waiting' && !submitting;
+  const canSubmit = !readOnly && questions.length > 0 && answeredCount === questions.length && questionState?.status === 'waiting' && !submitting;
   const isClosed = questionState?.status === 'submitted' || questionState?.status === 'cancelled';
   const progressPercent = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
   const selectedPreview = useMemo(() => {
@@ -248,9 +256,13 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
                     : <MessageSquare size={15} />}
             </span>
             <div className="min-w-0">
-              <div className="text-foreground/90 font-medium">{statusTitle(questionState.status)}</div>
+              <div className="text-foreground/90 font-medium">
+                {readOnly ? `${runtimeLabel(questionState.runtime)} question` : statusTitle(questionState.status)}
+              </div>
               <div className="truncate text-2xs text-muted-foreground">
-                {statusText(questionState.status, answeredCount, questions.length, questionState.reason)}
+                {readOnly
+                  ? 'Rendered from a native runtime tool call'
+                  : statusText(questionState.status, answeredCount, questions.length, questionState.reason)}
               </div>
             </div>
           </div>
@@ -275,7 +287,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
         )}
       </div>
 
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.72fr)]">
+      <div className="grid min-w-0 gap-3">
         <div className="min-w-0 space-y-2.5">
           {questions.map((question, index) => {
             const draft = drafts[answerKey(index)];
@@ -321,7 +333,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
                       <button
                         key={option.label}
                         type="button"
-                        disabled={isClosed || submitting}
+                        disabled={readOnly || isClosed || submitting}
                         aria-pressed={selected}
                         onClick={() => question.multiSelect ? toggleMultiAnswer(index, option.label) : setSingleAnswer(index, option.label)}
                         className={`group w-full min-w-0 rounded-md border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default ${
@@ -350,7 +362,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
                   <div className="grid gap-1.5 sm:grid-cols-[1fr_auto]">
                     <input
                       value={draft?.mode === 'custom' ? draft.value ?? '' : ''}
-                      disabled={isClosed || submitting}
+                      disabled={readOnly || isClosed || submitting}
                       onChange={(event) => setCustomAnswer(index, event.target.value)}
                       aria-label={`${question.header || `Question ${index + 1}`} custom answer`}
                       placeholder="Type a custom answer..."
@@ -362,7 +374,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
                     />
                     <button
                       type="button"
-                      disabled={isClosed || submitting}
+                      disabled={readOnly || isClosed || submitting}
                       aria-pressed={draft?.mode === 'chat'}
                       onClick={() => setChatAnswer(index)}
                       className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default ${
@@ -381,7 +393,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
           })}
         </div>
 
-        <aside className="min-w-0 rounded-md border border-border/40 bg-background/60 p-3 lg:sticky lg:top-3 lg:min-h-28 lg:self-start">
+        <aside className="min-w-0 rounded-md border border-border/40 bg-background/60 p-3">
           {effectivePreview?.option.preview ? (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -411,7 +423,13 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
         </div>
       )}
 
-      {questionState.status === 'waiting' && (
+      {questionState.status === 'waiting' && readOnly && (
+        <div className="rounded-md border border-border/35 bg-muted/10 px-2.5 py-2 text-2xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+          MindOS could not attach this {runtimeLabel(questionState.runtime)} question to an active answer bridge, so this card is read-only context for the current run.
+        </div>
+      )}
+
+      {questionState.status === 'waiting' && !readOnly && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/30 pt-2">
           <div className="text-2xs text-muted-foreground">
             {footerHint(answeredCount, questions.length, submitting)}

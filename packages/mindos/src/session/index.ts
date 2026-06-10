@@ -46,7 +46,8 @@ export type MindOSSSEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown; runtime?: 'mindos' | 'acp' | 'codex' | 'claude' }
-  | { type: 'tool_end'; toolCallId: string; output: string; isError: boolean }
+  | { type: 'tool_delta'; toolCallId: string; delta: string; toolName?: string; runtime?: 'mindos' | 'acp' | 'codex' | 'claude' }
+  | { type: 'tool_end'; toolCallId: string; output: string; isError: boolean; toolName?: string; runtime?: 'mindos' | 'acp' | 'codex' | 'claude' }
   | {
       type: 'runtime_permission_request';
       runId: string;
@@ -79,6 +80,7 @@ export const MINDOS_ASK_STREAM_EVENT_TYPES = [
   'text_delta',
   'thinking_delta',
   'tool_start',
+  'tool_delta',
   'tool_end',
   'runtime_permission_request',
   'runtime_permission_resolved',
@@ -514,6 +516,11 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
       modeGuidance,
     ].join('\n'));
   }
+
+  contextSections.push([
+    '## MindOS Chat Panel Bridge',
+    'If the available tools include `AskUserQuestion`, use it for user confirmations or structured choices that affect the next action. Keep questions concise and include concrete options.',
+  ].join('\n'));
 
   if (input.fileContext?.contextParts.length) {
     contextSections.push([

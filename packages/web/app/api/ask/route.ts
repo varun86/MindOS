@@ -51,7 +51,7 @@ import {
   resolveSkillFile,
   resolveSkillReference,
 } from '@/lib/agent/skill-resolver';
-import { runWithAskUserQuestionBridge } from '@/lib/agent/user-question-bridge';
+import { askUserQuestionViaBridge, runWithAskUserQuestionBridge } from '@/lib/agent/user-question-bridge';
 import {
   requestRuntimePermissionViaBridge,
   runWithRuntimePermissionBridge,
@@ -134,7 +134,11 @@ function externalSessionIdFromRuntimeBinding(
 
 function createAskSseResponse(
   runAgent: (send: (event: MindOSSSEvent) => void) => Promise<void>,
-  fallbackErrorMessage: (error: unknown) => string,
+  fallbackErrorMessage: (error: unknown) => string = (error) => (
+    error instanceof Error && error.message
+      ? error.message
+      : 'MindOS ask stream failed unexpectedly.'
+  ),
 ): Response {
   const encoder = new TextEncoder();
   const requestStartTime = Date.now();
@@ -337,6 +341,9 @@ export async function POST(req: NextRequest) {
         await runWithRuntimePermissionBridge({
           runId: runtimeRunId,
           send,
+        }, () => runWithAskUserQuestionBridge({
+          runId: runtimeRunId,
+          send: (event) => send(event as unknown as MindOSSSEvent),
         }, () => runMindosAgentRuntimeAskSession({
             runtime: selectedNativeRuntime,
             cwd: mindRoot,
@@ -351,8 +358,13 @@ export async function POST(req: NextRequest) {
                 }),
               } : {}),
               requestRuntimePermission: requestRuntimePermissionViaBridge,
+              requestUserQuestion: (request, callOptions) => askUserQuestionViaBridge({
+                toolCallId: request.toolCallId,
+                params: { questions: request.questions },
+                signal: callOptions?.signal,
+              }),
             },
-          }));
+          })));
         return;
       }
 

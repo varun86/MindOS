@@ -83,6 +83,7 @@ describe('consumeUIMessageStream user_question events', () => {
 
     const part = findAskQuestionPart(result.parts);
     expect(result.content).toBe('');
+    expect(part?.state).toBe('done');
     expect(part?.userQuestion?.status).toBe('submitted');
     expect(part?.userQuestion?.answers).toEqual([answer]);
   });
@@ -100,6 +101,56 @@ describe('consumeUIMessageStream user_question events', () => {
     ), vi.fn());
 
     const part = findAskQuestionPart(result.parts);
+    expect(part?.state).toBe('error');
+    expect(part?.output).toBe('timeout');
     expect(part?.userQuestion).toMatchObject({ status: 'cancelled', reason: 'timeout' });
+  });
+
+  it('renders native Claude AskUserQuestion tool starts as structured read-only question parts', async () => {
+    const result = await consumeUIMessageStream(makeStream(
+      {
+        type: 'tool_start',
+        runtime: 'claude',
+        toolCallId: 'toolu-question',
+        toolName: 'AskUserQuestion',
+        args: {
+          questions: [{
+            question: 'Delete the CV review note?',
+            header: 'Delete confirmation',
+            options: [
+              { label: 'Delete', description: 'Remove the note.' },
+              { label: 'Keep', description: 'Leave it unchanged.' },
+            ],
+          }],
+        },
+      },
+      { type: 'done' },
+    ), vi.fn());
+
+    const part = result.parts.find((item): item is ToolCallPart => (
+      Boolean(item) &&
+      typeof item === 'object' &&
+      (item as ToolCallPart).type === 'tool-call' &&
+      (item as ToolCallPart).toolCallId === 'toolu-question'
+    ));
+    expect(part).toMatchObject({
+      toolName: 'AskUserQuestion',
+      runtime: 'claude',
+      userQuestion: {
+        runId: '',
+        status: 'waiting',
+        readOnly: true,
+        runtime: 'claude',
+        questions: [{
+          question: 'Delete the CV review note?',
+          header: 'Delete confirmation',
+          multiSelect: false,
+          options: [
+            { label: 'Delete', description: 'Remove the note.' },
+            { label: 'Keep', description: 'Leave it unchanged.' },
+          ],
+        }],
+      },
+    });
   });
 });

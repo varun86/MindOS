@@ -72,6 +72,7 @@ describe('MindOS session event contract', () => {
       'text_delta',
       'thinking_delta',
       'tool_start',
+      'tool_delta',
       'tool_end',
       'runtime_permission_request',
       'runtime_permission_resolved',
@@ -338,6 +339,8 @@ describe('MindOS session event contract', () => {
     expect(prompt).toContain('## MindOS Turn Context');
     expect(prompt).toContain('MindOS composer mode: chat');
     expect(prompt).toContain('Treat this as read-oriented unless the user explicitly asks you to modify files.');
+    expect(prompt).toContain('## MindOS Chat Panel Bridge');
+    expect(prompt).toContain('AskUserQuestion');
     expect(prompt).toContain('## Attached MindOS Context');
     expect(prompt).toContain('## Attached: Plan.md');
     expect(prompt).toContain('## Uploaded Files');

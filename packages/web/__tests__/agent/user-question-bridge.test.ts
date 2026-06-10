@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   answerAskUserQuestion,
+  askUserQuestionForRun,
   askUserQuestionViaBridge,
   cancelAskUserQuestion,
   getPendingAskUserQuestionCount,
@@ -82,6 +83,35 @@ describe('ask user question bridge', () => {
     });
   });
 
+  it('lets an external runtime bridge ask through the active run id', async () => {
+    const send = vi.fn();
+    const promise = runWithAskUserQuestionBridge(
+      { runId: 'run-external', send },
+      async () => {
+        const question = askUserQuestionForRun({ runId: 'run-external', toolCallId: 'claude-question-1', params });
+        expect(getPendingAskUserQuestionCount()).toBe(1);
+        expect(send).toHaveBeenCalledWith({
+          type: 'user_question_start',
+          runId: 'run-external',
+          toolCallId: 'claude-question-1',
+          questions: normalizedQuestions,
+        });
+        expect(answerAskUserQuestion({
+          runId: 'run-external',
+          toolCallId: 'claude-question-1',
+          answers: [{ questionIndex: 0, question: params.questions[0].question, kind: 'option', answer: 'Bridge' }],
+        })).toEqual({ ok: true });
+        return question;
+      },
+    );
+
+    await expect(promise).resolves.toMatchObject({
+      cancelled: false,
+      answers: [{ answer: 'Bridge' }],
+    });
+    expect(getPendingAskUserQuestionCount()).toBe(0);
+  });
+
   it('returns 404 for a stale answer or cancel request', () => {
     expect(answerAskUserQuestion({ runId: 'missing', toolCallId: 'tool', answers: [] })).toEqual({
       ok: false,
@@ -93,6 +123,18 @@ describe('ask user question bridge', () => {
       status: 404,
       error: 'Question is no longer pending.',
     });
+  });
+
+  it('rejects empty question requests without creating a pending UI card', async () => {
+    const send = vi.fn();
+    const result = await runWithAskUserQuestionBridge(
+      { runId: 'run-empty', send },
+      () => askUserQuestionViaBridge({ toolCallId: 'tool-empty', params: { questions: [] } }),
+    );
+
+    expect(result).toEqual({ answers: [], cancelled: true, error: 'empty_questions' });
+    expect(send).not.toHaveBeenCalled();
+    expect(getPendingAskUserQuestionCount()).toBe(0);
   });
 
   it('aborts exactly once and removes the abort listener after normal answer', async () => {

@@ -1,16 +1,19 @@
 import type { ClaudeCodeCliPermissionPrompt } from '@geminilight/mindos/agent-runtime';
 
+export const CLAUDE_PERMISSION_PROMPT_SERVER = 'mindos_runtime_permission';
 export const CLAUDE_PERMISSION_PROMPT_TOOL = 'mindos_runtime_permission';
+export const CLAUDE_PERMISSION_PROMPT_TOOL_REF = `mcp__${CLAUDE_PERMISSION_PROMPT_SERVER}__${CLAUDE_PERMISSION_PROMPT_TOOL}`;
+export const CLAUDE_ASK_USER_QUESTION_TOOL = 'AskUserQuestion';
 
 export function createClaudePermissionPromptConfig(input: {
   runId: string;
   baseUrl: string;
 }): ClaudeCodeCliPermissionPrompt {
   return {
-    toolName: CLAUDE_PERMISSION_PROMPT_TOOL,
+    toolName: CLAUDE_PERMISSION_PROMPT_TOOL_REF,
     mcpConfig: {
       mcpServers: {
-        mindos_runtime_permission: {
+        [CLAUDE_PERMISSION_PROMPT_SERVER]: {
           type: 'stdio',
           command: process.execPath,
           args: ['-e', CLAUDE_PERMISSION_PROMPT_MCP_SOURCE],
@@ -18,6 +21,7 @@ export function createClaudePermissionPromptConfig(input: {
             MINDOS_RUNTIME_PERMISSION_BASE_URL: input.baseUrl,
             MINDOS_RUNTIME_PERMISSION_RUN_ID: input.runId,
             MINDOS_RUNTIME_PERMISSION_TOOL: CLAUDE_PERMISSION_PROMPT_TOOL,
+            MINDOS_ASK_USER_QUESTION_TOOL: CLAUDE_ASK_USER_QUESTION_TOOL,
           },
         },
       },
@@ -36,11 +40,25 @@ export function resolveRuntimePermissionBaseUrl(req: Request): string {
 const CLAUDE_PERMISSION_PROMPT_MCP_SOURCE = String.raw`
 const baseUrl = process.env.MINDOS_RUNTIME_PERMISSION_BASE_URL;
 const runId = process.env.MINDOS_RUNTIME_PERMISSION_RUN_ID;
-const toolName = process.env.MINDOS_RUNTIME_PERMISSION_TOOL || 'mindos_runtime_permission';
+const permissionToolName = process.env.MINDOS_RUNTIME_PERMISSION_TOOL || 'mindos_runtime_permission';
+const askUserQuestionToolName = process.env.MINDOS_ASK_USER_QUESTION_TOOL || 'AskUserQuestion';
 let buffer = '';
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + '\n');
+}
+
+function sendError(id, error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (id === undefined || id === null) {
+    process.stderr.write(message + '\n');
+    return;
+  }
+  send({
+    jsonrpc: '2.0',
+    id,
+    error: { code: -32000, message },
+  });
 }
 
 function textResult(value) {
@@ -75,6 +93,21 @@ function extractToolInput(args) {
     ?? args;
 }
 
+function extractQuestionsInput(args) {
+  if (!isRecord(args)) return { questions: [] };
+  if (Array.isArray(args.questions)) return { questions: args.questions };
+  if (isRecord(args.input) && Array.isArray(args.input.questions)) return { questions: args.input.questions };
+  if (isRecord(args.params) && Array.isArray(args.params.questions)) return { questions: args.params.questions };
+  if (isRecord(args.arguments) && Array.isArray(args.arguments.questions)) return { questions: args.arguments.questions };
+  return args;
+}
+
+function shortToolName(name) {
+  if (typeof name !== 'string') return '';
+  const parts = name.split('__');
+  return parts[parts.length - 1] || name;
+}
+
 function extractToolName(args) {
   if (!isRecord(args)) return 'approval_request';
   return firstString(
@@ -86,12 +119,12 @@ function extractToolName(args) {
   ) || 'approval_request';
 }
 
-function fallbackToolCallId() {
-  return 'claude-permission-' + Date.now().toString(36);
+function fallbackToolCallId(prefix) {
+  return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 }
 
-function extractToolCallId(args) {
-  if (!isRecord(args)) return fallbackToolCallId();
+function extractToolCallId(args, prefix) {
+  if (!isRecord(args)) return fallbackToolCallId(prefix);
   return firstString(
     args.toolUseId,
     args.tool_use_id,
@@ -99,7 +132,7 @@ function extractToolCallId(args) {
     args.toolCallId,
     args.id,
     getNestedRecord(args, 'tool')?.id,
-  ) || fallbackToolCallId();
+  ) || fallbackToolCallId(prefix);
 }
 
 function extractReason(args) {
@@ -116,7 +149,7 @@ async function requestDecision(args) {
     body: JSON.stringify({
       runId,
       runtime: 'claude',
-      toolCallId: extractToolCallId(args),
+      toolCallId: extractToolCallId(args, 'claude-permission'),
       toolName: extractToolName(args),
       input,
       reason: extractReason(args),
@@ -127,6 +160,21 @@ async function requestDecision(args) {
     }),
   });
   if (!response.ok) return { decision: 'cancel', cancelled: true };
+  return await response.json();
+}
+
+async function requestUserQuestion(args, requestId) {
+  if (!baseUrl || !runId) return { answers: [], cancelled: true, error: 'no_bridge' };
+  const response = await fetch(new URL('/api/ask/user-question/request', baseUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      runId,
+      toolCallId: extractToolCallId(args, 'claude-question-' + String(requestId ?? Date.now())),
+      params: extractQuestionsInput(args),
+    }),
+  });
+  if (!response.ok) return { answers: [], cancelled: true, error: 'request_failed' };
   return await response.json();
 }
 
@@ -149,18 +197,62 @@ async function handleRequest(message) {
       jsonrpc: '2.0',
       id,
       result: {
-        tools: [{
-          name: toolName,
-          title: 'MindOS Runtime Permission',
-          description: 'Ask the MindOS Chat Panel user to approve or deny this Claude Code tool call.',
-          inputSchema: { type: 'object', additionalProperties: true },
-        }],
+        tools: [
+          {
+            name: permissionToolName,
+            title: 'MindOS Runtime Permission',
+            description: 'Ask the MindOS Chat Panel user to approve or deny this Claude Code tool call.',
+            inputSchema: { type: 'object', additionalProperties: true },
+          },
+          {
+            name: askUserQuestionToolName,
+            title: 'Ask User Question',
+            description: 'Ask the MindOS Chat Panel user one or more structured questions and wait for the answer.',
+            inputSchema: {
+              type: 'object',
+              additionalProperties: true,
+              properties: {
+                questions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                      question: { type: 'string' },
+                      header: { type: 'string' },
+                      multiSelect: { type: 'boolean' },
+                      options: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          additionalProperties: true,
+                          properties: {
+                            label: { type: 'string' },
+                            description: { type: 'string' },
+                            preview: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
       },
     });
     return;
   }
   if (method === 'tools/call') {
+    const name = typeof params?.name === 'string' ? params.name : '';
     const args = params?.arguments ?? {};
+    if (shortToolName(name) === askUserQuestionToolName) {
+      const value = await requestUserQuestion(args, id);
+      send({ jsonrpc: '2.0', id, result: textResult(value) });
+      return;
+    }
+
     const decision = await requestDecision(args);
     const allow = decision && !decision.cancelled && decision.decision === 'accept';
     const value = allow
@@ -185,11 +277,18 @@ process.stdin.on('data', (chunk) => {
     const line = buffer.slice(0, index).replace(/\r$/, '');
     buffer = buffer.slice(index + 1);
     if (line.trim()) {
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch (error) {
+        sendError(undefined, error);
+        index = buffer.indexOf('\n');
+        continue;
+      }
       Promise.resolve()
-        .then(() => handleRequest(JSON.parse(line)))
+        .then(() => handleRequest(message))
         .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          process.stderr.write(message + '\n');
+          sendError(message?.id, error);
         });
     }
     index = buffer.indexOf('\n');

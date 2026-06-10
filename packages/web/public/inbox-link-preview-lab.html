@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MindOS Inbox Link Preview Lab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8f6f1;
+      --panel: #fffdf8;
+      --card: #fcfaf5;
+      --muted: #ece6db;
+      --muted-2: #f2eee7;
+      --line: #ddd4c6;
+      --line-soft: rgba(116, 98, 75, 0.16);
+      --text: #1f1b16;
+      --subtle: #786e62;
+      --faint: #9b9082;
+      --amber: #c8873a;
+      --amber-soft: rgba(200, 135, 58, 0.12);
+      --amber-wash: rgba(200, 135, 58, 0.06);
+      --success: #557b4f;
+      --danger: #b45b4f;
+      --shadow: 0 18px 42px rgba(46, 34, 20, 0.08);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100dvh;
+      display: grid;
+      grid-template-columns: 48px 280px minmax(0, 1fr);
+      background: var(--bg);
+    }
+
+    .rail {
+      border-right: 1px solid var(--line-soft);
+      background: rgba(252, 250, 245, 0.74);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 6px;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      height: 100dvh;
+    }
+
+    .logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      border: 1px solid var(--line-soft);
+      color: var(--amber);
+      display: grid;
+      place-items: center;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    .rail-btn {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--subtle);
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+    }
+
+    .rail-btn.active {
+      background: var(--amber-soft);
+      color: var(--amber);
+      box-shadow: inset 2px 0 0 var(--amber);
+    }
+
+    .rail-spacer { flex: 1; }
+
+    .side {
+      border-right: 1px solid var(--line-soft);
+      background: rgba(252, 250, 245, 0.78);
+      min-height: 100dvh;
+      padding: 16px 14px;
+      overflow: hidden;
+    }
+
+    .side-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line-soft);
+      margin-bottom: 16px;
+    }
+
+    .side-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--subtle);
+      font-weight: 650;
+    }
+
+    .side-action {
+      margin-left: auto;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 0;
+      background: transparent;
+      color: var(--subtle);
+    }
+
+    .tree-section {
+      margin-bottom: 18px;
+    }
+
+    .tree-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--faint);
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+
+    .mind-card {
+      border: 1px solid rgba(200, 135, 58, 0.22);
+      background: var(--amber-wash);
+      border-radius: 10px;
+      padding: 11px 12px;
+      margin-bottom: 8px;
+    }
+
+    .mind-card strong {
+      font-size: 13px;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .mind-card span {
+      display: block;
+      font-size: 11px;
+      color: var(--subtle);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 31px;
+      padding: 0 8px;
+      border-radius: 8px;
+      color: var(--subtle);
+      font-size: 13px;
+    }
+
+    .tree-row.active {
+      color: var(--text);
+      background: var(--muted-2);
+    }
+
+    .tree-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 1px solid var(--line-soft);
+      display: grid;
+      place-items: center;
+      color: var(--amber);
+      font-size: 10px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+
+    .content {
+      min-width: 0;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .lab {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 22px;
+      border-bottom: 1px solid var(--line-soft);
+      padding-bottom: 20px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 750;
+      color: var(--subtle);
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      font-size: clamp(25px, 3vw, 36px);
+      line-height: 1.12;
+      margin-bottom: 10px;
+      letter-spacing: 0;
+    }
+
+    .hero-copy {
+      max-width: 680px;
+      color: var(--subtle);
+      font-size: 14px;
+      line-height: 1.65;
+      margin-bottom: 0;
+    }
+
+    .controls {
+      min-width: 390px;
+      border: 1px solid var(--line-soft);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      border: 1px solid var(--line-soft);
+      background: var(--bg);
+      border-radius: 8px;
+      min-height: 32px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--subtle);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .chip.active {
+      border-color: var(--amber);
+      background: var(--amber);
+      color: white;
+    }
+
+    .chip.dark {
+      border-color: var(--text);
+      background: var(--text);
+      color: var(--bg);
+    }
+
+    .grid-main {
+      display: grid;
+      grid-template-columns: minmax(340px, 0.52fr) minmax(0, 1.48fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .variants {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(300px, 1fr));
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .frame {
+      border: 1px solid var(--line-soft);
+      background: var(--panel);
+      border-radius: 12px;
+      min-width: 0;
+      overflow: hidden;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.65) inset;
+    }
+
+    .frame-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      min-height: 106px;
+    }
+
+    .frame-head-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+
+    .frame-kicker {
+      margin: 0;
+      color: var(--faint);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      font-weight: 800;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      min-height: 20px;
+      padding: 0 8px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-size: 10px;
+      font-weight: 750;
+    }
+
+    .frame h2 {
+      font-size: 15px;
+      line-height: 1.35;
+      margin: 0 0 5px;
+    }
+
+    .frame-desc {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .frame-body {
+      padding: 16px;
+      min-height: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .inbox-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .square {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--line-soft);
+      background: var(--muted-2);
+      color: var(--subtle);
+      display: grid;
+      place-items: center;
+      font-weight: 750;
+      flex: 0 0 auto;
+    }
+
+    .platform-mark {
+      color: var(--text);
+      background: var(--muted-2);
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+
+    .platform-mark.small {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      font-size: 9px;
+    }
+
+    .title-stack { min-width: 0; }
+    .title-stack strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.3;
+    }
+
+    .title-stack span {
+      display: block;
+      color: var(--subtle);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pending {
+      margin-left: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10px;
+      color: var(--subtle);
+      white-space: nowrap;
+    }
+
+    .drop {
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .drop-zone {
+      min-height: 140px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 24px 16px;
+      color: var(--subtle);
+    }
+
+    .drop-zone strong {
+      display: block;
+      font-size: 14px;
+      color: var(--subtle);
+      margin-bottom: 8px;
+    }
+
+    .drop-zone button,
+    .primary,
+    .secondary {
+      border: 0;
+      border-radius: 10px;
+      min-height: 36px;
+      padding: 0 13px;
+      font-weight: 720;
+      font-size: 13px;
+    }
+
+    .drop-zone button,
+    .secondary {
+      background: var(--muted-2);
+      color: var(--subtle);
+      border: 1px solid var(--line-soft);
+    }
+
+    .primary {
+      background: var(--amber);
+      color: white;
+    }
+
+    .url-line {
+      border-top: 1px solid var(--line-soft);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 11px;
+      min-width: 0;
+    }
+
+    .url-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--subtle);
+      font-size: 13px;
+    }
+
+    .mini-button {
+      border: 0;
+      border-radius: 8px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      min-height: 28px;
+      padding: 0 10px;
+      font-weight: 750;
+      font-size: 12px;
+    }
+
+    .rows {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 10px;
+      padding: 9px 10px;
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    .row.active {
+      background: var(--amber-wash);
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      flex: 0 0 auto;
+    }
+
+    .row-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-main strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.35;
+    }
+
+    .row-main span {
+      display: block;
+      color: var(--subtle);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .composer {
+      border: 1px solid var(--line-soft);
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 11px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .preview-card {
+      border: 1px solid var(--line-soft);
+      background: var(--bg);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .preview-main {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 13px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .source-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      color: var(--subtle);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .preview-title {
+      margin: 0 0 6px;
+      font-size: 14px;
+      line-height: 1.4;
+      font-weight: 740;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .preview-desc {
+      color: var(--subtle);
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.55;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .preview-foot {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 12px 13px;
+      align-items: center;
+    }
+
+    .preview-foot p {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .pill.ready {
+      background: rgba(85, 123, 79, 0.12);
+      color: var(--success);
+    }
+
+    .pill.loading {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .pill.error {
+      background: rgba(180, 91, 79, 0.12);
+      color: var(--danger);
+    }
+
+    .actions {
+      margin-top: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    .actions .primary { flex: 1; }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .box {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: var(--bg);
+      padding: 12px;
+    }
+
+    .box-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      font-weight: 730;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--muted-2);
+      border-radius: 9px;
+      padding: 8px;
+      margin-top: 7px;
+    }
+
+    .step-mark {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      background: rgba(85, 123, 79, 0.12);
+      color: var(--success);
+      font-weight: 800;
+    }
+
+    .step-mark.loading {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .step-mark.error {
+      background: rgba(180, 91, 79, 0.12);
+      color: var(--danger);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .queue {
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .queue-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .queue .row {
+      border-radius: 0;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .queue .row:last-child {
+      border-bottom: 0;
+    }
+
+    .timeline {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      padding-left: 15px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 16px;
+      bottom: 16px;
+      width: 1px;
+      background: var(--line);
+    }
+
+    .timeline-item {
+      position: relative;
+      border: 1px solid var(--line-soft);
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -15px;
+      top: 18px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--amber);
+      border: 2px solid var(--bg);
+    }
+
+    .timeline-row {
+      display: flex;
+      gap: 11px;
+      align-items: flex-start;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .note {
+      border: 1px solid var(--line-soft);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 15px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .note h3 {
+      margin: 0 0 5px;
+      font-size: 14px;
+    }
+
+    .note p {
+      margin: 0;
+      color: var(--subtle);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .loading-bars {
+      display: none;
+      margin-top: 8px;
+      gap: 7px;
+      flex-direction: column;
+    }
+
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--muted);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .bar.short { width: 45%; }
+    .bar.long { width: 84%; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.52; }
+      50% { opacity: 0.9; }
+    }
+
+    body[data-state="loading"] .loading-bars { display: flex; }
+    body[data-state="loading"] .preview-title,
+    body[data-state="loading"] .preview-desc { display: none; }
+
+    @media (max-width: 1180px) {
+      .grid-main { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 1280px) {
+      .app { grid-template-columns: 48px minmax(0, 1fr); }
+      .side { display: none; }
+    }
+
+    @media (max-width: 980px) {
+      .variants, .decision-grid { grid-template-columns: 1fr; }
+      .hero { align-items: stretch; flex-direction: column; }
+      .controls { min-width: 0; }
+      .split { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .app { display: block; }
+      .rail { display: none; }
+      .content { padding: 16px; }
+      .frame-body { min-height: 0; }
+    }
+  </style>
+</head>
+<body data-platform="youtube" data-state="ready">
+  <div class="app">
+    <aside class="rail" aria-label="Navigation">
+      <div class="logo">∞</div>
+      <button class="rail-btn" aria-label="Inbox">⌂</button>
+      <button class="rail-btn active" aria-label="Mind">心</button>
+      <button class="rail-btn" aria-label="Search">⌕</button>
+      <button class="rail-btn" aria-label="Agents">⌘</button>
+      <div class="rail-spacer"></div>
+      <button class="rail-btn" aria-label="Settings">⚙</button>
+    </aside>
+
+    <aside class="side" aria-label="Mind panel">
+      <div class="side-top">
+        <div class="side-title">Mind</div>
+        <button class="side-action" aria-label="New">+</button>
+        <button class="side-action" aria-label="Refresh">↻</button>
+      </div>
+      <div class="tree-section">
+        <p class="tree-label">Mind System</p>
+        <div class="mind-card">
+          <strong>道 / 法 / 术 / 器</strong>
+          <span>Built-in modules mapped to local folders.</span>
+        </div>
+        <div class="tree-row"><span class="tree-icon">道</span>Values, direction, long-term judgment</div>
+        <div class="tree-row"><span class="tree-icon">法</span>Rules, boundaries, commitments</div>
+        <div class="tree-row"><span class="tree-icon">术</span>Methods, tactics, reusable patterns</div>
+        <div class="tree-row"><span class="tree-icon">器</span>Tools, assets, channels, templates</div>
+      </div>
+      <div class="tree-section">
+        <p class="tree-label">Spaces</p>
+        <div class="tree-row active"><span class="tree-icon">⌂</span>生活</div>
+        <div class="tree-row"><span class="tree-icon">↗</span>资料源</div>
+        <div class="tree-row"><span class="tree-icon">R</span>Routine.md</div>
+        <div class="tree-row"><span class="tree-icon">F</span>Focus.md</div>
+        <div class="tree-row"><span class="tree-icon">O</span>Objectives.md</div>
+        <div class="tree-row"><span class="tree-icon">I</span>Inbox</div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="lab">
+        <header class="hero">
+          <div>
+            <p class="eyebrow">Inbox link preview lab</p>
+            <h1>Capture links as recognizable sources</h1>
+            <p class="hero-copy">Current Inbox is recreated first, followed by three refined directions for social-link previews, source badges, queue rows, and review states.</p>
+          </div>
+          <div class="controls" aria-label="Prototype controls">
+            <div class="control-group" aria-label="Platform samples">
+              <button class="chip active" data-platform-button="youtube"><span class="square platform-mark small">YT</span>YT</button>
+              <button class="chip" data-platform-button="bilibili"><span class="square platform-mark small">B</span>B</button>
+              <button class="chip" data-platform-button="xiaohongshu"><span class="square platform-mark small">小</span>XHS</button>
+              <button class="chip" data-platform-button="zhihu"><span class="square platform-mark small">知</span>知</button>
+              <button class="chip" data-platform-button="github"><span class="square platform-mark small">GH</span>GH</button>
+            </div>
+            <div class="control-group" aria-label="Preview states">
+              <button class="chip dark" data-state-button="ready">Preview ready</button>
+              <button class="chip" data-state-button="loading">Resolving preview</button>
+              <button class="chip" data-state-button="error">Fallback preview</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="grid-main">
+          <article class="frame">
+            <div class="frame-head">
+              <div class="frame-head-row"><p class="frame-kicker">Current</p></div>
+              <h2>Inbox today</h2>
+              <p class="frame-desc">Fast capture, but a social link becomes a plain Markdown file row.</p>
+            </div>
+            <div class="frame-body">
+              <div class="inbox-title">
+                <div class="square">I</div>
+                <div class="title-stack">
+                  <strong>Inbox</strong>
+                  <span>Quick capture, organize later</span>
+                </div>
+                <span class="pending">4 pending</span>
+              </div>
+              <div class="drop">
+                <div class="drop-zone">
+                  <div>
+                    <strong>Drop files or paste links</strong>
+                    <button>Upload files</button>
+                  </div>
+                </div>
+                <div class="url-line">
+                  <div class="square platform-mark small">↗</div>
+                  <div class="url-text" data-url>https://www.youtube.com/watch?v=creative-workflow</div>
+                  <button class="mini-button">Clip</button>
+                </div>
+              </div>
+              <div class="rows">
+                <div class="row"><span class="dot"></span><div class="square platform-mark small">M</div><div class="row-main"><strong>inbox-review-notes.md</strong><span>Markdown · 2m ago</span></div></div>
+                <div class="row"><span class="dot"></span><div class="square platform-mark small">C</div><div class="row-main"><strong>research-links.csv</strong><span>CSV · 18m ago</span></div></div>
+                <div class="row"><span class="dot"></span><div class="square platform-mark small">P</div><div class="row-main"><strong>meeting-transcript.pdf</strong><span>PDF · yesterday</span></div></div>
+                <div class="row"><span class="dot"></span><div class="square platform-mark small">M</div><div class="row-main"><strong><span data-current-file>How creative systems shape better daily work.md</span></strong><span>Web clip · just now</span></div></div>
+              </div>
+            </div>
+          </article>
+
+          <div class="variants">
+            <article class="frame">
+              <div class="frame-head">
+                <div class="frame-head-row"><p class="frame-kicker">Option A</p><span class="badge">Recommended</span></div>
+                <h2>Source card composer</h2>
+                <p class="frame-desc">Best if the top priority is paste clarity and confidence before saving.</p>
+              </div>
+              <div class="frame-body">
+                <div class="composer">
+                  <span class="square platform-mark small">↗</span>
+                  <div class="url-text" data-url>https://www.youtube.com/watch?v=creative-workflow</div>
+                  <button class="mini-button">×</button>
+                </div>
+                <div class="preview-card">
+                  <div class="preview-main">
+                    <div class="square platform-mark" data-glyph>YT</div>
+                    <div class="row-main">
+                      <div class="source-line"><span data-label>YouTube</span><span>·</span><span data-type>Video</span><span class="badge">source</span></div>
+                      <h3 class="preview-title" data-title>How creative systems shape better daily work</h3>
+                      <div class="loading-bars"><div class="bar long"></div><div class="bar short"></div></div>
+                      <p class="preview-desc" data-desc>Video capture with title, source, channel, and a durable source link.</p>
+                    </div>
+                  </div>
+                  <div class="preview-foot">
+                    <div><p data-host>youtube.com</p><p data-helper>Metadata resolved and ready to save.</p></div>
+                    <span class="pill ready" data-pill>Preview ready</span>
+                  </div>
+                </div>
+                <div class="rows">
+                  <div class="row active"><div class="square platform-mark" data-glyph>YT</div><div class="row-main"><strong data-title>How creative systems shape better daily work</strong><span><span data-label>YouTube</span> · <span data-host>youtube.com</span></span></div></div>
+                  <div class="row"><div class="square platform-mark">B</div><div class="row-main"><strong>个人知识库工作流：从灵感捕获到复盘</strong><span>Bilibili · bilibili.com</span></div></div>
+                  <div class="row"><div class="square platform-mark">知</div><div class="row-main"><strong>如何构建一个长期可维护的个人知识系统？</strong><span>Zhihu · zhihu.com</span></div></div>
+                </div>
+                <div class="actions"><button class="primary">Save to Inbox</button><button class="secondary">Review</button></div>
+              </div>
+            </article>
+
+            <article class="frame">
+              <div class="frame-head">
+                <div class="frame-head-row"><p class="frame-kicker">Option B</p></div>
+                <h2>Split capture queue</h2>
+                <p class="frame-desc">Best if users triage many mixed files and links in one sitting.</p>
+              </div>
+              <div class="frame-body">
+                <div class="split">
+                  <div class="box">
+                    <div class="box-head">Capture stream</div>
+                    <div class="step"><span class="step-mark">✓</span><div class="row-main"><strong>Paste URL</strong><span data-host>youtube.com</span></div></div>
+                    <div class="step"><span class="step-mark">✓</span><div class="row-main"><strong>Detect source</strong><span data-label>YouTube</span></div></div>
+                    <div class="step"><span class="step-mark" data-step-mark>✓</span><div class="row-main"><strong>Fetch metadata</strong><span data-state-word>resolved</span></div></div>
+                  </div>
+                  <div class="box">
+                    <div class="box-head">Queue filters <span>⌕</span></div>
+                    <div class="filters">
+                      <button class="chip">All</button>
+                      <button class="chip active">Links</button>
+                      <button class="chip">Videos</button>
+                      <button class="chip">Social</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="queue">
+                  <div class="queue-head"><span>Inbox queue</span><span>grouped by source</span></div>
+                  <div class="row active"><div class="square platform-mark" data-glyph>YT</div><div class="row-main"><strong data-title>How creative systems shape better daily work</strong><span><span data-label>YouTube</span> · <span data-host>youtube.com</span></span></div><span class="pill ready" data-pill>Preview ready</span></div>
+                  <div class="row"><div class="square platform-mark">P</div><div class="row-main"><strong>meeting-transcript.pdf</strong><span>PDF · document</span></div></div>
+                  <div class="row"><div class="square platform-mark">小</div><div class="row-main"><strong>高效信息收集：让链接先进入 Inbox</strong><span>Xiaohongshu · xiaohongshu.com</span></div></div>
+                  <div class="row"><div class="square platform-mark">C</div><div class="row-main"><strong>research-links.csv</strong><span>CSV · data</span></div></div>
+                </div>
+                <div class="box" style="margin-top:auto">
+                  <div class="box-head">Bulk action preview</div>
+                  <p class="frame-desc">Link rows can be reviewed by source type before the Inbox Agent moves them into stable notes.</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="frame">
+              <div class="frame-head">
+                <div class="frame-head-row"><p class="frame-kicker">Option C</p></div>
+                <h2>Review timeline</h2>
+                <p class="frame-desc">Best if Inbox review becomes a lightweight processing workflow.</p>
+              </div>
+              <div class="frame-body">
+                <div class="box">
+                  <div class="inbox-title">
+                    <div class="square" style="color:var(--amber);background:var(--amber-soft)">✦</div>
+                    <div class="title-stack"><strong>Inbox Agent review</strong><span>4 pending captures · 2 source links</span></div>
+                    <button class="primary">Run</button>
+                  </div>
+                </div>
+                <div class="timeline">
+                  <div class="timeline-item">
+                    <div class="timeline-row"><div class="square platform-mark" data-glyph>YT</div><div class="row-main"><strong data-title>How creative systems shape better daily work</strong><span><span data-label>YouTube</span> · <span data-host>youtube.com</span></span><div style="margin-top:8px"><span class="pill ready" data-pill>Preview ready</span> <span class="badge">propose destination</span></div></div></div>
+                  </div>
+                  <div class="timeline-item">
+                    <div class="timeline-row"><div class="square platform-mark">P</div><div class="row-main"><strong>meeting-transcript.pdf</strong><span>PDF · needs summary</span><div style="margin-top:8px"><span class="badge">propose destination</span></div></div></div>
+                  </div>
+                  <div class="timeline-item">
+                    <div class="timeline-row"><div class="square platform-mark">知</div><div class="row-main"><strong>如何构建一个长期可维护的个人知识系统？</strong><span>Zhihu · zhihu.com</span><div style="margin-top:8px"><span class="pill ready">Preview ready</span> <span class="badge">propose destination</span></div></div></div>
+                  </div>
+                </div>
+                <div class="box" style="margin-top:auto">
+                  <div class="box-head">Suggested destination</div>
+                  <div class="row"><div class="row-main"><strong>04 Resources / Video Notes / <span data-label>YouTube</span></strong></div></div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="decision-grid">
+          <div class="note"><div class="square" style="color:var(--amber);background:var(--amber-soft)">A</div><div><h3>Recommended first move</h3><p>Option A is the cleanest first implementation: add source previews without changing the whole Inbox information architecture.</p></div></div>
+          <div class="note"><div class="square" style="color:var(--amber);background:var(--amber-soft)">B</div><div><h3>Keep for later</h3><p>Option B is useful if Inbox becomes a high-volume triage cockpit, but it is heavier than the current homepage surface needs.</p></div></div>
+          <div class="note"><div class="square" style="color:var(--amber);background:var(--amber-soft)">C</div><div><h3>Agent alignment</h3><p>Option C should influence the review page: source badges make the Inbox Agent history and cleanup decisions easier to scan.</p></div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const samples = {
+      youtube: {
+        label: 'YouTube',
+        glyph: 'YT',
+        url: 'https://www.youtube.com/watch?v=creative-workflow',
+        title: 'How creative systems shape better daily work',
+        desc: 'Video capture with title, source, channel, and a durable source link.',
+        host: 'youtube.com',
+        type: 'Video'
+      },
+      bilibili: {
+        label: 'Bilibili',
+        glyph: 'B',
+        url: 'https://www.bilibili.com/video/BV1mindos',
+        title: '个人知识库工作流：从灵感捕获到复盘',
+        desc: 'Chinese video sources need a readable badge even when metadata is partial.',
+        host: 'bilibili.com',
+        type: 'Video'
+      },
+      xiaohongshu: {
+        label: 'Xiaohongshu',
+        glyph: '小',
+        url: 'https://www.xiaohongshu.com/explore/mindos-capture',
+        title: '高效信息收集：让链接先进入 Inbox',
+        desc: 'Social posts often need graceful fallback because preview fetching can fail.',
+        host: 'xiaohongshu.com',
+        type: 'Social'
+      },
+      zhihu: {
+        label: 'Zhihu',
+        glyph: '知',
+        url: 'https://www.zhihu.com/question/690000000',
+        title: '如何构建一个长期可维护的个人知识系统？',
+        desc: 'Question pages should keep source identity visible during later review.',
+        host: 'zhihu.com',
+        type: 'Q&A'
+      },
+      github: {
+        label: 'GitHub',
+        glyph: 'GH',
+        url: 'https://github.com/geminilight/mindos',
+        title: 'MindOS local knowledge assistant repository',
+        desc: 'Developer links need repo identity, host, and a stable target path.',
+        host: 'github.com',
+        type: 'Code'
+      }
+    };
+
+    const stateCopy = {
+      ready: {
+        pill: 'Preview ready',
+        helper: 'Metadata resolved and ready to save.',
+        word: 'resolved',
+        mark: '✓'
+      },
+      loading: {
+        pill: 'Resolving preview',
+        helper: 'The source badge appears immediately while metadata loads.',
+        word: 'loading',
+        mark: '·'
+      },
+      error: {
+        pill: 'Fallback preview',
+        helper: 'The link can still be saved with platform and hostname.',
+        word: 'fallback',
+        mark: '!'
+      }
+    };
+
+    let platform = 'youtube';
+    let state = 'ready';
+
+    function setText(selector, value) {
+      document.querySelectorAll(selector).forEach(node => { node.textContent = value; });
+    }
+
+    function update() {
+      const sample = samples[platform];
+      const copy = stateCopy[state];
+      document.body.dataset.platform = platform;
+      document.body.dataset.state = state;
+      setText('[data-url]', sample.url);
+      setText('[data-label]', sample.label);
+      setText('[data-glyph]', sample.glyph);
+      setText('[data-host]', sample.host);
+      setText('[data-type]', sample.type);
+      setText('[data-title]', state === 'error' ? sample.label + ' link' : sample.title);
+      setText('[data-desc]', state === 'error' ? 'Preview metadata failed. MindOS keeps platform identity and the original URL.' : sample.desc);
+      setText('[data-helper]', copy.helper);
+      setText('[data-current-file]', sample.title + '.md');
+      setText('[data-state-word]', copy.word);
+      setText('[data-step-mark]', copy.mark);
+      document.querySelectorAll('[data-pill]').forEach(node => {
+        node.textContent = copy.pill;
+        node.className = 'pill ' + state;
+      });
+      document.querySelectorAll('[data-step-mark]').forEach(node => {
+        node.className = 'step-mark ' + (state === 'ready' ? '' : state);
+      });
+      document.querySelectorAll('[data-platform-button]').forEach(button => {
+        button.classList.toggle('active', button.dataset.platformButton === platform);
+      });
+      document.querySelectorAll('[data-state-button]').forEach(button => {
+        button.classList.toggle('dark', button.dataset.stateButton === state);
+      });
+    }
+
+    document.querySelectorAll('[data-platform-button]').forEach(button => {
+      button.addEventListener('click', () => {
+        platform = button.dataset.platformButton;
+        update();
+      });
+    });
+    document.querySelectorAll('[data-state-button]').forEach(button => {
+      button.addEventListener('click', () => {
+        state = button.dataset.stateButton;
+        update();
+      });
+    });
+    update();
+  </script>
+</body>
+</html>

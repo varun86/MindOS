@@ -8,7 +8,8 @@ import { createRoot } from 'react-dom/client';
 import { readAcpDetectionCacheFromStorage, useAcpDetection } from '@/hooks/useAcpDetection';
 import { readAcpRegistryCacheFromStorage } from '@/hooks/useAcpRegistry';
 
-const DETECTION_STORAGE_KEY = 'mindos:acp-detection:v2';
+const DETECTION_STORAGE_KEY = 'mindos:acp-detection:v3';
+const LEGACY_DETECTION_STORAGE_KEY_V2 = 'mindos:acp-detection:v2';
 const LEGACY_DETECTION_STORAGE_KEY = 'mindos:acp-detection';
 
 describe('ACP hook storage caches', () => {
@@ -36,14 +37,29 @@ describe('ACP hook storage caches', () => {
     const cache = {
       installed: [{ id: 'codex', name: 'Codex', binaryPath: '/usr/bin/codex' }],
       notInstalled: [{ id: 'claude', name: 'Claude', installCmd: 'npm i -g claude' }],
+      runtimes: [
+        { id: 'codex', name: 'Codex', kind: 'codex', status: 'available', capabilities: {} },
+        { id: 'gemini', name: 'Gemini CLI', kind: 'acp', status: 'available', capabilities: {} },
+      ],
       ts: Date.now(),
     };
     sessionStorage.setItem(DETECTION_STORAGE_KEY, JSON.stringify(cache));
 
-    expect(readAcpDetectionCacheFromStorage()).toEqual(cache);
+    expect(readAcpDetectionCacheFromStorage()).toEqual({
+      ...cache,
+      runtimes: [
+        { id: 'gemini', name: 'Gemini CLI', kind: 'acp', status: 'available', capabilities: {} },
+      ],
+    });
   });
 
   it('ignores legacy ACP detection cache keys', () => {
+    sessionStorage.setItem(LEGACY_DETECTION_STORAGE_KEY_V2, JSON.stringify({
+      installed: [{ id: 'codex', name: 'Codex', binaryPath: '/usr/bin/codex' }],
+      notInstalled: [],
+      runtimes: [{ id: 'codex', name: 'Codex', kind: 'codex', status: 'missing', capabilities: {} }],
+      ts: Date.now(),
+    }));
     sessionStorage.setItem(LEGACY_DETECTION_STORAGE_KEY, JSON.stringify({
       installed: [{ id: 'claude', name: 'Claude Code', binaryPath: '/usr/bin/claude' }],
       notInstalled: [],
@@ -93,6 +109,9 @@ describe('ACP hook storage caches', () => {
       root.render(React.createElement(Probe));
     });
     expect(states.at(-1)?.loading).toBe(true);
+    expect(fetch).toHaveBeenCalledWith('/api/agent-runtimes?scope=acp', expect.objectContaining({
+      signal: expect.any(AbortSignal),
+    }));
 
     await act(async () => {
       vi.advanceTimersByTime(30000);
@@ -107,9 +126,9 @@ describe('ACP hook storage caches', () => {
     });
   });
 
-  it('revalidates cached unavailable native runtime status', async () => {
+  it('does not revalidate ACP cache because of cached unavailable native runtime status', async () => {
     sessionStorage.setItem(DETECTION_STORAGE_KEY, JSON.stringify({
-      installed: [{ id: 'codex-acp', name: 'Codex', binaryPath: '/usr/local/bin/codex' }],
+      installed: [],
       notInstalled: [],
       runtimes: [{
         id: 'codex',
@@ -126,24 +145,12 @@ describe('ACP hook storage caches', () => {
       ts: Date.now(),
     }));
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        installed: [{ id: 'codex-acp', name: 'Codex', binaryPath: '/usr/local/bin/codex' }],
-        notInstalled: [],
-        runtimes: [{
-          id: 'codex',
-          name: 'Codex',
-          kind: 'codex',
-          status: 'available',
-          capabilities: {},
-        }],
-      }),
-    });
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
+    const states: Array<ReturnType<typeof useAcpDetection>> = [];
     function Probe() {
-      useAcpDetection();
+      states.push(useAcpDetection());
       return null;
     }
 
@@ -157,43 +164,25 @@ describe('ACP hook storage caches', () => {
       await Promise.resolve();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/agent-runtimes', expect.objectContaining({
-      signal: expect.any(AbortSignal),
-    }));
+    expect(states.at(-1)?.loading).toBe(false);
+    expect(states.at(-1)?.runtimes).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it('revalidates cached missing native runtime status', async () => {
-    sessionStorage.setItem(DETECTION_STORAGE_KEY, JSON.stringify({
-      installed: [],
-      notInstalled: [{ id: 'claude', name: 'Claude Code', installCmd: 'npm install -g @anthropic-ai/claude-code' }],
-      runtimes: [{
-        id: 'claude',
-        name: 'Claude Code',
-        kind: 'claude',
-        status: 'missing',
-        capabilities: {},
-        availability: {
-          checkedAt: '2026-06-09T00:00:00.000Z',
-          sources: ['native-health'],
-          reason: 'Claude Code executable was not detected.',
-        },
-      }],
-      ts: Date.now(),
-    }));
-
+  it('loads ACP scope without waiting for native runtime health', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        installed: [{ id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' }],
+        installed: [{ id: 'gemini', name: 'Gemini CLI', binaryPath: '/usr/local/bin/gemini' }],
         notInstalled: [],
         runtimes: [{
-          id: 'claude',
-          name: 'Claude Code',
-          kind: 'claude',
+          id: 'gemini',
+          name: 'Gemini CLI',
+          kind: 'acp',
           status: 'available',
           capabilities: {},
         }],
@@ -216,7 +205,7 @@ describe('ACP hook storage caches', () => {
       await Promise.resolve();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/agent-runtimes', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/agent-runtimes?scope=acp', expect.objectContaining({
       signal: expect.any(AbortSignal),
     }));
 

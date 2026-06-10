@@ -60,4 +60,17 @@ describe('/api/ask/runtime-permission/request', () => {
 
     await expect(response.json()).resolves.toEqual({ decision: 'cancel', cancelled: true });
   });
+
+  it('rejects unknown runtime values instead of silently treating them as Claude', async () => {
+    const response = await POST(postJson({
+      runId: 'run-api',
+      runtime: 'unknown',
+      toolCallId: 'toolu-api',
+      toolName: 'Bash',
+      input: {},
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'runtime must be codex or claude.' });
+  });
 });

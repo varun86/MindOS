@@ -1,11 +1,11 @@
 /**
- * Parse MindOS SSE stream (6 event types) into structured Message parts.
+ * Parse the MindOS SSE stream into structured Message parts.
  *
  * MindOS SSE format (backend: route.ts):
  * - text_delta: { type, delta }
  * - thinking_delta: { type, delta } (Anthropic extended thinking)
  * - tool_start: { type, toolCallId, toolName, args }
- * - tool_end: { type, toolCallId, output, isError }
+ * - tool_delta/tool_end: { type, toolCallId, delta/output, isError }
  * - done: { type, usage? }
  * - error: { type, message }
  *
@@ -83,6 +83,30 @@ function normalizeRuntime(value: unknown): ToolCallPart['runtime'] | undefined {
 
 function normalizeRuntimePermissionIntent(value: unknown): 'allow' | 'deny' | 'cancel' | undefined {
   return value === 'allow' || value === 'deny' || value === 'cancel' ? value : undefined;
+}
+
+function shortToolName(toolName: string): string {
+  const parts = toolName.split('__');
+  return parts[parts.length - 1] || toolName;
+}
+
+function isAskUserQuestionToolName(toolName: string | undefined): boolean {
+  if (!toolName) return false;
+  const normalized = shortToolName(toolName).replace(/[-_\s]/g, '').toLowerCase();
+  return normalized === 'askuserquestion';
+}
+
+function isGenericToolCompletionOutput(output: string): boolean {
+  return /^Codex item (completed|success|succeeded)$/i.test(output.trim());
+}
+
+function extractQuestionPayload(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  if (Array.isArray(input.questions)) return input.questions;
+  if (isRecord(input.input) && Array.isArray(input.input.questions)) return input.input.questions;
+  if (isRecord(input.params) && Array.isArray(input.params.questions)) return input.params.questions;
+  if (isRecord(input.arguments) && Array.isArray(input.arguments.questions)) return input.arguments.questions;
+  return undefined;
 }
 
 export async function consumeUIMessageStream(
@@ -242,7 +266,33 @@ export async function consumeUIMessageStream(
             const tc = findOrCreateToolCall(toolCallId, toolName);
             tc.input = eventRecord.args;
             tc.runtime = normalizeRuntime(eventRecord.runtime);
+            if (isAskUserQuestionToolName(toolName)) {
+              const questions = normalizeUserQuestions(extractQuestionPayload(eventRecord.args));
+              if (questions.length > 0) {
+                const runId = typeof eventRecord.runId === 'string' ? eventRecord.runId : '';
+                tc.userQuestion = {
+                  runId,
+                  questions,
+                  status: 'waiting',
+                  readOnly: !runId,
+                  ...(tc.runtime ? { runtime: tc.runtime } : {}),
+                };
+              }
+            }
             tc.state = 'running';
+            changed = true;
+            break;
+          }
+
+          case 'tool_delta': {
+            const toolCallId = eventRecord.toolCallId as string;
+            if (!toolCallId) break;
+            const toolName = typeof eventRecord.toolName === 'string' ? eventRecord.toolName : undefined;
+            const tc = findOrCreateToolCall(toolCallId, toolName);
+            if (toolName && tc.toolName === 'unknown') tc.toolName = toolName;
+            tc.runtime = normalizeRuntime(eventRecord.runtime) ?? tc.runtime;
+            tc.output = `${tc.output ?? ''}${typeof eventRecord.delta === 'string' ? eventRecord.delta : ''}`;
+            if (tc.state === 'pending') tc.state = 'running';
             changed = true;
             break;
           }
@@ -253,9 +303,23 @@ export async function consumeUIMessageStream(
             if (!toolCallId) break;
             // Use findOrCreateToolCall so tool_end still works even if tool_start was lost
             const tc = findOrCreateToolCall(toolCallId, eventRecord.toolName as string | undefined);
-            const output = eventRecord.output as string;
-            tc.output = output ?? '';
+            if (typeof eventRecord.toolName === 'string' && eventRecord.toolName && tc.toolName === 'unknown') {
+              tc.toolName = eventRecord.toolName;
+            }
+            const output = typeof eventRecord.output === 'string' ? eventRecord.output : '';
+            const shouldPreserveExistingOutput = Boolean(
+              tc.output &&
+              !eventRecord.isError &&
+              (!output || isGenericToolCompletionOutput(output)),
+            );
+            if (!shouldPreserveExistingOutput) {
+              tc.output = output;
+            }
             tc.state = (eventRecord.isError ? 'error' : 'done');
+            if (eventRecord.isError && tc.userQuestion?.readOnly) {
+              tc.userQuestion.status = 'cancelled';
+              tc.userQuestion.reason = output || 'tool_error';
+            }
             changed = true;
             // Notify when a file-modifying tool completes successfully
             if (!eventRecord.isError && FILE_MUTATING_TOOLS.has(tc.toolName)) {
@@ -311,10 +375,12 @@ export async function consumeUIMessageStream(
                   ? 'denied'
                   : 'approved';
             }
-            tc.state = eventRecord.cancelled === true ? 'error' : 'done';
-            tc.output = typeof eventRecord.decision === 'string'
-              ? `Permission decision forwarded: ${eventRecord.decision}`
-              : 'Permission decision forwarded.';
+            if (eventRecord.cancelled === true) {
+              tc.state = 'error';
+              tc.output = typeof eventRecord.decision === 'string'
+                ? `Permission decision forwarded: ${eventRecord.decision}`
+                : 'Permission decision forwarded.';
+            }
             changed = true;
             break;
           }
@@ -343,6 +409,7 @@ export async function consumeUIMessageStream(
               tc.userQuestion.status = 'submitted';
               tc.userQuestion.answers = normalizeUserQuestionAnswers(eventRecord.answers);
             }
+            tc.state = 'done';
             changed = true;
             break;
           }
@@ -355,6 +422,10 @@ export async function consumeUIMessageStream(
               tc.userQuestion.status = 'cancelled';
               tc.userQuestion.reason = typeof eventRecord.reason === 'string' ? eventRecord.reason : undefined;
             }
+            tc.state = 'error';
+            tc.output = typeof eventRecord.reason === 'string' && eventRecord.reason
+              ? eventRecord.reason
+              : 'Question cancelled.';
             changed = true;
             break;
           }

@@ -22,12 +22,34 @@ export type AgentRuntimeCapabilities = {
   supportsArchive: boolean;
   supportsInterrupt: boolean;
   supportsModelList: boolean;
+  supportsApprovals: boolean;
+  supportsUserInput: boolean;
+  supportsToolEvents: boolean;
+  supportsRuntimeStatus: boolean;
+  supportsDiffs: boolean;
+  supportsCheckpoints: boolean;
+  supportsBackgroundRuns: boolean;
+  supportsMcpConfig: boolean;
 };
+
+export type AgentRuntimeAdapter =
+  | 'mindos'
+  | 'codex-app-server'
+  | 'claude-cli'
+  | 'claude-sdk'
+  | 'acp';
+
+export type AgentRuntimeOwner = 'mindos' | 'external';
 
 export type AgentRuntimeDescriptor = {
   id: string;
   name: string;
   kind: AgentRuntimeKind;
+  adapter: AgentRuntimeAdapter;
+  modelOwner: AgentRuntimeOwner;
+  authOwner: AgentRuntimeOwner;
+  permissionOwner: AgentRuntimeOwner;
+  sessionOwner: AgentRuntimeOwner;
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
   description?: string;
@@ -118,6 +140,14 @@ const mindosCapabilities: AgentRuntimeCapabilities = {
   supportsArchive: false,
   supportsInterrupt: true,
   supportsModelList: true,
+  supportsApprovals: false,
+  supportsUserInput: true,
+  supportsToolEvents: true,
+  supportsRuntimeStatus: true,
+  supportsDiffs: false,
+  supportsCheckpoints: false,
+  supportsBackgroundRuns: false,
+  supportsMcpConfig: true,
 };
 
 const nativeCapabilities: AgentRuntimeCapabilities = {
@@ -130,6 +160,14 @@ const nativeCapabilities: AgentRuntimeCapabilities = {
   supportsArchive: false,
   supportsInterrupt: true,
   supportsModelList: false,
+  supportsApprovals: true,
+  supportsUserInput: true,
+  supportsToolEvents: true,
+  supportsRuntimeStatus: true,
+  supportsDiffs: false,
+  supportsCheckpoints: false,
+  supportsBackgroundRuns: false,
+  supportsMcpConfig: true,
 };
 
 const acpCapabilities: AgentRuntimeCapabilities = {
@@ -142,6 +180,14 @@ const acpCapabilities: AgentRuntimeCapabilities = {
   supportsArchive: false,
   supportsInterrupt: true,
   supportsModelList: false,
+  supportsApprovals: false,
+  supportsUserInput: false,
+  supportsToolEvents: true,
+  supportsRuntimeStatus: false,
+  supportsDiffs: false,
+  supportsCheckpoints: false,
+  supportsBackgroundRuns: false,
+  supportsMcpConfig: false,
 };
 
 const RUNTIME_DETECTION_TIMEOUT_MS = 5000;
@@ -243,6 +289,11 @@ function nativeDescriptor(input: {
     id: input.id,
     name: input.name,
     kind: input.id,
+    adapter: input.id === 'codex' ? 'codex-app-server' : 'claude-cli',
+    modelOwner: 'external',
+    authOwner: 'external',
+    permissionOwner: 'external',
+    sessionOwner: 'external',
     status: input.source ? input.source.status ?? 'available' : input.missing?.status ?? 'missing',
     capabilities: nativeCapabilities,
     description: input.id === 'codex'
@@ -291,6 +342,11 @@ export function buildAgentRuntimesPayload(input: {
       id: 'mindos',
       name: 'MindOS',
       kind: 'mindos',
+      adapter: 'mindos',
+      modelOwner: 'mindos',
+      authOwner: 'mindos',
+      permissionOwner: 'mindos',
+      sessionOwner: 'mindos',
       status: 'available',
       capabilities: mindosCapabilities,
       description: 'MindOS internal agent using the selected provider and model.',
@@ -316,6 +372,11 @@ export function buildAgentRuntimesPayload(input: {
         id: agent.id,
         name: agent.name,
         kind: 'acp',
+        adapter: 'acp',
+        modelOwner: 'external',
+        authOwner: 'external',
+        permissionOwner: 'external',
+        sessionOwner: 'external',
         status: agent.status ?? 'available',
         capabilities: acpCapabilities,
         description: 'ACP agent selected as the Chat Panel runtime.',
@@ -330,6 +391,43 @@ export function buildAgentRuntimesPayload(input: {
         },
       })),
   ];
+
+  return { runtimes, installed, notInstalled };
+}
+
+function buildAcpScopedPayload(input: {
+  installed: unknown[];
+  notInstalled: unknown[];
+  checkedAt: string;
+}): AgentRuntimesPayload {
+  const installed = input.installed
+    .map(normalizeInstalled)
+    .filter((agent): agent is DetectedRuntimeAgent => !!agent && !isCodexAgent(agent) && !isClaudeAgent(agent));
+  const notInstalled = input.notInstalled
+    .map(normalizeMissing)
+    .filter((agent): agent is MissingRuntimeAgent => !!agent && !isCodexAgent(agent) && !isClaudeAgent(agent));
+  const runtimes = installed.map((agent): AgentRuntimeDescriptor => ({
+    id: agent.id,
+    name: agent.name,
+    kind: 'acp',
+    adapter: 'acp',
+    modelOwner: 'external',
+    authOwner: 'external',
+    permissionOwner: 'external',
+    sessionOwner: 'external',
+    status: agent.status ?? 'available',
+    capabilities: acpCapabilities,
+    description: 'ACP agent selected as the Chat Panel runtime.',
+    sourceAgentId: agent.id,
+    canonicalAgentId: agent.id,
+    binaryPath: agent.binaryPath,
+    ...(agent.resolvedCommand ? { resolvedCommand: agent.resolvedCommand } : {}),
+    availability: {
+      checkedAt: input.checkedAt,
+      sources: agent.status && agent.status !== 'available' ? ['acp-detect', 'native-health'] : ['acp-detect'],
+      ...(agent.reason ? { reason: agent.reason } : {}),
+    },
+  }));
 
   return { runtimes, installed, notInstalled };
 }
@@ -574,6 +672,11 @@ export async function handleAgentRuntimesGet(
   services: AgentRuntimesServices = {},
 ): Promise<MindosServerResponse<AgentRuntimesPayload | AgentRuntimePayload | { error: string }>> {
   try {
+    const scope = searchParams.get('scope');
+    if (scope && scope !== 'acp') {
+      return json({ error: `Unsupported scope: ${scope}` }, { status: 400 });
+    }
+
     const runtime = searchParams.get('runtime');
     if (runtime) {
       if (!isNativeRuntimeId(runtime)) {
@@ -587,6 +690,19 @@ export async function handleAgentRuntimesGet(
     }
 
     const detectLocalAcpAgents = services.detectLocalAcpAgents ?? defaultDetectLocalAcpAgents;
+    if (scope === 'acp') {
+      const acpDetection = await withTimeout(
+        detectLocalAcpAgents({ overrides: services.readSettings?.().acpAgents }),
+        RUNTIME_DETECTION_TIMEOUT_MS,
+        `Agent runtime detection timed out after ${RUNTIME_DETECTION_TIMEOUT_MS}ms.`,
+      );
+      return json(buildAcpScopedPayload({
+        installed: Array.isArray(acpDetection.installed) ? acpDetection.installed : [],
+        notInstalled: Array.isArray(acpDetection.notInstalled) ? acpDetection.notInstalled : [],
+        checkedAt: new Date(services.now?.() ?? Date.now()).toISOString(),
+      }), { headers: searchParams.get('force') === '1' ? { 'Cache-Control': 'no-store' } : privateCacheHeaders(1800) });
+    }
+
     const nativeDetectionPromise = detectNativeRuntimes(services);
     const acpDetectionPromise = (async (): Promise<{ installed: unknown[]; notInstalled: unknown[] }> => {
       try {

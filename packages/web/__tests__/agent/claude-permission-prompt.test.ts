@@ -3,7 +3,10 @@ import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CLAUDE_ASK_USER_QUESTION_TOOL,
+  CLAUDE_PERMISSION_PROMPT_SERVER,
   CLAUDE_PERMISSION_PROMPT_TOOL,
+  CLAUDE_PERMISSION_PROMPT_TOOL_REF,
   createClaudePermissionPromptConfig,
   resolveRuntimePermissionBaseUrl,
 } from '@/lib/agent/claude-permission-prompt';
@@ -37,11 +40,13 @@ describe('Claude Code permission prompt MCP config', () => {
       runId: 'run-mcp',
       baseUrl: 'http://127.0.0.1:4567',
     });
-    expect(prompt.toolName).toBe(CLAUDE_PERMISSION_PROMPT_TOOL);
+    expect(prompt.toolName).toBe(CLAUDE_PERMISSION_PROMPT_TOOL_REF);
+    expect(prompt.toolName).not.toBe(CLAUDE_PERMISSION_PROMPT_TOOL);
     const mcpConfig = prompt.mcpConfig as {
       mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
     };
-    const server = mcpConfig.mcpServers.mindos_runtime_permission;
+    expect(Object.keys(mcpConfig.mcpServers)).toContain(CLAUDE_PERMISSION_PROMPT_SERVER);
+    const server = mcpConfig.mcpServers[CLAUDE_PERMISSION_PROMPT_SERVER];
 
     child = spawn(server.command, server.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -77,6 +82,7 @@ describe('Claude Code permission prompt MCP config', () => {
       result: {
         tools: [
           { name: CLAUDE_PERMISSION_PROMPT_TOOL },
+          { name: CLAUDE_ASK_USER_QUESTION_TOOL },
         ],
       },
     });
@@ -84,5 +90,42 @@ describe('Claude Code permission prompt MCP config', () => {
 
   it('prefers a local loopback URL when the request has a port', () => {
     expect(resolveRuntimePermissionBaseUrl(new Request('http://21.6.243.108:4567/api/ask'))).toBe('http://127.0.0.1:4567');
+  });
+
+  it('returns a JSON-RPC error response when the permission bridge request fails', async () => {
+    const prompt = createClaudePermissionPromptConfig({
+      runId: 'run-mcp',
+      baseUrl: 'http://127.0.0.1:9',
+    });
+    const mcpConfig = prompt.mcpConfig as {
+      mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+    };
+    const server = mcpConfig.mcpServers[CLAUDE_PERMISSION_PROMPT_SERVER];
+
+    child = spawn(server.command, server.args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, ...server.env },
+    });
+    const lines = createInterface({ input: child.stdout });
+
+    child.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: CLAUDE_PERMISSION_PROMPT_TOOL,
+        arguments: { toolName: 'Bash', input: { command: 'rm note.md' } },
+      },
+    })}\n`);
+
+    const response = await readJsonLine(lines);
+    expect(response).toMatchObject({
+      jsonrpc: '2.0',
+      id: 3,
+      error: {
+        code: -32000,
+      },
+    });
+    expect((response.error as { message?: string }).message).toMatch(/fetch|connect|ECONNREFUSED|failed/i);
   });
 });

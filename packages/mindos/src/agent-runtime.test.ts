@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createClaudeCodeCliClient,
   createCodexAppServerClient,
@@ -113,6 +113,7 @@ describe('agent runtime adapters', () => {
         id: 1,
         params: {
           clientInfo: { name: 'mindos_test', title: 'MindOS Test', version: '0.0.0' },
+          capabilities: { experimentalApi: true },
         },
       },
       { method: 'initialized', params: {} },
@@ -131,6 +132,22 @@ describe('agent runtime adapters', () => {
       { method: 'item/agentMessage/delta', params: { delta: 'Hello' } },
       { method: 'turn/completed', params: { turn: { id: 'turn-1' }, status: 'completed' } },
     ]);
+  });
+
+  it('uses a Codex-compatible default app-server client identity', async () => {
+    const transport = createFakeCodexTransport();
+    const client = createCodexAppServerClient(transport);
+
+    await client.initialize();
+
+    expect(transport.sent[0]).toEqual({
+      method: 'initialize',
+      id: 1,
+      params: {
+        clientInfo: { name: 'codex-mindos', title: 'Codex MindOS', version: '0.1.0' },
+        capabilities: { experimentalApi: true },
+      },
+    });
   });
 
   it('maps Codex notifications into MindOS SSE events', () => {
@@ -213,6 +230,75 @@ describe('agent runtime adapters', () => {
       args: 'mindos file delete "Profile.md"',
       runtime: 'codex',
     }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/started',
+      params: {
+        item: {
+          id: 'cmd-official-1',
+          type: 'commandExecution',
+          command: 'mindos search "permission"',
+          status: 'running',
+        },
+      },
+    })).toEqual([{
+      type: 'tool_start',
+      toolCallId: 'cmd-official-1',
+      toolName: 'Bash',
+      args: 'mindos search "permission"',
+      runtime: 'codex',
+    }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/commandExecution/outputDelta',
+      params: {
+        itemId: 'cmd-official-1',
+        delta: 'Found 3 notes.\n',
+      },
+    })).toEqual([{
+      type: 'tool_delta',
+      toolCallId: 'cmd-official-1',
+      toolName: 'Bash',
+      delta: 'Found 3 notes.\n',
+      runtime: 'codex',
+    }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/completed',
+      params: {
+        item: {
+          id: 'cmd-official-1',
+          type: 'commandExecution',
+          status: 'failed',
+          error: { message: 'Command failed' },
+        },
+      },
+    })).toEqual([{
+      type: 'tool_end',
+      toolCallId: 'cmd-official-1',
+      toolName: 'Bash',
+      output: 'Command failed',
+      isError: true,
+    }]);
+
+    expect(mapCodexAppServerNotificationToSseEvents({
+      method: 'item/completed',
+      params: {
+        item: {
+          id: 'mcp-tool-1',
+          type: 'mcpToolCall',
+          server: { name: 'mindos' },
+          tool: { name: 'search', result: 'Found 3 notes.' },
+          status: 'completed',
+        },
+      },
+    })).toEqual([{
+      type: 'tool_end',
+      toolCallId: 'mcp-tool-1',
+      toolName: 'mindos.search',
+      output: 'Found 3 notes.',
+      isError: false,
+    }]);
   });
 
   it('includes the Codex JSON-RPC method, code, and data when a request fails', async () => {
@@ -240,6 +326,89 @@ describe('agent runtime adapters', () => {
     await expect(client.initialize()).rejects.toThrow(
       'Codex app-server initialize failed method=initialize code=-32600 data={"expected":["thread/start","turn/start"]}',
     );
+  });
+
+  it('rejects a Codex JSON-RPC request when transport send fails', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const transport: CodexAppServerTransport = {
+      send(message) {
+        const record = message as { method?: string };
+        if (record.method === 'initialize') {
+          throw new Error('stdio pipe closed');
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    const client = createCodexAppServerClient(transport);
+    await expect(client.initialize()).rejects.toThrow('stdio pipe closed');
+    await client.close?.();
+  });
+
+  it('rejects a Codex turn start request when the run is aborted', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const transport: CodexAppServerTransport = {
+      send(message) {
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    const client = createCodexAppServerClient(transport);
+    await client.initialize();
+    const thread = await client.startThread();
+    const controller = new AbortController();
+    const iterator = client.startTurn({
+      threadId: thread.threadId,
+      input: [{ type: 'text', text: 'Continue.' }],
+      signal: controller.signal,
+    })[Symbol.asyncIterator]();
+
+    const next = iterator.next();
+    controller.abort();
+    await expect(next).rejects.toThrow('Codex app-server turn/start aborted.');
+    await client.close?.();
+  });
+
+  it('rejects a Codex JSON-RPC request that never receives a response', async () => {
+    vi.useFakeTimers();
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const transport: CodexAppServerTransport = {
+      send() {},
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+    const client = createCodexAppServerClient(transport);
+
+    try {
+      const pending = client.initialize();
+      const rejection = expect(pending).rejects.toThrow('Codex app-server initialize timed out after 60000ms.');
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejection;
+    } finally {
+      await client.close?.();
+      vi.useRealTimers();
+    }
   });
 
   it('maps Codex app-server error notifications into visible stream errors', () => {
@@ -472,6 +641,158 @@ describe('agent runtime adapters', () => {
     expect(events).toContainEqual({ type: 'text_delta', delta: 'Deleted.' });
   });
 
+  it('answers Codex app-server user input requests through the question service', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const sent: unknown[] = [];
+    let requestedQuestion: unknown;
+    const transport: CodexAppServerTransport & { sent: unknown[] } = {
+      sent,
+      send(message) {
+        sent.push(message);
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+        if (record.method === 'turn/start') {
+          queue.push({ id: record.id!, result: { turn: { id: 'turn-1' } } });
+          queue.push({
+            id: 100,
+            method: 'item/tool/requestUserInput',
+            params: {
+              requestId: 'question-1',
+              questions: [{
+                question: 'Delete the CV review note?',
+                header: 'Delete confirmation',
+                options: [
+                  { label: 'Delete', description: 'Remove the note.' },
+                  { label: 'Keep', description: 'Leave it unchanged.' },
+                ],
+              }],
+            },
+          });
+          queue.push({ method: 'turn/completed', params: { turn: { id: 'turn-1' }, status: 'completed' } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Delete it.',
+      send: () => {},
+      services: {
+        createCodexClient: ({ handleServerRequest }) => createCodexAppServerClient(transport, { handleServerRequest }),
+        requestUserQuestion: async (request) => {
+          requestedQuestion = request;
+          return {
+            answers: [{
+              questionIndex: 0,
+              question: 'Delete the CV review note?',
+              kind: 'option',
+              answer: 'Delete',
+            }],
+          };
+        },
+      },
+    });
+
+    expect(requestedQuestion).toMatchObject({
+      runtime: 'codex',
+      toolCallId: 'question-1',
+      questions: [{
+        question: 'Delete the CV review note?',
+        header: 'Delete confirmation',
+        options: [
+          { label: 'Delete', description: 'Remove the note.' },
+          { label: 'Keep', description: 'Leave it unchanged.' },
+        ],
+      }],
+    });
+    expect(transport.sent).toContainEqual({
+      id: 100,
+      result: {
+        answers: [{
+          questionIndex: 0,
+          question: 'Delete the CV review note?',
+          kind: 'option',
+          answer: 'Delete',
+        }],
+      },
+    });
+  });
+
+  it('cancels a pending Codex user input request when app-server resolves it first', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const sent: unknown[] = [];
+    let sawAbort = false;
+    const transport: CodexAppServerTransport & { sent: unknown[] } = {
+      sent,
+      send(message) {
+        sent.push(message);
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+        if (record.method === 'turn/start') {
+          queue.push({ id: record.id!, result: { turn: { id: 'turn-1' } } });
+          queue.push({
+            id: 100,
+            method: 'item/tool/requestUserInput',
+            params: {
+              requestId: 'question-1',
+              questions: [{ question: 'Continue?', header: 'Continue', options: ['Yes', 'No'] }],
+            },
+          });
+          queue.push({ method: 'serverRequest/resolved', params: { requestId: 'question-1' } });
+          queue.push({ method: 'turn/completed', params: { turn: { id: 'turn-1' }, status: 'completed' } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Continue?',
+      send: () => {},
+      services: {
+        createCodexClient: ({ handleServerRequest }) => createCodexAppServerClient(transport, { handleServerRequest }),
+        requestUserQuestion: (_request, callOptions) => new Promise((resolve) => {
+          callOptions?.signal?.addEventListener('abort', () => {
+            sawAbort = true;
+            resolve({ answers: [], cancelled: true, error: 'server_request_resolved' });
+          }, { once: true });
+        }),
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sawAbort).toBe(true);
+    expect(transport.sent).toContainEqual({
+      id: 100,
+      result: { cancelled: true, answers: [], error: 'server_request_resolved' },
+    });
+  });
+
   it('streams Claude Code CLI output and returns the session binding', async () => {
     const events: MindOSSSEvent[] = [];
     const transport = createFakeClaudeTransport([
@@ -518,7 +839,7 @@ describe('agent runtime adapters', () => {
       prompt: 'Delete it.',
       cwd: '/tmp/mind',
       permissionPrompt: {
-        toolName: 'mindos_runtime_permission',
+        toolName: 'mcp__mindos_runtime_permission__mindos_runtime_permission',
         mcpConfig: {
           mcpServers: {
             mindos_runtime_permission: {
@@ -536,7 +857,7 @@ describe('agent runtime adapters', () => {
     const argv = transport.argv ?? [];
     expect(argv).toContain('--mcp-config');
     expect(argv).toContain('--permission-prompt-tool');
-    expect(argv).toContain('mindos_runtime_permission');
+    expect(argv).toContain('mcp__mindos_runtime_permission__mindos_runtime_permission');
     const mcpConfigArg = argv[argv.indexOf('--mcp-config') + 1] ?? '';
     expect(JSON.parse(mcpConfigArg)).toMatchObject({
       mcpServers: {
@@ -562,14 +883,14 @@ describe('agent runtime adapters', () => {
       services: {
         createClaudeClient: () => createClaudeCodeCliClient(transport),
         createClaudePermissionPrompt: () => ({
-          toolName: 'mindos_runtime_permission',
+          toolName: 'mcp__mindos_runtime_permission__mindos_runtime_permission',
           mcpConfig: '{"mcpServers":{"mindos_runtime_permission":{"type":"stdio","command":"node"}}}',
         }),
       },
     });
 
     expect(transport.argv).toContain('--permission-prompt-tool');
-    expect(transport.argv).toContain('mindos_runtime_permission');
+    expect(transport.argv).toContain('mcp__mindos_runtime_permission__mindos_runtime_permission');
   });
 
   it('maps Claude Code Bash tool use into a native runtime tool event', async () => {
@@ -623,6 +944,46 @@ describe('agent runtime adapters', () => {
         toolCallId: 'toolu-1',
         output: 'Deleted Profile.md',
         isError: false,
+      },
+      { type: 'done' },
+    ]);
+  });
+
+  it('maps Claude Code permission denied system events into visible native runtime tool errors', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({
+        type: 'system',
+        subtype: 'permission_denied',
+        tool_use_id: 'toolu-denied',
+        tool_name: 'Bash',
+        reason: 'User denied this command.',
+        blockedPath: '/tmp/mind/Profile.md',
+      }),
+      JSON.stringify({ type: 'result', subtype: 'success' }),
+    ]);
+
+    const client = createClaudeCodeCliClient(transport);
+    const events = [];
+    for await (const event of client.startTurn({ prompt: 'Delete it.', cwd: '/tmp/mind' })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: 'tool_start',
+        toolCallId: 'toolu-denied',
+        toolName: 'Bash',
+        args: {
+          reason: 'User denied this command.',
+          blockedPath: '/tmp/mind/Profile.md',
+        },
+        runtime: 'claude',
+      },
+      {
+        type: 'tool_end',
+        toolCallId: 'toolu-denied',
+        output: 'User denied this command.',
+        isError: true,
       },
       { type: 'done' },
     ]);

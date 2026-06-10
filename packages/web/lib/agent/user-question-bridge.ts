@@ -78,6 +78,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 type AskUserQuestionBridgeGlobalState = {
   bridgeContext: AsyncLocalStorage<AskUserQuestionBridgeContext>;
+  runs: Map<string, AskUserQuestionBridgeContext>;
   pendingQuestions: Map<string, PendingQuestion>;
 };
 
@@ -89,6 +90,7 @@ function getGlobalBridgeState(): AskUserQuestionBridgeGlobalState {
   };
   root[BRIDGE_GLOBAL_KEY] ??= {
     bridgeContext: new AsyncLocalStorage<AskUserQuestionBridgeContext>(),
+    runs: new Map<string, AskUserQuestionBridgeContext>(),
     pendingQuestions: new Map<string, PendingQuestion>(),
   };
   return root[BRIDGE_GLOBAL_KEY];
@@ -96,6 +98,7 @@ function getGlobalBridgeState(): AskUserQuestionBridgeGlobalState {
 
 const bridgeState = getGlobalBridgeState();
 const bridgeContext = bridgeState.bridgeContext;
+const runs = bridgeState.runs;
 const pendingQuestions = bridgeState.pendingQuestions;
 
 function pendingKey(runId: string, toolCallId: string): string {
@@ -132,7 +135,15 @@ export function runWithAskUserQuestionBridge<T>(
   context: AskUserQuestionBridgeContext,
   callback: () => Promise<T>,
 ): Promise<T> {
-  return bridgeContext.run(context, callback);
+  runs.set(context.runId, context);
+  return bridgeContext.run(context, async () => {
+    try {
+      return await callback();
+    } finally {
+      cancelQuestionsForRun(context.runId);
+      runs.delete(context.runId);
+    }
+  });
 }
 
 export function hasAskUserQuestionBridge(): boolean {
@@ -146,14 +157,36 @@ export async function askUserQuestionViaBridge(input: {
 }): Promise<AskUserQuestionResult> {
   const context = bridgeContext.getStore();
   if (!context) return cancelled('no_bridge');
+  return enqueueAskUserQuestion(context, input);
+}
 
+export async function askUserQuestionForRun(input: {
+  runId: string;
+  toolCallId: string;
+  params: unknown;
+  signal?: AbortSignal;
+}): Promise<AskUserQuestionResult> {
+  const context = runs.get(input.runId);
+  if (!context) return cancelled('no_bridge');
+  return enqueueAskUserQuestion(context, input);
+}
+
+function enqueueAskUserQuestion(
+  context: AskUserQuestionBridgeContext,
+  input: {
+    toolCallId: string;
+    params: unknown;
+    signal?: AbortSignal;
+  },
+): Promise<AskUserQuestionResult> {
   const questions = normalizeQuestions(input.params);
+  if (questions.length === 0) return Promise.resolve(cancelled('empty_questions'));
   const params: AskUserQuestionParams = { questions };
   const key = pendingKey(context.runId, input.toolCallId);
 
-  if (pendingQuestions.has(key)) return cancelled('duplicate_question');
+  if (pendingQuestions.has(key)) return Promise.resolve(cancelled('duplicate_question'));
 
-  return await new Promise<AskUserQuestionResult>((resolve, reject) => {
+  return new Promise<AskUserQuestionResult>((resolve, reject) => {
     let abort: (() => void) | undefined;
     const finish = (result: AskUserQuestionResult) => {
       const pending = pendingQuestions.get(key);
@@ -208,6 +241,19 @@ export async function askUserQuestionViaBridge(input: {
       questions,
     });
   });
+}
+
+function cancelQuestionsForRun(runId: string): void {
+  for (const pending of Array.from(pendingQuestions.values())) {
+    if (pending.runId !== runId) continue;
+    pending.send({
+      type: 'user_question_cancelled',
+      runId,
+      toolCallId: pending.toolCallId,
+      reason: 'run_finished',
+    });
+    pending.resolve(cancelled('run_finished'));
+  }
 }
 
 export function answerAskUserQuestion(input: {

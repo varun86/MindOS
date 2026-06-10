@@ -122,4 +122,35 @@ describe('ToolCallBlock native runtime rendering', () => {
 
     view.cleanup();
   });
+
+  it('renders native Claude AskUserQuestion input as a structured question card', () => {
+    const view = renderToolCall({
+      type: 'tool-call',
+      toolCallId: 'toolu-question',
+      toolName: 'AskUserQuestion',
+      runtime: 'claude',
+      state: 'running',
+      input: {
+        questions: [{
+          question: 'Delete the CV review note?',
+          header: 'Delete confirmation',
+          options: [
+            { label: 'Delete', description: 'Remove the note.' },
+            { label: 'Keep', description: 'Leave it unchanged.' },
+          ],
+        }],
+      },
+    });
+
+    expect(view.host.textContent).toContain('Claude Code question');
+    expect(view.host.textContent).toContain('Delete the CV review note?');
+    expect(view.host.textContent).toContain('Delete confirmation');
+    expect(view.host.textContent).toContain('Delete');
+    expect(view.host.textContent).toContain('Keep');
+    expect(view.host.textContent).toContain('read-only context');
+    expect(view.host.textContent).not.toContain('opens its own prompt');
+    expect(view.host.textContent).not.toContain('"questions"');
+
+    view.cleanup();
+  });
 });

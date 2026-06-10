@@ -140,8 +140,8 @@ const cancelledQuestion: ToolCallPart = {
 
 export default function AskUserQuestionDemoPage() {
   return (
-    <main className="box-border min-h-screen w-screen max-w-[100vw] overflow-x-hidden bg-background text-foreground">
-      <div className="mx-auto box-border flex w-full min-w-0 max-w-[100vw] flex-col gap-6 px-6 py-8 lg:max-w-6xl">
+    <main className="box-border min-h-screen w-full max-w-full overflow-x-hidden bg-background text-foreground">
+      <div className="mx-auto box-border flex w-full min-w-0 max-w-full flex-col gap-6 px-6 py-8 lg:max-w-6xl">
         <header className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             MindOS Agent Demo
@@ -154,7 +154,7 @@ export default function AskUserQuestionDemoPage() {
           </p>
         </header>
 
-        <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+        <section className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
           <div className="min-w-0 space-y-3">
             <h2 className="text-sm font-semibold">Prompt to try</h2>
             <pre className="box-border max-w-full overflow-hidden whitespace-pre-wrap break-all rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-foreground">

@@ -148,6 +148,10 @@ function mapClaudeCodeCliRecordToSseEvents(
     return contentBlocksFromRecord(record).flatMap((block) => mapClaudeContentBlock(block, state));
   }
 
+  if (isClaudePermissionDeniedRecord(record)) {
+    return mapClaudePermissionDeniedRecord(record);
+  }
+
   if (record.type === 'result') {
     state.emittedDone = true;
     if (record.is_error === true || record.subtype === 'error') {
@@ -161,6 +165,48 @@ function mapClaudeCodeCliRecordToSseEvents(
   }
 
   return [];
+}
+
+function isClaudePermissionDeniedRecord(record: Record<string, unknown>): boolean {
+  return record.subtype === 'permission_denied'
+    || record.subtype === 'permissionDenied'
+    || record.type === 'permission_denied'
+    || record.type === 'permissionDenied';
+}
+
+function mapClaudePermissionDeniedRecord(record: Record<string, unknown>): MindOSSSEvent[] {
+  const toolCallId = getStringField(record, 'tool_use_id')
+    ?? getStringField(record, 'toolUseID')
+    ?? getStringField(record, 'toolUseId')
+    ?? getStringField(record, 'tool_call_id')
+    ?? getStringField(record, 'id')
+    ?? `claude-permission-denied-${Date.now().toString(36)}`;
+  const toolName = getStringField(record, 'tool_name')
+    ?? getStringField(record, 'toolName')
+    ?? getStringField(record, 'name')
+    ?? 'permission_denied';
+  const message = getStringField(record, 'message')
+    ?? getStringField(record, 'reason')
+    ?? getStringField(record, 'decisionReason')
+    ?? 'Claude Code denied this tool call.';
+  return [
+    {
+      type: 'tool_start',
+      toolCallId,
+      toolName,
+      args: {
+        ...(getStringField(record, 'reason') ? { reason: getStringField(record, 'reason') } : {}),
+        ...(getStringField(record, 'blockedPath') ? { blockedPath: getStringField(record, 'blockedPath') } : {}),
+      },
+      runtime: 'claude',
+    },
+    {
+      type: 'tool_end',
+      toolCallId,
+      output: message,
+      isError: true,
+    },
+  ];
 }
 
 function mapClaudeContentBlock(

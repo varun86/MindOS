@@ -8,6 +8,10 @@ export type CodexAppServerClientInfo = {
   version: string;
 };
 
+export type CodexAppServerClientCapabilities = {
+  experimentalApi?: boolean;
+};
+
 export type CodexAppServerRequest = {
   method: string;
   id: number;
@@ -50,6 +54,7 @@ export type CodexAppServerTransport = {
 
 export type CodexAppServerClientOptions = {
   clientInfo?: CodexAppServerClientInfo;
+  capabilities?: CodexAppServerClientCapabilities;
   handleServerRequest?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown;
 };
 
@@ -73,7 +78,10 @@ type PendingRequest = {
   method: string;
   resolve(value: unknown): void;
   reject(error: Error): void;
+  cleanup(): void;
 };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 class AsyncQueue<T> implements AsyncIterable<T> {
   private values: T[] = [];
@@ -115,9 +123,12 @@ export function createCodexAppServerClient(
   options: CodexAppServerClientOptions = {},
 ): CodexAppServerClient {
   const clientInfo = options.clientInfo ?? {
-    name: 'mindos',
-    title: 'MindOS',
+    name: 'codex-mindos',
+    title: 'Codex MindOS',
     version: '0.1.0',
+  };
+  const capabilities = options.capabilities ?? {
+    experimentalApi: true,
   };
   const pending = new Map<number, PendingRequest>();
   const notifications = new AsyncQueue<CodexAppServerNotification>();
@@ -134,6 +145,7 @@ export function createCodexAppServerClient(
             const request = pending.get(message.id);
             if (!request) continue;
             pending.delete(message.id);
+            request.cleanup();
             if (message.error) {
               request.reject(new Error(formatCodexJsonRpcError(request.method, message.error)));
             } else {
@@ -142,14 +154,23 @@ export function createCodexAppServerClient(
             continue;
           }
           if (isCodexServerRequest(message)) {
-            await respondToServerRequest(message);
+            void respondToServerRequest(message).catch((error) => {
+              const err = error instanceof Error ? error : new Error(String(error));
+              notifications.push({
+                method: 'error',
+                params: { message: `Codex app-server request ${message.method} failed: ${err.message}` },
+              });
+            });
             continue;
           }
           if (isCodexNotification(message)) notifications.push(message);
         }
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        for (const request of pending.values()) request.reject(err);
+        for (const request of pending.values()) {
+          request.cleanup();
+          request.reject(err);
+        }
         pending.clear();
       } finally {
         notifications.close();
@@ -159,11 +180,39 @@ export function createCodexAppServerClient(
 
   const request = async (method: string, params: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> => {
     startReadLoop(signal);
+    if (signal?.aborted) throw new Error(`Codex app-server ${method} aborted.`);
     const id = nextId++;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
     const response = new Promise<unknown>((resolve, reject) => {
-      pending.set(id, { method, resolve, reject });
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        if (abortListener) signal?.removeEventListener('abort', abortListener);
+      };
+      const rejectPending = (error: Error) => {
+        const pendingRequest = pending.get(id);
+        if (!pendingRequest) return;
+        pending.delete(id);
+        pendingRequest.cleanup();
+        pendingRequest.reject(error);
+      };
+      abortListener = () => rejectPending(new Error(`Codex app-server ${method} aborted.`));
+      timer = setTimeout(() => {
+        rejectPending(new Error(`Codex app-server ${method} timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms.`));
+      }, DEFAULT_REQUEST_TIMEOUT_MS);
+      signal?.addEventListener('abort', abortListener, { once: true });
+      pending.set(id, { method, resolve, reject, cleanup });
     });
-    await transport.send({ method, id, params });
+    try {
+      await transport.send({ method, id, params });
+    } catch (error) {
+      const pendingRequest = pending.get(id);
+      if (pendingRequest) {
+        pending.delete(id);
+        pendingRequest.cleanup();
+        pendingRequest.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
     return response;
   };
 
@@ -191,7 +240,7 @@ export function createCodexAppServerClient(
 
   return {
     async initialize() {
-      await request('initialize', { clientInfo });
+      await request('initialize', { clientInfo, capabilities });
       await notify('initialized');
     },
     async startThread(input = {}) {
@@ -326,17 +375,35 @@ export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppS
 function mapCodexRuntimeToolNotification(notification: CodexAppServerNotification): MindOSSSEvent[] {
   const method = notification.method;
   const lower = method.toLowerCase();
+  const params = notification.params ?? {};
+
+  const officialItemEvents = mapCodexOfficialItemNotification(method, params);
+  if (officialItemEvents.length > 0) return officialItemEvents;
+
   if (!/(tool|command|exec|approval|permission|patch)/.test(lower)) return [];
 
-  const params = notification.params ?? {};
   const toolCallId = getCodexToolCallId(method, params);
   const toolName = getCodexToolName(method, params);
   if (!toolCallId || !toolName) return [];
+
+  if (/outputdelta|output_delta/.test(lower)) {
+    const delta = getStringParam(params, 'delta')
+      ?? getStringParam(params, 'output')
+      ?? getStringParam(params, 'text');
+    return delta ? [{
+      type: 'tool_delta',
+      toolCallId,
+      toolName,
+      delta,
+      runtime: 'codex',
+    }] : [];
+  }
 
   if (/(end|ended|complete|completed|result|output|failed|error|rejected|denied|approved|allowed)/.test(lower)) {
     return [{
       type: 'tool_end',
       toolCallId,
+      toolName,
       output: getCodexToolOutput(params),
       isError: /(failed|error|rejected|denied)/.test(lower) || params.isError === true || params.error !== undefined,
     }];
@@ -353,6 +420,58 @@ function mapCodexRuntimeToolNotification(notification: CodexAppServerNotificatio
   }
 
   return [];
+}
+
+function mapCodexOfficialItemNotification(
+  method: string,
+  params: Record<string, unknown>,
+): MindOSSSEvent[] {
+  if (method === 'item/commandExecution/outputDelta') {
+    const toolCallId = getCodexToolCallId(method, params);
+    const delta = getStringParam(params, 'delta')
+      ?? getStringParam(params, 'output')
+      ?? getStringParam(params, 'text');
+    if (!toolCallId || !delta) return [];
+    return [{
+      type: 'tool_delta',
+      toolCallId,
+      toolName: getCodexToolName(method, params),
+      delta,
+      runtime: 'codex',
+    }];
+  }
+
+  if (method !== 'item/started' && method !== 'item/completed') return [];
+
+  const item = getCodexItem(params);
+  if (!item || !isCodexRuntimeToolItem(item)) return [];
+  const toolCallId = getCodexToolCallId(method, params);
+  const toolName = getCodexToolName(method, params);
+  if (!toolCallId || !toolName) return [];
+
+  if (method === 'item/started') {
+    return [{
+      type: 'tool_start',
+      toolCallId,
+      toolName,
+      args: getCodexToolInput(params),
+      runtime: 'codex',
+    }];
+  }
+
+  const status = getStringField(item, 'status') ?? getStringParam(params, 'status');
+  return [{
+    type: 'tool_end',
+    toolCallId,
+    toolName,
+    output: getCodexToolOutput(params),
+    isError: status === 'failed'
+      || status === 'error'
+      || status === 'declined'
+      || params.isError === true
+      || params.error !== undefined
+      || item.error !== undefined,
+  }];
 }
 
 function formatCodexJsonRpcError(method: string, error: { code?: number; message?: string; data?: unknown }): string {
@@ -414,6 +533,26 @@ function getStringParam(params: Record<string, unknown> | undefined, key: string
   return typeof value === 'string' ? value : undefined;
 }
 
+function getCodexItem(params: Record<string, unknown>): Record<string, unknown> | null {
+  return asRecord(params.item) ?? params;
+}
+
+function getCodexItemType(item: Record<string, unknown> | null): string {
+  return getStringField(item, 'type') ?? getStringField(item, 'kind') ?? '';
+}
+
+function isCodexRuntimeToolItem(item: Record<string, unknown>): boolean {
+  const type = getCodexItemType(item).toLowerCase();
+  return type.includes('command')
+    || type.includes('filechange')
+    || type.includes('file_change')
+    || type.includes('tool')
+    || type.includes('dynamic')
+    || Boolean(getStringField(item, 'command'))
+    || Boolean(getStringField(item, 'toolName'))
+    || Boolean(getStringField(item, 'name'));
+}
+
 function getCodexToolCallId(method: string, params: Record<string, unknown>): string {
   const direct = getStringParam(params, 'toolCallId')
     ?? getStringParam(params, 'callId')
@@ -434,18 +573,42 @@ function getCodexToolName(method: string, params: Record<string, unknown>): stri
     ?? getStringParam(params, 'commandName');
   if (direct) return direct;
   if (getStringParam(params, 'command')) return 'Bash';
+  if (method.toLowerCase().includes('commandexecution')) return 'Bash';
   if (method.toLowerCase().includes('approval') || method.toLowerCase().includes('permission')) return 'approval_request';
 
-  const item = asRecord(params.item);
-  return getStringField(item, 'name') ?? getStringField(item, 'toolName') ?? method.split('/').at(-1) ?? method;
+  const item = getCodexItem(params);
+  const itemType = getCodexItemType(item).toLowerCase();
+  const itemTool = asRecord(item?.tool) ?? asRecord(item?.mcpTool) ?? asRecord(item?.dynamicTool);
+  const itemServer = asRecord(item?.server) ?? asRecord(item?.mcpServer);
+  if (getStringField(item, 'command')) return 'Bash';
+  if (itemType.includes('command')) return 'Bash';
+  if (itemType.includes('filechange') || itemType.includes('file_change')) return 'file_change';
+  const nestedToolName = getStringField(itemTool, 'name')
+    ?? getStringField(itemTool, 'toolName')
+    ?? getStringField(item, 'serverToolName');
+  const serverName = getStringField(itemServer, 'name') ?? getStringField(itemServer, 'serverName');
+  if (serverName && nestedToolName) return `${serverName}.${nestedToolName}`;
+  return getStringField(item, 'name')
+    ?? getStringField(item, 'toolName')
+    ?? nestedToolName
+    ?? method.split('/').at(-1)
+    ?? method;
 }
 
 function getCodexToolInput(params: Record<string, unknown>): unknown {
+  const item = getCodexItem(params);
+  const itemTool = asRecord(item?.tool) ?? asRecord(item?.mcpTool) ?? asRecord(item?.dynamicTool);
   return params.input
     ?? params.arguments
     ?? params.args
     ?? params.command
-    ?? asRecord(params.item)?.input
+    ?? item?.input
+    ?? item?.arguments
+    ?? item?.args
+    ?? item?.command
+    ?? itemTool?.input
+    ?? itemTool?.arguments
+    ?? itemTool?.args
     ?? params;
 }
 
@@ -460,9 +623,20 @@ function getCodexToolOutput(params: Record<string, unknown>): string {
   const errorMessage = getStringField(error, 'message') ?? getStringField(error, 'detail');
   if (errorMessage) return errorMessage;
 
-  const item = asRecord(params.item);
+  const item = getCodexItem(params);
   const itemOutput = getStringField(item, 'output') ?? getStringField(item, 'result');
   if (itemOutput) return itemOutput;
+
+  const itemTool = asRecord(item?.tool) ?? asRecord(item?.mcpTool) ?? asRecord(item?.dynamicTool);
+  const toolOutput = getStringField(itemTool, 'output') ?? getStringField(itemTool, 'result');
+  if (toolOutput) return toolOutput;
+
+  const itemError = asRecord(item?.error);
+  const itemErrorMessage = getStringField(itemError, 'message') ?? getStringField(itemError, 'detail');
+  if (itemErrorMessage) return itemErrorMessage;
+
+  const status = getStringField(item, 'status') ?? getStringParam(params, 'status');
+  if (status) return `Codex item ${status}`;
 
   return safeJson(params);
 }

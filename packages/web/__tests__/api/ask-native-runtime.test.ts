@@ -8,6 +8,7 @@ let capturedNativeOptions: MindosAgentRuntimeAskOptions | null = null;
 const mockDetectLocalAcpAgents = vi.fn();
 const mockResolveCommandPath = vi.fn();
 const mockCheckNativeRuntimeHealth = vi.fn();
+const mockRunMindosAgentRuntimeAskSession = vi.fn();
 
 vi.mock('@/lib/acp/detect-local', () => ({
   detectLocalAcpAgents: mockDetectLocalAcpAgents,
@@ -16,12 +17,7 @@ vi.mock('@/lib/acp/detect-local', () => ({
 }));
 
 vi.mock('@geminilight/mindos/agent-runtime', () => ({
-  runMindosAgentRuntimeAskSession: vi.fn(async (options: MindosAgentRuntimeAskOptions) => {
-    capturedNativeOptions = options;
-    options.send({ type: 'text_delta', delta: 'native ok' });
-    options.send({ type: 'done' });
-    return { externalSessionId: 'thr_123' };
-  }),
+  runMindosAgentRuntimeAskSession: mockRunMindosAgentRuntimeAskSession,
 }));
 
 vi.mock('@geminilight/mindos/session/pi-coding-agent', () => ({
@@ -44,6 +40,13 @@ describe('/api/ask native runtime routing', () => {
     mockDetectLocalAcpAgents.mockReset();
     mockResolveCommandPath.mockReset();
     mockCheckNativeRuntimeHealth.mockReset();
+    mockRunMindosAgentRuntimeAskSession.mockReset();
+    mockRunMindosAgentRuntimeAskSession.mockImplementation(async (options: MindosAgentRuntimeAskOptions) => {
+      capturedNativeOptions = options;
+      options.send({ type: 'text_delta', delta: 'native ok' });
+      options.send({ type: 'done' });
+      return { externalSessionId: 'thr_123' };
+    });
   });
 
   it('routes Codex before MindOS pi runtime initialization and bridges MindOS context', async () => {
@@ -133,5 +136,28 @@ describe('/api/ask native runtime routing', () => {
       error: { message: 'Codex is signed out. Run codex login first.' },
     });
     expect(capturedNativeOptions).toBeNull();
+  });
+
+  it('returns a structured SSE error if the native runtime runner throws', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+      capturedNativeOptions = options;
+      throw new Error('native bridge exploded');
+    });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Claude Code' }],
+      selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
+      mode: 'agent',
+    }));
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).toContain('"type":"error"');
+    expect(text).toContain('native bridge exploded');
+    expect(capturedNativeOptions?.runtime.kind).toBe('claude');
   });
 });

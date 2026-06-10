@@ -203,6 +203,33 @@ npm test                          # 手动跑测试，不杀 dev server
 
 ## Git 提交流程
 
+### Worktree / 分支协作公约
+
+用于较大或可异步推进的任务，默认拆成主 worktree 与异步 worktree，避免阻塞 `main` 上的连续更新。
+
+| 角色 | 路径 / 分支 | 职责 |
+|------|-------------|------|
+| 主 worktree | `/Users/moonshot/projects/product/mindos-dev` / `main` | 承接当前主线、热修、release、最终集成 |
+| 异步 worktree | `/Users/moonshot/projects/product/mindos-dev-async` / `codex/async-updates` | 承接较大功能、跨模块 hardening、需要较长验证的任务 |
+
+**主 worktree 规则**
+- 只在 `main` 工作；不要直接混入异步分支的半成品改动。
+- merge 异步分支前先检查 `git status`。如果 `main` 有未提交改动，先提交/处理这些改动，或明确说明暂不 merge。
+- 合并异步分支后，按影响范围跑测试、typecheck、build，再 `git push origin main`。
+- 绝对禁止 `git merge public/main` 或 `git push public main`；公开仓只走 CI 单向同步。
+
+**异步 worktree 规则**
+- 开工前同步基线：确认 `origin/main` 最新，必要时把 `main` 合入或 rebase 到异步分支。
+- 只做当前异步任务相关改动；不要顺手改主线正在进行的其它文件。
+- 完成后在异步分支提交并 `git push -u origin codex/async-updates`，不要直接 push 到 `main`。
+- push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
+- 如果 pre-push hook 因环境问题失败（如缺全局 `pnpm`），只有在已经用等价命令完成验证后才可 `SKIP_TESTS=1 git push`，并在汇报里写明原因。
+
+**协作边界**
+- 多个 Agent 并行时，尽量按模块拆文件；不要在两个 worktree 同时编辑同一组文件。
+- 发现另一个 worktree/分支有相关未提交改动时，先说明冲突风险，再选择同步、等待或继续在独立分支推进。
+- 异步分支进入 `main` 的默认方式是 PR 或显式本地 merge；除非用户明确要求，否则不自动把异步分支 merge 回 `main`。
+
 ### Commit 前 Checklist
 
 - [ ] tests 通过（新功能已写 tests，修 bug 视情况补）
