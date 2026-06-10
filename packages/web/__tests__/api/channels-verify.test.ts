@@ -46,6 +46,14 @@ describe('POST /api/channels/verify', () => {
     expect(verifyIMCredentials).not.toHaveBeenCalled();
   });
 
+  it('rejects short telegram tokens before verification', async () => {
+    const { POST } = await importRoute();
+    const res = await POST(makeReq({ platform: 'telegram', credentials: { bot_token: '123:ABC' } }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: 'Missing required fields: bot_token' });
+    expect(verifyIMCredentials).not.toHaveBeenCalled();
+  });
+
   it('returns verified bot identity on success', async () => {
     verifyIMCredentials.mockResolvedValue({ ok: true, botName: 'MyBot', botId: '123' });
     const { POST } = await importRoute();

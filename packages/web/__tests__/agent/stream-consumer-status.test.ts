@@ -85,6 +85,15 @@ describe('consumeUIMessageStream — status event handling', () => {
     expect(result.content).toBe('Response after retry');
   });
 
+  it('shows visible native runtime status events as transient assistant text', async () => {
+    const stream = makeStream(
+      { type: 'status', visible: true, message: 'Claude Code HTTP 429; retrying (1/10). Retrying in 1s.' },
+      { type: 'done' },
+    );
+    const result = await consumeUIMessageStream(stream, vi.fn());
+    expect(result.content).toContain('Claude Code HTTP 429; retrying (1/10). Retrying in 1s.');
+  });
+
   it('surfaces runtime binding metadata without adding message content', async () => {
     const onRuntimeBinding = vi.fn();
     const stream = makeStream(

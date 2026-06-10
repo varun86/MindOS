@@ -556,6 +556,8 @@ npm install -g @geminilight/mindos@latest
 
 **修复**：本次 `mindos channel` 采用 `packages/mindos/bin/lib/channel-config.js` + `/api/channels/verify` 的分层方式：CLI 负责配置和 UX，Web app 负责真实凭证校验。
 
+**后续规则**：Product HTTP 直连路径必须显式传递 `MindosHttpServices.channels` 到 `/api/channels/verify`、`/api/im/config`、`/api/im/status`、`/api/im/test`、`/api/im/webhook-status`。否则 Next adapter 可用，但 `mindos start` 的 Product Server 会退回默认 stub 或真实 `~/.mindos/im.json`，导致 CLI / Desktop 与 Web 行为不一致。
+
 
 ### DefaultResourceLoader.systemPromptOverride 闭包缓存陷阱 (2026-04-10)
 

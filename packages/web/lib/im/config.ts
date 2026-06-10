@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { validateChannelCredentials } from '@geminilight/mindos/server';
 import type { IMConfig, IMPlatform, TelegramConfig, FeishuConfig, DiscordConfig, SlackConfig, WeComConfig, DingTalkConfig, WeChatConfig, QQConfig } from './types';
 
 const IM_CONFIG_DIR = path.join(os.homedir(), '.mindos');
@@ -60,7 +61,7 @@ export function readIMConfig(): IMConfig {
 export function writeIMConfig(config: IMConfig): void {
   fs.mkdirSync(IM_CONFIG_DIR, { recursive: true });
   const content = JSON.stringify(config, null, 2) + '\n';
-  const tmpPath = IM_CONFIG_PATH + '.tmp';
+  const tmpPath = `${IM_CONFIG_PATH}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   fs.writeFileSync(tmpPath, content, 'utf-8');
   fs.renameSync(tmpPath, IM_CONFIG_PATH);
   if (process.platform !== 'win32') {
@@ -108,48 +109,7 @@ export function validatePlatformConfig(
   platform: IMPlatform,
   config: unknown,
 ): { valid: boolean; missing?: string[] } {
-  if (!config || typeof config !== 'object') return { valid: false, missing: ['(no config)'] };
-  const c = config as Record<string, unknown>;
-
-  switch (platform) {
-    case 'telegram':
-      return checkFields(c, ['bot_token'], (f) => f === 'bot_token' ? typeof c.bot_token === 'string' && c.bot_token.includes(':') : true);
-    case 'feishu':
-      return checkFields(c, ['app_id', 'app_secret']);
-    case 'discord':
-      return checkFields(c, ['bot_token']);
-    case 'slack':
-      return checkFields(c, ['bot_token'], (f) => f === 'bot_token' ? typeof c.bot_token === 'string' && c.bot_token.startsWith('xoxb-') : true);
-    case 'wecom':
-      // Either webhook_key OR (corp_id + corp_secret)
-      if (typeof c.webhook_key === 'string' && c.webhook_key.trim()) return { valid: true };
-      return checkFields(c, ['corp_id', 'corp_secret']);
-    case 'dingtalk':
-      // Either (client_id + client_secret) OR webhook_url
-      if (typeof c.webhook_url === 'string' && /^https:\/\//.test(c.webhook_url)) return { valid: true };
-      return checkFields(c, ['client_id', 'client_secret']);
-    case 'wechat':
-      return checkFields(c, ['bot_token']);
-    case 'qq':
-      return checkFields(c, ['app_id', 'app_secret']);
-    default:
-      return { valid: false, missing: ['(unknown platform)'] };
-  }
-}
-
-// ─── Internal Helpers ─────────────────────────────────────────────────────────
-
-function checkFields(
-  config: Record<string, unknown>,
-  required: string[],
-  extraCheck?: (field: string) => boolean,
-): { valid: boolean; missing?: string[] } {
-  const missing = required.filter((f) => {
-    if (typeof config[f] !== 'string' || !config[f]) return true;
-    if (extraCheck && !extraCheck(f)) return true;
-    return false;
-  });
-  return missing.length === 0 ? { valid: true } : { valid: false, missing };
+  return validateChannelCredentials(platform, config);
 }
 
 /** For testing: reset the internal cache. */

@@ -1,6 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  CHANNEL_CAPABILITIES,
+  isChannelPlatform,
+  validateChannelCredentials,
+} from '../channel-contract.js';
 import { json, type MindosServerResponse } from '../response.js';
 import type { ImPlatform } from './im-activity.js';
 
@@ -50,28 +55,6 @@ export type ImStatusServices = {
 };
 
 const DEFAULT_IM_CONFIG_PATH = join(homedir(), '.mindos', 'im.json');
-
-const PLATFORM_CAPABILITIES: Record<ImPlatform, string[]> = {
-  telegram: ['text', 'markdown'],
-  discord: ['text', 'markdown'],
-  feishu: ['text', 'markdown'],
-  slack: ['text', 'markdown'],
-  wecom: ['text', 'markdown'],
-  dingtalk: ['text', 'markdown'],
-  wechat: ['text'],
-  qq: ['text'],
-};
-
-const CONFIG_REQUIRED_FIELDS: Record<ImPlatform, string[][]> = {
-  telegram: [['bot_token']],
-  discord: [['bot_token']],
-  feishu: [['app_id', 'app_secret']],
-  slack: [['bot_token']],
-  wecom: [['webhook_key'], ['corp_id', 'corp_secret']],
-  dingtalk: [['webhook_url'], ['client_id', 'client_secret']],
-  wechat: [['bot_token']],
-  qq: [['app_id', 'app_secret']],
-};
 
 export async function handleImStatusGet(
   services: ImStatusServices = {},
@@ -159,17 +142,15 @@ function defaultListConfiguredIM(services: ImStatusServices): ImStatusPlatform[]
   return platforms.map((platform) => ({
     platform,
     connected: false,
-    capabilities: PLATFORM_CAPABILITIES[platform] ?? ['text'],
+    capabilities: CHANNEL_CAPABILITIES[platform] ?? ['text'],
   }));
 }
 
 function isConfiguredPlatform(platform: string, config: ImStatusConfig): platform is ImPlatform {
-  if (!(platform in CONFIG_REQUIRED_FIELDS)) return false;
+  if (!isChannelPlatform(platform)) return false;
   const platformConfig = config.providers[platform];
   if (!platformConfig || typeof platformConfig !== 'object') return false;
-  return CONFIG_REQUIRED_FIELDS[platform as ImPlatform].some((fields) => (
-    fields.every((field) => typeof (platformConfig as Record<string, unknown>)[field] === 'string' && Boolean((platformConfig as Record<string, string>)[field]?.trim()))
-  ));
+  return validateChannelCredentials(platform, platformConfig).valid;
 }
 
 function defaultBuildFeishuWebhookStatus(config: unknown): ImWebhookStatus {

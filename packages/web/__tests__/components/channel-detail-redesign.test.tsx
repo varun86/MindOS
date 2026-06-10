@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import AgentsContentChannelDetail from '@/components/agents/AgentsContentChannelDetail';
+import { ChannelSettings } from '@/components/agents/channel-detail/ChannelSettings';
+import { ChannelTestSend } from '@/components/agents/channel-detail/ChannelTestSend';
+import type { PlatformDef } from '@/lib/im/platforms';
 
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
@@ -94,6 +97,9 @@ vi.mock('@/lib/stores/locale-store', () => ({
           hideSecret: 'Hide',
           showSecret: 'Show',
           sentOk: 'Sent',
+          sentWithId: (id: string) => `Sent ${id}`,
+          failed: 'Failed',
+          botLabel: 'Bot',
         },
       },
     },
@@ -101,6 +107,42 @@ vi.mock('@/lib/stores/locale-store', () => ({
 }));
 
 import { clearChannelCache } from '@/components/agents/channel-detail/cache';
+
+const im = {
+  settingsTitle: 'Settings',
+  settingsHint: 'Maintain credentials and channel settings here.',
+  editCredentials: 'Update credentials',
+  savedValuesHint: 'Saved values stay hidden.',
+  hideSecret: 'Hide',
+  showSecret: 'Show',
+  saving: 'Saving...',
+  saved: 'Saved',
+  saveConfig: 'Save',
+  disconnect: 'Disconnect',
+  disconnectHint: 'Remove credentials and disconnect this platform.',
+  confirmDisconnect: 'Confirm?',
+  networkError: 'Network error',
+  sendSample: 'Send sample notification',
+  expandToSee: 'Click to expand',
+  sampleHint: 'This sends a real outbound message through the selected channel.',
+  recipientPlaceholder: 'Recipient ID',
+  messagePlaceholder: 'Hello from MindOS',
+  sentOk: 'Sent',
+  sentWithId: (id: string) => `Sent ${id}`,
+  failed: 'Failed',
+};
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(input, 'value')?.set;
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')?.set;
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(input, value);
+  } else {
+    input.value = value;
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
 
 describe('AgentsContentChannelDetail redesign', () => {
   beforeEach(() => {
@@ -326,6 +368,96 @@ describe('AgentsContentChannelDetail redesign', () => {
     expect(host.textContent).toContain('@testbot');
     expect(host.textContent).toContain('Recent activity');
     expect(host.textContent).not.toContain('Conversation');
+
+    await act(async () => { root.unmount(); });
+  });
+
+  it('updates only changed credential fields in connected settings', async () => {
+    const platform: PlatformDef = {
+      id: 'feishu',
+      name: 'Feishu',
+      icon: '🐦',
+      fields: [
+        { key: 'app_id', label: 'App ID', placeholder: 'CLI_xxx' },
+        { key: 'app_secret', label: 'App Secret', placeholder: 'secret' },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onSaved = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ChannelSettings
+          platform={platform}
+          im={im}
+          onSaved={onSaved}
+          onDisconnected={vi.fn()}
+        />,
+      );
+    });
+
+    const inputs = host.querySelectorAll('input');
+    const saveButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('Save')) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+
+    await act(async () => {
+      setInputValue(inputs[1] as HTMLInputElement, '  new-secret  ');
+    });
+
+    expect(saveButton.disabled).toBe(false);
+    await act(async () => {
+      saveButton.click();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/im/config', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ platform: 'feishu', credentials: { app_secret: 'new-secret' } }),
+    }));
+    expect(onSaved).toHaveBeenCalled();
+
+    await act(async () => { root.unmount(); });
+  });
+
+  it('keeps sample send disabled until recipient and message are both present', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ChannelTestSend
+          platformId="telegram"
+          im={im}
+          onSent={vi.fn()}
+        />,
+      );
+    });
+
+    const inputs = host.querySelectorAll('input');
+    const recipientInput = inputs[0] as HTMLInputElement;
+    const messageInput = inputs[1] as HTMLInputElement;
+    const sendButton = host.querySelector('button[type="button"][disabled]') as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+
+    await act(async () => {
+      setInputValue(recipientInput, '123456789');
+    });
+    const activeSendButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('Send sample notification')) as HTMLButtonElement;
+    expect(activeSendButton.disabled).toBe(false);
+
+    await act(async () => {
+      setInputValue(messageInput, '');
+    });
+    expect(activeSendButton.disabled).toBe(true);
 
     await act(async () => { root.unmount(); });
   });

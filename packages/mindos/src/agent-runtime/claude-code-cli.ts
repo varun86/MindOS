@@ -152,6 +152,10 @@ function mapClaudeCodeCliRecordToSseEvents(
     return mapClaudePermissionDeniedRecord(record);
   }
 
+  if (record.type === 'system' && record.subtype === 'api_retry') {
+    return mapClaudeApiRetryRecord(record);
+  }
+
   if (record.type === 'result') {
     state.emittedDone = true;
     if (record.is_error === true || record.subtype === 'error') {
@@ -165,6 +169,25 @@ function mapClaudeCodeCliRecordToSseEvents(
   }
 
   return [];
+}
+
+function mapClaudeApiRetryRecord(record: Record<string, unknown>): MindOSSSEvent[] {
+  const attempt = getNumberField(record, 'attempt');
+  const maxRetries = getNumberField(record, 'max_retries');
+  const retryDelayMs = getNumberField(record, 'retry_delay_ms');
+  const errorStatus = getNumberField(record, 'error_status');
+  const error = getStringField(record, 'error');
+  const retrySeconds = retryDelayMs !== undefined ? Math.max(1, Math.round(retryDelayMs / 1000)) : null;
+  const attemptText = attempt !== undefined && maxRetries !== undefined
+    ? ` (${attempt}/${maxRetries})`
+    : '';
+  const statusText = errorStatus ? `HTTP ${errorStatus}` : (error ?? 'API request failed');
+  const delayText = retrySeconds ? ` Retrying in ${retrySeconds}s.` : ' Retrying.';
+  return [{
+    type: 'status',
+    visible: true,
+    message: `Claude Code ${statusText}; retrying${attemptText}.${delayText}`,
+  }];
 }
 
 function isClaudePermissionDeniedRecord(record: Record<string, unknown>): boolean {
@@ -284,4 +307,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function getStringField(record: Record<string, unknown> | null, field: string): string | undefined {
   const value = record?.[field];
   return typeof value === 'string' && value ? value : undefined;
+}
+
+function getNumberField(record: Record<string, unknown> | null, field: string): number | undefined {
+  const value = record?.[field];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

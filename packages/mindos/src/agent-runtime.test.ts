@@ -989,6 +989,38 @@ describe('agent runtime adapters', () => {
     ]);
   });
 
+  it('maps Claude Code API retry system events into visible runtime status', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({
+        type: 'system',
+        subtype: 'api_retry',
+        attempt: 1,
+        max_retries: 10,
+        retry_delay_ms: 548,
+        error_status: 429,
+        error: 'rate_limit',
+        session_id: 'claude-retry-session',
+      }),
+      JSON.stringify({ type: 'result', subtype: 'success' }),
+    ]);
+
+    const client = createClaudeCodeCliClient(transport);
+    const events = [];
+    for await (const event of client.startTurn({ prompt: 'Say hi.', cwd: '/tmp/mind' })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'session_id', sessionId: 'claude-retry-session' },
+      {
+        type: 'status',
+        visible: true,
+        message: 'Claude Code HTTP 429; retrying (1/10). Retrying in 1s.',
+      },
+      { type: 'done' },
+    ]);
+  });
+
   it('resumes an existing Claude Code session when the runtime carries an external session id', async () => {
     const transport = createFakeClaudeTransport([
       JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-existing' }),

@@ -45,7 +45,7 @@ import {
 } from './handlers/agents.js';
 import { handleAskSessionsDelete, handleAskSessionsGet, handleAskSessionsPost } from './handlers/ask-sessions.js';
 import { handleBootstrapGet } from './handlers/bootstrap.js';
-import { handleChannelsVerifyPost } from './handlers/channels-verify.js';
+import { handleChannelsVerifyPost, type ChannelsVerifyServices } from './handlers/channels-verify.js';
 import { handleFileGet, handleFilePost } from './handlers/file.js';
 import { handleChangesGet, handleChangesPost } from './handlers/changes.js';
 import { handleConnectGet } from './handlers/connect.js';
@@ -58,11 +58,11 @@ import { handleGit } from './handlers/git.js';
 import { handleHealth } from './handlers/health.js';
 import { handleInitPost } from './handlers/init.js';
 import { handleImActivityGet } from './handlers/im-activity.js';
-import { handleImConfigDelete, handleImConfigGet, handleImConfigPut } from './handlers/im-config.js';
+import { handleImConfigDelete, handleImConfigGet, handleImConfigPut, type ImConfigServices } from './handlers/im-config.js';
 import { handleImFeishuLongConnectionDelete, handleImFeishuLongConnectionGet, handleImFeishuLongConnectionPost } from './handlers/im-feishu-long-connection.js';
 import { handleImFeishuOAuthCallbackGet, handleImFeishuOAuthGet } from './handlers/im-feishu-oauth.js';
-import { handleImStatusGet, handleImWebhookStatusGet } from './handlers/im-status.js';
-import { handleImTestPost } from './handlers/im-test.js';
+import { handleImStatusGet, handleImWebhookStatusGet, type ImStatusServices } from './handlers/im-status.js';
+import { handleImTestPost, type ImTestServices } from './handlers/im-test.js';
 import { handleInboxDelete, handleInboxGet, handleInboxPost } from './handlers/inbox.js';
 import { handleMonitoringGet } from './handlers/monitoring.js';
 import {
@@ -130,6 +130,12 @@ import { CORS_HEADERS, json, type MindosServerResponse } from './response.js';
 import { encodeMindosSseEvent, type MindOSSSEvent } from '../session/index.js';
 import { getLocalIPv4 } from './handlers/connect.js';
 
+export type MindosChannelServices =
+  ChannelsVerifyServices &
+  ImConfigServices &
+  ImStatusServices &
+  ImTestServices;
+
 export type MindosHttpServices = {
   mindRoot: string;
   runtimeRoot?: string;
@@ -155,6 +161,7 @@ export type MindosHttpServices = {
   listSkills(): { disabledSkills?: string[]; skillRoots: MindosSkillRoot[] };
   askStream(input: unknown): AsyncIterable<MindOSSSEvent>;
   documentExtraction?: ExtractPdfServices & ExtractDocxServices;
+  channels?: MindosChannelServices;
   syncDaemon?: {
     start?(mindRoot: string): void;
     stop?(): void;
@@ -190,6 +197,10 @@ export type MindosHttpServer = {
 
 export function createDefaultMindosHttpServices(options: DefaultMindosHttpServicesOptions = {}): MindosHttpServices {
   const mindRoot = getDefaultMindRoot(options);
+  const channels: MindosChannelServices = {};
+  if (options.homeDir) {
+    channels.configPath = `${options.homeDir}/.mindos/im.json`;
+  }
   return {
     mindRoot,
     runtimeRoot: options.runtimeRoot,
@@ -208,6 +219,7 @@ export function createDefaultMindosHttpServices(options: DefaultMindosHttpServic
     writeSettings: (settings) => writeRuntimeSettings(settings, options),
     mcpAgents: options.mcpAgents ?? createDefaultMcpAgents(),
     documentExtraction: options.documentExtraction,
+    channels,
     syncDaemon: options.syncDaemon,
     mcpTools: {
       readMcpConfig: () => ({ mcpServers: {} }),
@@ -403,7 +415,7 @@ async function handleRequest(
       return;
     }
     if (route === 'POST /api/channels/verify') {
-      writeResponse(res, await handleChannelsVerifyPost(await readJsonBody(req)));
+      writeResponse(res, await handleChannelsVerifyPost(await readJsonBody(req), services.channels));
       return;
     }
     if (route === 'GET /api/im/activity') {
@@ -411,27 +423,27 @@ async function handleRequest(
       return;
     }
     if (route === 'GET /api/im/config') {
-      writeResponse(res, handleImConfigGet());
+      writeResponse(res, handleImConfigGet(services.channels));
       return;
     }
     if (route === 'PUT /api/im/config') {
-      writeResponse(res, handleImConfigPut(await readJsonBody(req)));
+      writeResponse(res, handleImConfigPut(await readJsonBody(req), services.channels));
       return;
     }
     if (route === 'DELETE /api/im/config') {
-      writeResponse(res, handleImConfigDelete(url.searchParams));
+      writeResponse(res, handleImConfigDelete(url.searchParams, services.channels));
       return;
     }
     if (route === 'GET /api/im/status') {
-      writeResponse(res, await handleImStatusGet());
+      writeResponse(res, await handleImStatusGet(services.channels));
       return;
     }
     if (route === 'POST /api/im/test') {
-      writeResponse(res, await handleImTestPost(await readJsonBody(req)));
+      writeResponse(res, await handleImTestPost(await readJsonBody(req), services.channels));
       return;
     }
     if (route === 'GET /api/im/webhook-status') {
-      writeResponse(res, handleImWebhookStatusGet(url.searchParams));
+      writeResponse(res, handleImWebhookStatusGet(url.searchParams, services.channels));
       return;
     }
     if (route === 'GET /api/im/feishu/oauth') {

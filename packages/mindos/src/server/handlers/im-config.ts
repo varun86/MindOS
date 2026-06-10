@@ -1,6 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import {
+  isChannelPlatform,
+  validateChannelCredentials,
+} from '../channel-contract.js';
 import { json, type MindosServerResponse } from '../response.js';
 
 export type ImConfig = {
@@ -30,39 +34,15 @@ export type ImConfigServices = {
 
 const DEFAULT_IM_CONFIG_PATH = join(homedir(), '.mindos', 'im.json');
 
-const CHANNEL_CREDENTIAL_SETS: Record<string, string[][]> = {
-  telegram: [['bot_token']],
-  discord: [['bot_token']],
-  feishu: [['app_id', 'app_secret']],
-  slack: [['bot_token']],
-  wecom: [['webhook_key'], ['corp_id', 'corp_secret']],
-  dingtalk: [['webhook_url'], ['client_id', 'client_secret']],
-  wechat: [['bot_token']],
-  qq: [['app_id', 'app_secret']],
-};
-
-const CHANNEL_FIELD_PATTERNS: Record<string, Record<string, RegExp>> = {
-  telegram: { bot_token: /^\d+:[A-Za-z0-9_-]{25,}$/ },
-  discord: { bot_token: /^[A-Za-z0-9._-]{20,}$/ },
-  slack: { bot_token: /^xoxb-/ },
-  wecom: { webhook_key: /^[A-Za-z0-9_-]{6,}$/ },
-  dingtalk: { webhook_url: /^https:\/\// },
-};
-
 export function handleImConfigGet(
   services: ImConfigServices = {},
-): MindosServerResponse<{ providers: Record<string, Record<string, string>> } | { error: string }> {
+): MindosServerResponse<{ providers: Record<string, Record<string, unknown>> } | { error: string }> {
   try {
     const config = readConfig(services);
-    const masked: Record<string, Record<string, string>> = {};
+    const masked: Record<string, Record<string, unknown>> = {};
     for (const [platform, credentials] of Object.entries(config.providers ?? {})) {
       if (!credentials || typeof credentials !== 'object') continue;
-      const current: Record<string, string> = {};
-      for (const [key, value] of Object.entries(credentials as Record<string, unknown>)) {
-        if (typeof value === 'string' && value.length > 4) current[key] = `${value.slice(0, 4)}••••${value.slice(-2)}`;
-        else current[key] = typeof value === 'string' ? '••••' : '';
-      }
-      masked[platform] = current;
+      masked[platform] = maskProviderConfig(credentials) as Record<string, unknown>;
     }
     return json({ providers: masked });
   } catch {
@@ -80,14 +60,24 @@ export function handleImConfigPut(
     if (!platform || ((!credentials || typeof credentials !== 'object') && (!conversation || typeof conversation !== 'object'))) {
       return json({ error: 'Missing platform credentials or conversation settings' }, { status: 400 });
     }
+    if (!isChannelPlatform(platform)) {
+      return json({ error: 'Invalid platform' }, { status: 400 });
+    }
+    if (conversation && typeof conversation === 'object' && platform !== 'feishu') {
+      return json({ error: 'Conversation settings are only supported for Feishu' }, { status: 422 });
+    }
 
     const config = readConfig(services);
     config.providers ??= {};
     const existing = config.providers[platform] ?? {};
 
     if (credentials && typeof credentials === 'object') {
-      const mergedCredentials = { ...existing, ...credentials };
-      const validation = validateConfig(platform, mergedCredentials);
+      const cleanCredentials = compactCredentials(credentials);
+      if (Object.keys(cleanCredentials).length === 0) {
+        return json({ error: 'No credential values provided' }, { status: 400 });
+      }
+      const mergedCredentials = { ...existing, ...cleanCredentials };
+      const validation = validateChannelCredentials(platform, mergedCredentials);
       if (!validation.valid) {
         return json({
           error: `Invalid config: missing ${validation.missing?.join(', ')}`,
@@ -98,18 +88,25 @@ export function handleImConfigPut(
     }
 
     if (platform === 'feishu' && conversation && typeof conversation === 'object') {
-      if (!existing.app_id || !existing.app_secret) {
+      const merged = config.providers[platform] ?? existing;
+      if (!merged.app_id || !merged.app_secret) {
         return json({ error: 'Save Feishu App ID and App Secret before enabling conversations' }, { status: 422 });
       }
-      const merged = config.providers[platform] ?? existing;
+      const currentConversation = merged.conversation && typeof merged.conversation === 'object'
+        ? merged.conversation
+        : {};
       merged.conversation = {
-        ...(merged.conversation ?? {}),
-        enabled: Boolean(conversation.enabled),
-        transport: conversation.transport ?? merged.conversation?.transport ?? 'webhook',
-        encrypt_key: conversation.encrypt_key ?? merged.conversation?.encrypt_key,
-        verification_token: conversation.verification_token ?? merged.conversation?.verification_token,
-        public_base_url: conversation.public_base_url ?? merged.conversation?.public_base_url,
-        allow_group_mentions: conversation.allow_group_mentions ?? merged.conversation?.allow_group_mentions ?? true,
+        ...currentConversation,
+        enabled: Object.hasOwn(conversation, 'enabled') ? Boolean(conversation.enabled) : Boolean(currentConversation.enabled),
+        transport: isFeishuConversationTransport(conversation.transport)
+          ? conversation.transport
+          : currentConversation.transport ?? 'webhook',
+        encrypt_key: nonEmptyStringOrExisting(conversation.encrypt_key, currentConversation.encrypt_key),
+        verification_token: nonEmptyStringOrExisting(conversation.verification_token, currentConversation.verification_token),
+        public_base_url: nonEmptyStringOrExisting(conversation.public_base_url, currentConversation.public_base_url),
+        allow_group_mentions: Object.hasOwn(conversation, 'allow_group_mentions')
+          ? Boolean(conversation.allow_group_mentions)
+          : currentConversation.allow_group_mentions ?? true,
       };
       config.providers[platform] = merged;
     }
@@ -141,24 +138,6 @@ export function handleImConfigDelete(
   }
 }
 
-function validateConfig(platform: string, credentials: Record<string, unknown>): { valid: boolean; missing?: string[] } {
-  const credentialSets = CHANNEL_CREDENTIAL_SETS[platform];
-  if (!credentialSets) return { valid: false, missing: ['(unknown platform)'] };
-  const patterns = CHANNEL_FIELD_PATTERNS[platform] ?? {};
-  let bestMissing = credentialSets[0] ?? ['(unknown platform)'];
-  for (const fields of credentialSets) {
-    const missing = fields.filter((field) => {
-      const value = credentials[field];
-      if (typeof value !== 'string' || !value.trim()) return true;
-      const pattern = patterns[field];
-      return pattern ? !pattern.test(value) : false;
-    });
-    if (missing.length === 0) return { valid: true };
-    if (missing.length < bestMissing.length) bestMissing = missing;
-  }
-  return { valid: false, missing: bestMissing };
-}
-
 function readConfig(services: ImConfigServices): ImConfig {
   if (services.readConfig) return services.readConfig();
   const configPath = services.configPath ?? DEFAULT_IM_CONFIG_PATH;
@@ -182,7 +161,52 @@ function writeConfig(config: ImConfig, services: ImConfigServices): void {
   const configPath = services.configPath ?? DEFAULT_IM_CONFIG_PATH;
   const dir = dirname(configPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const tmpPath = `${configPath}.tmp`;
+  const tmpPath = `${configPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   writeFileSync(tmpPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
   renameSync(tmpPath, configPath);
+  if (process.platform !== 'win32') {
+    try { chmodSync(configPath, 0o600); } catch { /* best effort */ }
+  }
+}
+
+function compactCredentials(credentials: Record<string, unknown>): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const [key, value] of Object.entries(credentials)) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) clean[key] = trimmed;
+  }
+  return clean;
+}
+
+function isFeishuConversationTransport(value: unknown): value is NonNullable<ImConfigConversation['transport']> {
+  return value === 'webhook' || value === 'long_connection';
+}
+
+function nonEmptyStringOrExisting(value: unknown, existing: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return typeof existing === 'string' ? existing : undefined;
+}
+
+function maskProviderConfig(value: unknown, path: string[] = []): unknown {
+  if (Array.isArray(value)) return value.map((item, index) => maskProviderConfig(item, [...path, String(index)]));
+  if (value && typeof value === 'object') {
+    const masked: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      masked[key] = maskProviderConfig(nested, [...path, key]);
+    }
+    return masked;
+  }
+  if (typeof value !== 'string') return value;
+  return isVisibleConfigString(path) ? value : maskSecret(value);
+}
+
+function isVisibleConfigString(path: string[]): boolean {
+  const joined = path.join('.');
+  return joined === 'conversation.transport' || joined === 'conversation.public_base_url';
+}
+
+function maskSecret(value: string): string {
+  if (value.length > 4) return `${value.slice(0, 4)}••••${value.slice(-2)}`;
+  return '••••';
 }

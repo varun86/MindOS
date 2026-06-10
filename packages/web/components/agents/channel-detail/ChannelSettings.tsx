@@ -16,16 +16,20 @@ export function ChannelSettings({ platform, im, onSaved, onDisconnected }: {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const isFormComplete = platform.fields.every(f => formValues[f.key]?.trim());
+  const changedCredentials = Object.fromEntries(
+    Object.entries(formValues).map(([key, value]) => [key, value.trim()]).filter(([, value]) => value),
+  );
+  const hasCredentialChanges = Object.keys(changedCredentials).length > 0;
 
   const handleSave = async () => {
+    if (!hasCredentialChanges) return;
     setSaving(true);
     setSaveResult(null);
     try {
       const res = await fetch('/api/im/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform: platform.id, credentials: formValues }),
+        body: JSON.stringify({ platform: platform.id, credentials: changedCredentials }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -96,7 +100,7 @@ export function ChannelSettings({ platform, im, onSaved, onDisconnected }: {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving || !isFormComplete}
+                disabled={saving || !hasCredentialChanges}
                 className="h-10 px-5 text-sm font-medium rounded-md inline-flex items-center gap-2 bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm hover:opacity-90 hover:shadow disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}

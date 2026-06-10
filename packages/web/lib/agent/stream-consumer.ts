@@ -447,6 +447,17 @@ export async function consumeUIMessageStream(
             break;
           }
 
+          case 'status': {
+            if (eventRecord.visible !== true || typeof eventRecord.message !== 'string' || !eventRecord.message.trim()) {
+              break;
+            }
+            const part = findOrCreateTextPart('text');
+            const prefix = part.text && !part.text.endsWith('\n') ? '\n\n' : '';
+            part.text += `${prefix}_${eventRecord.message.trim()}_\n`;
+            changed = true;
+            break;
+          }
+
           case 'error': {
             // Stream error
             const message = eventRecord.message as string;

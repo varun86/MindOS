@@ -69,9 +69,10 @@ describe('IM Config Manager', () => {
   });
 
   describe('validatePlatformConfig', () => {
-    it('validates telegram config (requires bot_token with colon)', async () => {
+    it('validates telegram config with the shared strict token shape', async () => {
       const { validatePlatformConfig } = await import('@/lib/im/config');
-      expect(validatePlatformConfig('telegram', { bot_token: '123:ABC' })).toEqual({ valid: true });
+      expect(validatePlatformConfig('telegram', { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' })).toEqual({ valid: true });
+      expect(validatePlatformConfig('telegram', { bot_token: '123:ABC' }).valid).toBe(false);
       expect(validatePlatformConfig('telegram', { bot_token: 'no-colon' }).valid).toBe(false);
       expect(validatePlatformConfig('telegram', {}).valid).toBe(false);
       expect(validatePlatformConfig('telegram', null).valid).toBe(false);
@@ -85,7 +86,8 @@ describe('IM Config Manager', () => {
 
     it('validates wecom config (webhook_key OR corp_id+secret)', async () => {
       const { validatePlatformConfig } = await import('@/lib/im/config');
-      expect(validatePlatformConfig('wecom', { webhook_key: 'abc' })).toEqual({ valid: true });
+      expect(validatePlatformConfig('wecom', { webhook_key: 'abc123' })).toEqual({ valid: true });
+      expect(validatePlatformConfig('wecom', { webhook_key: 'abc' }).valid).toBe(false);
       expect(validatePlatformConfig('wecom', { corp_id: 'x', corp_secret: 'y' })).toEqual({ valid: true });
       expect(validatePlatformConfig('wecom', {}).valid).toBe(false);
     });
@@ -93,6 +95,7 @@ describe('IM Config Manager', () => {
     it('validates dingtalk config (client_id+secret OR webhook_url)', async () => {
       const { validatePlatformConfig } = await import('@/lib/im/config');
       expect(validatePlatformConfig('dingtalk', { webhook_url: 'https://...' })).toEqual({ valid: true });
+      expect(validatePlatformConfig('dingtalk', { webhook_url: 'http://example.com' }).valid).toBe(false);
       expect(validatePlatformConfig('dingtalk', { client_id: 'x', client_secret: 'y' })).toEqual({ valid: true });
       expect(validatePlatformConfig('dingtalk', {}).valid).toBe(false);
     });

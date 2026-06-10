@@ -981,6 +981,137 @@ describe('MindOS product server contract', () => {
     }
   });
 
+  it('routes Channel APIs through Product HTTP services instead of default stubs', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'mindos-http-channel-home-'));
+    const root = mkdtempSync(join(tmpdir(), 'mindos-http-channel-root-'));
+    const configDir = join(home, '.mindos');
+    const imConfigPath = join(configDir, 'im.json');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(imConfigPath, JSON.stringify({
+      providers: {
+        telegram: { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' },
+      },
+    }), 'utf-8');
+
+    const verifyCalls: any[] = [];
+    const sendCalls: any[] = [];
+    const feishuConfig = {
+      app_id: 'cli_app',
+      app_secret: 'secret',
+      conversation: {
+        enabled: true,
+        transport: 'webhook',
+        public_base_url: 'https://mindos.example',
+        encrypt_key: 'encrypt',
+      },
+    };
+    const app = createMindosHttpServer({
+      hostname: '127.0.0.1',
+      port: 0,
+      services: {
+        ...createDefaultMindosHttpServices({
+          homeDir: home,
+          readSettings: () => ({ mindRoot: root }),
+        }),
+        channels: {
+          configPath: imConfigPath,
+          verifyCredentials: async (platform, credentials) => {
+            verifyCalls.push({ platform, credentials });
+            return { ok: true, botName: 'MindOS Telegram', botId: 'bot_1' };
+          },
+          sendIMMessage: async (message, signal, options) => {
+            sendCalls.push({ message, signal, options });
+            return { ok: true, messageId: 'msg_1', timestamp: '2026-06-10T00:00:00.000Z' };
+          },
+          hasAnyIMConfig: () => true,
+          listConfiguredIM: async () => [
+            { platform: 'feishu', connected: true, botName: 'MindOS Feishu', capabilities: ['text'] },
+          ],
+          getPlatformConfig: (platform) => platform === 'feishu' ? feishuConfig : undefined,
+          buildFeishuWebhookStatus: (config) => ({
+            platform: 'feishu',
+            state: config === feishuConfig ? 'ready' : 'disabled',
+            transport: 'webhook',
+            publicBaseUrl: 'https://mindos.example',
+            webhookUrl: 'https://mindos.example/api/im/webhook/feishu',
+          }),
+        },
+      },
+    });
+    await new Promise<void>((resolve) => app.server.listen(0, '127.0.0.1', resolve));
+    const address = app.server.address();
+    if (!address || typeof address === 'string') throw new Error('expected TCP server address');
+    const base = `http://127.0.0.1:${address.port}`;
+    try {
+      const config = await fetch(`${base}/api/im/config`);
+      expect(config.status).toBe(200);
+      expect(await config.json()).toMatchObject({
+        providers: {
+          telegram: { bot_token: '1234••••YZ' },
+        },
+      });
+
+      const verify = await fetch(`${base}/api/channels/verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          platform: 'telegram',
+          credentials: { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' },
+        }),
+      });
+      expect(verify.status).toBe(200);
+      expect(await verify.json()).toEqual({ ok: true, botName: 'MindOS Telegram', botId: 'bot_1' });
+      expect(verifyCalls).toEqual([{
+        platform: 'telegram',
+        credentials: { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' },
+      }]);
+
+      const test = await fetch(`${base}/api/im/test`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ platform: 'feishu', recipient_id: 'ou_123', message: 'hello' }),
+      });
+      expect(test.status).toBe(200);
+      expect(await test.json()).toEqual({
+        ok: true,
+        messageId: 'msg_1',
+        timestamp: '2026-06-10T00:00:00.000Z',
+      });
+      expect(sendCalls).toEqual([{
+        message: { platform: 'feishu', recipientId: 'ou_123', text: 'hello', format: 'text' },
+        signal: undefined,
+        options: { activityType: 'test' },
+      }]);
+
+      const status = await fetch(`${base}/api/im/status`);
+      expect(status.status).toBe(200);
+      expect(await status.json()).toMatchObject({
+        platforms: [
+          {
+            platform: 'feishu',
+            connected: true,
+            webhook: {
+              state: 'ready',
+              webhookUrl: 'https://mindos.example/api/im/webhook/feishu',
+            },
+          },
+        ],
+      });
+
+      const webhook = await fetch(`${base}/api/im/webhook-status?platform=feishu`);
+      expect(webhook.status).toBe(200);
+      expect(await webhook.json()).toMatchObject({
+        status: {
+          platform: 'feishu',
+          state: 'ready',
+          webhookUrl: 'https://mindos.example/api/im/webhook/feishu',
+        },
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => app.server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   it('returns client errors for invalid HTTP JSON bodies', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-http-json-errors-'));
     const app = createMindosHttpServer({
@@ -3896,7 +4027,18 @@ describe('MindOS product server contract', () => {
     let config: any = {
       providers: {
         telegram: { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' },
-        feishu: { app_id: 'cli_app', app_secret: 'secret123' },
+        feishu: {
+          app_id: 'cli_app',
+          app_secret: 'secret123',
+          conversation: {
+            enabled: true,
+            transport: 'webhook',
+            public_base_url: 'https://mindos.example.com',
+            encrypt_key: 'encrypt-key',
+            verification_token: 'verify-token',
+            allow_group_mentions: true,
+          },
+        },
       },
     };
     const services = {
@@ -3909,7 +4051,18 @@ describe('MindOS product server contract', () => {
       body: {
         providers: {
           telegram: { bot_token: '1234••••YZ' },
-          feishu: { app_id: 'cli_••••pp', app_secret: 'secr••••23' },
+          feishu: {
+            app_id: 'cli_••••pp',
+            app_secret: 'secr••••23',
+            conversation: {
+              enabled: true,
+              transport: 'webhook',
+              public_base_url: 'https://mindos.example.com',
+              encrypt_key: 'encr••••ey',
+              verification_token: 'veri••••en',
+              allow_group_mentions: true,
+            },
+          },
         },
       },
     });
@@ -3930,6 +4083,46 @@ describe('MindOS product server contract', () => {
       enabled: true,
       transport: 'long_connection',
       allow_group_mentions: false,
+    });
+
+    expect(handleImConfigPut({
+      platform: 'telegram',
+      conversation: { enabled: true },
+    }, services)).toMatchObject({
+      status: 422,
+      body: { error: 'Conversation settings are only supported for Feishu' },
+    });
+
+    expect(handleImConfigPut({
+      platform: 'feishu',
+      conversation: { verification_token: 'rotated-token' },
+    }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, platform: 'feishu' },
+    });
+    expect(config.providers.feishu.conversation).toMatchObject({
+      enabled: true,
+      transport: 'long_connection',
+      verification_token: 'rotated-token',
+      allow_group_mentions: false,
+    });
+
+    delete config.providers.feishu;
+    expect(handleImConfigPut({
+      platform: 'feishu',
+      credentials: { app_id: 'cli_new', app_secret: 'secret456' },
+      conversation: { enabled: true, transport: 'long_connection' },
+    }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, platform: 'feishu' },
+    });
+    expect(config.providers.feishu).toMatchObject({
+      app_id: 'cli_new',
+      app_secret: 'secret456',
+      conversation: {
+        enabled: true,
+        transport: 'long_connection',
+      },
     });
 
     expect(handleImConfigDelete(new URLSearchParams('platform=telegram'), services)).toMatchObject({

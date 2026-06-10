@@ -4,9 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 let fakeHome: string;
+const originalEnv = process.env;
 
 beforeEach(() => {
   fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-channel-home-'));
+  process.env = { ...originalEnv };
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  process.env.MINDOS_IM_CONFIG_PATH = path.join(fakeHome, '.mindos', 'im.json');
   vi.resetModules();
   vi.doMock('node:os', async () => {
     const actual = await vi.importActual<typeof import('node:os')>('node:os');
@@ -18,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.env = originalEnv;
   vi.doUnmock('node:os');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -48,6 +54,19 @@ describe('channel config layer', () => {
 
     expect(validateChannelConfig('telegram', { bot_token: 'bad-token' }).valid).toBe(false);
     expect(validatePlatformConfig('telegram', { bot_token: 'bad-token' }).valid).toBe(false);
+    expect(validateChannelConfig('telegram', { bot_token: '123:ABC' }).valid).toBe(false);
+    expect(validatePlatformConfig('telegram', { bot_token: '123:ABC' }).valid).toBe(false);
+  });
+
+  it('rejects malformed alternative credentials consistently in CLI and app validation', async () => {
+    const { validateChannelConfig } = await import('../../../packages/mindos/bin/lib/channel-config.js');
+    const { validatePlatformConfig } = await import('@/lib/im/config');
+
+    expect(validateChannelConfig('wecom', { webhook_key: 'abc' }).valid).toBe(false);
+    expect(validatePlatformConfig('wecom', { webhook_key: 'abc' }).valid).toBe(false);
+
+    expect(validateChannelConfig('dingtalk', { webhook_url: 'http://example.com/hook' }).valid).toBe(false);
+    expect(validatePlatformConfig('dingtalk', { webhook_url: 'http://example.com/hook' }).valid).toBe(false);
   });
 
   it('writes config with optimistic mtime protection', async () => {
@@ -75,9 +94,74 @@ describe('channel management layer', () => {
     expect(add.ok).toBe(true);
     expect(add.message).toContain('verification skipped');
 
+    const configPath = path.join(fakeHome, '.mindos', 'im.json');
+    const onDisk = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(onDisk.providers.telegram._verificationStatus).toBe('skipped');
+    expect(onDisk.providers.telegram._lastVerified).toBeUndefined();
+    expect(onDisk.providers.telegram._botName).toBeUndefined();
+
     const verify = await channelVerify('telegram', { skipVerify: true });
     expect(verify.valid).toBe(true);
     expect(verify.details?.status).toBe('Format valid only');
+  });
+
+  it('loads web URL and auth token from config when remotely verifying credentials', async () => {
+    delete process.env.MINDOS_URL;
+    delete process.env.MINDOS_WEB_PORT;
+    delete process.env.AUTH_TOKEN;
+    delete process.env.MINDOS_AUTH_TOKEN;
+    fs.mkdirSync(path.join(fakeHome, '.mindos'), { recursive: true });
+    fs.writeFileSync(
+      path.join(fakeHome, '.mindos', 'config.json'),
+      JSON.stringify({ port: 4567, authToken: 'secret-token' }),
+      'utf-8',
+    );
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, botName: 'MindOSBot', botId: 'bot-1' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { channelAdd } = await import('../../../packages/mindos/bin/lib/channel-mgmt.js');
+    const result = await channelAdd('telegram', { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:4567/api/channels/verify', expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: 'Bearer secret-token',
+      }),
+    }));
+  });
+
+  it('persists verified bot metadata when channel verify succeeds', async () => {
+    const { channelAdd, channelVerify } = await import('../../../packages/mindos/bin/lib/channel-mgmt.js');
+    await channelAdd('telegram', { bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ' }, { skipVerify: true });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, botName: 'MindOSBot', botId: 'bot-1' }),
+    }));
+
+    const verify = await channelVerify('telegram');
+    expect(verify.ok).toBe(true);
+    expect(verify.details).toMatchObject({
+      botName: 'MindOSBot',
+      botId: 'bot-1',
+      status: 'Verified',
+    });
+
+    const configPath = path.join(fakeHome, '.mindos', 'im.json');
+    const onDisk = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(onDisk.providers.telegram).toMatchObject({
+      bot_token: '123456789:ABCdefGHIjklMNOpqrSTUvwxYZ',
+      _botName: 'MindOSBot',
+      _botId: 'bot-1',
+      _verificationStatus: 'verified',
+    });
+    expect(typeof onDisk.providers.telegram._lastVerified).toBe('string');
   });
 
   it('does not save config when remote verification fails', async () => {

@@ -25,6 +25,7 @@ function run(args: string[], extraEnv: Record<string, string> = {}) {
         ...process.env,
         HOME: tempHome,
         USERPROFILE: tempHome,
+        MINDOS_IM_CONFIG_PATH: path.join(tempHome, '.mindos', 'im.json'),
         NODE_ENV: 'test',
         ...extraEnv,
       },
@@ -60,6 +61,8 @@ describe('channel CLI subprocess smoke', () => {
     const configPath = path.join(tempHome, '.mindos', 'im.json');
     const onDisk = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     expect(onDisk.providers.telegram).toBeDefined();
+    expect(onDisk.providers.telegram._verificationStatus).toBe('skipped');
+    expect(onDisk.providers.telegram._lastVerified).toBeUndefined();
   });
 
   it('supports alternate env credential mode for wecom', () => {

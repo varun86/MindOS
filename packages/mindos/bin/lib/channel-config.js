@@ -9,18 +9,22 @@ import path from 'node:path';
 import os from 'node:os';
 import { CHANNEL_CREDENTIAL_SETS, CHANNEL_FIELD_PATTERNS } from './channel-constants.js';
 
-const IM_CONFIG_DIR = path.join(os.homedir(), '.mindos');
-const IM_CONFIG_PATH = path.join(IM_CONFIG_DIR, 'im.json');
+const IM_CONFIG_PATH = path.join(os.homedir(), '.mindos', 'im.json');
 
 const createEmptyConfig = () => ({ providers: {} });
 
+function getIMConfigPath() {
+  return process.env.MINDOS_IM_CONFIG_PATH || IM_CONFIG_PATH;
+}
+
 export function readChannelConfig() {
-  if (!fs.existsSync(IM_CONFIG_PATH)) {
+  const configPath = getIMConfigPath();
+  if (!fs.existsSync(configPath)) {
     return createEmptyConfig();
   }
 
   try {
-    const raw = fs.readFileSync(IM_CONFIG_PATH, 'utf-8');
+    const raw = fs.readFileSync(configPath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || typeof parsed.providers !== 'object') {
       console.warn('[channel] im.json has invalid structure, using empty config');
@@ -41,15 +45,16 @@ export function writeChannelConfig(config, options = {}) {
     throw new Error('Configuration changed on disk. Retry your command.');
   }
 
-  fs.mkdirSync(IM_CONFIG_DIR, { recursive: true });
+  const configPath = getIMConfigPath();
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
   const content = JSON.stringify(config, null, 2) + '\n';
-  const tmpPath = IM_CONFIG_PATH + '.tmp';
+  const tmpPath = `${configPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   fs.writeFileSync(tmpPath, content, 'utf-8');
-  fs.renameSync(tmpPath, IM_CONFIG_PATH);
+  fs.renameSync(tmpPath, configPath);
 
   if (process.platform !== 'win32') {
     try {
-      fs.chmodSync(IM_CONFIG_PATH, 0o600);
+      fs.chmodSync(configPath, 0o600);
     } catch {
       // best effort
     }
@@ -57,7 +62,7 @@ export function writeChannelConfig(config, options = {}) {
     console.warn('[channel] Windows does not support chmod 0600 here. Protect ~/.mindos/im.json with your account permissions.');
   }
 
-  const writtenRaw = fs.readFileSync(IM_CONFIG_PATH, 'utf-8');
+  const writtenRaw = fs.readFileSync(configPath, 'utf-8');
   const writtenConfig = JSON.parse(writtenRaw);
   if (JSON.stringify(writtenConfig) !== JSON.stringify(config)) {
     throw new Error('Config write validation failed. Retry your command.');
@@ -109,7 +114,7 @@ export function getConfiguredPlatforms() {
 
 export function getChannelConfigMtime() {
   try {
-    return fs.statSync(IM_CONFIG_PATH).mtimeMs;
+    return fs.statSync(getIMConfigPath()).mtimeMs;
   } catch {
     return 0;
   }

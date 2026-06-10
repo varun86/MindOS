@@ -74,7 +74,7 @@ export type MindOSSSEvent =
   | { type: 'runtime_binding'; runtime: 'acp' | 'codex' | 'claude'; externalSessionId: string; cwd?: string }
   | { type: 'done'; usage?: { input: number; output: number } }
   | { type: 'error'; message: string }
-  | { type: 'status'; message: string };
+  | { type: 'status'; message: string; visible?: boolean };
 
 export const MINDOS_ASK_STREAM_EVENT_TYPES = [
   'text_delta',

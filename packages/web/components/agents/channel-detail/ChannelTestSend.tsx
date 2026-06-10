@@ -12,9 +12,10 @@ export function ChannelTestSend({ platformId, im, recipientExample, onSent }: {
   const [message, setMessage] = useState('Hello from MindOS');
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const canSend = Boolean(recipient.trim() && message.trim());
 
   const handleSend = async () => {
-    if (!recipient.trim() || !message.trim()) return;
+    if (!canSend) return;
     setStatus('sending');
     setResult(null);
     try {
@@ -26,11 +27,14 @@ export function ChannelTestSend({ platformId, im, recipientExample, onSent }: {
       const data = await res.json();
       if (data.ok) {
         setStatus('success');
-        setResult({ ok: true, msg: data.messageId ? `Sent (ID: ${data.messageId})` : im.sentOk });
+        setResult({
+          ok: true,
+          msg: data.messageId && typeof im.sentWithId === 'function' ? im.sentWithId(data.messageId) : im.sentOk,
+        });
         onSent();
       } else {
         setStatus('error');
-        setResult({ ok: false, msg: data.error || 'Failed' });
+        setResult({ ok: false, msg: data.error || im.failed || 'Failed' });
       }
     } catch (err) {
       setStatus('error');
@@ -75,7 +79,7 @@ export function ChannelTestSend({ platformId, im, recipientExample, onSent }: {
           <button
             type="button"
             onClick={handleSend}
-            disabled={status === 'sending' || !recipient.trim()}
+            disabled={status === 'sending' || !canSend}
             className="h-10 px-5 text-sm font-medium rounded-md inline-flex items-center gap-2 bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm hover:opacity-90 hover:shadow disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
             {status === 'sending' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

@@ -21,7 +21,7 @@ export function ChannelStatusBar({ status, activities, im, locale, isFeishu, web
   return (
     <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border">
-        <StatusCell label="Bot" value={status?.botName || '--'} mono />
+        <StatusCell label={im.botLabel ?? 'Bot'} value={status?.botName || '--'} mono />
         <StatusCell label={im.lastActivity} value={relativeTime || im.notAvailable} />
         <StatusCell label={im.currentMode} badge={modeLabel} />
         <StatusCell

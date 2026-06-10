@@ -208,8 +208,18 @@ export {
 } from './handlers/bootstrap.js';
 
 export {
-  handleChannelsVerifyPost,
+  CHANNEL_CAPABILITIES,
+  CHANNEL_CREDENTIAL_SETS,
+  CHANNEL_FIELD_PATTERNS,
+  CHANNEL_PLATFORMS,
+  isChannelPlatform,
+  validateChannelCredentials,
   type ChannelPlatform,
+  type ChannelValidationResult,
+} from './channel-contract.js';
+
+export {
+  handleChannelsVerifyPost,
   type ChannelsVerifyPayload,
   type ChannelsVerifyResult,
   type ChannelsVerifyServices,
