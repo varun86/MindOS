@@ -7,11 +7,13 @@ export interface MindSystemAssistantRunActionInput {
   assistantName: string;
   assistantDesc: string;
   spacePath: string;
+  promptPath: string;
   runPrompt: (
     spaceTitle: string,
     assistantName: string,
     assistantDesc: string,
     spacePath: string,
+    promptPath: string,
   ) => string;
 }
 
@@ -21,6 +23,7 @@ export function buildMindSystemAssistantRunPrompt(input: MindSystemAssistantRunA
     input.assistantName,
     input.assistantDesc,
     input.spacePath,
+    input.promptPath,
   );
 }
 

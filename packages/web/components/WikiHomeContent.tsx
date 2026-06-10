@@ -9,7 +9,7 @@ import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils'
 import { InboxSection } from '@/components/home/InboxSection';
 import type { BuiltInMindSystemSpaceRecord, SpaceInfo } from '@/lib/space-records';
 import { Select } from '@/components/settings/Primitives';
-import { resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
+import { getMindSystemAssistantAvatar, resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
 
 interface RecentFile {
   path: string;
@@ -361,8 +361,22 @@ function BuiltInMindSpacesSection({
                         {t.home.mindAssistant.assistantCount(assistantCount)}
                       </span>
                     </span>
-                    <span className="mt-1 block truncate text-[10px] text-muted-foreground/60">
-                      {pillar.assistantCopies.map(assistant => assistant.name).join(' · ')}
+                    <span className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
+                      {pillar.assistantCopies.slice(0, 3).map((assistant) => {
+                        const avatar = getMindSystemAssistantAvatar(assistant.name, assistant.id);
+                        return (
+                          <span key={assistant.id} className="inline-flex min-w-0 items-center gap-1">
+                            <span
+                              data-mind-system-home-assistant-icon={assistant.id}
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[8px] font-semibold ${avatar.className}`}
+                              aria-hidden="true"
+                            >
+                              {avatar.text}
+                            </span>
+                            <span className="truncate text-[10px] text-muted-foreground/60">{assistant.name}</span>
+                          </span>
+                        );
+                      })}
                     </span>
                   </span>
                 </span>

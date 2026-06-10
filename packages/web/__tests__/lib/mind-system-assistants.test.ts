@@ -3,6 +3,7 @@ import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { cleanupMindRoot, mkTempMindRoot, seedFile } from '../core/helpers';
 import {
+  getAssistantPromptPath,
   getMindSystemAssistants,
   getMindSystemAssistantSummary,
   listMindSystemAssistantSummaries,
@@ -36,7 +37,15 @@ describe('mind-system assistants', () => {
     expect(assistants.map(assistant => assistant.id)).toEqual(['daily-signal', 'decision-synthesizer']);
     expect(assistants[0]).toMatchObject({ schedule: { mode: 'daily' } });
     expect(assistants[1]).toMatchObject({ schedule: { mode: 'manual' } });
+    expect(assistants[0]?.promptPath).toBe('.mindos/assistants/daily-signal/prompt.md');
+    expect(assistants[1]?.promptPath).toBe('.mindos/assistants/decision-synthesizer/prompt.md');
     expect(assistants).not.toContainEqual(expect.objectContaining({ primary: expect.anything() }));
+  });
+
+  it('uses a flat hidden assistant prompt registry and rejects unsafe assistant ids', () => {
+    expect(getAssistantPromptPath('daily-signal')).toBe('.mindos/assistants/daily-signal/prompt.md');
+    expect(() => getAssistantPromptPath('../daily-signal')).toThrow(/Unsafe assistant id/);
+    expect(() => getAssistantPromptPath('Daily Signal')).toThrow(/Unsafe assistant id/);
   });
 
   it('counts visible markdown drafts and reports instruction readiness', () => {
@@ -47,12 +56,22 @@ describe('mind-system assistants', () => {
       seedFile(mindRoot, 'MIND_DAO/Drafts/nested/two.md', '# Two\n');
       seedFile(mindRoot, 'MIND_DAO/Drafts/ignored.txt', 'not markdown\n');
       seedFile(mindRoot, 'MIND_DAO/Drafts/.hidden.md', '# Hidden\n');
+      seedFile(mindRoot, '.mindos/assistants/daily-signal/prompt.md', '# Custom prompt\n');
 
       const summary = getMindSystemAssistantSummary(mindRoot, daoSlot);
 
       expect(summary.instructionReady).toBe(true);
       expect(summary.draftCount).toBe(2);
       expect(summary.assistants.map(assistant => assistant.id)).toEqual(['daily-signal', 'decision-synthesizer']);
+      expect(summary.assistants[0]).toMatchObject({
+        id: 'daily-signal',
+        promptPath: '.mindos/assistants/daily-signal/prompt.md',
+        promptReady: true,
+      });
+      expect(summary.assistants[1]).toMatchObject({
+        id: 'decision-synthesizer',
+        promptReady: false,
+      });
     } finally {
       cleanupMindRoot(mindRoot);
     }

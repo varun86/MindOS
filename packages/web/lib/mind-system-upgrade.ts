@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { resolveSafe } from '@/lib/core/security';
+import { resolveExistingSafe } from '@/lib/core/security';
 import { ensureMindSystemConfig, type MindSystemSlot } from './mind-system';
+import {
+  getDefaultAssistantPrompt,
+  getMindSystemAssistants,
+} from './mind-system-assistants';
 
 export interface MindSystemUpgradeSkippedPath {
   path: string;
@@ -90,6 +94,18 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
     if (result === 'created') createdPaths.push(slot.path);
     else if (result === 'existing') existingPaths.push(slot.path);
     else skippedPaths.push({ path: slot.path, reason: result });
+
+    if (result !== 'created' && result !== 'existing') continue;
+
+    for (const assistant of getMindSystemAssistants(slot)) {
+      const promptResult = ensureAssistantPromptFile(mindRoot, assistant.id, assistant.promptPath);
+      if (promptResult !== 'ready') {
+        skippedPaths.push({
+          path: assistant.promptPath ?? `.mindos/assistants/${assistant.id}/prompt.md`,
+          reason: promptResult,
+        });
+      }
+    }
   }
 
   return {
@@ -100,13 +116,39 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
   };
 }
 
+function ensureAssistantPromptFile(
+  mindRoot: string,
+  assistantId: string,
+  promptPath: string | undefined,
+): 'ready' | MindSystemUpgradeSkippedPath['reason'] {
+  if (!promptPath) return 'unsafe_path';
+
+  let resolvedPromptPath: string;
+  try {
+    resolvedPromptPath = resolveExistingSafe(mindRoot, promptPath);
+  } catch {
+    return 'unsafe_path';
+  }
+
+  try {
+    if (fs.existsSync(resolvedPromptPath)) {
+      return fs.statSync(resolvedPromptPath).isFile() ? 'ready' : 'file_conflict';
+    }
+    fs.mkdirSync(path.dirname(resolvedPromptPath), { recursive: true });
+    fs.writeFileSync(resolvedPromptPath, getDefaultAssistantPrompt(assistantId), 'utf-8');
+    return 'ready';
+  } catch {
+    return 'write_failed';
+  }
+}
+
 function ensureSlotDirectory(
   mindRoot: string,
   slot: MindSystemSlot,
 ): 'created' | 'existing' | MindSystemUpgradeSkippedPath['reason'] {
   let slotDir: string;
   try {
-    slotDir = resolveSafe(mindRoot, slot.path);
+    slotDir = resolveExistingSafe(mindRoot, slot.path);
   } catch {
     return 'unsafe_path';
   }

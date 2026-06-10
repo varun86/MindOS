@@ -11,7 +11,8 @@ import type { SpacePreview } from '@/lib/core/types';
 import { useLocale } from '@/lib/stores/locale-store';
 import { openMindSystemAssistantRun } from '@/lib/mind-system-assistant-actions';
 import type { BuiltInMindSystemSpaceRecord } from '@/lib/space-records';
-import { resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
+import { getMindSystemAssistantAvatar, resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
+import { getAssistantPromptPath } from '@/lib/mind-system-assistant-paths';
 
 async function copyPathToClipboard(path: string) {
   try { await navigator.clipboard.writeText(path); } catch { /* noop */ }
@@ -496,6 +497,9 @@ function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceReco
       <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-3">
         {visibleAssistants.map((assistant) => {
           const expanded = expandedAssistantId === assistant.id;
+          const promptPath = assistant.promptPath ?? getAssistantPromptPath(assistant.id);
+          const promptReady = assistant.promptReady !== false;
+          const avatar = getMindSystemAssistantAvatar(assistant.name, assistant.id);
           return (
             <article
               key={assistant.id}
@@ -503,10 +507,24 @@ function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceReco
               className="min-w-0 rounded-md border border-border/60 bg-background/35 p-3 transition-colors hover:border-[var(--amber)]/25 hover:bg-background/55"
             >
               <div className="flex min-w-0 items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-semibold text-foreground">{assistant.name}</div>
-                  <div className="mt-1 inline-flex rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-                    {t.home.mindAssistant.scheduleMode[assistant.schedule.mode]}
+                <div className="flex min-w-0 items-start gap-2">
+                  <span
+                    data-mind-system-dir-assistant-icon={assistant.id}
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold ${avatar.className}`}
+                    aria-hidden="true"
+                  >
+                    {avatar.text}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-foreground">{assistant.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <span className="inline-flex rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                        {t.home.mindAssistant.scheduleMode[assistant.schedule.mode]}
+                      </span>
+                      <span className={`inline-flex rounded px-1.5 py-px text-[10px] font-medium ${promptReady ? 'bg-[var(--success)]/10 text-[var(--success)]' : 'bg-muted text-muted-foreground'}`}>
+                        {promptReady ? t.home.mindAssistant.promptReady : t.home.mindAssistant.promptMissing}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <button
@@ -517,6 +535,7 @@ function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceReco
                     assistantName: assistant.name,
                     assistantDesc: assistant.desc,
                     spacePath: space.slot.path,
+                    promptPath,
                     runPrompt: t.home.mindAssistant.runPrompt,
                   })}
                   className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[10px] font-medium text-[var(--amber)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
@@ -532,6 +551,7 @@ function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceReco
               {expanded && (
                 <div className="mt-2 rounded-md bg-muted/45 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
                   <div className="truncate font-mono">{assistant.id}</div>
+                  <div className="truncate">{t.home.mindAssistant.promptFile}: {promptPath}</div>
                   <div>{t.home.mindAssistant.openDrafts}: {space.slot.path}/Drafts/</div>
                 </div>
               )}
@@ -546,12 +566,12 @@ function MindSystemAssistantStrip({ space }: { space: BuiltInMindSystemSpaceReco
                   {expanded ? t.home.mindAssistant.hide : t.home.mindAssistant.view}
                 </button>
                 <Link
-                  href={`/view/${encodePath(`${space.slot.path}/INSTRUCTION.md`)}`}
+                  href={`/view/${encodePath(promptPath)}`}
                   data-mind-system-dir-edit-assistant={assistant.id}
                   className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Pencil size={10} aria-hidden="true" />
-                  {t.home.mindAssistant.edit}
+                  {t.home.mindAssistant.editPrompt}
                 </Link>
               </div>
             </article>

@@ -37,8 +37,18 @@ const daoSpace: BuiltInMindSystemSpaceRecord = {
   description: 'Values, direction, long-term judgment',
   assistantSummary: {
     assistants: [
-      { id: 'daily-signal', schedule: { mode: 'daily' } },
-      { id: 'decision-synthesizer', schedule: { mode: 'manual' } },
+      {
+        id: 'daily-signal',
+        schedule: { mode: 'daily' },
+        promptPath: '.mindos/assistants/daily-signal/prompt.md',
+        promptReady: true,
+      },
+      {
+        id: 'decision-synthesizer',
+        schedule: { mode: 'manual' },
+        promptPath: '.mindos/assistants/decision-synthesizer/prompt.md',
+        promptReady: true,
+      },
     ],
     draftCount: 2,
     instructionReady: true,
@@ -91,13 +101,17 @@ describe('DirView Mind System assistant strip', () => {
     expect(strip?.textContent).toContain('2 drafts');
     expect(strip?.querySelector('a[href="/view/MIND_DAO/INSTRUCTION.md"]')).not.toBeNull();
     expect(strip?.querySelector('a[href="/view/MIND_DAO/Drafts"]')).not.toBeNull();
+    expect(strip?.querySelector('[data-mind-system-dir-assistant-icon="daily-signal"]')?.textContent).toBe('D');
+    expect(strip?.querySelector('[data-mind-system-dir-assistant-icon="decision-synthesizer"]')?.textContent).toBe('D');
     expect(firstRunButton).not.toBeNull();
     expect(secondRunButton).not.toBeNull();
     expect(firstRunButton?.closest('a')).toBeNull();
     expect(firstRunButton?.className).toContain('focus-visible:ring-2');
     expect(firstRunButton?.className).toContain('touch-manipulation');
     expect(strip?.querySelector('[data-mind-system-dir-view-assistant="daily-signal"]')).not.toBeNull();
-    expect(strip?.querySelector('[data-mind-system-dir-edit-assistant="daily-signal"]')).not.toBeNull();
+    expect(strip?.querySelector('[data-mind-system-dir-edit-assistant="daily-signal"]')?.getAttribute('href'))
+      .toBe('/view/.mindos/assistants/daily-signal/prompt.md');
+    expect(strip?.textContent).toContain('Prompt ready');
   });
 
   it('opens Ask with the selected assistant prompt without navigating or writing directly', async () => {
@@ -126,6 +140,10 @@ describe('DirView Mind System assistant strip', () => {
       expect.stringContaining('MIND_DAO/Drafts/'),
       'user',
     );
+    expect(openAskModal).toHaveBeenCalledWith(
+      expect.stringContaining('.mindos/assistants/decision-synthesizer/prompt.md'),
+      'user',
+    );
   });
 
   it('shows at most three assistants until the user asks to view all', async () => {
@@ -140,10 +158,10 @@ describe('DirView Mind System assistant strip', () => {
             assistantSummary: {
               ...daoSpace.assistantSummary,
               assistants: [
-                { id: 'daily-signal', schedule: { mode: 'daily' } },
-                { id: 'decision-synthesizer', schedule: { mode: 'manual' } },
-                { id: 'third-assistant', schedule: { mode: 'manual' } },
-                { id: 'fourth-assistant', schedule: { mode: 'weekly' } },
+                { id: 'daily-signal', schedule: { mode: 'daily' }, promptPath: '.mindos/assistants/daily-signal/prompt.md' },
+                { id: 'decision-synthesizer', schedule: { mode: 'manual' }, promptPath: '.mindos/assistants/decision-synthesizer/prompt.md' },
+                { id: 'third-assistant', schedule: { mode: 'manual' }, promptPath: '.mindos/assistants/third-assistant/prompt.md' },
+                { id: 'fourth-assistant', schedule: { mode: 'weekly' }, promptPath: '.mindos/assistants/fourth-assistant/prompt.md' },
               ],
             },
           }}

@@ -14,16 +14,19 @@ const input = {
   assistantName: 'Daily signal curator',
   assistantDesc: 'Turns direction, opportunity, and risk signals into a draft.',
   spacePath: 'MIND_DAO',
+  promptPath: '.mindos/assistants/daily-signal/prompt.md',
   runPrompt: (
     spaceTitle: string,
     assistantName: string,
     assistantDesc: string,
     spacePath: string,
+    promptPath: string,
   ) => [
     `space=${spaceTitle}`,
     `assistant=${assistantName}`,
     `desc=${assistantDesc}`,
     `path=${spacePath}`,
+    `prompt=${promptPath}`,
     `drafts=${spacePath}/Drafts/`,
   ].join('\n'),
 };
@@ -35,6 +38,7 @@ describe('mind-system assistant actions', () => {
 
   it('builds the run prompt through the localized prompt factory', () => {
     expect(buildMindSystemAssistantRunPrompt(input)).toContain('drafts=MIND_DAO/Drafts/');
+    expect(buildMindSystemAssistantRunPrompt(input)).toContain('prompt=.mindos/assistants/daily-signal/prompt.md');
   });
 
   it('opens Ask as a user-triggered assistant run', () => {

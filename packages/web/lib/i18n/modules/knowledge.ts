@@ -50,6 +50,10 @@ export const knowledgeEn = {
       view: 'View',
       hide: 'Hide',
       edit: 'Edit',
+      editPrompt: 'Edit prompt',
+      promptReady: 'Prompt ready',
+      promptMissing: 'Prompt missing',
+      promptFile: 'Prompt',
       openSpace: 'Open',
       openInstruction: 'Instruction',
       openDrafts: 'Drafts',
@@ -62,11 +66,11 @@ export const knowledgeEn = {
         daily: 'Daily',
         weekly: 'Weekly',
       },
-      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string) => `Act as the "${assistantName}" assistant for the MindOS space "${spaceTitle}" (${spacePath}).
+      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string, promptPath: string) => `Act as the "${assistantName}" assistant for the MindOS space "${spaceTitle}" (${spacePath}).
 
 Assistant purpose: ${assistantDesc}
 
-Read this space's INSTRUCTION.md first, then inspect relevant notes in the same space. Produce one concise Markdown draft for the user to review. Do not overwrite existing canonical notes directly. If you write a file, write it under ${spaceDraftsPath(spacePath)} with a dated filename. Keep the draft focused, source-aware, and easy to accept or discard.`,
+Read the assistant prompt at ${promptPath} first, then read this space's INSTRUCTION.md and inspect relevant notes in the same space. Produce one concise Markdown draft for the user to review. Do not overwrite existing canonical notes directly. If you write a file, write it under ${spaceDraftsPath(spacePath)} with a dated filename. Keep the draft focused, source-aware, and easy to accept or discard.`,
     },
     mindAssistants: {
       dao: [
@@ -656,6 +660,10 @@ export const knowledgeZh = {
       view: '查看',
       hide: '收起',
       edit: '编辑',
+      editPrompt: '编辑 Prompt',
+      promptReady: 'Prompt 已就绪',
+      promptMissing: '缺少 Prompt',
+      promptFile: 'Prompt',
       openSpace: '打开空间',
       openInstruction: '说明',
       openDrafts: '草稿',
@@ -668,11 +676,11 @@ export const knowledgeZh = {
         daily: '每日',
         weekly: '每周',
       },
-      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string) => `请作为 MindOS 空间「${spaceTitle}」（${spacePath}）里的「${assistantName}」助手工作。
+      runPrompt: (spaceTitle: string, assistantName: string, assistantDesc: string, spacePath: string, promptPath: string) => `请作为 MindOS 空间「${spaceTitle}」（${spacePath}）里的「${assistantName}」助手工作。
 
 助手职责：${assistantDesc}
 
-请先读取这个空间的 INSTRUCTION.md，再查看同一空间内相关笔记。请产出一份简洁的 Markdown 草稿供用户确认，不要直接覆盖正式笔记。如果需要写入文件，请写到 ${spaceDraftsPath(spacePath)} 下，并使用带日期的文件名。草稿要聚焦、可追溯，并方便用户确认或丢弃。`,
+请先读取助手 Prompt：${promptPath}，再读取这个空间的 INSTRUCTION.md，并查看同一空间内相关笔记。请产出一份简洁的 Markdown 草稿供用户确认，不要直接覆盖正式笔记。如果需要写入文件，请写到 ${spaceDraftsPath(spacePath)} 下，并使用带日期的文件名。草稿要聚焦、可追溯，并方便用户确认或丢弃。`,
     },
     mindAssistants: {
       dao: [

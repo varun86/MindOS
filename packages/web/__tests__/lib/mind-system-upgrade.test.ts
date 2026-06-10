@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { cleanupMindRoot, mkTempMindRoot } from '../core/helpers';
@@ -6,6 +7,16 @@ import { MIND_SYSTEM_CONFIG_RELATIVE_PATH, listMindSystemSlots } from '@/lib/min
 import { ensureDefaultMindSystemUpgrade } from '@/lib/mind-system-upgrade';
 
 const DEFAULT_DIRS = ['MIND_DAO', 'MIND_FA', 'MIND_SHU', 'MIND_QI'] as const;
+const DEFAULT_ASSISTANT_PROMPTS = [
+  '.mindos/assistants/daily-signal/prompt.md',
+  '.mindos/assistants/decision-synthesizer/prompt.md',
+  '.mindos/assistants/rule-keeper/prompt.md',
+  '.mindos/assistants/boundary-reviewer/prompt.md',
+  '.mindos/assistants/method-organizer/prompt.md',
+  '.mindos/assistants/checklist-builder/prompt.md',
+  '.mindos/assistants/tool-inventory/prompt.md',
+  '.mindos/assistants/resource-auditor/prompt.md',
+] as const;
 
 describe('default mind-system upgrade', () => {
   it('creates default Mind System folders, scaffolds, and normalized config', () => {
@@ -21,6 +32,11 @@ describe('default mind-system upgrade', () => {
         expect(fs.existsSync(path.join(mindRoot, dir, 'README.md'))).toBe(true);
         expect(fs.existsSync(path.join(mindRoot, dir, 'INSTRUCTION.md'))).toBe(true);
         expect(fs.statSync(path.join(mindRoot, dir, 'Drafts')).isDirectory()).toBe(true);
+      }
+      for (const promptPath of DEFAULT_ASSISTANT_PROMPTS) {
+        const prompt = fs.readFileSync(path.join(mindRoot, promptPath), 'utf-8');
+        expect(prompt).toContain('assistantId:');
+        expect(prompt).toContain('## Role');
       }
 
       const config = JSON.parse(fs.readFileSync(path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH), 'utf-8'));
@@ -41,6 +57,12 @@ describe('default mind-system upgrade', () => {
       fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'README.md'), '# Custom Dao\n', 'utf-8');
       fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), '# Custom Agent Rules\n', 'utf-8');
       fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'Drafts', 'custom.md'), '# Existing Draft\n', 'utf-8');
+      fs.mkdirSync(path.join(mindRoot, '.mindos', 'assistants', 'daily-signal'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mindRoot, '.mindos', 'assistants', 'daily-signal', 'prompt.md'),
+        '# Custom Daily Signal Prompt\n',
+        'utf-8',
+      );
 
       ensureDefaultMindSystemUpgrade(mindRoot);
       const result = ensureDefaultMindSystemUpgrade(mindRoot);
@@ -51,6 +73,10 @@ describe('default mind-system upgrade', () => {
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'README.md'), 'utf-8')).toBe('# Custom Dao\n');
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), 'utf-8')).toBe('# Custom Agent Rules\n');
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'Drafts', 'custom.md'), 'utf-8')).toBe('# Existing Draft\n');
+      expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'), 'utf-8'))
+        .toBe('# Custom Daily Signal Prompt\n');
+      expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'), 'utf-8'))
+        .toContain('assistantId: decision-synthesizer');
     } finally {
       cleanupMindRoot(mindRoot);
     }
@@ -68,8 +94,54 @@ describe('default mind-system upgrade', () => {
       expect(result.createdPaths).toEqual(['MIND_FA', 'MIND_SHU', 'MIND_QI']);
       expect(listMindSystemSlots(mindRoot).map(slot => slot.key)).toEqual(['fa', 'shu', 'qi']);
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO'), 'utf-8')).toBe('not a directory');
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/rule-keeper/prompt.md'))).toBe(true);
     } finally {
       cleanupMindRoot(mindRoot);
+    }
+  });
+
+  it('does not write assistant prompts through a symlinked assistant registry', () => {
+    const mindRoot = mkTempMindRoot();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-assistant-registry-outside-'));
+    try {
+      fs.mkdirSync(path.join(mindRoot, '.mindos'), { recursive: true });
+      fs.symlinkSync(outside, path.join(mindRoot, '.mindos', 'assistants'), 'dir');
+
+      const result = ensureDefaultMindSystemUpgrade(mindRoot);
+
+      expect(result.state).toBe('partial');
+      expect(result.createdPaths).toEqual([...DEFAULT_DIRS]);
+      expect(result.skippedPaths.map(item => item.path).sort()).toEqual([...DEFAULT_ASSISTANT_PROMPTS].sort());
+      expect(result.skippedPaths.every(item => item.reason === 'unsafe_path')).toBe(true);
+      expect(fs.existsSync(path.join(outside, 'daily-signal', 'prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'resource-auditor', 'prompt.md'))).toBe(false);
+    } finally {
+      cleanupMindRoot(mindRoot);
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('does not scaffold a Mind System slot through a symlinked slot directory', () => {
+    const mindRoot = mkTempMindRoot();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-slot-outside-'));
+    try {
+      fs.symlinkSync(outside, path.join(mindRoot, 'MIND_DAO'), 'dir');
+
+      const result = ensureDefaultMindSystemUpgrade(mindRoot);
+
+      expect(result.state).toBe('partial');
+      expect(result.skippedPaths).toContainEqual({ path: 'MIND_DAO', reason: 'unsafe_path' });
+      expect(result.createdPaths).toEqual(['MIND_FA', 'MIND_SHU', 'MIND_QI']);
+      expect(fs.existsSync(path.join(outside, 'README.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'INSTRUCTION.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'Drafts'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(false);
+    } finally {
+      cleanupMindRoot(mindRoot);
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 
@@ -95,6 +167,7 @@ describe('default mind-system upgrade', () => {
       for (const dir of DEFAULT_DIRS) {
         expect(fs.existsSync(path.join(mindRoot, dir))).toBe(false);
       }
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants'))).toBe(false);
       expect(listMindSystemSlots(mindRoot)).toEqual([]);
     } finally {
       cleanupMindRoot(mindRoot);

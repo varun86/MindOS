@@ -158,6 +158,8 @@ describe('WikiHomeContent Mind System cards', () => {
     expect(daoCard?.textContent).toContain('2 assistants');
     expect(daoCard?.textContent).toContain('Decision synthesizer');
     expect(daoCard?.textContent).toContain('2 drafts');
+    expect(host.querySelector('[data-mind-system-home-assistant-icon="daily-signal"]')?.textContent).toBe('D');
+    expect(host.querySelector('[data-mind-system-home-assistant-icon="decision-synthesizer"]')?.textContent).toBe('D');
     expect(host.querySelector('[data-mind-system-run-once="dao"]')).toBeNull();
   });
 
