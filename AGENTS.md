@@ -225,10 +225,17 @@ npm test                          # 手动跑测试，不杀 dev server
 - push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
 - 如果 pre-push hook 因环境问题失败（如缺全局 `pnpm`），只有在已经用等价命令完成验证后才可 `SKIP_TESTS=1 git push`，并在汇报里写明原因。
 
+**异步成果进入主线的标准流程**
+1. 异步 worktree 只把成果 push 到 `origin/codex/async-updates`；这一步只是交付候选，不会让 `main` 变新。
+2. 主 worktree 负责最终集成：`git fetch origin`，确认 `main` 干净，再 `git merge origin/codex/async-updates` 或通过 PR 合入。
+3. merge 后必须解决冲突并跑受影响测试；如果暴露集成问题，先在 `main` 修好并提交。
+4. 验证通过后才 `git push origin main`；push 成功后确认 `sync-to-mindos` workflow 成功。
+5. handoff 结论必须明确写：异步分支是否已进入 `main`、merge commit hash、验证命令、是否已同步 public。
+
 **协作边界**
 - 多个 Agent 并行时，尽量按模块拆文件；不要在两个 worktree 同时编辑同一组文件。
 - 发现另一个 worktree/分支有相关未提交改动时，先说明冲突风险，再选择同步、等待或继续在独立分支推进。
-- 异步分支进入 `main` 的默认方式是 PR 或显式本地 merge；除非用户明确要求，否则不自动把异步分支 merge 回 `main`。
+- 异步分支进入 `main` 的默认方式是 PR 或显式本地 merge；如果用户要求“布置上去 / 主分支也要有 / 发布最新”，应视为需要完成主线集成，而不是只 push 异步分支。
 
 ### Commit 前 Checklist
 
