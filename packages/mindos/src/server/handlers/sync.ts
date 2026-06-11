@@ -23,6 +23,7 @@ export type MindosSyncState = Record<string, any> & {
   lastPull?: string | null;
   conflicts?: unknown;
   lastError?: string | null;
+  lastErrorTime?: string | null;
 };
 
 export type MindosSyncPostPayload = {
@@ -69,6 +70,7 @@ const DEFAULT_SYNC_STATE_PATH = join(DEFAULT_MINDOS_DIR, 'sync-state.json');
 const SYNC_LOCK_OWNER_STALE_MS = 5 * 60 * 1000;
 const SYNC_LOCK_ALIVE_HARD_STALE_MS = 30 * 60 * 1000;
 const PROTECTED_GITIGNORE_ENTRIES = ['*.sync-conflict', 'INSTRUCTION.md'];
+const TRACKING_EXEMPT_GITIGNORE_FILES = new Set(['.gitignore']);
 
 type SyncLockOwner = {
   pid?: number;
@@ -378,7 +380,7 @@ function handleGitignoreSave(
   mindRoot: string,
   payload: MindosSyncPostPayload,
   services: MindosSyncServices,
-): MindosServerResponse<{ ok: true; content: string } | { error: string }> {
+): MindosServerResponse<{ ok: true; content: string; stoppedTracking: string[]; syncNeeded: boolean; warning?: string } | { error: string }> {
   if (typeof payload.content !== 'string') {
     return json({ error: 'Missing content' }, { status: 400 });
   }
@@ -386,7 +388,14 @@ function handleGitignoreSave(
   try {
     return withServerSyncLock(mindRoot, 'gitignore-save', services, () => {
       writeFileSync(resolveExistingSafe(mindRoot, '.gitignore'), content, 'utf-8');
-      return json({ ok: true, content });
+      const tracking = stopTrackingIgnoredFiles(mindRoot);
+      return json({
+        ok: true,
+        content,
+        stoppedTracking: tracking.files,
+        syncNeeded: tracking.files.length > 0,
+        ...(tracking.warning ? { warning: tracking.warning } : {}),
+      });
     });
   } catch (error) {
     if (isSyncLockedError(error)) return syncLockedResponse(error);
@@ -438,8 +447,27 @@ function handleResolveConflict(
     }
 
     const nextConflicts = normalizeConflicts(state.conflicts).filter((conflict) => conflict.file !== file);
-    writeState({ ...state, conflicts: nextConflicts }, services);
-    return json({ ok: true });
+    const nextState: MindosSyncState = { ...state, conflicts: nextConflicts };
+    if (nextConflicts.length > 0) {
+      writeState(nextState, services);
+      return json({ ok: true, uploaded: false, pendingConflicts: nextConflicts.length });
+    }
+
+    const upload = commitAndPushResolvedSync(mindRoot, file);
+    if (upload.uploaded) {
+      nextState.lastSync = new Date().toISOString();
+      nextState.lastError = null;
+      delete nextState.lastErrorTime;
+    } else if (upload.warning) {
+      nextState.lastError = upload.warning;
+      nextState.lastErrorTime = new Date().toISOString();
+    }
+    writeState(nextState, services);
+    return json({
+      ok: true,
+      uploaded: upload.uploaded,
+      ...(upload.warning ? { warning: upload.warning } : {}),
+    });
   });
 }
 
@@ -516,6 +544,218 @@ function handleUpdateIntervals(
       autoPullInterval: config.sync.autoPullInterval || 300,
     });
   });
+}
+
+type ResolvedSyncUpload = {
+  uploaded: boolean;
+  warning?: string;
+};
+
+type StopTrackingIgnoredResult = {
+  files: string[];
+  warning?: string;
+};
+
+function stopTrackingIgnoredFiles(mindRoot: string): StopTrackingIgnoredResult {
+  if (!isRealGitWorkTree(mindRoot)) return { files: [] };
+  const trackedFiles = listTrackedGitFiles(mindRoot);
+  if (trackedFiles.length === 0) return { files: [] };
+
+  const ignoredTrackedFiles = listIgnoredFilesFromTrackedSet(mindRoot, trackedFiles)
+    .filter(file => !TRACKING_EXEMPT_GITIGNORE_FILES.has(file));
+  if (ignoredTrackedFiles.length === 0) return { files: [] };
+
+  const stoppedTracking: string[] = [];
+  for (const chunk of chunkArray(ignoredTrackedFiles, 100)) {
+    try {
+      execFileSync('git', ['rm', '--cached', '--ignore-unmatch', '--', ...chunk], {
+        cwd: mindRoot,
+        stdio: 'pipe',
+        timeout: 60_000,
+      });
+      stoppedTracking.push(...chunk);
+    } catch (error) {
+      return {
+        files: stoppedTracking,
+        warning: gitFailureMessage('Saved .gitignore, but some previously synced files could not be removed from future syncs', error),
+      };
+    }
+  }
+  return { files: stoppedTracking };
+}
+
+function commitAndPushResolvedSync(mindRoot: string, file: string): ResolvedSyncUpload {
+  if (!isRealGitWorkTree(mindRoot)) return { uploaded: false };
+  const remote = getOriginRemoteForWrite(mindRoot);
+  if (!remote) return { uploaded: false };
+  const conflictBackup = `${file}.sync-conflict`;
+  const pathspecs = [file, ...(isGitPathTracked(mindRoot, conflictBackup) ? [conflictBackup] : [])];
+
+  try {
+    ensureServerGitIdentity(mindRoot);
+    const unpushedBefore = getUnpushedCommitCount(mindRoot);
+    const resolvedStatus = getGitStatusForPathspecs(mindRoot, pathspecs);
+    if (resolvedStatus.trim()) {
+      execFileSync('git', ['commit', '--only', '-m', 'auto-sync: resolved sync conflict', '--', ...pathspecs], {
+        cwd: mindRoot,
+        stdio: 'pipe',
+        timeout: 60_000,
+      });
+    }
+    if (unpushedBefore === null) {
+      return {
+        uploaded: false,
+        warning: 'Conflict resolved locally, but upload is waiting: MindOS could not confirm which commits would be uploaded. Use Sync now when you are ready to upload all local changes.',
+      };
+    }
+    if (unpushedBefore > 0) {
+      return {
+        uploaded: false,
+        warning: `Conflict resolved locally, but upload is waiting: ${unpushedBefore} earlier local commit${unpushedBefore === 1 ? '' : 's'} would also be uploaded. Use Sync now when you are ready to upload all local changes.`,
+      };
+    }
+    execFileSync('git', ['push', '-u', 'origin', 'HEAD'], {
+      cwd: mindRoot,
+      stdio: 'pipe',
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...getGitSshEnvIfNeeded(remote) },
+      timeout: 60_000,
+    });
+    return { uploaded: true };
+  } catch (error) {
+    return {
+      uploaded: false,
+      warning: gitFailureMessage('Conflict resolved locally, but upload failed', error),
+    };
+  }
+}
+
+function isRealGitWorkTree(mindRoot: string): boolean {
+  try {
+    return runGit(mindRoot, ['rev-parse', '--is-inside-work-tree']) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function getOriginRemoteForWrite(mindRoot: string): string | null {
+  try {
+    const remote = runGit(mindRoot, ['remote', 'get-url', 'origin']);
+    return remote || null;
+  } catch {
+    return null;
+  }
+}
+
+function getUnpushedCommitCount(mindRoot: string): number | null {
+  try {
+    const raw = runGit(mindRoot, ['rev-list', '--count', '@{u}..HEAD']);
+    const count = Number.parseInt(raw, 10);
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+function getGitStatusForPathspecs(mindRoot: string, pathspecs: string[]): string {
+  try {
+    return runGit(mindRoot, ['status', '--porcelain=v1', '--', ...pathspecs]);
+  } catch {
+    return '';
+  }
+}
+
+function isGitPathTracked(mindRoot: string, pathspec: string): boolean {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', pathspec], {
+      cwd: mindRoot,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function listTrackedGitFiles(mindRoot: string): string[] {
+  try {
+    return splitGitNulOutput(execFileSync('git', ['ls-files', '-z'], {
+      cwd: mindRoot,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30_000,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function listIgnoredFilesFromTrackedSet(mindRoot: string, trackedFiles: string[]): string[] {
+  if (trackedFiles.length === 0) return [];
+  const input = `${trackedFiles.join('\0')}\0`;
+  try {
+    return splitGitNulOutput(execFileSync('git', ['check-ignore', '--no-index', '-z', '--stdin'], {
+      cwd: mindRoot,
+      input,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30_000,
+    }));
+  } catch (error) {
+    const stdout = typeof error === 'object' && error !== null && 'stdout' in error
+      ? Buffer.isBuffer(error.stdout) ? error.stdout.toString('utf-8') : String(error.stdout || '')
+      : '';
+    return stdout ? splitGitNulOutput(stdout) : [];
+  }
+}
+
+function splitGitNulOutput(raw: string): string[] {
+  return raw.split('\0').filter(item => item.length > 0);
+}
+
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+function ensureServerGitIdentity(mindRoot: string): void {
+  if (!readServerGitConfig(mindRoot, 'user.email')) {
+    execFileSync('git', ['config', 'user.email', 'mindos@local'], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+  }
+  if (!readServerGitConfig(mindRoot, 'user.name')) {
+    execFileSync('git', ['config', 'user.name', 'MindOS'], { cwd: mindRoot, stdio: 'pipe', timeout: 5000 });
+  }
+}
+
+function readServerGitConfig(mindRoot: string, key: string): string {
+  try {
+    return runGit(mindRoot, ['config', '--get', key]);
+  } catch {
+    return '';
+  }
+}
+
+function getGitSshEnvIfNeeded(remote: string): Record<string, string> {
+  if (!isSshGitRemote(remote)) return {};
+  return { GIT_SSH_COMMAND: 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes' };
+}
+
+function isSshGitRemote(remote: string): boolean {
+  return /^git@[\w.-]+:.+/.test(remote) || /^ssh:\/\/git@[^/]+\/.+/.test(remote);
+}
+
+function gitFailureMessage(prefix: string, error: unknown): string {
+  const stderr = typeof error === 'object' && error !== null && 'stderr' in error
+    ? Buffer.isBuffer(error.stderr) ? error.stderr.toString('utf-8').trim() : String(error.stderr || '').trim()
+    : '';
+  const stdout = typeof error === 'object' && error !== null && 'stdout' in error
+    ? Buffer.isBuffer(error.stdout) ? error.stdout.toString('utf-8').trim() : String(error.stdout || '').trim()
+    : '';
+  const detail = stderr || stdout || (error instanceof Error ? error.message : String(error));
+  return `${prefix}: ${detail || 'unknown error'}`;
 }
 
 function isValidGitBranchName(input: string): boolean {

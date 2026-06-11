@@ -4,7 +4,7 @@ import { seedFile } from '../setup';
 import { invalidateCache } from '../../lib/fs';
 import type { MindosAgentRuntimeAskOptions } from '@geminilight/mindos/agent-runtime';
 import type { AgentRuntimeDescriptor } from '@geminilight/mindos/server';
-import { listAgentRuns, resetAgentRunsForTest } from '@/lib/agent/run-ledger';
+import { listAgentEvents, listAgentRuns, resetAgentRunsForTest } from '@/lib/agent/run-ledger';
 import {
   rememberAvailableNativeRuntimeDescriptor,
   resetNativeRuntimeDescriptorCacheForTest,
@@ -19,6 +19,14 @@ const mockRunMindosAgentRuntimeAskSession = vi.fn();
 const mockRunMindosAcpAskSession = vi.fn();
 const mockCreateAcpSession = vi.fn();
 const originalAgentTimeoutMs = process.env.MINDOS_AGENT_TIMEOUT_MS;
+const RAW_CODEX_OPTIONAL_DEPENDENCY_STACK = [
+  'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
+  'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
+  'at findCodexExecutable (file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102:9)',
+  'at ModuleJob.run (node:internal/modules/esm/module_job:274:25)',
+  'at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)',
+  'Node.js v22.16.0',
+].join('\n');
 
 function availableNativeDescriptor(
   input: Pick<AgentRuntimeDescriptor, 'id' | 'name' | 'kind' | 'adapter'> & { binaryPath: string },
@@ -235,6 +243,60 @@ describe('/api/ask native runtime routing', () => {
     expect(text).toContain(`"rootRunId":"${nativeRuns[0]?.id}"`);
   }, 15_000);
 
+  it('keeps native runtime assistant text and routine connection statuses out of the visible activity timeline', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+      capturedNativeOptions = options;
+      options.send({ type: 'status', runtime: 'claude', visible: true, message: 'Starting Claude Code locally.' });
+      options.send({ type: 'text_delta', delta: 'plain answer' });
+      options.send({ type: 'status', runtime: 'claude', visible: true, message: 'Claude Code is connected and working in this chat.' });
+      options.send({ type: 'status', runtime: 'claude', visible: true, message: 'Claude Code HTTP 429; retrying (1/10).' });
+      options.send({ type: 'tool_start', runtime: 'claude', toolCallId: 'tool-1', toolName: 'Bash', args: { command: 'npm test' } });
+      for (let index = 0; index < 60; index += 1) {
+        options.send({ type: 'text_delta', delta: ` chunk-${index}` });
+      }
+      options.send({ type: 'done' });
+      return { externalSessionId: 'claude-session-1' };
+    });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Claude Code' }],
+      selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
+      mode: 'agent',
+      chatSessionId: 'chat-native-activity',
+    }));
+
+    expect(res.status).toBe(200);
+    const run = listAgentRuns({ kind: 'native-runtime' })[0]!;
+    const events = listAgentEvents({ runId: run.id });
+    expect(events.filter((event) => event.category === 'text')).toEqual([]);
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'runtime_status',
+        message: 'Starting Claude Code locally.',
+        visibility: 'debug',
+      }),
+      expect.objectContaining({
+        type: 'runtime_status',
+        message: 'Claude Code is connected and working in this chat.',
+        visibility: 'debug',
+      }),
+    ]));
+    const retryEvent = events.find((event) => event.message === 'Claude Code HTTP 429; retrying (1/10).');
+    expect(retryEvent).toEqual(expect.objectContaining({
+      type: 'runtime_status',
+      visibility: 'debug',
+    }));
+    const toolEvent = events.find((event) => event.type === 'tool_started');
+    expect(toolEvent).toEqual(expect.objectContaining({
+      category: 'tool',
+    }));
+    expect(toolEvent).not.toHaveProperty('visibility');
+  });
+
   it('maps Chat mode native runtime requests to readonly permission mode', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
@@ -401,6 +463,37 @@ describe('/api/ask native runtime routing', () => {
       ok: false,
       error: { message: 'Codex is signed out. Run codex login first.' },
     });
+    expect(capturedNativeOptions).toBeNull();
+  });
+
+  it('rejects Codex with a compact message when forced recheck hits an optional dependency stack', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/opt/homebrew/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({
+      status: 'error',
+      reason: RAW_CODEX_OPTIONAL_DEPENDENCY_STACK,
+    });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Codex' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      mode: 'agent',
+    }));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      ok: false,
+      error: {
+        message: 'Codex is unavailable. Codex is installed but incomplete. Reinstall Codex with "npm install -g @openai/codex@latest", then restart MindOS.',
+      },
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('file:///opt/homebrew');
+    expect(serialized).not.toContain('throw new Error');
+    expect(serialized).not.toContain('ModuleJob.run');
+    expect(serialized).not.toContain('node:internal');
     expect(capturedNativeOptions).toBeNull();
   });
 

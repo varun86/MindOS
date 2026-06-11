@@ -11,6 +11,10 @@ import {
 import {
   type ClaudeCodeSdkModule,
 } from '../../agent-runtime/claude-code-sdk.js';
+import {
+  compactRuntimeDiagnosticHints,
+  summarizeRuntimeFailure,
+} from '../../agent-runtime/runtime-errors.js';
 import type { AgentRuntimeEnvironmentSettings } from '../../agent-runtime/runtime-env.js';
 import { spawn } from 'node:child_process';
 import { errorResponse, json, privateCacheHeaders, type MindosServerResponse } from '../response.js';
@@ -230,15 +234,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function classifyRuntimeFailure(message: string): NativeRuntimeHealthResult {
+function classifyRuntimeFailure(message: string, runtime?: NativeRuntimeId): NativeRuntimeHealthResult {
   const normalized = message.trim() || 'Runtime failed to start.';
+  const summary = summarizeRuntimeFailure(normalized, { runtime });
   if (/\b(login|log in|signin|sign in|auth|authentication|unauthori[sz]ed|credential|api key|token)\b/i.test(normalized)) {
-    return { status: 'signed-out', reason: normalized };
+    return {
+      status: 'signed-out',
+      reason: summary.reason,
+      ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
+    };
   }
   if (/missing environment variable/i.test(normalized)) {
-    return { status: 'signed-out', reason: normalized };
+    return {
+      status: 'signed-out',
+      reason: summary.reason,
+      ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
+    };
   }
-  return { status: 'error', reason: normalized };
+  return {
+    status: 'error',
+    reason: summary.reason,
+    ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
+  };
 }
 
 function isResolvedCommandSource(value: unknown): value is RuntimeResolvedCommand['source'] {
@@ -321,9 +338,16 @@ function nativeDescriptor(input: {
   missing?: MissingRuntimeAgent;
 }): AgentRuntimeDescriptor {
   const status = input.source ? input.source.status ?? 'available' : input.missing?.status ?? 'missing';
-  const reason = input.source?.reason ?? input.missing?.reason;
+  const rawReason = input.source?.reason ?? input.missing?.reason;
+  const reasonSummary = rawReason ? summarizeRuntimeFailure(rawReason, { runtime: input.id }) : null;
+  const reason = reasonSummary?.reason;
+  const sourceDiagnosticHints = compactRuntimeDiagnosticHints(
+    input.source?.diagnosticHints ?? input.missing?.diagnosticHints,
+    { runtime: input.id },
+  ).filter((hint) => hint !== reason);
   const diagnosticHints = Array.from(new Set([
-    ...(input.source?.diagnosticHints ?? input.missing?.diagnosticHints ?? []),
+    ...sourceDiagnosticHints,
+    ...(reasonSummary?.diagnosticHints ?? []),
     ...nativeRuntimeDiagnosticHints({
       id: input.id,
       name: input.name,
@@ -523,7 +547,12 @@ function buildAcpScopedPayload(input: {
   return { runtimes, installed, notInstalled };
 }
 
-async function checkProcessVersion(command: string, args: string[], timeoutMs: number): Promise<NativeRuntimeHealthResult> {
+async function checkProcessVersion(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  runtime?: NativeRuntimeId,
+): Promise<NativeRuntimeHealthResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
@@ -544,25 +573,25 @@ async function checkProcessVersion(command: string, args: string[], timeoutMs: n
 
     child.stdout.on('data', (chunk) => { stdout += String(chunk); });
     child.stderr.on('data', (chunk) => { stderr += String(chunk); });
-    child.once('error', (error) => finish(classifyRuntimeFailure(error.message)));
+    child.once('error', (error) => finish(classifyRuntimeFailure(error.message, runtime)));
     child.once('exit', (code) => {
       if (code === 0) {
         finish({ status: 'available' });
         return;
       }
-      finish(classifyRuntimeFailure((stderr || stdout || `${command} exited with code ${code ?? 'unknown'}`).trim()));
+      finish(classifyRuntimeFailure((stderr || stdout || `${command} exited with code ${code ?? 'unknown'}`).trim(), runtime));
     });
   });
 }
 
 async function checkCodexCliRuntime(command: string, timeoutMs: number): Promise<NativeRuntimeHealthResult> {
-  const appServerHelp = await checkProcessVersion(command, ['app-server', '--help'], timeoutMs);
+  const appServerHelp = await checkProcessVersion(command, ['app-server', '--help'], timeoutMs, 'codex');
   if (appServerHelp.status !== 'available') return appServerHelp;
 
   const providerEnvironment = checkCodexProviderEnvironment();
   if (providerEnvironment.status !== 'available') return providerEnvironment;
 
-  const loginStatus = await checkProcessVersion(command, ['login', 'status'], timeoutMs);
+  const loginStatus = await checkProcessVersion(command, ['login', 'status'], timeoutMs, 'codex');
   return mergeCodexProviderAndLoginHealth(providerEnvironment, loginStatus);
 }
 
@@ -645,7 +674,7 @@ export async function checkClaudeRuntimeHealth(input: {
   const timeoutMs = input.timeoutMs ?? NATIVE_HEALTH_TIMEOUT_MS;
   const binaryPath = input.binaryPath;
   const importSdk = input.importSdk ?? (() => import('@anthropic-ai/claude-agent-sdk'));
-  const checkCliVersion = input.checkCliVersion ?? ((path, ms) => checkProcessVersion(path, ['--version'], ms));
+  const checkCliVersion = input.checkCliVersion ?? ((path, ms) => checkProcessVersion(path, ['--version'], ms, 'claude'));
 
   if (!binaryPath.trim() || binaryPath.startsWith('sdk:')) {
     return {
@@ -717,7 +746,7 @@ async function applyNativeRuntimeHealth(
         ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
       };
     } catch (error) {
-      const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error));
+      const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), runtime);
       return {
         ...(isRecord(raw) ? raw : detected),
         status: result.status,
@@ -764,7 +793,7 @@ async function detectNativeRuntimeDefinition(
       ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
     };
   } catch (error) {
-    const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error));
+    const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), candidate.runtime);
     return {
       id: candidate.id,
       name: candidate.name,
@@ -825,7 +854,7 @@ async function detectClaudeNativeRuntimeDefinition(
       ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
     };
   } catch (error) {
-    const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error));
+    const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), candidate.runtime);
     return {
       id: candidate.id,
       name: candidate.name,

@@ -7,6 +7,7 @@ import {
   type MindOSSSEvent,
 } from '../session/index.js';
 import { buildCodexAppServerEnv } from './codex-env.js';
+import { compactRuntimeFailureMessage } from './runtime-errors.js';
 
 export type CodexAppServerClientInfo = {
   name: string;
@@ -432,7 +433,13 @@ export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppS
   if (toolEvents.length > 0) return toolEvents;
 
   if (notification.method === 'error') {
-    return [{ type: 'error', message: redactSensitiveText(getCodexErrorMessage(notification.params, 'Codex app-server error')) }];
+    return [{
+      type: 'error',
+      message: compactRuntimeFailureMessage(
+        redactSensitiveText(getCodexErrorMessage(notification.params, 'Codex app-server error')),
+        { runtime: 'codex', fallback: 'Codex app-server error' },
+      ),
+    }];
   }
 
   if (notification.method === 'item/agentMessage/delta') {
@@ -459,13 +466,25 @@ export function mapCodexAppServerNotificationToSseEvents(notification: CodexAppS
   if (notification.method === 'turn/completed') {
     const status = getCodexTurnStatus(notification.params);
     if (status && status !== 'completed' && status !== 'success') {
-      return [{ type: 'error', message: redactSensitiveText(getCodexErrorMessage(notification.params, `Codex turn ${status}`)) }];
+      return [{
+        type: 'error',
+        message: compactRuntimeFailureMessage(
+          redactSensitiveText(getCodexErrorMessage(notification.params, `Codex turn ${status}`)),
+          { runtime: 'codex', fallback: `Codex turn ${status}` },
+        ),
+      }];
     }
     return [{ type: 'done' }];
   }
 
   if (notification.method === 'turn/failed') {
-    return [{ type: 'error', message: redactSensitiveText(getCodexErrorMessage(notification.params, 'Codex turn failed')) }];
+    return [{
+      type: 'error',
+      message: compactRuntimeFailureMessage(
+        redactSensitiveText(getCodexErrorMessage(notification.params, 'Codex turn failed')),
+        { runtime: 'codex', fallback: 'Codex turn failed' },
+      ),
+    }];
   }
 
   return [];

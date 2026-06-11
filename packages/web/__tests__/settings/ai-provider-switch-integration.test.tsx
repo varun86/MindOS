@@ -73,7 +73,7 @@ describe('Settings AI provider switching', () => {
     vi.useRealTimers();
   });
 
-  it('saves a newly selected provider from the real AI settings tab', async () => {
+  it('adds providers only through the explicit add form in the real AI settings tab', async () => {
     const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
     const postBodies: Array<Record<string, any>> = [];
     mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
@@ -97,12 +97,23 @@ describe('Settings AI provider switching', () => {
     vi.clearAllTimers();
     postBodies.length = 0;
 
-    const anthropicButton = Array.from(host.querySelectorAll('button'))
-      .find(button => button.textContent?.includes('Anthropic')) as HTMLButtonElement | undefined;
-    expect(anthropicButton).toBeTruthy();
+    expect(host.textContent).toContain('OpenAI');
+    expect(host.textContent).toContain('Add provider');
+    expect(host.textContent).not.toContain('Anthropic');
+
+    const addButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Add provider')) as HTMLButtonElement | undefined;
+    expect(addButton).toBeTruthy();
+    await act(async () => {
+      addButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    const saveButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent === 'Save') as HTMLButtonElement | undefined;
+    expect(saveButton).toBeTruthy();
 
     await act(async () => {
-      anthropicButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     await act(async () => {
       vi.advanceTimersByTime(800);
@@ -114,11 +125,108 @@ describe('Settings AI provider switching', () => {
     const savedAi = postBodies[0].ai;
     const selected = savedAi.providers.find((provider: { id: string }) => provider.id === savedAi.activeProvider);
     expect(selected).toMatchObject({
+      name: 'OpenAI 2',
+      protocol: 'openai',
+      model: 'gpt-5.4',
+    });
+    expect(savedAi.providers.map((provider: { name: string }) => provider.name)).toEqual(['OpenAI', 'OpenAI 2']);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('requires confirmation before changing a provider protocol and clearing connection fields', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    const postBodies: Array<Record<string, any>> = [];
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) {
+        return Promise.resolve({
+          ...makeSettings(),
+          ai: {
+            activeProvider: 'p_openai01',
+            providers: [
+              {
+                id: 'p_openai01',
+                name: 'OpenAI',
+                protocol: 'openai',
+                apiKey: 'sk-live',
+                model: 'custom-gpt',
+                baseUrl: 'https://proxy.example/v1',
+              },
+            ],
+          },
+        });
+      }
+      if (url === '/api/settings' && opts?.method === 'POST') {
+        postBodies.push(JSON.parse(String(opts.body)));
+        return Promise.resolve({});
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="ai" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.clearAllTimers();
+    postBodies.length = 0;
+
+    const protocolButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent === 'OpenAI') as HTMLButtonElement | undefined;
+    expect(protocolButton).toBeTruthy();
+
+    await act(async () => {
+      protocolButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    const anthropicOption = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === 'Anthropic') as HTMLButtonElement | undefined;
+    expect(anthropicOption).toBeTruthy();
+
+    await act(async () => {
+      anthropicOption?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    });
+
+    expect(host.textContent).toContain("Changing to Anthropic will reset this provider's API key, model, and Base URL.");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies).toHaveLength(0);
+    expect((host.querySelector('input[type="password"]') as HTMLInputElement | null)?.value).toBe('sk-live');
+
+    const changeButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent === 'Change') as HTMLButtonElement | undefined;
+    expect(changeButton).toBeTruthy();
+
+    await act(async () => {
+      changeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies).toHaveLength(1);
+    expect(postBodies[0].ai.providers[0]).toMatchObject({
+      id: 'p_openai01',
       name: 'Anthropic',
       protocol: 'anthropic',
+      apiKey: '',
       model: 'claude-sonnet-4-6',
+      baseUrl: '',
     });
-    expect(savedAi.providers.map((provider: { protocol: string }) => provider.protocol)).toEqual(['openai', 'anthropic']);
 
     await act(async () => {
       root.unmount();

@@ -78,6 +78,7 @@ export function AiTab({ data, setData, updateAi, updateAgent, t }: AiTabProps) {
   const [testResult, setTestResult] = useState<Record<string, TestResult>>({});
   const [customFormOpen, setCustomFormOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(current?.name ?? '');
+  const [pendingProtocol, setPendingProtocol] = useState<ProviderId | null>(null);
   const okTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const prevProviderRef = useRef(data.ai.activeProvider);
 
@@ -85,6 +86,7 @@ export function AiTab({ data, setData, updateAi, updateAgent, t }: AiTabProps) {
     if (prevProviderRef.current !== data.ai.activeProvider) {
       prevProviderRef.current = data.ai.activeProvider;
       setTestResult({});
+      setPendingProtocol(null);
       if (okTimerRef.current) { clearTimeout(okTimerRef.current); okTimerRef.current = undefined; }
     }
   }, [data.ai.activeProvider]);
@@ -185,6 +187,11 @@ export function AiTab({ data, setData, updateAi, updateAgent, t }: AiTabProps) {
 
   const handleProtocolChange = useCallback((protocol: ProviderId) => {
     if (!current || current.protocol === protocol) return;
+    setPendingProtocol(protocol);
+  }, [current]);
+
+  const applyProtocolChange = useCallback((protocol: ProviderId) => {
+    if (!current || current.protocol === protocol) return;
     const siblingNames = data.ai.providers
       .filter(provider => provider.id !== current.id)
       .map(provider => provider.name);
@@ -193,6 +200,7 @@ export function AiTab({ data, setData, updateAi, updateAgent, t }: AiTabProps) {
     updateAi({
       providers: data.ai.providers.map(provider => provider.id === current.id ? rebased : provider),
     });
+    setPendingProtocol(null);
   }, [current, data.ai.providers, locale, updateAi]);
 
   // ── Env key detection ──
@@ -307,6 +315,31 @@ export function AiTab({ data, setData, updateAi, updateAgent, t }: AiTabProps) {
                     </option>
                   ))}
                 </Select>
+                {pendingProtocol && (
+                  <div className="mt-2 rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] px-3 py-2">
+                    <p className="text-xs text-[var(--amber-text)]">
+                      {locale === 'zh'
+                        ? `切换为 ${PROVIDER_PRESETS[pendingProtocol].nameZh} 会重置此服务商的 API Key、模型和 Base URL。`
+                        : `Changing to ${PROVIDER_PRESETS[pendingProtocol].name} will reset this provider's API key, model, and Base URL.`}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => applyProtocolChange(pendingProtocol)}
+                        className="rounded-md bg-[var(--amber)] px-2.5 py-1 text-xs font-medium text-[var(--amber-foreground)] transition-colors hover:bg-[var(--amber)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {locale === 'zh' ? '确认切换' : 'Change'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingProtocol(null)}
+                        className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {locale === 'zh' ? '取消' : 'Cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </Field>
             </div>
 

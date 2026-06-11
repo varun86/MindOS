@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer as createNodeServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -138,6 +138,27 @@ function throwingAsyncIterable<T>(error: Error): AsyncIterable<T> {
       };
     },
   };
+}
+
+function runTestGit(cwd: string, args: string[], input?: string): string {
+  return execFileSync('git', args, {
+    cwd,
+    input,
+    encoding: 'utf-8',
+    stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'MindOS Test',
+      GIT_AUTHOR_EMAIL: 'mindos-test@example.com',
+      GIT_COMMITTER_NAME: 'MindOS Test',
+      GIT_COMMITTER_EMAIL: 'mindos-test@example.com',
+    },
+  }).trim();
+}
+
+function commitAllTestGit(cwd: string, message: string): void {
+  runTestGit(cwd, ['add', '-A']);
+  runTestGit(cwd, ['commit', '-m', message]);
 }
 
 describe('MindOS product server contract', () => {
@@ -3803,6 +3824,72 @@ describe('MindOS product server contract', () => {
     });
   });
 
+  it('stops tracking files newly excluded through .gitignore while keeping local copies', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-gitignore-tracked-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(mindRoot, { recursive: true });
+    runTestGit(mindRoot, ['init']);
+    runTestGit(mindRoot, ['checkout', '-B', 'main']);
+    mkdirSync(join(mindRoot, 'Folder Secret'), { recursive: true });
+    writeFileSync(join(mindRoot, 'secret.md'), 'private', 'utf-8');
+    writeFileSync(join(mindRoot, 'Folder Secret', 'space note.md'), 'private nested', 'utf-8');
+    writeFileSync(join(mindRoot, 'public.md'), 'public', 'utf-8');
+    commitAllTestGit(mindRoot, 'initial notes');
+
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      syncLockDir: join(root, 'locks'),
+    };
+
+    const response = await handleSyncPost({ action: 'gitignore-save', content: 'secret.md\nFolder Secret/\n' }, services);
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        stoppedTracking: ['Folder Secret/space note.md', 'secret.md'],
+        syncNeeded: true,
+      },
+    });
+    expect(readFileSync(join(mindRoot, 'secret.md'), 'utf-8')).toBe('private');
+    expect(readFileSync(join(mindRoot, 'Folder Secret', 'space note.md'), 'utf-8')).toBe('private nested');
+    expect(runTestGit(mindRoot, ['ls-files', '--', 'secret.md'])).toBe('');
+    expect(runTestGit(mindRoot, ['ls-files', '--', 'Folder Secret/space note.md'])).toBe('');
+    expect(runTestGit(mindRoot, ['ls-files', '--', 'public.md'])).toBe('public.md');
+    const status = runTestGit(mindRoot, ['status', '--porcelain=v1']);
+    expect(status).toContain('D  secret.md');
+    expect(status).toContain('D  "Folder Secret/space note.md"');
+  });
+
+  it('keeps .gitignore tracked even when a broad ignore pattern matches it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-gitignore-self-'));
+    const mindRoot = join(root, 'mind');
+    mkdirSync(mindRoot, { recursive: true });
+    runTestGit(mindRoot, ['init']);
+    runTestGit(mindRoot, ['checkout', '-B', 'main']);
+    writeFileSync(join(mindRoot, '.gitignore'), '# old\n', 'utf-8');
+    writeFileSync(join(mindRoot, 'public.md'), 'public', 'utf-8');
+    commitAllTestGit(mindRoot, 'initial notes');
+
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      syncLockDir: join(root, 'locks'),
+    };
+
+    const response = await handleSyncPost({ action: 'gitignore-save', content: '*\n' }, services);
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        stoppedTracking: ['public.md'],
+        syncNeeded: true,
+      },
+    });
+    expect(runTestGit(mindRoot, ['ls-files', '--', '.gitignore'])).toBe('.gitignore');
+    expect(runTestGit(mindRoot, ['ls-files', '--', 'public.md'])).toBe('');
+  });
+
   it('does not clear a conflict when keep-remote is requested without a remote backup', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-sync-missing-backup-'));
     const mindRoot = join(root, 'mind');
@@ -3924,6 +4011,176 @@ describe('MindOS product server contract', () => {
       conflicts: [{ file: 'other.md' }],
       lastError: 'previous',
     });
+  });
+
+  it('commits and pushes the final resolved conflict so the remote reflects the chosen version', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-resolve-push-'));
+    const remotePath = join(root, 'remote.git');
+    const seedPath = join(root, 'seed');
+    const mindRoot = join(root, 'mind');
+    runTestGit(root, ['init', '--bare', remotePath]);
+    mkdirSync(seedPath, { recursive: true });
+    runTestGit(seedPath, ['init']);
+    runTestGit(seedPath, ['checkout', '-B', 'main']);
+    writeFileSync(join(seedPath, 'note.md'), 'base\n', 'utf-8');
+    commitAllTestGit(seedPath, 'seed');
+    runTestGit(seedPath, ['remote', 'add', 'origin', remotePath]);
+    runTestGit(seedPath, ['push', '-u', 'origin', 'main']);
+    runTestGit(root, ['clone', remotePath, mindRoot]);
+    runTestGit(mindRoot, ['checkout', '-B', 'main', 'origin/main']);
+    runTestGit(mindRoot, ['branch', '--set-upstream-to=origin/main', 'main']);
+    writeFileSync(join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    writeFileSync(join(mindRoot, 'note.md.sync-conflict'), 'remote chosen\n', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md', localExists: true, remoteExists: true }],
+      lastError: 'previous',
+    };
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-remote' }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, uploaded: true },
+    });
+    expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('remote chosen\n');
+    expect(existsSync(join(mindRoot, 'note.md.sync-conflict'))).toBe(false);
+    expect(state.conflicts).toEqual([]);
+    expect(state.lastError).toBeNull();
+    expect(state.lastSync).toEqual(expect.any(String));
+    expect(runTestGit(remotePath, ['show', 'main:note.md'])).toBe('remote chosen');
+  });
+
+  it('does not commit unrelated staged files when the final conflict is resolved', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-resolve-scoped-'));
+    const remotePath = join(root, 'remote.git');
+    const seedPath = join(root, 'seed');
+    const mindRoot = join(root, 'mind');
+    runTestGit(root, ['init', '--bare', remotePath]);
+    mkdirSync(seedPath, { recursive: true });
+    runTestGit(seedPath, ['init']);
+    runTestGit(seedPath, ['checkout', '-B', 'main']);
+    writeFileSync(join(seedPath, 'note.md'), 'base\n', 'utf-8');
+    writeFileSync(join(seedPath, 'unrelated.md'), 'base unrelated\n', 'utf-8');
+    commitAllTestGit(seedPath, 'seed');
+    runTestGit(seedPath, ['remote', 'add', 'origin', remotePath]);
+    runTestGit(seedPath, ['push', '-u', 'origin', 'main']);
+    runTestGit(root, ['clone', remotePath, mindRoot]);
+    runTestGit(mindRoot, ['checkout', '-B', 'main', 'origin/main']);
+    runTestGit(mindRoot, ['branch', '--set-upstream-to=origin/main', 'main']);
+    writeFileSync(join(mindRoot, 'unrelated.md'), 'private staged change\n', 'utf-8');
+    runTestGit(mindRoot, ['add', 'unrelated.md']);
+    writeFileSync(join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    writeFileSync(join(mindRoot, 'note.md.sync-conflict'), 'remote chosen\n', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md', localExists: true, remoteExists: true }],
+    };
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-remote' }, services)).toMatchObject({
+      status: 200,
+      body: { ok: true, uploaded: true },
+    });
+    expect(runTestGit(remotePath, ['show', 'main:note.md'])).toBe('remote chosen');
+    expect(runTestGit(remotePath, ['show', 'main:unrelated.md'])).toBe('base unrelated');
+    expect(runTestGit(mindRoot, ['status', '--porcelain=v1', '--', 'unrelated.md'])).toBe('M  unrelated.md');
+  });
+
+  it('defers upload after conflict resolution when older local commits would also be pushed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-resolve-defer-push-'));
+    const remotePath = join(root, 'remote.git');
+    const seedPath = join(root, 'seed');
+    const mindRoot = join(root, 'mind');
+    runTestGit(root, ['init', '--bare', remotePath]);
+    mkdirSync(seedPath, { recursive: true });
+    runTestGit(seedPath, ['init']);
+    runTestGit(seedPath, ['checkout', '-B', 'main']);
+    writeFileSync(join(seedPath, 'note.md'), 'base\n', 'utf-8');
+    writeFileSync(join(seedPath, 'unrelated.md'), 'base unrelated\n', 'utf-8');
+    commitAllTestGit(seedPath, 'seed');
+    runTestGit(seedPath, ['remote', 'add', 'origin', remotePath]);
+    runTestGit(seedPath, ['push', '-u', 'origin', 'main']);
+    runTestGit(root, ['clone', remotePath, mindRoot]);
+    runTestGit(mindRoot, ['checkout', '-B', 'main', 'origin/main']);
+    runTestGit(mindRoot, ['branch', '--set-upstream-to=origin/main', 'main']);
+    writeFileSync(join(mindRoot, 'unrelated.md'), 'earlier local commit\n', 'utf-8');
+    commitAllTestGit(mindRoot, 'local unrelated work');
+    writeFileSync(join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    writeFileSync(join(mindRoot, 'note.md.sync-conflict'), 'remote chosen\n', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md', localExists: true, remoteExists: true }],
+    };
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-remote' }, services)).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        uploaded: false,
+        warning: expect.stringContaining('upload is waiting'),
+      },
+    });
+    expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('remote chosen\n');
+    expect(runTestGit(mindRoot, ['rev-list', '--count', '@{u}..HEAD'])).toBe('2');
+    expect(runTestGit(remotePath, ['show', 'main:note.md'])).toBe('base');
+    expect(runTestGit(remotePath, ['show', 'main:unrelated.md'])).toBe('base unrelated');
+    expect(state.lastError).toContain('upload is waiting');
+  });
+
+  it('keeps upload failure visible after the final conflict is resolved locally', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-sync-resolve-push-fail-'));
+    const remotePath = join(root, 'remote.git');
+    const mindRoot = join(root, 'mind');
+    mkdirSync(mindRoot, { recursive: true });
+    runTestGit(root, ['init', '--bare', remotePath]);
+    runTestGit(mindRoot, ['init']);
+    runTestGit(mindRoot, ['checkout', '-B', 'main']);
+    writeFileSync(join(mindRoot, 'note.md'), 'base\n', 'utf-8');
+    commitAllTestGit(mindRoot, 'base');
+    runTestGit(mindRoot, ['remote', 'add', 'origin', remotePath]);
+    runTestGit(mindRoot, ['push', '-u', 'origin', 'main']);
+    rmSync(remotePath, { recursive: true, force: true });
+    writeFileSync(join(mindRoot, 'note.md'), 'local\n', 'utf-8');
+    writeFileSync(join(mindRoot, 'note.md.sync-conflict'), 'remote chosen\n', 'utf-8');
+
+    let state: Record<string, any> = {
+      conflicts: [{ file: 'note.md', localExists: true, remoteExists: true }],
+    };
+    const services = {
+      readConfig: () => ({ mindRoot, sync: { enabled: true, provider: 'git' } }),
+      readState: () => state,
+      writeState: (next: Record<string, any>) => { state = next; },
+      syncLockDir: join(root, 'locks'),
+    };
+
+    expect(await handleSyncPost({ action: 'resolve-conflict', file: 'note.md', strategy: 'keep-remote' }, services)).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        uploaded: false,
+        warning: expect.stringContaining('Conflict resolved locally, but upload failed'),
+      },
+    });
+    expect(readFileSync(join(mindRoot, 'note.md'), 'utf-8')).toBe('remote chosen\n');
+    expect(state.conflicts).toEqual([]);
+    expect(state.lastError).toContain('Conflict resolved locally, but upload failed');
+    expect(state.lastErrorTime).toEqual(expect.any(String));
   });
 
   it('normalizes legacy sync conflicts before returning and resolving them', async () => {
@@ -5135,6 +5392,48 @@ describe('MindOS product server contract', () => {
         ]),
       },
     });
+  });
+
+  it('sanitizes Codex optional dependency startup failures before returning runtime availability', async () => {
+    const rawCodexStack = [
+      'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
+      'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
+      'at findCodexExecutable (file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102:9)',
+      'at ModuleJob.run (node:internal/modules/esm/module_job:274:25)',
+      'at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)',
+      'Node.js v22.16.0',
+    ].join('\n');
+
+    const res = await handleAgentRuntimesGet(new URLSearchParams('runtime=codex'), {
+      now: () => Date.parse('2026-06-09T00:00:00.000Z'),
+      resolveRuntimeCommand: async (command) => command === 'codex' ? '/opt/homebrew/bin/codex' : null,
+      checkNativeRuntimeHealth: async () => ({
+        status: 'error',
+        reason: rawCodexStack,
+        diagnosticHints: [rawCodexStack],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const runtime = 'runtime' in res.body ? res.body.runtime : null;
+    expect(runtime).toMatchObject({
+      id: 'codex',
+      status: 'error',
+      binaryPath: '/opt/homebrew/bin/codex',
+      availability: expect.objectContaining({
+        reason: 'Codex is installed but incomplete. Reinstall Codex with "npm install -g @openai/codex@latest", then restart MindOS.',
+        diagnosticHints: expect.arrayContaining([
+          'Run "npm install -g @openai/codex@latest" in the same environment that starts MindOS.',
+          'MindOS detected Codex at /opt/homebrew/bin/codex.',
+        ]),
+      }),
+    });
+    const serialized = JSON.stringify(runtime);
+    expect(serialized).not.toContain('file:///opt/homebrew');
+    expect(serialized).not.toContain('throw new Error');
+    expect(serialized).not.toContain('ModuleJob.run');
+    expect(serialized).not.toContain('node:internal');
+    expect(serialized).not.toContain('Node.js v22.16.0');
   });
 
   it('marks Codex signed out when its configured provider requires a missing environment key', () => {

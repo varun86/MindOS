@@ -161,6 +161,103 @@ describe('SettingsContent save lifecycle', () => {
     host.remove();
   });
 
+  it('does not autosave settings loaded from the server', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    const postBodies: Array<Record<string, any>> = [];
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(makeSettings('p_initial'));
+      if (url === '/api/settings' && opts?.method === 'POST') {
+        postBodies.push(JSON.parse(String(opts.body)));
+        return Promise.resolve({});
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="ai" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies).toHaveLength(0);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('saves restore-from-env once and does not autosave the follow-up refresh', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    const serverSettings: SettingsData = {
+      ...makeSettings('p_initial'),
+      envOverrides: { OPENAI_API_KEY: true },
+      ai: {
+        activeProvider: 'p_initial',
+        providers: [
+          { id: 'p_initial', name: 'Initial', protocol: 'openai', apiKey: 'sk-stored', model: 'gpt-5.4', baseUrl: '' },
+        ],
+      },
+    };
+    const postBodies: Array<Record<string, any>> = [];
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(serverSettings);
+      if (url === '/api/settings' && opts?.method === 'POST') {
+        postBodies.push(JSON.parse(String(opts.body)));
+        return Promise.resolve({});
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="ai" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.clearAllTimers();
+    postBodies.length = 0;
+
+    const restoreButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Restore from env'));
+    expect(restoreButton).toBeDefined();
+
+    await act(async () => {
+      restoreButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+      await Promise.resolve();
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies).toHaveLength(1);
+    expect(postBodies[0].ai.providers[0].apiKey).toBe('');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('serializes autosaves and writes the latest settings after an in-flight save', async () => {
     const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
     const firstPost = deferred<Record<string, never>>();

@@ -19,6 +19,7 @@ import {
   type CodexAppServerClient,
   type CodexAppServerServerRequest,
 } from './codex-app-server.js';
+import { compactRuntimeFailureMessage } from './runtime-errors.js';
 
 export type MindosNativeAgentRuntimeKind = 'codex' | 'claude';
 
@@ -179,10 +180,21 @@ function isTimeoutError(value: unknown): value is Error & { code: 'TIMEOUT' } {
   return value instanceof Error && (value as { code?: unknown }).code === 'TIMEOUT';
 }
 
-function errorFromRuntimeFailure(error: unknown, signal?: AbortSignal): Error {
+function errorFromRuntimeFailure(
+  error: unknown,
+  signal?: AbortSignal,
+  runtime?: MindosNativeAgentRuntimeKind,
+): Error {
   const reason = signal?.reason;
   if (signal?.aborted && isTimeoutError(reason)) return reason;
-  return error instanceof Error ? error : new Error(String(error));
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const compactMessage = compactRuntimeFailureMessage(rawMessage, {
+    runtime,
+    fallback: `${runtime === 'claude' ? 'Claude Code' : 'Codex'} native runtime error.`,
+  });
+  const compactError = new Error(compactMessage);
+  if (error instanceof Error) compactError.name = error.name;
+  return compactError;
 }
 
 function throwIfNativeRuntimeTimedOut(signal?: AbortSignal): void {
@@ -315,7 +327,7 @@ async function runClaudeAskSession(options: MindosAgentRuntimeAskOptions): Promi
       sessionId = await runClaudeTurnWithClient(options, resolvedClient, turnState);
     } catch (error) {
       sessionId = turnState.sessionId;
-      const err = errorFromRuntimeFailure(error, options.signal);
+      const err = errorFromRuntimeFailure(error, options.signal, 'claude');
       if (resolvedClient.source !== 'sdk' || !shouldFallbackFromClaudeSdkTurnError(err, options.signal)) {
         throw error;
       }
@@ -335,7 +347,7 @@ async function runClaudeAskSession(options: MindosAgentRuntimeAskOptions): Promi
 
     return sessionId ? { externalSessionId: sessionId } : {};
   } catch (error) {
-    const err = errorFromRuntimeFailure(error, options.signal);
+    const err = errorFromRuntimeFailure(error, options.signal, 'claude');
     if (sessionId) {
       options.send({
         type: 'runtime_binding',
@@ -453,7 +465,7 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
 
     return { externalSessionId: threadId };
   } catch (error) {
-    const err = errorFromRuntimeFailure(error, options.signal);
+    const err = errorFromRuntimeFailure(error, options.signal, 'codex');
     if (threadId) {
       options.send({
         type: 'runtime_binding',

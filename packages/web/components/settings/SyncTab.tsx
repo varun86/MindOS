@@ -39,10 +39,13 @@ function getSyncHealth(status: SyncStatus, syncT?: Record<string, unknown>, stal
 
   if (status.lastError) {
     const hint = getSyncErrorHint(status.lastError, status.remote, syncT);
+    const description = hint && !status.lastError.includes(hint)
+      ? `${status.lastError}\n${hint}`
+      : (hint || status.lastError);
     return {
       tone: 'error' as const,
       title: (syncT?.healthErrorTitle as string) ?? 'Sync needs attention',
-      description: hint || status.lastError,
+      description,
       next: (syncT?.healthErrorNext as string) ?? 'Next: fix the issue, then sync again',
       icon: <AlertCircle size={18} />,
     };
@@ -238,16 +241,22 @@ function ConflictRow({ file, time, noBackup, localExists, remoteExists, syncT, o
     setConfirmKeepLocalWithoutPreview(false);
     setResolving(strategy === 'keep-local' ? 'local' : 'remote');
     try {
-      await apiFetch('/api/sync', {
+      const result = await apiFetch<{ uploaded?: boolean; warning?: string }>('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'resolve-conflict', file, strategy }),
       });
+      const warning = typeof result.warning === 'string' && result.warning.trim()
+        ? formatSyncError(result.warning, syncT)
+        : null;
       const refreshed = await onResolved();
       if (!refreshed) {
         setRefreshFailedAfterResolve(true);
-        setRowError((syncT?.conflictResolvedRefreshFailed as string)
-          ?? 'Conflict resolution may have been saved, but MindOS could not refresh sync status. Retry status refresh before continuing.');
+        const refreshMessage = (syncT?.conflictResolvedRefreshFailed as string)
+          ?? 'Conflict resolution may have been saved, but MindOS could not refresh sync status. Retry status refresh before continuing.';
+        setRowError(warning ? `${warning}\n${refreshMessage}` : refreshMessage);
+      } else if (warning) {
+        setRowError(warning);
       }
     } catch (error) {
       const fallback = (syncT?.conflictResolveFailed as string) ?? 'Failed to resolve conflict';
@@ -404,7 +413,9 @@ function GitignoreEditor({ syncT, onSaved, disabled }: {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
+  const [stoppedTracking, setStoppedTracking] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -413,9 +424,11 @@ function GitignoreEditor({ syncT, onSaved, disabled }: {
   const loadGitignore = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setSaveWarning(null);
     setRefreshWarning(null);
     setLoadFailed(false);
     setSaveOk(false);
+    setStoppedTracking([]);
     try {
       const data = await apiFetch<{ content: string }>('/api/sync', {
         method: 'POST',
@@ -442,10 +455,12 @@ function GitignoreEditor({ syncT, onSaved, disabled }: {
     if (disabled) return;
     setSaving(true);
     setError(null);
+    setSaveWarning(null);
     setRefreshWarning(null);
     setSaveOk(false);
+    setStoppedTracking([]);
     try {
-      const data = await apiFetch<{ content?: string }>('/api/sync', {
+      const data = await apiFetch<{ content?: string; stoppedTracking?: string[]; warning?: string }>('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'gitignore-save', content }),
@@ -453,6 +468,10 @@ function GitignoreEditor({ syncT, onSaved, disabled }: {
       const savedContent = data.content ?? content;
       setContent(savedContent);
       setSaved(savedContent);
+      setStoppedTracking(Array.isArray(data.stoppedTracking) ? data.stoppedTracking : []);
+      if (typeof data.warning === 'string' && data.warning.trim()) {
+        setSaveWarning(formatSyncError(data.warning, syncT));
+      }
       setSaveOk(true);
       setLoadFailed(false);
       try {
@@ -537,6 +556,37 @@ function GitignoreEditor({ syncT, onSaved, disabled }: {
                   <div className="space-y-0.5">
                     {error.split('\n').map((line, i) => (
                       <span key={i} className={`block ${i > 0 ? 'text-destructive/70' : ''}`}>{line}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {stoppedTracking.length > 0 && (
+                <div className="rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] p-2 text-xs text-[var(--amber-text)]" role="status" aria-live="polite">
+                  <div className="flex items-start gap-1.5">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    <div className="space-y-0.5">
+                      <span className="block font-medium">
+                        {(syncT?.gitignoreStoppedTracking as ((n: number) => string))?.(stoppedTracking.length)
+                          ?? `${stoppedTracking.length} previously synced file${stoppedTracking.length === 1 ? '' : 's'} will be removed from future syncs.`}
+                      </span>
+                      <span className="block text-foreground/70">
+                        {(syncT?.gitignoreStoppedTrackingHint as string)
+                          ?? 'The file stays on this device. The next sync removes it from the current remote tree; older Git history may still contain prior copies.'}
+                      </span>
+                      <span className="block max-w-full truncate font-mono text-foreground/70" title={stoppedTracking.join(', ')}>
+                        {stoppedTracking.slice(0, 3).join(', ')}
+                        {stoppedTracking.length > 3 ? ` +${stoppedTracking.length - 3}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {saveWarning && (
+                <div className="flex items-start gap-1.5 rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] p-2 text-xs text-[var(--amber-text)]" role="status" aria-live="polite">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                  <div className="space-y-0.5">
+                    {saveWarning.split('\n').map((line, i) => (
+                      <span key={i} className={`block ${i > 0 ? 'text-foreground/70' : ''}`}>{line}</span>
                     ))}
                   </div>
                 </div>
@@ -761,7 +811,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
               </div>
               <div className="min-w-0 space-y-1">
                 <h3 className="text-sm font-semibold text-foreground">{health.title}</h3>
-                <p className="text-xs leading-relaxed text-foreground/75">{health.description}</p>
+                <p className="whitespace-pre-line text-xs leading-relaxed text-foreground/75">{health.description}</p>
                 <p className="text-xs font-medium">{health.next}</p>
               </div>
             </div>
@@ -841,7 +891,7 @@ export function SyncTab({ t, visible }: SyncTabProps) {
             </div>
             <div className="min-w-0 space-y-1">
               <h3 className="text-sm font-semibold text-foreground">{health.title}</h3>
-              <p className="text-xs leading-relaxed text-foreground/75">{health.description}</p>
+              <p className="whitespace-pre-line text-xs leading-relaxed text-foreground/75">{health.description}</p>
               <p className="text-xs font-medium">{health.next}</p>
             </div>
           </div>

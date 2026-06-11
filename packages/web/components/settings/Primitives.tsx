@@ -283,10 +283,10 @@ export function SettingCard({ icon, title, description, badge, children, classNa
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-border/50 bg-card/50 p-5 ${className}`}>
+    <div className={`rounded-xl border border-border/60 bg-card/65 p-5 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)] ${className}`}>
       <div className="flex items-start gap-3 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-muted-foreground">{icon}</span>
+        <div className="w-8 h-8 rounded-lg bg-[var(--amber-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+          <span className="text-[var(--amber)]">{icon}</span>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">

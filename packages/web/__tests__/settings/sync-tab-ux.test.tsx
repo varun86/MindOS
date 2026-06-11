@@ -1898,6 +1898,71 @@ describe('SyncTab UX', () => {
     });
   });
 
+  it('explains when .gitignore stops tracking previously synced files', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const action = opts?.body ? JSON.parse(opts.body).action : undefined;
+      if (action === 'gitignore-get') return { content: 'node_modules\n' };
+      if (action === 'gitignore-save') {
+        return {
+          ok: true,
+          content: 'node_modules\nsecret.md\n*.sync-conflict\nINSTRUCTION.md\n',
+          stoppedTracking: ['secret.md'],
+          syncNeeded: true,
+        };
+      }
+      return {
+        enabled: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: null,
+        unpushed: '1',
+        conflicts: [],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const toggle = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Excluded files'));
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setInputValue(host.querySelector('textarea'), 'node_modules\nsecret.md\n');
+      await Promise.resolve();
+    });
+
+    const saveButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Save'));
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('1 previously synced file will be removed from future syncs');
+    expect(host.textContent).toContain('The file stays on this device');
+    expect(host.textContent).toContain('older Git history may still contain prior copies');
+    expect(host.textContent).toContain('secret.md');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('does not report .gitignore save failure when only the follow-up status refresh fails', async () => {
     const { SyncTab } = await import('@/components/settings/SyncTab');
     let statusReads = 0;
@@ -2414,6 +2479,126 @@ describe('SyncTab UX', () => {
     }));
     expect(host.textContent).not.toContain('notes/today.md');
     expect(host.textContent).not.toContain('Resolve conflicts to finish sync');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('shows sync attention when conflict resolution is saved locally but upload fails', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let conflicts = [{ file: 'notes/today.md', time: '2026-06-05T10:00:00.000Z' }];
+    let lastError: string | null = null;
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      if (body.action === 'conflict-preview') return { local: 'local text', remote: 'remote text' };
+      if (body.action === 'resolve-conflict') {
+        conflicts = [];
+        lastError = 'Conflict resolved locally, but upload failed: remote rejected the push';
+        return { ok: true, uploaded: false, warning: lastError };
+      }
+      return {
+        enabled: true,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: '2026-06-05T10:00:00.000Z',
+        unpushed: '1',
+        conflicts,
+        lastError,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const fileButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('notes/today.md'));
+    await act(async () => {
+      fileButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const keepRemote = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Keep remote')) as HTMLButtonElement | undefined;
+    await act(async () => {
+      keepRemote?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain('Resolve conflicts to finish sync');
+    expect(host.textContent).toContain('Sync needs attention');
+    expect(host.textContent).toContain('Conflict resolved locally, but upload failed');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps the upload warning visible when conflict resolution status refresh fails', async () => {
+    const { SyncTab } = await import('@/components/settings/SyncTab');
+    let statusReads = 0;
+    const warning = 'Conflict resolved locally, but upload is waiting: 1 earlier local commit would also be uploaded.';
+    mockApiFetch.mockImplementation(async (_url: string, opts?: { body?: string }) => {
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      if (body.action === 'conflict-preview') return { local: 'local text', remote: 'remote text' };
+      if (body.action === 'resolve-conflict') {
+        return { ok: true, uploaded: false, warning };
+      }
+      statusReads += 1;
+      if (statusReads > 1) throw new Error('status endpoint unavailable');
+      return {
+        enabled: true,
+        configured: true,
+        remote: 'git@github.com:me/mind.git',
+        branch: 'main',
+        lastSync: '2026-06-05T10:00:00.000Z',
+        unpushed: '1',
+        conflicts: [{ file: 'notes/today.md', time: '2026-06-05T10:00:00.000Z' }],
+        lastError: null,
+        autoCommitInterval: 30,
+        autoPullInterval: 300,
+      };
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SyncTab t={messages.en} visible />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const fileButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('notes/today.md'));
+    await act(async () => {
+      fileButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const keepRemote = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Keep remote')) as HTMLButtonElement | undefined;
+    await act(async () => {
+      keepRemote?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Conflict resolved locally, but upload is waiting');
+    expect(host.textContent).toContain('could not refresh sync status');
+    expect(host.textContent).toContain('status endpoint unavailable');
 
     await act(async () => {
       root.unmount();

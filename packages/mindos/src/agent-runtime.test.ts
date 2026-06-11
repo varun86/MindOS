@@ -917,6 +917,25 @@ describe('agent runtime adapters', () => {
         },
       },
     })).toEqual([{ type: 'error', message: 'Sign in to Codex' }]);
+
+    const rawCodexStack = [
+      'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
+      'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
+      'at findCodexExecutable (file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102:9)',
+      'at ModuleJob.run (node:internal/modules/esm/module_job:274:25)',
+      'Node.js v22.16.0',
+    ].join('\n');
+    const mapped = mapCodexAppServerNotificationToSseEvents({
+      method: 'error',
+      params: { message: rawCodexStack },
+    });
+    expect(mapped).toEqual([{
+      type: 'error',
+      message: 'Codex is installed but incomplete. Reinstall Codex with "npm install -g @openai/codex@latest", then restart MindOS.',
+    }]);
+    expect(JSON.stringify(mapped)).not.toContain('file:///opt/homebrew');
+    expect(JSON.stringify(mapped)).not.toContain('ModuleJob.run');
+    expect(JSON.stringify(mapped)).not.toContain('Node.js v22.16.0');
   });
 
   it('does not treat failed Codex turn/completed notifications as done', () => {

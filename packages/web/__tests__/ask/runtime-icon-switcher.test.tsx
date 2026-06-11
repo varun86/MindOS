@@ -18,6 +18,15 @@ vi.mock('@/lib/stores/locale-store', () => ({
   }),
 }));
 
+const RAW_CODEX_OPTIONAL_DEPENDENCY_STACK = [
+  'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
+  'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
+  'at findCodexExecutable (file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102:9)',
+  'at ModuleJob.run (node:internal/modules/esm/module_job:274:25)',
+  'at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)',
+  'Node.js v22.16.0',
+].join('\n');
+
 describe('RuntimeIconSwitcher', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -155,6 +164,71 @@ describe('RuntimeIconSwitcher', () => {
 
     const codexButton = Array.from(document.body.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Run codex login first.')) as HTMLButtonElement;
+    expect(codexButton.disabled).toBe(true);
+    await act(async () => {
+      codexButton.click();
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('compacts Codex optional dependency stacks into an actionable disabled option', async () => {
+    const onSelect = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <RuntimeIconSwitcher
+          selectedRuntime={null}
+          onSelect={onSelect}
+          nativeRuntimes={[
+            {
+              id: 'codex',
+              name: 'Codex',
+              kind: 'codex',
+              status: 'error',
+              availability: {
+                checkedAt: '2026-06-09T00:00:00.000Z',
+                sources: ['native-health'],
+                reason: RAW_CODEX_OPTIONAL_DEPENDENCY_STACK,
+                diagnosticHints: [
+                  RAW_CODEX_OPTIONAL_DEPENDENCY_STACK,
+                  'MindOS detected Codex at /opt/homebrew/bin/codex.',
+                  'Run "codex app-server --help" from the MindOS server environment.',
+                ],
+              },
+            },
+            { id: 'claude', name: 'Claude Code', kind: 'claude', status: 'available' },
+          ]}
+          loading={false}
+        />,
+      );
+    });
+
+    const trigger = host.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement;
+    await act(async () => {
+      trigger.click();
+    });
+
+    expect(document.body.textContent).toContain('Codex is installed but incomplete.');
+    expect(document.body.textContent).toContain('npm install -g @openai/codex@latest');
+    expect(document.body.textContent).toContain('MindOS detected Codex at /opt/homebrew/bin/codex.');
+    expect(document.body.textContent).not.toContain('file:///opt/homebrew');
+    expect(document.body.textContent).not.toContain('throw new Error');
+    expect(document.body.textContent).not.toContain('ModuleJob.run');
+    expect(document.body.textContent).not.toContain('node:internal');
+    expect(document.body.textContent).not.toContain('Node.js v22.16.0');
+
+    const mindosButton = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Use MindOS')) as HTMLButtonElement;
+    const codexButton = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Codex is installed but incomplete.')) as HTMLButtonElement;
+    expect(mindosButton.disabled).toBe(false);
     expect(codexButton.disabled).toBe(true);
     await act(async () => {
       codexButton.click();
@@ -438,6 +512,64 @@ describe('RuntimeIconSwitcher', () => {
       claudeButton.click();
     });
     expect(onSelect).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('does not show stale cached native runtime errors while that runtime is checking', async () => {
+    const onSelect = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <RuntimeIconSwitcher
+          selectedRuntime={null}
+          onSelect={onSelect}
+          nativeRuntimes={[
+            {
+              id: 'codex',
+              name: 'Codex',
+              kind: 'codex',
+              status: 'error',
+              availability: {
+                checkedAt: '2026-06-09T00:00:00.000Z',
+                sources: ['native-health'],
+                reason: RAW_CODEX_OPTIONAL_DEPENDENCY_STACK,
+              },
+            },
+            { id: 'claude', name: 'Claude Code', kind: 'claude', status: 'available' },
+          ]}
+          errorByKind={{ codex: RAW_CODEX_OPTIONAL_DEPENDENCY_STACK }}
+          loadingByKind={{ codex: true, claude: false }}
+        />,
+      );
+    });
+
+    const trigger = host.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement;
+    await act(async () => {
+      trigger.click();
+    });
+
+    const codexButton = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Codex')) as HTMLButtonElement;
+    const claudeButton = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Claude Code')) as HTMLButtonElement;
+
+    expect(codexButton.disabled).toBe(true);
+    expect(codexButton.textContent).toContain('Checking...');
+    expect(codexButton.textContent).toContain('Checking local Codex...');
+    expect(codexButton.textContent).not.toContain('file:///opt/homebrew');
+    expect(codexButton.textContent).not.toContain('Missing optional dependency');
+    expect(claudeButton.disabled).toBe(false);
+
+    await act(async () => {
+      claudeButton.click();
+    });
+    expect(onSelect).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude', status: 'available' });
 
     await act(async () => {
       root.unmount();

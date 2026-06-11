@@ -68,7 +68,12 @@ describe('InboxView product shape', () => {
     });
 
     expect(host.textContent).toContain('New capture');
-    expect(host.textContent).toContain('Paste anything. Keep the source. Review later.');
+    expect(host.textContent).toContain('Paste, drop, save.');
+    expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('New capture');
+    expect(host.querySelector('[data-inbox-back-to-capture]')).toBeNull();
+    expect(host.querySelector('[data-inbox-page-upload]')).toBeNull();
+    expect(Array.from(host.querySelectorAll('button'))
+      .some(button => button.getAttribute('aria-label') === 'Back to Wiki')).toBe(false);
     expect(host.textContent).not.toContain('CaptureSave only');
     expect(host.textContent).not.toContain('Capture anythingCapture anything');
     expect(host.querySelector('textarea')?.getAttribute('placeholder')).toContain('Paste a link, write a note');
@@ -76,19 +81,23 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('Attach');
     expect(host.textContent).toContain('Save to Inbox');
     expect(host.textContent).toContain('Organize to Mind');
+    expect(host.querySelector('[data-inbox-attach-action]')?.textContent).toContain('Attach');
+    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).toContain('Save to Inbox');
+    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).toContain('Organize to Mind');
+    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).not.toContain('Attach');
     expect(host.textContent).not.toContain('Next action');
     expect(host.textContent).not.toContain('Save only');
     expect(host.textContent).not.toContain('Suggested: Save only');
     expect(host.textContent).not.toContain('Choose intent');
-    expect(host.textContent).toContain('Local first · Source preserved · Review later');
-    expect(host.textContent).toContain('Links, notes, files, drops');
+    expect(host.textContent).not.toContain('Local first · Source preserved · Review later');
+    expect(host.textContent).not.toContain('Links, notes, files, drops');
     expect(Array.from(host.querySelectorAll('[data-capture-affordance]'))
       .map(item => item.getAttribute('data-capture-affordance'))).toEqual(['Link', 'File', 'Note', 'Drop']);
-    expect(host.textContent).toContain('YouTube, Bilibili, XHS');
-    expect(host.textContent).toContain('Assistant waits for Review');
+    expect(host.textContent).not.toContain('YouTube, Bilibili, XHS');
+    expect(host.textContent).not.toContain('Assistant waits for Review');
     expect(host.textContent).toContain('Live source preview');
     expect(host.textContent).toContain('Paste any source');
-    expect(host.textContent).toContain('Links, notes, files, and dropped sources are staged here before they enter the Review queue.');
+    expect(host.textContent).toContain('The preview appears here before saving.');
     const livePreview = host.querySelector('section[aria-label="Live source preview"]');
     const livePreviewAside = livePreview?.closest('aside');
     expect(livePreviewAside?.className).not.toContain('sticky');
@@ -98,9 +107,9 @@ describe('InboxView product shape', () => {
     expect(host.textContent).not.toContain('Tables');
     expect(host.textContent).not.toContain('Screenshots');
     expect(host.textContent).toContain('Review queue');
-    expect(host.textContent).toContain('Scroll here when you are ready to clear what you captured.');
+    expect(host.textContent).not.toContain('Scroll here when you are ready to clear what you captured.');
     expect(host.textContent).toContain('Inbox Organizer');
-    expect(host.textContent).toContain('This assistant helps clear the queue when you open Review.');
+    expect(host.textContent).not.toContain('This assistant helps clear the queue when you open Review.');
     expect(host.textContent).toContain('Review 2 pending');
     expect(host.textContent).not.toContain('0 selected');
     expect(host.textContent).not.toContain('Select all');
@@ -190,12 +199,15 @@ describe('InboxView product shape', () => {
     });
 
     expect(host.textContent).toContain('Review queue');
-    expect(host.textContent).toContain('Select captures for the Inbox Organizer.');
+    expect(host.textContent).toContain('Select captures to organize.');
+    expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('Review queue');
+    expect(host.querySelector('[data-inbox-back-to-capture]')?.textContent).toContain('New capture');
+    expect(host.querySelector('[data-inbox-page-upload]')?.textContent).toContain('Upload Files');
     expect(host.textContent).toContain('Inbox Organizer');
     expect(host.textContent).toContain('Built-in assistant');
-    expect(host.textContent).toContain('Choose the captures this assistant should organize. You confirm proposed changes before anything is written.');
-    expect(host.textContent).toContain('Selected captures');
-    expect(host.textContent).toContain('Reviewed Mind updates');
+    expect(host.textContent).toContain('Choose captures, then run.');
+    expect(host.textContent).not.toContain('Selected captures');
+    expect(host.textContent).not.toContain('Reviewed Mind updates');
     expect(Array.from(host.querySelectorAll('a'))
       .some(link => link.getAttribute('href') === '/agents?tab=presets' && link.textContent?.trim() === 'Edit')).toBe(true);
     expect(host.textContent).toContain('0 selected');
@@ -211,17 +223,68 @@ describe('InboxView product shape', () => {
     expect(host.textContent).not.toContain('Undo history');
     expect(host.textContent).not.toContain('Item details');
 
-    const checkbox = host.querySelector('input[aria-label="Select wechat-capture.txt"]') as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
+    const backToCaptureButton = host.querySelector('[data-inbox-back-to-capture]') as HTMLButtonElement | null;
+    expect(backToCaptureButton).not.toBeNull();
 
     await act(async () => {
-      checkbox!.click();
+      backToCaptureButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(checkbox!.checked).toBe(true);
+    expect(window.location.hash).toBe('');
+    expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('New capture');
+    expect(host.querySelector('[data-inbox-back-to-capture]')).toBeNull();
+
+    const queueTabAfterBack = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Review'));
+    expect(queueTabAfterBack).not.toBeNull();
+
+    await act(async () => {
+      queueTabAfterBack!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('#queue');
+    expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('Review queue');
+
+    const selectAllButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === 'Select all');
+    expect(selectAllButton).not.toBeNull();
+
+    await act(async () => {
+      selectAllButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const selectionButtons = Array.from(host.querySelectorAll('button[aria-label^="Select "]')) as HTMLButtonElement[];
+    expect(selectionButtons).toHaveLength(2);
+    expect(selectionButtons.every(button => button.getAttribute('aria-pressed') === 'true')).toBe(true);
+    expect(host.textContent).toContain('2 selected');
+    expect(host.textContent).toContain('Organize 2 selected');
+
+    await act(async () => {
+      selectAllButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(selectionButtons.every(button => button.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(host.textContent).toContain('0 selected');
+
+    const selectionButton = host.querySelector('button[aria-label="Select wechat-capture.txt"]') as HTMLButtonElement | null;
+    expect(selectionButton).not.toBeNull();
+
+    await act(async () => {
+      selectionButton!.click();
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(selectionButton!.getAttribute('aria-pressed')).toBe('true');
     expect(host.textContent).toContain('1 selected');
     expect(host.textContent).toContain('Organize 1 selected');
+    const actionColumn = host.querySelector('[data-inbox-row-actions]');
+    expect(actionColumn?.className).toContain('md:w-[118px]');
+    expect(actionColumn?.className).toContain('pointer-events-none');
+    expect(actionColumn?.className).not.toContain('group-hover:flex');
 
     const organizeButton = Array.from(host.querySelectorAll('button'))
       .find(button => button.textContent?.includes('Organize 1 selected'));
@@ -249,6 +312,8 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('Item preview');
     expect(host.textContent).toContain('Content preview');
     expect(host.textContent).toContain('No previewable text in this capture.');
+    expect(host.textContent).not.toContain('Reason');
+    expect(host.textContent).not.toContain('Ambiguous capture. Keep it staged until the target is clear.');
 
     await act(async () => {
       root.unmount();
@@ -273,11 +338,11 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('agent-memory-notes');
     expect(host.textContent).toContain('wechat-capture');
 
-    const checkbox = host.querySelector('input[aria-label="Select wechat-capture.txt"]') as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
+    const selectionButton = host.querySelector('button[aria-label="Select wechat-capture.txt"]') as HTMLButtonElement | null;
+    expect(selectionButton).not.toBeNull();
 
     await act(async () => {
-      checkbox!.click();
+      selectionButton!.click();
       await new Promise(r => setTimeout(r, 0));
     });
 
@@ -293,13 +358,13 @@ describe('InboxView product shape', () => {
     });
 
     expect(JSON.parse(localStorage.getItem('mindos-inbox-shelved-paths') ?? '[]')).toEqual(['Inbox/wechat-capture.txt']);
-    expect(host.textContent).toContain('1 item shelved.');
     expect(host.textContent).toContain('agent-memory-notes');
-    expect(host.textContent).not.toContain('Select wechat-capture.txt');
+    expect(host.querySelector('button[aria-label="Select wechat-capture.txt"]')).toBeNull();
 
     const shelvedNavButton = Array.from(host.querySelectorAll('button'))
       .find(button => button.textContent?.includes('Shelved'));
     expect(shelvedNavButton).not.toBeNull();
+    expect(shelvedNavButton?.textContent).toContain('1');
 
     await act(async () => {
       shelvedNavButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -512,10 +577,10 @@ describe('InboxView product shape', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    const checkbox = host.querySelector('input[aria-label="Select keep-me.md"]') as HTMLInputElement | null;
-    expect(checkbox).not.toBeNull();
+    const selectionButton = host.querySelector('button[aria-label="Select keep-me.md"]') as HTMLButtonElement | null;
+    expect(selectionButton).not.toBeNull();
     await act(async () => {
-      checkbox!.click();
+      selectionButton!.click();
       await new Promise(r => setTimeout(r, 0));
     });
 

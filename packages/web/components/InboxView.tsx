@@ -97,6 +97,14 @@ function getInitialInboxViewMode(): InboxViewMode {
   return hash === 'queue' || hash === 'shelved' || hash === 'history' ? hash : 'capture';
 }
 
+function dispatchSyntheticHashChange(oldUrl: string, newUrl: string) {
+  if (oldUrl === newUrl) return;
+  const event = typeof HashChangeEvent === 'function'
+    ? new HashChangeEvent('hashchange', { oldURL: oldUrl, newURL: newUrl })
+    : new Event('hashchange');
+  window.dispatchEvent(event);
+}
+
 export default function InboxView() {
   const { t } = useLocale();
   const router = useRouter();
@@ -372,8 +380,6 @@ export default function InboxView() {
   const shelvedPathSet = useMemo(() => new Set(shelvedPaths), [shelvedPaths]);
   const queueFiles = useMemo(() => files.filter(file => !shelvedPathSet.has(file.path)), [files, shelvedPathSet]);
   const shelvedFiles = useMemo(() => files.filter(file => shelvedPathSet.has(file.path)), [files, shelvedPathSet]);
-  const agingCount = useMemo(() => queueFiles.filter(f => f.isAging).length, [queueFiles]);
-  const hasFiles = queueFiles.length > 0;
   const selectedQueuePathSet = useMemo(() => new Set(selectedQueuePaths), [selectedQueuePaths]);
   const selectedQueueFiles = useMemo(
     () => queueFiles.filter(file => selectedQueuePathSet.has(file.path)),
@@ -421,10 +427,12 @@ export default function InboxView() {
   const switchView = useCallback((view: InboxViewMode) => {
     setActiveView(view);
     if (typeof window === 'undefined') return;
+    const oldUrl = window.location.href;
     const nextUrl = view === 'capture'
       ? window.location.pathname
       : `${window.location.pathname}#${view}`;
     window.history.replaceState(null, '', nextUrl);
+    dispatchSyntheticHashChange(oldUrl, window.location.href);
   }, []);
   const openQueueWorkbench = useCallback((path?: string) => {
     if (path) setSelectedPath(path);
@@ -461,7 +469,13 @@ export default function InboxView() {
   }, []);
 
   const selectAllQueueFiles = useCallback(() => {
-    setSelectedQueuePaths(queueFiles.map(file => file.path));
+    setSelectedQueuePaths(prev => {
+      const queuePaths = queueFiles.map(file => file.path);
+      if (queuePaths.length > 0 && queuePaths.every(path => prev.includes(path))) {
+        return [];
+      }
+      return queuePaths;
+    });
   }, [queueFiles]);
 
   const selectAgingQueueFiles = useCallback(() => {
@@ -550,16 +564,12 @@ export default function InboxView() {
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen">
-        <div className="sticky top-[52px] md:top-0 z-20 border-b border-border h-[46px] flex items-center bg-background">
-          <div className="w-full px-4 md:px-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-5 w-5 bg-muted rounded animate-pulse" />
-              <div className="h-5 w-32 bg-muted rounded animate-pulse" />
-            </div>
-          </div>
-        </div>
         <div className="flex-1 px-4 md:px-6 py-8">
-          <div className="max-w-[780px] mx-auto space-y-3">
+          <div className="mx-auto max-w-[1320px] space-y-5">
+            <div className="max-w-2xl space-y-2">
+              <div className="h-7 w-40 rounded bg-muted/55 animate-pulse" />
+              <div className="h-4 w-64 rounded bg-muted/40 animate-pulse" />
+            </div>
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-12 bg-muted/40 rounded-lg animate-pulse" />
             ))}
@@ -581,73 +591,17 @@ export default function InboxView() {
         onChange={(e) => addPendingFiles(e.target.files)}
       />
 
-      {/* ─── Sticky Top Bar ─── */}
-      <div className="sticky top-[52px] md:top-0 z-20 border-b border-border h-[46px] flex items-center bg-background">
-        <div className="w-full px-4 md:px-6 flex items-center justify-between">
-          {/* Left: Back + Title + file count (horizontal) */}
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Back */}
-            <button
-              onClick={() => router.push('/wiki')}
-              className="p-1.5 -ml-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title={t.inbox.backToWiki}
-              aria-label={t.inbox.backToWiki}
-            >
-              <ArrowLeft size={16} />
-            </button>
-
-            {/* Title area — icon + title + file count inline */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)] shrink-0">
-                <Inbox size={15} />
-              </div>
-              <h1 className="text-sm font-semibold text-foreground tracking-tight leading-tight shrink-0">
-                {t.inbox.title}
-              </h1>
-              {hasFiles && (
-                <span className="hidden sm:inline text-2xs text-muted-foreground/60 leading-tight shrink-0">
-                  {t.inbox.fileCount(queueFiles.length)}
-                  {agingCount > 0 && (
-                    <span className="text-[var(--amber)]/70"> · {agingCount} {t.inbox.agingCountLabel}</span>
-                  )}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            {activeView !== 'capture' && (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-                title={t.inbox.uploadButton}
-              >
-                <Upload size={13} />
-                <span className="hidden sm:inline">{t.inbox.uploadButton}</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Main Content ─── */}
       <div className="flex-1 px-4 md:px-6 py-6">
         <div className="mx-auto max-w-[1320px] space-y-5">
-          <div className="max-w-2xl">
-            <div>
-              <p className="text-2xs font-medium uppercase tracking-wider text-[var(--amber)]/80">
-                {t.inbox.title}
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-                {pageTitle}
-              </h2>
-              <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                {pageSubtitle}
-              </p>
-            </div>
-          </div>
+          <InboxPageHeader
+            activeView={activeView}
+            title={pageTitle}
+            subtitle={pageSubtitle}
+            backLabel={t.inbox.viewCapture}
+            uploadLabel={t.inbox.uploadButton}
+            onBack={() => switchView('capture')}
+            onUpload={() => fileInputRef.current?.click()}
+          />
 
           <InboxProcessNav
             activeView={activeView}
@@ -674,14 +628,14 @@ export default function InboxView() {
               : activeView === 'shelved'
                 ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
               : activeView === 'capture'
-                ? 'grid max-w-[1120px] gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start'
+                ? 'grid max-w-[1120px] gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-stretch'
                 : 'max-w-[760px]'
           }>
-            <div className="min-w-0 space-y-5">
+            <div className={`min-w-0 space-y-5 ${activeView === 'capture' ? 'h-full' : ''}`}>
               {activeView === 'capture' && (
                 <>
                   <div
-                    className={`rounded-xl transition-all duration-200 ${
+                    className={`h-full rounded-xl transition-all duration-200 ${
                       dragOver
                         ? 'border border-[var(--amber)] bg-[var(--amber-subtle)] p-3 shadow-[inset_0_0_0_1px_var(--amber)]'
                         : ''
@@ -714,11 +668,12 @@ export default function InboxView() {
                     onDrop={handleDrop}
                   >
                     <div
-                      className={`rounded-xl border shadow-sm transition-colors ${
+                      className={`flex h-full min-h-[320px] flex-col rounded-xl border shadow-sm transition-colors ${
                         dragOver
                           ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
                           : 'border-border/60 bg-card/70'
                       }`}
+                      data-inbox-composer-card
                     >
                       <div className="border-b border-border/50 px-3 py-3">
                         <div className="flex min-w-0 items-start gap-2.5">
@@ -727,9 +682,6 @@ export default function InboxView() {
                           </span>
                           <div className="min-w-0">
                             <span className="text-sm font-semibold text-foreground">{t.inbox.composerTitle}</span>
-                            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/58">
-                              {t.inbox.captureTrustLine}
-                            </p>
                           </div>
                         </div>
 
@@ -737,22 +689,18 @@ export default function InboxView() {
                           <CaptureAffordance
                             icon={<ExternalLink size={12} />}
                             label={t.inbox.captureAffordanceLink}
-                            description={t.inbox.captureAffordanceLinkDesc}
                           />
                           <CaptureAffordance
                             icon={<Paperclip size={12} />}
                             label={t.inbox.captureAffordanceFile}
-                            description={t.inbox.captureAffordanceFileDesc}
                           />
                           <CaptureAffordance
                             icon={<FileText size={12} />}
                             label={t.inbox.captureAffordanceNote}
-                            description={t.inbox.captureAffordanceNoteDesc}
                           />
                           <CaptureAffordance
                             icon={<Upload size={12} />}
                             label={t.inbox.captureAffordanceDrop}
-                            description={t.inbox.captureAffordanceDropDesc}
                           />
                         </div>
                       </div>
@@ -763,7 +711,7 @@ export default function InboxView() {
                         onPaste={handleComposerPaste}
                         aria-label={t.inbox.composerInputLabel}
                         placeholder={t.inbox.composerPlaceholder}
-                        className="min-h-[84px] w-full resize-y bg-transparent px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/38 focus-visible:ring-0"
+                        className="min-h-[100px] flex-1 resize-y bg-transparent px-3 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/38 focus-visible:ring-0"
                       />
 
                       {(draftText.trim() || pendingUrls.length > 0 || pendingFiles.length > 0) && (
@@ -811,12 +759,18 @@ export default function InboxView() {
                       )}
 
                       <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground/55">
-                          <span>{t.inbox.captureInputKinds}</span>
-                          <span className="text-muted-foreground/25">·</span>
-                          <span>{t.inbox.captureNoAiHint}</span>
-                        </div>
                         <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                            data-inbox-attach-action
+                          >
+                            <Paperclip size={13} />
+                            {t.inbox.attachButton}
+                          </button>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2" data-inbox-primary-actions>
                           {hasPendingCapture && (
                             <button
                               type="button"
@@ -830,14 +784,6 @@ export default function InboxView() {
                               {t.inbox.clearComposer}
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <Paperclip size={13} />
-                            {t.inbox.attachButton}
-                          </button>
                           <button
                             type="button"
                             onClick={handleCapture}
@@ -952,7 +898,7 @@ export default function InboxView() {
             </div>
 
             {activeView === 'capture' && (
-              <aside className="min-w-0 xl:self-start">
+              <aside className="min-w-0 xl:self-stretch">
                 <InboxCapturePreviewPanel
                   draftText={draftText}
                   pendingUrls={pendingUrls}
@@ -1015,16 +961,77 @@ export default function InboxView() {
   );
 }
 
+function InboxPageHeader({
+  activeView,
+  title,
+  subtitle,
+  backLabel,
+  uploadLabel,
+  onBack,
+  onUpload,
+}: {
+  activeView: InboxViewMode;
+  title: string;
+  subtitle: string;
+  backLabel: string;
+  uploadLabel: string;
+  onBack: () => void;
+  onUpload: () => void;
+}) {
+  const isCaptureView = activeView === 'capture';
+
+  return (
+    <header
+      className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+      data-inbox-page-header
+    >
+      <div className="min-w-0">
+        {!isCaptureView && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            data-inbox-back-to-capture
+          >
+            <ArrowLeft size={13} />
+            {backLabel}
+          </button>
+        )}
+        <h1
+          className={`${isCaptureView ? '' : 'mt-2'} text-2xl font-semibold leading-tight text-foreground`}
+          data-inbox-page-title
+        >
+          {title}
+        </h1>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+          {subtitle}
+        </p>
+      </div>
+
+      {!isCaptureView && (
+        <button
+          type="button"
+          onClick={onUpload}
+          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={uploadLabel}
+          data-inbox-page-upload
+        >
+          <Upload size={13} />
+          {uploadLabel}
+        </button>
+      )}
+    </header>
+  );
+}
+
 /* ─── Capture Confirmation + Queue ─── */
 
 function CaptureAffordance({
   icon,
   label,
-  description,
 }: {
   icon: React.ReactNode;
   label: string;
-  description: string;
 }) {
   return (
     <div
@@ -1035,7 +1042,6 @@ function CaptureAffordance({
         <span className="shrink-0 text-[var(--amber)]">{icon}</span>
         <span className="truncate text-xs font-medium text-foreground/80">{label}</span>
       </div>
-      <p className="mt-0.5 truncate text-2xs text-muted-foreground/55">{description}</p>
     </div>
   );
 }
@@ -1167,9 +1173,10 @@ function InboxCapturePreviewPanel({
 
   return (
     <section
-      className="rounded-xl border border-border/60 bg-card/65 shadow-sm"
+      className="flex h-full min-h-[320px] flex-col rounded-xl border border-border/60 bg-card/65 shadow-sm"
       aria-live="polite"
       aria-label={t.inbox.sourcePreviewTitle}
+      data-inbox-source-preview
     >
       <div className="border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -1180,7 +1187,7 @@ function InboxCapturePreviewPanel({
           {stagedCaptureCount > 0 ? t.inbox.sourcePreviewActiveDesc : t.inbox.sourcePreviewIdleDesc}
         </p>
       </div>
-      <div className="px-4 py-4">
+      <div className="flex flex-1 flex-col px-4 py-4">
         {body}
         {additionalCount > 0 && (
           <div className="mt-3 rounded-lg border border-border/45 bg-background/50 px-3 py-2 text-xs text-muted-foreground/65">
@@ -1199,26 +1206,6 @@ function InboxOrganizerAvatar({ className = 'h-8 w-8 text-xs' }: { className?: s
     <span className={`inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] font-mono font-semibold text-[var(--amber)] ${className}`}>
       {t.inbox.organizationAssistantInitial}
     </span>
-  );
-}
-
-function InboxAssistantFact({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-2 rounded-lg border border-border/45 bg-background/45 px-2.5 py-2">
-      <span className="mt-0.5 shrink-0 text-[var(--amber)]">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/48">{label}</p>
-        <p className="mt-0.5 truncate text-xs font-medium text-foreground/78">{value}</p>
-      </div>
-    </div>
   );
 }
 
@@ -1386,9 +1373,11 @@ function InboxQueueSection({
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
-            {isPreview ? t.inbox.queuePreviewDesc : t.inbox.reviewPageSubtitle}
-          </p>
+          {!isPreview && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
+              {t.inbox.reviewPageSubtitle}
+            </p>
+          )}
         </div>
       </div>
       {inboxError ? (
@@ -1629,19 +1618,6 @@ function InboxOrganizationAgentBar({
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <InboxAssistantFact
-            icon={<ListChecks size={12} />}
-            label={t.inbox.organizationAssistantReadsLabel}
-            value={t.inbox.organizationAssistantReadsSelected}
-          />
-          <InboxAssistantFact
-            icon={<Check size={12} />}
-            label={t.inbox.organizationAssistantWritesLabel}
-            value={t.inbox.organizationAssistantWritesMind}
-          />
-        </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1726,9 +1702,6 @@ function InboxOrganizationPreviewBar({
                 </span>
               )}
             </div>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/62">
-              {t.inbox.organizationAssistantPreviewDesc}
-            </p>
           </div>
         </div>
         <button
@@ -1790,6 +1763,10 @@ function InboxFileRow({
     : ext === 'json' ? 'text-violet-500/70'
     : ext === 'pdf' ? 'text-error/60'
     : 'text-muted-foreground/60';
+  const actionColumnWidth = secondaryAction ? 'md:w-[184px]' : 'md:w-[118px]';
+  const actionColumnVisibility = selected
+    ? 'pointer-events-auto opacity-100'
+    : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100';
 
   return (
     <>
@@ -1813,17 +1790,23 @@ function InboxFileRow({
       >
         <span className={`h-8 w-[2px] rounded-full ${selected ? 'bg-[var(--amber)]' : 'bg-transparent'}`} />
         {multiSelect && (
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => {
+          <button
+            type="button"
+            aria-pressed={checked}
+            aria-label={t.inbox.selectItem(file.name)}
+            onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               onToggleChecked?.();
             }}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 shrink-0 rounded border-border accent-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={t.inbox.selectItem(file.name)}
-          />
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
+              checked
+                ? 'border-[var(--amber)] bg-[var(--amber)] text-[var(--amber-foreground)]'
+                : 'border-border/80 bg-background text-transparent hover:border-[var(--amber)]/55 hover:bg-[var(--amber-subtle)]'
+            }`}
+          >
+            <Check size={13} />
+          </button>
         )}
         {/* File icon */}
         {file.source ? (
@@ -1864,40 +1847,48 @@ function InboxFileRow({
           </div>
         </div>
 
-        {secondaryAction && SecondaryIcon && (
+        <div
+          data-inbox-row-actions
+          className={`hidden shrink-0 items-center justify-end gap-1 transition-opacity duration-100 md:flex ${actionColumnWidth} ${actionColumnVisibility}`}
+        >
+          {secondaryAction && SecondaryIcon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                secondaryAction.onClick();
+              }}
+              className="inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              title={secondaryAction.label}
+            >
+              <SecondaryIcon size={12} />
+              {secondaryAction.label}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              secondaryAction.onClick();
+              router.push(`/view/${encodePath(file.path)}`);
             }}
-            className={`${selected ? 'hidden md:flex' : 'hidden md:group-hover:flex md:group-focus:flex'} items-center justify-center gap-1 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
-            title={secondaryAction.label}
+            className="inline-flex items-center justify-center rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            title={t.inbox.openFile}
           >
-            <SecondaryIcon size={12} />
-            {secondaryAction.label}
+            {t.inbox.openFile}
           </button>
-        )}
 
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); e.preventDefault(); router.push(`/view/${encodePath(file.path)}`); }}
-          className={`${selected ? 'hidden md:flex' : 'hidden md:group-hover:flex md:group-focus:flex'} items-center justify-center rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground/55 transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
-          title={t.inbox.openFile}
-        >
-          {t.inbox.openFile}
-        </button>
-
-        {/* Hover: delete */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(file.name); }}
-          className={`${selected ? 'hidden md:flex' : 'hidden md:group-hover:flex md:group-focus:flex'} items-center justify-center w-7 h-7 rounded-md shrink-0 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring`}
-          title={t.inbox.removeFile}
-        >
-          <X size={14} />
-        </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(file.name); }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+            title={t.inbox.removeFile}
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       {ctxMenu && (
@@ -1942,14 +1933,14 @@ function FileContextMenu({ x, y, file, onDelete, onClose }: {
       className="fixed z-50 min-w-[160px] bg-card border border-border rounded-lg shadow-lg py-1"
       style={{ top: adjY, left: adjX }}
     >
-      <button className={itemCls} onClick={() => { router.push(`/view/${encodePath(file.path)}`); onClose(); }}>
+      <button type="button" className={itemCls} onClick={() => { router.push(`/view/${encodePath(file.path)}`); onClose(); }}>
         <ExternalLink size={14} className="shrink-0" /> {t.inbox.openFile}
       </button>
-      <button className={itemCls} onClick={() => { navigator.clipboard.writeText(file.name); toast.copy(); onClose(); }}>
+      <button type="button" className={itemCls} onClick={() => { navigator.clipboard.writeText(file.name); toast.copy(); onClose(); }}>
         <Copy size={14} className="shrink-0" /> {t.inbox.copyName}
       </button>
       <div className="border-t border-border my-1" />
-      <button className={`${itemCls} text-destructive hover:text-destructive`} onClick={onDelete}>
+      <button type="button" className={`${itemCls} text-destructive hover:text-destructive`} onClick={onDelete}>
         <Trash2 size={14} className="shrink-0" /> {t.inbox.removeFile}
       </button>
     </div>
@@ -2028,16 +2019,7 @@ function InboxItemDetailsPanel({
       </div>
 
       <div className="px-4 py-4">
-        <div className="rounded-lg bg-muted/30 px-3 py-2.5">
-          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
-            {t.inbox.suggestedReason}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-foreground/75">
-            {understanding.reason}
-          </p>
-        </div>
-
-        <p className="mb-2 mt-4 text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
+        <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground/55">
           {t.inbox.relatedSignals}
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -2266,28 +2248,24 @@ function InboxProcessNav({
     icon: React.ComponentType<{ size?: number; className?: string }>;
     label: string;
     count: number;
-    desc: string;
   }> = [
     {
       view: 'queue',
       icon: ListChecks,
       label: t.inbox.viewQueue,
       count: pendingCount,
-      desc: t.inbox.sidebarQueueDesc(pendingCount),
     },
     {
       view: 'shelved',
       icon: Archive,
       label: t.inbox.viewShelved,
       count: shelvedCount,
-      desc: t.inbox.sidebarShelvedDesc(shelvedCount),
     },
     {
       view: 'history',
       icon: History,
       label: t.inbox.viewHistory,
       count: doneCount,
-      desc: t.inbox.sidebarHistoryDesc(doneCount),
     },
   ];
 
@@ -2297,7 +2275,7 @@ function InboxProcessNav({
         type="button"
         onClick={() => onSwitch('capture')}
         aria-current={activeView === 'capture' ? 'page' : undefined}
-        className={`flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity focus-visible:ring-2 focus-visible:ring-ring ${
+        className={`relative z-10 flex min-h-10 w-full touch-manipulation items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity focus-visible:ring-2 focus-visible:ring-ring ${
           activeView === 'capture'
             ? 'bg-[var(--amber)] text-[var(--amber-foreground)] hover:opacity-90'
             : 'bg-[var(--amber)] text-[var(--amber-foreground)] hover:opacity-90'
@@ -2321,23 +2299,18 @@ function InboxProcessNav({
                 type="button"
                 onClick={() => onSwitch(entry.view)}
                 aria-current={active ? 'page' : undefined}
-                className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`relative z-10 flex min-h-10 w-full touch-manipulation items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                   active
                     ? 'border-[var(--amber)]/45 bg-[var(--amber-subtle)] text-foreground'
                     : 'border-transparent text-muted-foreground hover:bg-muted/45'
                 }`}
               >
-                <Icon size={13} className={`mt-0.5 shrink-0 ${active ? 'text-[var(--amber)]' : 'text-muted-foreground/60'}`} />
-                <span className="min-w-0 flex-1">
-                  <span className={`block text-xs font-medium ${active ? 'text-foreground' : 'text-foreground/85'}`}>
-                    {entry.label}
-                  </span>
-                  <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground/60">
-                    {entry.desc}
-                  </span>
+                <Icon size={13} className={`shrink-0 ${active ? 'text-[var(--amber)]' : 'text-muted-foreground/60'}`} />
+                <span className={`min-w-0 flex-1 truncate text-xs font-medium ${active ? 'text-foreground' : 'text-foreground/85'}`}>
+                  {entry.label}
                 </span>
                 {entry.count > 0 && (
-                  <span className="mt-0.5 rounded-full bg-background px-1.5 py-px text-2xs font-medium text-muted-foreground">
+                  <span className="rounded-full bg-background px-1.5 py-px text-2xs font-medium text-muted-foreground">
                     {entry.count}
                   </span>
                 )}

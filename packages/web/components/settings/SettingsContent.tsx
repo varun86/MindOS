@@ -54,6 +54,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   const saveInFlight = useRef(false);
   const saveAgain = useRef(false);
   const latestData = useRef<SettingsData | null>(null);
+  const suppressNextAutosave = useRef(false);
 
   const showTransientStatus = useCallback((next: 'saved' | 'error') => {
     if (statusTimer.current) {
@@ -106,9 +107,10 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       dataLoaded.current = false;
       apiFetch<SettingsData>('/api/settings').then(d => {
         if (cancelled || requestId !== loadRequestId.current || !visible) return;
-        setData(d);
+        suppressNextAutosave.current = true;
         latestData.current = d;
         dataLoaded.current = true;
+        setData(d);
       }).catch(() => {
         if (!cancelled && requestId === loadRequestId.current && visible) setStatus('load-error');
       });
@@ -224,6 +226,12 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   useEffect(() => {
     if (!data || !dataLoaded.current) return;
     latestData.current = data;
+    if (suppressNextAutosave.current) {
+      suppressNextAutosave.current = false;
+      pendingData.current = null;
+      clearTimeout(saveTimer.current);
+      return;
+    }
     pendingData.current = data;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -271,33 +279,56 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   const restoreFromEnv = useCallback(async () => {
     if (!data) return;
     const next = { ...data, ai: restoreAiSettingsFromEnvironment(data) };
+    suppressNextAutosave.current = true;
+    latestData.current = next;
+    pendingData.current = null;
+    clearTimeout(saveTimer.current);
     setData(next);
     await flushSave(next);
     setTimeout(() => {
-      apiFetch<SettingsData>('/api/settings').then(d => { setData(d); }).catch(() => setStatus('error'));
+      apiFetch<SettingsData>('/api/settings').then(d => {
+        suppressNextAutosave.current = true;
+        latestData.current = d;
+        setData(d);
+      }).catch(() => setStatus('error'));
     }, 100);
   }, [data, flushSave]);
 
   const env = data?.envOverrides ?? {};
-  const iconSize = isPanel ? 12 : 13;
+  const iconSize = isPanel ? 12 : 14;
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: boolean }[] = [
-    { id: 'ai', label: t.settings.tabs.ai, icon: <Sparkles size={iconSize} /> },
-    { id: 'mcp', label: t.settings.tabs.mcp ?? 'Connections', icon: <Plug size={iconSize} /> },
-    { id: 'plugins', label: t.settings.tabs.plugins ?? 'Plugins', icon: <Puzzle size={iconSize} /> },
-    { id: 'knowledge', label: t.settings.tabs.knowledge, icon: <Settings size={iconSize} /> },
-    { id: 'appearance', label: t.settings.tabs.appearance, icon: <Palette size={iconSize} /> },
-    { id: 'sync', label: t.settings.tabs.sync ?? 'Sync', icon: <RefreshCw size={iconSize} /> },
-    { id: 'update', label: t.settings.tabs.update ?? 'Update', icon: <Download size={iconSize} />, badge: hasUpdate },
-    { id: 'uninstall', label: t.settings.tabs.uninstall ?? 'Uninstall', icon: <Trash2 size={iconSize} /> },
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: boolean; group: 'core' | 'workspace' | 'system' }[] = [
+    { id: 'ai', label: t.settings.tabs.ai, icon: <Sparkles size={iconSize} />, group: 'core' },
+    { id: 'mcp', label: t.settings.tabs.mcp ?? 'Connections', icon: <Plug size={iconSize} />, group: 'core' },
+    { id: 'plugins', label: t.settings.tabs.plugins ?? 'Plugins', icon: <Puzzle size={iconSize} />, group: 'core' },
+    { id: 'knowledge', label: t.settings.tabs.knowledge, icon: <Settings size={iconSize} />, group: 'workspace' },
+    { id: 'appearance', label: t.settings.tabs.appearance, icon: <Palette size={iconSize} />, group: 'workspace' },
+    { id: 'sync', label: t.settings.tabs.sync ?? 'Sync', icon: <RefreshCw size={iconSize} />, group: 'workspace' },
+    { id: 'update', label: t.settings.tabs.update ?? 'Update', icon: <Download size={iconSize} />, badge: hasUpdate, group: 'system' },
+    { id: 'uninstall', label: t.settings.tabs.uninstall ?? 'Uninstall', icon: <Trash2 size={iconSize} />, group: 'system' },
   ];
+  const TAB_GROUPS = [
+    { id: 'core', label: locale === 'zh' ? '核心' : 'Core' },
+    { id: 'workspace', label: locale === 'zh' ? '工作区' : 'Workspace' },
+    { id: 'system', label: locale === 'zh' ? '系统' : 'System' },
+  ] as const;
 
   const activeTabLabel = TABS.find(t2 => t2.id === tab)?.label ?? '';
-  const desktopHeaderClass = 'h-11 border-b border-border shrink-0 flex items-center';
+  const desktopHeaderClass = 'h-12 border-b border-border/60 shrink-0 flex items-center bg-background/70';
+  const renderInlineSaveStatus = (size: 'compact' | 'full' = 'full') => {
+    const icon = size === 'compact' ? 11 : 12;
+    return (
+      <div className="flex min-h-4 items-center gap-1.5 text-[10px]" role="status" aria-live="polite">
+        {saving && <><Loader2 size={icon} className="animate-spin text-muted-foreground" />{size === 'full' && <span className="text-muted-foreground">{t.settings.save}...</span>}</>}
+        {status === 'saved' && <><CheckCircle2 size={icon} className="text-success" />{size === 'full' && <span className="text-success">{t.settings.saved}</span>}</>}
+        {status === 'error' && <><AlertCircle size={icon} className="text-destructive" />{size === 'full' && <span className="text-destructive">{t.settings.saveFailed}</span>}</>}
+      </div>
+    );
+  };
 
   /* ── Shared content & footer ── */
   const renderContent = () => (
-    <div ref={contentRef} className={`flex-1 overflow-y-auto min-h-0 ${isPanel ? 'px-4 py-4 space-y-4' : 'px-5 py-5 space-y-5'}`}>
+    <div ref={contentRef} className={`flex-1 overflow-y-auto min-h-0 ${isPanel ? 'px-4 py-4 space-y-4' : 'px-6 py-5 space-y-5'}`}>
       {status === 'load-error' && (tab === 'ai' || tab === 'knowledge') ? (
         <div className="flex flex-col items-center gap-2 py-8 text-center">
           <AlertCircle size={isPanel ? 18 : 20} className="text-destructive" />
@@ -323,40 +354,37 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
     </div>
   );
 
-  const renderFooter = () => (
-    (tab === 'ai' || tab === 'knowledge') ? (
+  const renderFooter = () => {
+    const showAiRestore = tab === 'ai' && Object.values(env).some(Boolean);
+    const showKnowledgeReconfigure = tab === 'knowledge';
+    if (!showAiRestore && !showKnowledgeReconfigure) return null;
+
+    return (
       <div className={`${isPanel ? 'px-4 py-2' : 'px-5 py-2.5'} border-t border-border shrink-0 flex items-center justify-between`}>
         <div className="flex items-center gap-3">
-          {tab === 'ai' && Object.values(env).some(Boolean) && (
+          {showAiRestore && (
             <button
               onClick={restoreFromEnv}
               disabled={saving || !data}
-              className={`flex items-center gap-1.5 ${isPanel ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-1.5 text-sm rounded-lg'} border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+              className={`flex items-center gap-1.5 ${isPanel ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-1.5 text-sm rounded-lg'} border border-border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
             >
               <RotateCcw size={isPanel ? 12 : 13} />
               {t.settings.ai.restoreFromEnv}
             </button>
           )}
-          {tab === 'knowledge' && (
+          {showKnowledgeReconfigure && (
             <a
               href="/setup?force=1"
-              className={`flex items-center gap-1.5 ${isPanel ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-1.5 text-sm rounded-lg'} border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors`}
+              className={`flex items-center gap-1.5 ${isPanel ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-1.5 text-sm rounded-lg'} border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
             >
               <RotateCcw size={isPanel ? 12 : 13} />
               {t.settings.reconfigure}
             </a>
           )}
         </div>
-        {!isPanel && (
-          <div className="flex items-center gap-1.5 text-xs" role="status" aria-live="polite">
-            {saving && <><Loader2 size={12} className="animate-spin text-muted-foreground" /><span className="text-muted-foreground">{t.settings.save}...</span></>}
-            {status === 'saved' && <><CheckCircle2 size={12} className="text-success" /><span className="text-success">{t.settings.saved}</span></>}
-            {status === 'error' && <><AlertCircle size={12} className="text-destructive" /><span className="text-destructive">{t.settings.saveFailed}</span></>}
-          </div>
-        )}
       </div>
-    ) : null
-  );
+    );
+  };
 
   /* ── Panel variant: unchanged (horizontal tabs) ── */
   if (isPanel) {
@@ -368,11 +396,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Settings</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 text-[10px]" role="status" aria-live="polite">
-              {saving && <Loader2 size={10} className="animate-spin text-muted-foreground" />}
-              {status === 'saved' && <CheckCircle2 size={10} className="text-success" />}
-              {status === 'error' && <AlertCircle size={10} className="text-destructive" />}
-            </div>
+            {renderInlineSaveStatus('compact')}
           </div>
         </div>
         <div className="flex border-b border-border px-3 shrink-0 overflow-x-auto scrollbar-none gap-0">
@@ -413,11 +437,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
             <span>{t.settings.title}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 text-[10px]" role="status" aria-live="polite">
-              {saving && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
-              {status === 'saved' && <><CheckCircle2 size={12} className="text-success" /><span className="text-success">{t.settings.saved}</span></>}
-              {status === 'error' && <><AlertCircle size={12} className="text-destructive" /><span className="text-destructive">{t.settings.saveFailed}</span></>}
-            </div>
+            {renderInlineSaveStatus('full')}
             {onClose && (
               <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                 <X size={15} />
@@ -457,36 +477,60 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       {/* Desktop: left-right layout */}
       <div className="hidden md:flex flex-row h-full min-h-0">
         {/* Left sidebar — vertical tabs */}
-        <div className="w-[180px] shrink-0 border-r border-border flex flex-col">
-          <div className={`${desktopHeaderClass} gap-2 px-4`}>
-            <Settings size={15} className="text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">{t.settings.title}</span>
+        <div className="w-[232px] shrink-0 border-r border-border/60 bg-card/35 flex flex-col">
+          <div className={`${desktopHeaderClass} gap-3 px-4`}>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
+              <Settings size={15} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">{t.settings.title}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{activeTabLabel}</div>
+            </div>
           </div>
-          <nav className="flex-1 overflow-y-auto py-1.5">
-            {TABS.map(tabItem => (
-              <button
-                key={tabItem.id}
-                onClick={() => switchTab(tabItem.id)}
-                className={`flex items-center gap-2 w-full px-4 py-2 text-sm font-medium transition-colors relative ${
-                  tab === tabItem.id
-                    ? 'text-foreground bg-muted'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                {tab === tabItem.id && (
-                  <div className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-[var(--amber)]" />
-                )}
-                {tabItem.icon}
-                {tabItem.label}
-                {tabItem.badge && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-error shrink-0" />}
-              </button>
-            ))}
+          <nav className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="space-y-4">
+              {TAB_GROUPS.map(group => {
+                const items = TABS.filter(item => item.group === group.id);
+                return (
+                  <div key={group.id} className="space-y-1">
+                    <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/70">
+                      {group.label}
+                    </div>
+                    {items.map(tabItem => {
+                      const active = tab === tabItem.id;
+                      return (
+                        <button
+                          key={tabItem.id}
+                          type="button"
+                          onClick={() => switchTab(tabItem.id)}
+                          className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                            active
+                              ? 'bg-[var(--amber-subtle)] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--amber)_22%,transparent)]'
+                              : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
+                          }`}
+                        >
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+                            active
+                              ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
+                              : 'bg-background/60 text-muted-foreground group-hover:text-foreground'
+                          }`}>
+                            {tabItem.icon}
+                          </span>
+                          <span className="truncate">{tabItem.label}</span>
+                          {tabItem.badge && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-error shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </nav>
           {/* Help link at bottom of sidebar */}
-          <div className="shrink-0 border-t border-border px-4 py-2">
+          <div className="shrink-0 border-t border-border/60 p-3">
             <button
               onClick={() => { onClose?.(); router.push('/help'); }}
-              className="flex items-center gap-2 w-full px-0 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <HelpCircle size={13} />
               {t.sidebar.help}
@@ -497,16 +541,12 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
         {/* Right content area */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Right header: tab title + status + close */}
-          <div className={`${desktopHeaderClass} justify-between px-5`}>
-            <span className="text-sm font-medium text-foreground">{activeTabLabel}</span>
+          <div className={`${desktopHeaderClass} justify-between px-6`}>
+            <span className="text-sm font-semibold text-foreground">{activeTabLabel}</span>
             <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1.5 text-[10px]" role="status" aria-live="polite">
-                {saving && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
-                {status === 'saved' && <><CheckCircle2 size={12} className="text-success" /><span className="text-success">{t.settings.saved}</span></>}
-                {status === 'error' && <><AlertCircle size={12} className="text-destructive" /><span className="text-destructive">{t.settings.saveFailed}</span></>}
-              </div>
+              {renderInlineSaveStatus('full')}
               {onClose && (
-                <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                <button onClick={onClose} className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <X size={15} />
                 </button>
               )}

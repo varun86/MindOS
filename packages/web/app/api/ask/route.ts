@@ -59,6 +59,7 @@ import {
   requestRuntimePermissionViaBridge,
   runWithRuntimePermissionBridge,
 } from '@/lib/agent/runtime-permission-bridge';
+import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import {
   createClaudePermissionPromptConfig,
   resolveRuntimePermissionBaseUrl,
@@ -67,6 +68,7 @@ import {
   completeAgentRun,
   appendAgentRunEvent,
   failAgentRun,
+  getAgentRun,
   startAgentRun,
   updateAgentRun,
   type AgentRunRecord,
@@ -129,19 +131,30 @@ function omitEnvKeys(
   return next;
 }
 
+function isNativeRuntimeRun(runId: string): boolean {
+  return getAgentRun(runId)?.agentKind === 'native-runtime';
+}
+
+function isNativeRuntimeStatus(event: Extract<MindOSSSEvent, { type: 'status' }>): boolean {
+  return event.runtime === 'codex' || event.runtime === 'claude';
+}
+
 function appendSseEventToAgentRun(runId: string, event: MindOSSSEvent): void {
   if (event.type === 'text_delta') {
     if (!event.delta.trim()) return;
+    if (isNativeRuntimeRun(runId)) return;
     appendAgentRunEvent(runId, {
       type: 'text',
       category: 'text',
       message: event.delta,
       data: { kind: 'text', text: event.delta, channel: 'assistant' },
+      visibility: 'debug',
     });
     return;
   }
   if (event.type === 'thinking_delta') {
     if (!event.delta.trim()) return;
+    if (isNativeRuntimeRun(runId)) return;
     appendAgentRunEvent(runId, {
       type: 'text',
       category: 'text',
@@ -274,6 +287,7 @@ function appendSseEventToAgentRun(runId: string, event: MindOSSSEvent): void {
         nextStatus: 'running',
         summary: event.message,
       },
+      ...(isNativeRuntimeStatus(event) ? { visibility: 'debug' as const } : {}),
     });
     return;
   }
@@ -502,9 +516,12 @@ async function resolveAvailableNativeRuntime(
     : descriptor.status === 'missing'
       ? 'not installed'
       : 'unavailable';
+  const compactReason = descriptor.availability?.reason
+    ? compactRuntimeDisplayReason(descriptor.availability.reason, { runtime: descriptor.kind === 'codex' || descriptor.kind === 'claude' ? descriptor.kind : undefined })
+    : '';
   return {
     runtime: null,
-    unavailableReason: `${descriptor.name} is ${statusText}.${descriptor.availability?.reason ? ` ${descriptor.availability.reason}` : ''}`,
+    unavailableReason: `${descriptor.name} is ${statusText}.${compactReason ? ` ${compactReason}` : ''}`,
   };
 }
 

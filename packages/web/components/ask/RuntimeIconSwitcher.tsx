@@ -6,6 +6,7 @@ import { Check, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AgentRuntimeStatus, RuntimeSessionBinding } from '@/lib/types';
 import type { NotInstalledAgent } from '@/hooks/useAcpDetection';
 import { useLocale } from '@/lib/stores/locale-store';
+import { compactRuntimeDisplayHints, compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 
 interface RuntimeIconSwitcherProps {
   selectedRuntime: AgentRuntimeIdentity | null;
@@ -155,18 +156,25 @@ export default function RuntimeIconSwitcher({
     ): RuntimeOption => {
       const optionLoading = loadingByKind[kind] ?? loading;
       const detectionError = errorByKind[kind];
-      const description = detectionError
-        ? `Detection failed. ${detectionError}`
-        : runtime?.availability?.reason
-        ?? (missingAgent
-          ? `Not detected. ${missingAgent.installCmd ? `Install: ${missingAgent.installCmd}` : 'Configure it in Agents settings.'}`
-          : kind === 'codex'
-            ? 'Use local Codex.'
-            : 'Use local Claude Code.');
-      const status = detectionError ? 'error' : resolveNativeOptionStatus(runtime, optionLoading);
+      const status = optionLoading ? 'checking' : detectionError ? 'error' : resolveNativeOptionStatus(runtime, false);
+      const description = status === 'checking'
+        ? `Checking local ${label}...`
+        : detectionError
+          ? `Detection failed. ${compactRuntimeDisplayReason(detectionError, { runtime: kind })}`
+          : runtime?.availability?.reason
+            ? compactRuntimeDisplayReason(runtime.availability.reason, { runtime: kind })
+            : (missingAgent
+              ? `Not detected. ${missingAgent.installCmd ? `Install: ${missingAgent.installCmd}` : 'Configure it in Agents settings.'}`
+              : kind === 'codex'
+                ? 'Use local Codex.'
+                : 'Use local Claude Code.');
       const diagnosticHints = status === 'available'
         ? undefined
-        : runtime?.availability?.diagnosticHints?.filter((hint) => hint.trim().length > 0).slice(0, 2);
+        : status === 'checking'
+          ? undefined
+          : compactRuntimeDisplayHints(runtime?.availability?.diagnosticHints, { runtime: kind })
+            .filter((hint) => hint !== description)
+            .slice(0, 2);
 
       return {
         key: `${kind}:${runtime?.id ?? kind}`,

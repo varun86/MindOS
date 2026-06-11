@@ -19,6 +19,12 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+const mockRouterPush = vi.fn();
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+}));
+
 describe('CapturePanel inbox sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,10 +71,10 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('2 items waiting.');
     expect(host.textContent).toContain('Pending');
     expect(host.textContent).toContain('first.md');
     expect(host.textContent).toContain('second.md');
+    expect(host.textContent).not.toContain('2 items waiting.');
     expect(host.textContent).not.toContain('Loading queue...');
 
     await act(async () => {
@@ -112,10 +118,10 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('1 item waiting.');
-    expect(host.textContent).toContain('1 item shelved.');
     expect(host.textContent).toContain('second.md');
     expect(host.textContent).not.toContain('first.md');
+    expect(host.textContent).not.toContain('1 item waiting.');
+    expect(host.textContent).not.toContain('1 item shelved.');
 
     await act(async () => {
       root.unmount();
@@ -162,9 +168,9 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('2 items waiting.');
     expect(host.textContent).toContain('fresh.md');
     expect(host.textContent).toContain('newer.md');
+    expect(host.textContent).not.toContain('2 items waiting.');
 
     await act(async () => {
       resolveFetch({
@@ -174,10 +180,11 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('2 items waiting.');
     expect(host.textContent).toContain('fresh.md');
     expect(host.textContent).toContain('newer.md');
+    expect(host.textContent).not.toContain('2 items waiting.');
     expect(host.textContent).not.toContain('Loading queue...');
+    expect(host.querySelector('[data-inbox-sidebar-new-capture]')?.closest('section')).toBeNull();
 
     await act(async () => {
       root.unmount();
@@ -212,10 +219,11 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    const reviewLink = host.querySelector('a[href="/capture#queue"]');
-    expect(reviewLink?.getAttribute('aria-current')).toBe('page');
+    const reviewButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Pending'));
+    expect(reviewButton?.getAttribute('aria-current')).toBe('page');
     expect(host.textContent).toContain('queued.md');
-    expect(host.textContent).toContain('1 item waiting.');
+    expect(host.textContent).not.toContain('1 item waiting.');
 
     await act(async () => {
       root.unmount();
@@ -236,9 +244,96 @@ describe('CapturePanel inbox sync', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    const doneLink = host.querySelector('a[href="/capture#history"]');
-    expect(doneLink?.getAttribute('aria-current')).toBe('page');
+    const doneButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Done'));
+    expect(doneButton?.getAttribute('aria-current')).toBe('page');
     expect(host.querySelector('a[href="/capture/history"]')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('switches sidebar buttons and the more preview button through same-route hash navigation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        files: Array.from({ length: 6 }, (_, index) => ({
+          name: `queued-${index + 1}.md`,
+          path: `Inbox/queued-${index + 1}.md`,
+          size: 1024 + index,
+          modifiedAt: new Date().toISOString(),
+          isAging: index < 5,
+        })),
+      }),
+    }));
+
+    const CapturePanel = (await import('@/components/panels/CapturePanel')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<CapturePanel />);
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    const pendingButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Pending'));
+    expect(pendingButton).not.toBeUndefined();
+
+    await act(async () => {
+      pendingButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('#queue');
+    expect(pendingButton?.getAttribute('aria-current')).toBe('page');
+
+    const shelvedButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Shelved'));
+    expect(shelvedButton).not.toBeUndefined();
+
+    await act(async () => {
+      shelvedButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('#shelved');
+    expect(shelvedButton?.getAttribute('aria-current')).toBe('page');
+    expect(pendingButton?.getAttribute('aria-current')).toBeNull();
+
+    await act(async () => {
+      pendingButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('#queue');
+    expect(pendingButton?.getAttribute('aria-current')).toBe('page');
+
+    const newCaptureButton = host.querySelector('[data-inbox-sidebar-new-capture]') as HTMLButtonElement | null;
+    expect(newCaptureButton).not.toBeNull();
+
+    await act(async () => {
+      newCaptureButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('');
+    expect(newCaptureButton?.getAttribute('aria-current')).toBe('page');
+    expect(pendingButton?.getAttribute('aria-current')).toBeNull();
+
+    const moreButton = Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('1 more'));
+    expect(moreButton).not.toBeUndefined();
+
+    await act(async () => {
+      moreButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    expect(window.location.hash).toBe('#queue');
 
     await act(async () => {
       root.unmount();

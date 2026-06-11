@@ -10,6 +10,8 @@
 - **初始化进度语义修复**：首次配置 Git Sync 时隐藏进度不再伪装成取消；后端初始化仍在运行时，Settings 会显示后台进行中并阻止第二次 Connect。
 - **恢复与保护增强**：`ssh://git@host/org/repo.git` 远程地址在 Settings、Product API、CLI 中都可用；`.gitignore` 保存会补回 `*.sync-conflict` / `INSTRUCTION.md`；冲突预览失败时仍可选择 Keep local。
 - **状态入口细节修复**：`unpushed: "?"` 不再显示“已备份”，手动 Sync 后进入 unknown 也不再弹成功；窄屏 Sync Popover 会限制在 viewport 内。
+- **`.gitignore` 同步边界修复**：保存排除规则后，已经被 Git tracking 但现在命中 ignore 的文件会从后续同步中移除，同时保留本机文件；`.gitignore` 自身会继续被 tracking，避免宽规则误删同步规则。
+- **冲突解决上传更可信**：Settings 里 Keep local / Keep remote 只提交当前冲突文件，不会顺手上传无关 staged/dirty 文件；如果已有旧的未推送 commit，MindOS 会先本地解决并提示用户显式 Sync now，而不是偷偷推整条分支。
 
 ## v1.0.19 (2026-06-09)
 

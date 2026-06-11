@@ -34,6 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useNativeRuntimeDetection } from '@/hooks/useNativeRuntimeDetection';
 import type { AcpAgentSelection } from '@/hooks/useAskModal';
+import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import type { CodexThreadListResponse, CodexThreadSummary, RuntimeSessionBinding } from '@/lib/types';
 
 /** Textarea auto-grows with content up to this many visible lines, then scrolls */
@@ -481,7 +482,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     ? `Checking ${selectedAgentRuntime.name} status...`
     : '';
   const runtimeUnavailableMessage = selectedAgentRuntime && selectedRuntimeUnavailable
-    ? `${selectedAgentRuntime.name} is ${runtimeStatusLabel(selectedRuntimeUnavailable.status)}.${selectedRuntimeUnavailable.reason ? ` ${selectedRuntimeUnavailable.reason}` : ''}`
+    ? `${selectedAgentRuntime.name} is ${runtimeStatusLabel(selectedRuntimeUnavailable.status)}.${selectedRuntimeUnavailable.reason ? ` ${compactRuntimeDisplayReason(selectedRuntimeUnavailable.reason, { runtime: selectedAgentRuntime.kind === 'codex' || selectedAgentRuntime.kind === 'claude' ? selectedAgentRuntime.kind : undefined })}` : ''}`
     : '';
   const composerStatusMessage = uploadError || imageError || dropError || runtimeCheckingMessage || runtimeUnavailableMessage;
 

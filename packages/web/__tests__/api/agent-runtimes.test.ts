@@ -3,6 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockDetectLocalAcpAgents = vi.fn();
 const mockResolveCommandPath = vi.fn();
 const mockCheckNativeRuntimeHealth = vi.fn();
+const RAW_CODEX_OPTIONAL_DEPENDENCY_STACK = [
+  'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
+  'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
+  'at findCodexExecutable (file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102:9)',
+  'at ModuleJob.run (node:internal/modules/esm/module_job:274:25)',
+  'at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)',
+  'Node.js v22.16.0',
+].join('\n');
 
 vi.mock('@/lib/acp/detect-local', () => ({
   detectLocalAcpAgents: mockDetectLocalAcpAgents,
@@ -246,6 +254,37 @@ describe('/api/agent-runtimes', () => {
         }),
       }),
     });
+  });
+
+  it('compacts native runtime startup stacks before returning them to the UI', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => {
+      if (command === 'codex') return '/opt/homebrew/bin/codex';
+      return null;
+    });
+    mockCheckNativeRuntimeHealth.mockResolvedValue({
+      status: 'error',
+      reason: RAW_CODEX_OPTIONAL_DEPENDENCY_STACK,
+      diagnosticHints: [RAW_CODEX_OPTIONAL_DEPENDENCY_STACK],
+    });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { GET } = await import('../../app/api/agent-runtimes/route');
+    const res = await GET(new Request('http://localhost/api/agent-runtimes?runtime=codex'));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.runtime).toMatchObject({
+      id: 'codex',
+      status: 'error',
+      availability: expect.objectContaining({
+        reason: 'Codex is installed but incomplete. Reinstall Codex with "npm install -g @openai/codex@latest", then restart MindOS.',
+      }),
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('file:///opt/homebrew');
+    expect(serialized).not.toContain('throw new Error');
+    expect(serialized).not.toContain('ModuleJob.run');
+    expect(serialized).not.toContain('node:internal');
   });
 
   it('checks ACP scope without native Codex or Claude health detection', async () => {

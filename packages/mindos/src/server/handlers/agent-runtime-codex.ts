@@ -8,6 +8,7 @@ import {
   type CodexThreadReadResult,
   type CodexThreadForkResult,
 } from '../../agent-runtime/codex-app-server.js';
+import { compactRuntimeFailureMessage } from '../../agent-runtime/runtime-errors.js';
 import { resolveCommandPath } from '../../protocols/acp/index.js';
 import { errorResponse, json, type MindosServerResponse } from '../response.js';
 import {
@@ -116,7 +117,14 @@ class CodexThreadRuntimeUnavailableError extends Error {
 }
 
 function codexThreadErrorResponse(error: unknown): MindosServerResponse<{ error: string }> {
-  return errorResponse(error, error instanceof CodexThreadRuntimeUnavailableError ? 409 : 500);
+  const status = error instanceof CodexThreadRuntimeUnavailableError ? 409 : 500;
+  const message = error instanceof Error ? error.message : String(error);
+  const compactError = new Error(compactRuntimeFailureMessage(message, {
+    runtime: 'codex',
+    fallback: 'Codex app-server error',
+  }));
+  if (error instanceof Error) compactError.name = error.name;
+  return errorResponse(compactError, status);
 }
 
 async function withCodexClient<T>(

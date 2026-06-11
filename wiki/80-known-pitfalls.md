@@ -343,6 +343,20 @@
 
 **验证**：`pnpm exec vitest run tests/unit/cli-sync.test.ts` 覆盖 commit 失败会抛错并写入 `sync-state.json`；`pnpm --filter @geminilight/mindos test -- --runInBand src/server.test.ts` 覆盖配置损坏时仍可 reset。
 
+### 冲突解决按钮不能扩大成全量 Git push（2026-06-11）
+
+**症状**：用户在 Settings -> Sync 中只点击某个冲突文件的 Keep local / Keep remote，但实现如果在最后一个冲突解决后执行 `git add -A && git push`，会把 unrelated staged/dirty 文件、较早未 push 的本地 commits、或刚从 `.gitignore` 清理出的删除一起上传。
+
+**根因**：冲突解决是一个文件级恢复动作，但底层实现复用了全量同步的提交/推送语义。用户没有在这个动作里授权上传整个 worktree 或整条本地分支。
+
+**规则**：
+- conflict resolve 只能提交当前冲突 pathspec，不能使用 `git add -A`
+- 自动 push 前必须确认没有较早未 push commits；否则只本地解决并提示用户显式执行 Sync now
+- server 返回的 `warning` 必须在 UI 中直接展示；即使后续 status refresh 失败，也不能丢掉真实上传失败/等待原因
+- `.gitignore` 保存成功后如果 tracking 清理失败，应返回保存成功加 warning，不能让 UI 误以为文件没有保存
+
+**验证**：`packages/mindos/src/server.test.ts` 覆盖 final conflict push、unrelated staged 文件不被提交、已有旧本地 commit 时延迟上传、push failure 写入 `lastError`、`.gitignore` 宽规则不停止 tracking `.gitignore`；`packages/web/__tests__/settings/sync-tab-ux.test.tsx` 覆盖冲突 resolve warning 在 status refresh 失败时仍可见。
+
 ### 公开仓 tag push 与 workflow_dispatch 不要双触发同一个发布
 
 **症状**：`npm run release` 后公开仓出现两个 `publish-npm` run；一个成功发布 npm，另一个因为同一版本已存在而失败。

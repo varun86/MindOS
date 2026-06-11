@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, ChevronDown, SkipForward, Plus } from 'lucide-react';
-import { type ProviderId, PROVIDER_PRESETS, groupedProviders, ALL_PROVIDER_IDS } from '@/lib/agent/providers';
+import { type ProviderId, PROVIDER_PRESETS, groupedProviders } from '@/lib/agent/providers';
 import { type Provider } from '@/lib/custom-endpoints';
 import { useLocale } from '@/lib/stores/locale-store';
 
@@ -26,17 +26,13 @@ export default function ProviderSelect({
   const [showMore, setShowMore] = useState(false);
   const groups = groupedProviders();
 
-  const hasProviderEntries = providerEntries && providerEntries.length > 0;
+  const useProviderEntryMode = compact && providerEntries !== undefined && !showSkip;
 
-  const useProviderEntryMode = compact && hasProviderEntries && !showSkip;
-
-  // Settings: show unconfigured protocol templates next to saved provider entries.
+  // Setup mode uses protocol templates. Settings mode uses saved provider entries only:
+  // adding a new provider is an explicit form action, not a hidden side effect of
+  // clicking an unconfigured protocol template.
   const { primary: primaryItems, local: localItems, more: moreItems } = groups;
   const secondaryItems = [...localItems, ...moreItems];
-  const configuredProtocolSet = new Set<ProviderId>([
-    ...(configuredProviders ? Array.from(configuredProviders) : []),
-    ...(providerEntries?.map(provider => provider.protocol) ?? []),
-  ]);
 
   /* ── Compact tab button ── */
   const renderCompactTab = (id: ProviderId) => {
@@ -112,75 +108,74 @@ export default function ProviderSelect({
    *  (compact settings, has providers)
    * ════════════════════════════════════════════ */
   if (useProviderEntryMode) {
-    const unconfiguredPrimary = primaryItems.filter(id => !configuredProtocolSet.has(id));
-    const unconfiguredSecondary = secondaryItems.filter(id => !configuredProtocolSet.has(id));
+    const entries = providerEntries ?? [];
 
     return (
       <div className="space-y-2">
-        {/* Providers row */}
-        <div className="flex flex-wrap gap-2">
-          {/* Saved provider entries */}
-          {providerEntries?.map(cp => {
+        <div data-provider-entry-grid className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {entries.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border/70 bg-background/40 px-3 py-3 sm:col-span-2 xl:col-span-3">
+              <p className="text-sm font-medium text-foreground">
+                {locale === 'zh' ? '还没有服务商' : 'No providers yet'}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {locale === 'zh' ? '添加一个模型服务商后，MindOS Agent 才能使用它。' : 'Add a model provider before MindOS Agent can use it.'}
+              </p>
+            </div>
+          )}
+
+          {entries.map(cp => {
             const isSelected = value === cp.id;
             const preset = PROVIDER_PRESETS[cp.protocol];
             const displayName = cp.name.trim() || (locale === 'zh' ? preset.nameZh : preset.name);
+            const protocolName = locale === 'zh' ? preset.nameZh : preset.name;
+            const modelName = cp.model.trim() || preset.defaultModel;
             return (
               <button
                 key={cp.id}
                 type="button"
                 onClick={() => onChange(cp.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
+                aria-pressed={isSelected}
+                title={`${displayName} · ${protocolName} · ${modelName}`}
+                className={`group flex h-full min-h-[4.5rem] min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   isSelected
-                    ? 'border-[var(--amber)] bg-[var(--amber-subtle)] shadow-sm'
-                    : 'border-border/50 hover:border-border hover:bg-muted/30'
+                    ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
+                    : 'border-border/60 bg-background/40 hover:border-border hover:bg-muted/35'
                 }`}
               >
-                <span className={`font-medium ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
-                  {displayName}
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold ${
+                  isSelected
+                    ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
+                    : 'bg-muted text-muted-foreground group-hover:text-foreground'
+                }`}>
+                  {preset.shortLabel.slice(0, 2)}
                 </span>
-                {isSelected && (
-                  <CheckCircle2 size={14} className="ml-auto shrink-0" style={{ color: 'var(--amber)' }} />
-                )}
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-sm font-medium ${isSelected ? 'text-foreground' : 'text-foreground/90'}`}>
+                    {displayName}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {protocolName} · {modelName}
+                  </span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center ${isSelected ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!isSelected}>
+                  <CheckCircle2 size={15} className="text-[var(--amber)]" />
+                </span>
               </button>
             );
           })}
 
-          {unconfiguredPrimary.map(id => renderCompactTab(id))}
-
-          {/* Add button — opens form directly */}
           {onAdd && (
             <button
               type="button"
               onClick={onAdd}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-border/50 text-sm text-muted-foreground hover:border-border hover:text-foreground transition-all"
+              className="flex min-h-[4.5rem] items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:border-[var(--amber)]/45 hover:bg-[var(--amber-subtle)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus size={14} />
-              <span>{locale === 'zh' ? '添加' : 'Add'}</span>
+              <span>{locale === 'zh' ? '添加服务商' : 'Add provider'}</span>
             </button>
           )}
         </div>
-        {unconfiguredSecondary.length > 0 && (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowMore(!showMore)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-            >
-              <ChevronDown size={12} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
-              {showMore
-                ? (locale === 'zh' ? '收起' : 'Show less')
-                : (locale === 'zh'
-                    ? `更多服务商 (${unconfiguredSecondary.length})`
-                    : `More providers (${unconfiguredSecondary.length})`)}
-            </button>
-
-            {showMore && (
-              <div className="flex flex-wrap gap-2">
-                {unconfiguredSecondary.map(id => renderCompactTab(id))}
-              </div>
-            )}
-          </>
-        )}
       </div>
     );
   }

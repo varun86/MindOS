@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ChevronRight, FileText, History, Inbox, ListChecks, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Archive, ChevronRight, FileText, History, ListChecks, Plus } from 'lucide-react';
 import PanelHeader from './PanelHeader';
 import { useLocale } from '@/lib/stores/locale-store';
 import { loadHistory, type OrganizeHistoryEntry } from '@/lib/organize-history';
@@ -32,8 +32,21 @@ function getCurrentPanelView(): CapturePanelView {
   return hash === 'queue' || hash === 'shelved' || hash === 'history' ? hash : 'capture';
 }
 
+function getCapturePanelHref(view: CapturePanelView): string {
+  return view === 'capture' ? '/capture' : `/capture#${view}`;
+}
+
+function dispatchSyntheticHashChange(oldUrl: string, newUrl: string) {
+  if (oldUrl === newUrl) return;
+  const event = typeof HashChangeEvent === 'function'
+    ? new HashChangeEvent('hashchange', { oldURL: oldUrl, newURL: newUrl })
+    : new Event('hashchange');
+  window.dispatchEvent(event);
+}
+
 export default function CapturePanel() {
   const { t } = useLocale();
+  const router = useRouter();
   const [files, setFiles] = useState<InboxFile[]>([]);
   const [history, setHistory] = useState<OrganizeHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,39 +148,42 @@ export default function CapturePanel() {
   const shelvedFiles = useMemo(() => files.filter(file => shelvedPathSet.has(file.path)), [files, shelvedPathSet]);
   const agingCount = useMemo(() => pendingFiles.filter(file => file.isAging).length, [pendingFiles]);
   const previewFiles = useMemo(() => pendingFiles.slice(0, 5), [pendingFiles]);
-  const reviewDesc = inboxError ? t.inbox.loadFailed : loading ? t.inbox.sidebarLoadingDesc : t.inbox.sidebarQueueDesc(pendingFiles.length);
+  const navigateToView = useCallback((view: CapturePanelView) => {
+    const href = getCapturePanelHref(view);
+    setActiveView(view);
+
+    if (typeof window !== 'undefined' && window.location.pathname === '/capture') {
+      const oldUrl = window.location.href;
+      window.history.pushState(null, '', href);
+      dispatchSyntheticHashChange(oldUrl, window.location.href);
+      return;
+    }
+
+    router.push(href);
+  }, [router]);
 
   return (
     <div className="flex h-full flex-col">
       <PanelHeader title={t.sidebar.capture} />
 
       <div className="flex-1 overflow-y-auto px-3 py-3">
-        <section className="rounded-xl border border-border/55 bg-card/45 p-3 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
-                <Inbox size={14} />
-              </span>
-              <div className="min-w-0 pt-0.5">
-                <h3 className="truncate text-sm font-semibold text-foreground">{t.inbox.title}</h3>
-                <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground/60">{t.inbox.sidebarPanelDesc}</p>
-              </div>
-            </div>
-            {pendingFiles.length > 0 && (
-              <span className="rounded-full bg-[var(--amber)]/10 px-2 py-0.5 text-2xs font-semibold tabular-nums text-[var(--amber)]">
-                {pendingFiles.length}
-              </span>
-            )}
-          </div>
-          <Link
-            href="/capture"
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-semibold text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+        <div className="px-1">
+          <button
+            type="button"
+            onClick={() => navigateToView('capture')}
+            className="relative z-10 flex min-h-10 w-full touch-manipulation items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-2 text-xs font-semibold text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
             aria-current={activeView === 'capture' ? 'page' : undefined}
+            data-inbox-sidebar-new-capture
           >
             <Plus size={13} />
             {t.inbox.viewCapture}
-          </Link>
-        </section>
+            {pendingFiles.length > 0 && (
+              <span className="ml-0.5 rounded-full bg-background/20 px-1.5 py-px text-2xs font-semibold tabular-nums text-[var(--amber-foreground)]">
+                {pendingFiles.length}
+              </span>
+            )}
+          </button>
+        </div>
 
         <nav className="mt-4" aria-label={t.inbox.title}>
           <p className="mb-1.5 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground/50">
@@ -175,29 +191,26 @@ export default function CapturePanel() {
           </p>
           <div className="space-y-1">
             <CapturePanelLink
-              href="/capture#queue"
               icon={ListChecks}
               title={t.inbox.viewQueue}
-              desc={reviewDesc}
               active={activeView === 'queue'}
               count={pendingFiles.length}
               emphasized={pendingFiles.length > 0}
+              onSelect={() => navigateToView('queue')}
             />
             <CapturePanelLink
-              href="/capture#shelved"
               icon={Archive}
               title={t.inbox.viewShelved}
-              desc={t.inbox.sidebarShelvedDesc(shelvedFiles.length)}
               active={activeView === 'shelved'}
               count={shelvedFiles.length}
+              onSelect={() => navigateToView('shelved')}
             />
             <CapturePanelLink
-              href="/capture#history"
               icon={History}
               title={t.inbox.viewHistory}
-              desc={t.inbox.sidebarHistoryDesc(history.length)}
               active={activeView === 'history'}
               count={history.length}
+              onSelect={() => navigateToView('history')}
             />
           </div>
         </nav>
@@ -220,22 +233,29 @@ export default function CapturePanel() {
                 </span>
               )}
             </div>
-            <Link
-              href="/capture#queue"
-              className="block overflow-hidden rounded-xl border border-border/50 bg-card/35 transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="divide-y divide-border/45">
-                {previewFiles.map(file => (
-                  <CapturePreviewFile key={file.path} file={file} agingLabel={t.inbox.agingHint} />
-                ))}
-              </div>
+            <div className="overflow-hidden rounded-xl border border-border/50 bg-card/35">
+              <button
+                type="button"
+                onClick={() => navigateToView('queue')}
+                className="block w-full touch-manipulation text-left transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <div className="divide-y divide-border/45">
+                  {previewFiles.map(file => (
+                    <CapturePreviewFile key={file.path} file={file} agingLabel={t.inbox.agingHint} />
+                  ))}
+                </div>
+              </button>
               {pendingFiles.length > previewFiles.length && (
-                <div className="flex items-center justify-between px-3 py-2 text-2xs font-medium text-muted-foreground/60">
+                <button
+                  type="button"
+                  onClick={() => navigateToView('queue')}
+                  className="flex min-h-9 w-full touch-manipulation items-center justify-between border-t border-border/45 px-3 py-2 text-2xs font-medium text-muted-foreground/60 transition-colors hover:bg-muted/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
                   <span>{t.inbox.more(pendingFiles.length - previewFiles.length)}</span>
                   <ChevronRight size={12} />
-                </div>
+                </button>
               )}
-            </Link>
+            </div>
           </section>
         )}
       </div>
@@ -244,45 +264,45 @@ export default function CapturePanel() {
 }
 
 function CapturePanelLink({
-  href,
   icon: Icon,
   title,
-  desc,
   active,
   count,
   emphasized,
+  onSelect,
 }: {
-  href: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
-  desc: string;
   active?: boolean;
   count?: number;
   emphasized?: boolean;
+  onSelect: () => void;
 }) {
   return (
-    <Link
-      href={href}
-      className={`group flex items-start gap-2 rounded-lg border px-3 py-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group relative z-10 flex min-h-10 w-full touch-manipulation items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
         active
           ? 'border-[var(--amber)]/45 bg-[var(--amber-subtle)] text-foreground'
-          : emphasized
-            ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)]/45 hover:bg-[var(--amber-subtle)]/65'
-            : 'border-transparent text-muted-foreground hover:bg-muted/45'
+          : 'border-transparent text-muted-foreground hover:bg-muted/45'
       }`}
       aria-current={active ? 'page' : undefined}
     >
-      <Icon size={13} className={`mt-0.5 shrink-0 ${active || emphasized ? 'text-[var(--amber)]' : 'text-muted-foreground/60 group-hover:text-foreground/70'}`} />
-      <span className="min-w-0 flex-1">
-        <span className={`block text-xs font-medium ${active || emphasized ? 'text-foreground' : 'text-foreground/85'}`}>{title}</span>
-        <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground/60">{desc}</span>
-      </span>
+      <Icon size={13} className={`shrink-0 ${active ? 'text-[var(--amber)]' : 'text-muted-foreground/60 group-hover:text-foreground/70'}`} />
+      <span className={`min-w-0 flex-1 truncate text-xs font-medium ${active ? 'text-foreground' : 'text-foreground/85'}`}>{title}</span>
       {typeof count === 'number' && count > 0 && (
-        <span className="mt-0.5 rounded-full bg-background px-1.5 py-px text-2xs font-medium text-muted-foreground">
+        <span className={`rounded-full px-1.5 py-px text-2xs font-medium ${
+          active
+            ? 'bg-background text-muted-foreground'
+            : emphasized
+              ? 'bg-[var(--amber)]/10 text-[var(--amber)]/75'
+              : 'bg-background text-muted-foreground'
+        }`}>
           {count}
         </span>
       )}
-    </Link>
+    </button>
   );
 }
 

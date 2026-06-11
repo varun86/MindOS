@@ -195,6 +195,62 @@ async function fetchAgentRuns(input: {
   }
 }
 
+function isActionableTimelineEvent(event: AgentRunTimelineEvent): boolean {
+  if (event.visibility === 'debug') return false;
+  if (
+    event.category === 'tool' ||
+    event.category === 'file' ||
+    event.category === 'permission' ||
+    event.category === 'question' ||
+    event.category === 'error'
+  ) {
+    return true;
+  }
+  if (event.type === 'run_failed' || event.type === 'run_canceled') return true;
+  return event.status === 'failed' || event.status === 'timed_out' || event.status === 'canceled';
+}
+
+function isTimelineRunVisible(run: AgentRunTimelineRecord, events: AgentRunTimelineEvent[]): boolean {
+  if (run.agentKind === 'mindos-main') return false;
+  if (run.status === 'failed' || run.status === 'timed_out' || run.status === 'canceled' || Boolean(run.error)) {
+    return true;
+  }
+  if (run.agentKind !== 'native-runtime') return true;
+  return events.some(isActionableTimelineEvent);
+}
+
+export function selectVisibleAgentRunTimeline(input: {
+  payload: AgentRunsResponse;
+  chatSessionId: string;
+  startedAfter: number;
+  rootRunId?: string;
+  now?: number;
+}): AgentRunTimelinePart | null {
+  const runs = Array.isArray(input.payload.runs) ? input.payload.runs : [];
+  const events = Array.isArray(input.payload.events) ? input.payload.events : [];
+  const eventsByRun = new Map<string, AgentRunTimelineEvent[]>();
+  for (const event of events) {
+    const next = eventsByRun.get(event.runId) ?? [];
+    next.push(event);
+    eventsByRun.set(event.runId, next);
+  }
+  const visibleRuns = runs.filter((run) => isTimelineRunVisible(run, eventsByRun.get(run.id) ?? []));
+  const visibleRunIds = new Set(visibleRuns.map((run) => run.id));
+  const visibleEvents = events
+    .filter((event) => visibleRunIds.has(event.runId))
+    .filter(isActionableTimelineEvent);
+  if (visibleRuns.length === 0 && visibleEvents.length === 0) return null;
+  return {
+    type: 'agent-run-timeline',
+    chatSessionId: input.chatSessionId,
+    ...(input.rootRunId ? { rootRunId: input.rootRunId } : {}),
+    startedAfter: input.startedAfter,
+    runs: visibleRuns,
+    ...(visibleEvents.length > 0 ? { events: visibleEvents } : {}),
+    updatedAt: input.now ?? Date.now(),
+  };
+}
+
 export function useAgentRunTimeline(input: {
   chatSessionId: string | null | undefined;
   rootRunId?: string | null;
@@ -228,22 +284,13 @@ export function useAgentRunTimeline(input: {
   }, []);
 
   const applyTimeline = useCallback((payload: AgentRunsResponse, chatSessionId: string, startedAfter: number, rootRunId?: string) => {
-    const runs = Array.isArray(payload.runs) ? payload.runs : [];
-    const visibleRuns = runs.filter((run) => run.agentKind !== 'mindos-main');
-    const visibleRunIds = new Set(visibleRuns.map((run) => run.id));
-    const visibleEvents = (payload.events ?? [])
-      .filter((event) => visibleRunIds.has(event.runId))
-      .filter((event) => event.visibility !== 'debug');
-    if (visibleRuns.length === 0 && visibleEvents.length === 0) return;
-    const timeline: AgentRunTimelinePart = {
-      type: 'agent-run-timeline',
+    const timeline = selectVisibleAgentRunTimeline({
+      payload,
       chatSessionId,
-      ...(rootRunId ? { rootRunId } : {}),
       startedAfter,
-      runs: visibleRuns,
-      ...(visibleEvents.length > 0 ? { events: visibleEvents } : {}),
-      updatedAt: Date.now(),
-    };
+      ...(rootRunId ? { rootRunId } : {}),
+    });
+    if (!timeline) return;
     setMessagesRef.current((prev) => mergeAgentRunTimelineIntoMessages(prev, timeline));
   }, []);
 
