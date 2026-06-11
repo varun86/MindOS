@@ -13,32 +13,31 @@
  */
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'path';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, renameSync, rmSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, rmSync } from 'fs';
 import { execFile as execFileChild, spawn as spawnChild, type ChildProcess } from 'child_process';
 import { inspect, promisify } from 'util';
 import { ProcessManager } from './process-manager';
 import { findAvailablePort, waitForPortRelease, isPortInUse } from './port-finder';
 import { createTray, updateTrayMenu, type TrayCallbacks } from './tray';
 import { registerShortcuts, unregisterShortcuts } from './shortcuts';
-import { restoreWindowState, saveWindowState } from './window-state';
+import { restoreWindowState, saveWindowState, saveWindowStateNow } from './window-state';
+import { isSafeExternalUrl } from './open-external-guard';
+import { planUninstall } from './uninstall-plan';
+import { rewriteMcpClientConfig } from './mcp-config-rewrite';
 import { setupUpdater } from './updater';
 import { setupAppMenu } from './app-menu';
 import { ConnectionMonitor } from './connection-monitor';
 import { showConnectWindow, showModeSelectWindow, getActiveRemoteConnection, getLastSshConnection, setActiveRemoteConnection, loadPassword, clearActiveTunnel } from './connect-window';
 import { cleanupOrphanedSshTunnel, SshTunnel } from './ssh-tunnel';
 import { testConnection } from './connection-sdk';
-import { getNodePath, getMindosInstallPath, getNpxPath, getNpmPath, getLocalBinPath, getEnrichedEnv } from './node-detect';
+import { getNodePath, getNpxPath, getNpmPath, getLocalBinPath, getEnrichedEnv } from './node-detect';
+import { resolveExecTarget } from './exec-target';
 import { downloadNode, installMindosWithPrivateNode } from './node-bootstrap';
 import { resolveLocalMindOsProjectRoot } from './mindos-runtime-resolve';
-import { isNextBuildValid, isNextBuildCurrent, BUILD_VERSION_FILE, analyzeMindOsLayout, resolveWebAppDir } from './mindos-runtime-layout';
+import { isNextBuildCurrent, BUILD_VERSION_FILE, analyzeMindOsLayout, resolveWebAppDir } from './mindos-runtime-layout';
 import { hasRequiredStandaloneAppFiles } from './runtime-health-contract';
 import { getDefaultBundledMindOsDirectory } from './mindos-runtime-path';
-import {
-  getEffectiveMindRootFromConfig,
-  localBrowseNeedsSetupWizard,
-  shouldSeedWebSetupPendingForLocal,
-} from './mindos-desktop-config';
+import { getEffectiveMindRootFromConfig } from './mindos-desktop-config';
 import { ensureMindosCliShim, refreshMindosCliAndNotify } from './install-cli-shim';
 import { verifyMindOsWebHealth, verifyMindOsWebListening } from './mindos-web-health';
 import { resolvePreferUnpacked } from './resolve-packaged-asset';
@@ -46,7 +45,19 @@ import { registerMindosConnectSchemePrivileged, registerMindosConnectProtocol } 
 import { CoreUpdater } from './core-updater';
 import { getAppConfigStore } from './app-config-store';
 import { desktopTelemetry } from './telemetry';
-import { getDesktopHome } from './desktop-home';
+import {
+  CONFIG_DIR,
+  DEFAULT_MCP_PORT,
+  DEFAULT_WEB_PORT,
+  DESKTOP_HOME,
+  PID_PATH,
+  invalidateConfig,
+  loadConfig,
+  needsDesktopModeSelectAtLaunch,
+  readMindOsConfigFileUncached,
+  resolveLocalMindOsBrowseUrl,
+  saveDesktopMode,
+} from './desktop-config';
 import {
   isAllowedMainWindowNavigation,
   isTrustedLocalRenderer,
@@ -65,14 +76,6 @@ if (process.platform === 'darwin' && process.arch === 'x64') {
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
   app.commandLine.appendSwitch('enable-gpu-rasterization');
 }
-
-// ── Constants ──
-const DESKTOP_HOME = getDesktopHome();
-const CONFIG_DIR = path.join(DESKTOP_HOME, '.mindos');
-const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
-const PID_PATH = path.join(CONFIG_DIR, 'mindos.pid');
-const DEFAULT_WEB_PORT = 3456;
-const DEFAULT_MCP_PORT = 8781;
 const execFileAsync = promisify(execFileChild);
 
 function getDesktopInstallPath(): string {
@@ -110,9 +113,25 @@ let currentMode: 'local' | 'remote' = 'local';
 let currentWebPort: number | undefined;
 let currentMcpPort: number | undefined;
 let currentRemoteAddress: string | undefined;
-let cachedConfig: MindOSConfig | null = null;
 const coreUpdater = new CoreUpdater();
 let currentCoreVersion: string | null = null;
+
+// ── Single instance ──
+// A second instance would run healPreviousInstallation() and kill THIS
+// instance's web/MCP servers, then both would race on ~/.mindos/config.json.
+// Refuse to start and hand focus to the running instance instead.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
 function installSmokeFileLogger(): void {
   const logPath = process.env.MINDOS_DESKTOP_CI_LOG?.trim();
@@ -147,110 +166,6 @@ function installSmokeFileLogger(): void {
   process.on('uncaughtException', (error) => write('uncaughtException', [error]));
   process.on('unhandledRejection', (reason) => write('unhandledRejection', [reason]));
   write('info', ['MindOS Desktop smoke file logger enabled']);
-}
-
-// ── Config ──
-interface MindOSConfig {
-  ai?: Record<string, unknown>;
-  mindRoot?: string;
-  /** Legacy key; Next readSettings maps sopRoot → mindRoot — Desktop must match */
-  sopRoot?: string;
-  port?: number;
-  mcpPort?: number;
-  authToken?: string;
-  webPassword?: string;
-  desktopMode?: 'local' | 'remote';
-  /** @see wiki/specs/spec-desktop-bundled-mindos.md */
-  mindosRuntimePolicy?: 'prefer-newer' | 'bundled-only' | 'user-only';
-  mindosRuntimeRoot?: string;
-  mindosRuntimeStrictCompat?: boolean;
-  minMindOsVersion?: string;
-  maxTestedMindOsVersion?: string;
-  /** Shared with Next `readSettings` — true until setup wizard completes */
-  setupPending?: boolean;
-  [key: string]: unknown;
-}
-
-/** Atomic write: write to temp file then rename (prevents corruption on crash/concurrent write). */
-function atomicWriteConfig(data: string): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  const tmp = CONFIG_PATH + '.tmp';
-  writeFileSync(tmp, data, 'utf-8');
-  renameSync(tmp, CONFIG_PATH);
-}
-
-/** Read config.json from disk without touching `cachedConfig` (for merge / URL resolution). */
-function readMindOsConfigFileUncached(): MindOSConfig {
-  try {
-    if (!existsSync(CONFIG_PATH)) return {};
-    const raw = readFileSync(CONFIG_PATH, 'utf-8').trim();
-    if (!raw) return {};
-    return JSON.parse(raw) as MindOSConfig;
-  } catch (err) {
-    console.warn('[MindOS] config.json is corrupt or unreadable, using defaults:', err instanceof Error ? err.message : err);
-    return {};
-  }
-}
-
-function loadConfig(): MindOSConfig {
-  if (cachedConfig) return cachedConfig;
-  cachedConfig = readMindOsConfigFileUncached();
-  ensureAuthToken(cachedConfig);
-  return cachedConfig;
-}
-
-/** Auto-generate authToken if missing — prevents unauthenticated MCP exposure on 0.0.0.0 */
-function ensureAuthToken(config: MindOSConfig): void {
-  if (config.authToken) return;
-  const token = randomBytes(24).toString('hex').slice(0, 24);
-  config.authToken = token;
-  try {
-    atomicWriteConfig(JSON.stringify(config, null, 2));
-    console.info('[MindOS] Auto-generated authToken (no onboard config found)');
-  } catch (err) {
-    console.warn('[MindOS] Failed to save auto-generated authToken:', err instanceof Error ? err.message : err);
-  }
-}
-
-function invalidateConfig(): void { cachedConfig = null; }
-
-/** Show mode picker when file missing, empty, invalid JSON, or desktopMode unset. */
-function needsDesktopModeSelectAtLaunch(): boolean {
-  if (!existsSync(CONFIG_PATH)) return true;
-  try {
-    const raw = readFileSync(CONFIG_PATH, 'utf-8').trim();
-    if (!raw) return true;
-    const j = JSON.parse(raw) as MindOSConfig;
-    if (j.desktopMode !== 'local' && j.desktopMode !== 'remote') return true;
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/**
- * When local server is up, open setup wizard if web onboarding is not done.
- * Uses same signals as Next `readSettings` (setupPending, mindRoot ?? sopRoot).
- */
-function resolveLocalMindOsBrowseUrl(baseUrl: string): string {
-  const u = baseUrl.replace(/\/$/, '');
-  const j = readMindOsConfigFileUncached();
-  if (localBrowseNeedsSetupWizard(j)) {
-    return `${u}/setup?force=1`;
-  }
-  return u;
-}
-
-function saveDesktopMode(mode: 'local' | 'remote', opts?: { allowSeedWebSetup?: boolean }): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  invalidateConfig();
-  const existing = readMindOsConfigFileUncached();
-  const merged: MindOSConfig = { ...existing, desktopMode: mode };
-  if (opts?.allowSeedWebSetup && shouldSeedWebSetupPendingForLocal(mode, existing)) {
-    merged.setupPending = true;
-  }
-  atomicWriteConfig(JSON.stringify(merged, null, 2));
-  cachedConfig = merged;
 }
 
 // ── Splash Screen ──
@@ -556,7 +471,7 @@ async function startLocalMode(): Promise<string | null> {
   let mcpPort: number;
   try {
     ({ webPort, mcpPort } = await findLocalModePorts(config.port || DEFAULT_WEB_PORT, config.mcpPort || DEFAULT_MCP_PORT));
-  } catch (portErr) {
+  } catch {
     // Port range exhausted — likely orphaned processes from a previous crash.
     // Kill them and retry instead of showing a dead-end error.
     await ProcessManager.cleanupOrphanedChildren();
@@ -631,7 +546,6 @@ async function startLocalMode(): Promise<string | null> {
   }
 
   let crashDialogShown = false;
-  let mcpFailed = false;
   let startupComplete = false;  // Only show crash dialog after successful startup
 
   processManager.on('mcp-port-blocked', async (blockedPort: number) => {
@@ -681,7 +595,6 @@ async function startLocalMode(): Promise<string | null> {
 
   processManager.on('crash', (which: string, count: number, exitCode?: number | null, stderrLines?: string[]) => {
     if (which === 'mcp' && count >= 3) {
-      mcpFailed = true;
       updateTrayMenu(currentMode, 'running', undefined, processManager?.webPort, processManager?.mcpPort);
     }
     // During startup, crashes are handled by start()'s throw → splash error.
@@ -736,7 +649,8 @@ async function startLocalMode(): Promise<string | null> {
         crashDialogShown = true;
         const zh = navigator_lang() === 'zh';
         // Strip ANSI escape codes from stderr for clean display in native dialog
-        const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+        const ansiEscapePattern = new RegExp(`${String.fromCharCode(27)}\\\\[[0-9;]*m`, 'g');
+        const stripAnsi = (s: string) => s.replace(ansiEscapePattern, '');
         const stderr = stripAnsi(stderrLines?.slice(-5).join('\n') || '');
         const lastExitCode = exitCode ?? null;
         // Diagnose crash cause from exit code and stderr
@@ -858,7 +772,8 @@ function navigator_lang(): 'zh' | 'en' {
 
 /**
  * Scan known MCP client config files and replace old port URLs with new port.
- * Only touches entries where url contains `localhost:oldPort/mcp` (the mindos MCP endpoint).
+ * Matches both `localhost:` and `127.0.0.1:` host forms and writes back the
+ * 127.0.0.1 form (the MCP server binds IPv4-only — see mcp-config-rewrite.ts).
  * Safe for stdio configs (no url field → no change).
  */
 function updateMcpClientConfigs(oldPort: number, newPort: number): void {
@@ -875,16 +790,14 @@ function updateMcpClientConfigs(oldPort: number, newPort: number): void {
     '~/.codebuddy/mcp.json',
     '~/.mindos/mcp.json',
   ];
-  const oldPattern = `localhost:${oldPort}/mcp`;
-  const newUrl = `localhost:${newPort}/mcp`;
   let updated = 0;
   for (const rel of configPaths) {
     const abs = resolve(rel);
     try {
       if (!existsSync(abs)) continue;
       const raw = readFileSync(abs, 'utf-8');
-      if (!raw.includes(oldPattern)) continue;
-      const replaced = raw.split(oldPattern).join(newUrl);
+      const replaced = rewriteMcpClientConfig(raw, oldPort, newPort);
+      if (replaced === null) continue;
       writeFileSync(abs, replaced, 'utf-8');
       updated++;
       console.info(`[MindOS] Updated MCP port in ${rel}: ${oldPort} → ${newPort}`);
@@ -1220,13 +1133,14 @@ function forceTerminateProcessTree(proc: ChildProcess): void {
 
 function spawnWithEnv(bin: string, args: string[], cwd: string, env: Record<string, string>, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    // On Windows, .cmd/.bat files (npm.cmd, next.cmd) require shell:true for spawn.
-    const needsShell = process.platform === 'win32' && /\.cmd$/i.test(bin);
-    const proc = spawnChild(bin, args, {
+    // On Windows, .cmd/.bat (npm.cmd, next.cmd) can't be spawned directly.
+    // resolveExecTarget wraps them in cmd.exe with quoted argv — shell:true
+    // would concatenate unquoted and break on paths with spaces.
+    const target = resolveExecTarget(bin, args);
+    const proc = spawnChild(target.command, target.args, {
       cwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: needsShell,
       detached: process.platform !== 'win32',
     });
     let settled = false;
@@ -1502,14 +1416,24 @@ function handleActiveMainWindowOnly<TArgs extends unknown[]>(
   });
 }
 
+function openExternalGuarded(url: string): void {
+  // Only web/mail URLs may leave the app — file://, UNC and OS scheme
+  // handlers can execute local programs (especially on Windows).
+  if (!isSafeExternalUrl(url)) {
+    console.warn('[MindOS] Blocked external open of non-web URL:', url.slice(0, 200));
+    return;
+  }
+  shell.openExternal(url).catch((err) => {
+    console.warn('[MindOS] Failed to open external URL:', err instanceof Error ? err.message : err);
+  });
+}
+
 function installMainWindowNavigationGuard(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedMainWindowNavigation(url, { currentMode, currentWebPort, currentRemoteAddress })) {
       return { action: 'allow' };
     }
-    shell.openExternal(url).catch((err) => {
-      console.warn('[MindOS] Failed to open external URL:', err instanceof Error ? err.message : err);
-    });
+    openExternalGuarded(url);
     return { action: 'deny' };
   });
 
@@ -1518,9 +1442,7 @@ function installMainWindowNavigationGuard(win: BrowserWindow): void {
       return;
     }
     event.preventDefault();
-    shell.openExternal(url).catch((err) => {
-      console.warn('[MindOS] Failed to open external URL:', err instanceof Error ? err.message : err);
-    });
+    openExternalGuarded(url);
   });
 }
 
@@ -1690,7 +1612,7 @@ function setupIPC(): void {
         const url = await startLocalMode();
         appliedVersion = currentCoreVersion;
         if (url && mainWindow && !mainWindow.isDestroyed()) {
-          try { await mainWindow.webContents.session.clearCache(); } catch {}
+          try { await mainWindow.webContents.session.clearCache(); } catch { /* best effort */ }
           mainWindow.loadURL(resolveLocalMindOsBrowseUrl(url));
         }
       } catch (recoverErr) {
@@ -1702,7 +1624,7 @@ function setupIPC(): void {
     }
   });
 
-  // Uninstall: move the Desktop .app bundle to Trash, then quit.
+  // Uninstall: per-platform plan (trash / NSIS uninstaller / manual instructions).
   // Server-side cleanup (stop services, remove config) is handled by /api/uninstall
   // before this IPC is called.
   handleLocalOnly('uninstall-app', async () => {
@@ -1710,18 +1632,30 @@ function setupIPC(): void {
       // Stop managed child processes first
       await processManager?.stop();
 
-      // Determine app bundle path per platform:
-      // macOS:   /Applications/MindOS.app/Contents/MacOS/MindOS → /Applications/MindOS.app
-      // Windows: C:\Program Files\MindOS\MindOS.exe → C:\Program Files\MindOS\
-      // Linux AppImage: /tmp/.mount_xxx/mindos → use APPIMAGE env for the real .AppImage file
-      // Linux deb/rpm:  /opt/MindOS/mindos → /opt/MindOS/
-      const appPath = getDesktopInstallPath();
+      const plan = planUninstall({
+        platform: process.platform,
+        installPath: getDesktopInstallPath(),
+        appImagePath: process.env.APPIMAGE,
+        fileExists: existsSync,
+      });
+
+      if (plan.kind === 'manual') {
+        return { ok: false, error: plan.instructions };
+      }
+
+      if (plan.kind === 'run-uninstaller') {
+        // NSIS uninstaller removes files + registry entry; detach so it survives our quit
+        const child = spawnChild(plan.uninstallerPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+        child.unref();
+        setTimeout(() => app.quit(), 500);
+        return { ok: true };
+      }
 
       // trashItem is the modern async replacement for deprecated moveItemToTrash
       try {
-        await shell.trashItem(appPath);
+        await shell.trashItem(plan.target);
       } catch (trashErr) {
-        return { ok: false, error: `Failed to move ${appPath} to Trash: ${(trashErr as Error)?.message}. You may need to delete it manually.` };
+        return { ok: false, error: `Failed to move ${plan.target} to Trash: ${(trashErr as Error)?.message}. You may need to delete it manually.` };
       }
 
       // Quit after a brief delay to let the IPC response reach the renderer
@@ -1999,6 +1933,9 @@ async function bootApp(): Promise<void> {
 // ── App Lifecycle ──
 
 app.whenReady().then(async () => {
+  // Second instance: app.quit() is already queued — don't start servers or heal
+  if (!hasSingleInstanceLock) return;
+
   registerMindosConnectProtocol();
 
   // Set up bilingual application menu (replaces default English-only menu on Windows/Linux)
@@ -2057,7 +1994,8 @@ app.on('before-quit', (e) => {
     e.preventDefault();
     isQuitting = true;
     unregisterShortcuts();
-    if (mainWindow && !mainWindow.isDestroyed()) saveWindowState(mainWindow);
+    // Synchronous save — the debounced saveWindowState timer never fires before app.exit
+    if (mainWindow && !mainWindow.isDestroyed()) saveWindowStateNow(mainWindow);
     const cleanup = async () => {
       try {
         if (processManager) {

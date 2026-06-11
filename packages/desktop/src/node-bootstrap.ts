@@ -141,7 +141,7 @@ export async function downloadNode(
     onProgress?.(0, 'downloading');
     await downloadFile(mirrorUrl, tmpFile, (percent) => {
       onProgress?.(Math.round(percent * 0.8), 'downloading');
-    }); // default timeout for mirror
+    }, 600_000); // mirror is the last resort — generous 10min bound (vs 30s fail-fast for official) so a stalled mirror cannot hang first-run bootstrap forever
     verifyNodeArchiveSha256(tmpFile, file);
   }
 
@@ -442,6 +442,17 @@ function downloadFile(
         });
       });
       activeReq = req;
+      // Socket inactivity timeout: a silently stalled connection must fail even
+      // when no overall timer was requested. Applied to every request in the
+      // redirect chain; only the request that is still active may fail the
+      // download — stale redirect sockets idling out are just destroyed.
+      req.setTimeout(60_000, () => {
+        if (activeReq === req) {
+          fail(new Error('Download stalled (no data for 60s)'));
+        } else if (!req.destroyed) {
+          req.destroy();
+        }
+      });
       req.on('error', (err) => { fail(err); });
     };
 

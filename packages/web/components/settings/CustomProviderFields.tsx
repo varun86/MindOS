@@ -1,6 +1,7 @@
 'use client';
 
-import { Field, Select, Input, PasswordInput } from './Primitives';
+import type React from 'react';
+import { Select, Input, PasswordInput } from './Primitives';
 import { PROVIDER_PRESETS, ALL_PROVIDER_IDS, type ProviderId } from '@/lib/agent/providers';
 import ModelInput from '@/components/shared/ModelInput';
 import type { CustomProviderFormState } from './useCustomProviderForm';
@@ -10,6 +11,28 @@ interface CustomProviderFieldsProps {
   form: CustomProviderFormState;
   t: AiTabProps['t'];
   locale: string;
+}
+
+function ProviderField({
+  label, hint, hintError, children, className = '',
+}: {
+  label: React.ReactNode;
+  hint?: string;
+  hintError?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 space-y-1.5 ${className}`}>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      {children}
+      {hint && (
+        <p className={`text-2xs leading-relaxed ${hintError ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {hint}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -31,17 +54,18 @@ export default function CustomProviderFields({
   const showBaseUrl = basePreset.supportsBaseUrl || !!form.baseUrl.trim();
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={nameLabel} hint={nameHint} hintError={form.isDuplicateName}>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <ProviderField label={nameLabel} hint={nameHint} hintError={form.isDuplicateName}>
           <Input
             value={form.name}
             onChange={e => form.setName(e.target.value)}
             placeholder={namePlaceholder}
             autoFocus
+            className="h-9"
           />
-        </Field>
-        <Field label={protocolLabel}>
+        </ProviderField>
+        <ProviderField label={protocolLabel}>
           <Select
             value={form.protocol}
             onChange={e => form.setProtocol(e.target.value as ProviderId)}
@@ -52,33 +76,37 @@ export default function CustomProviderFields({
               </option>
             ))}
           </Select>
-        </Field>
+        </ProviderField>
       </div>
 
-      {/* Base URL */}
-      {showBaseUrl && (
-        <Field label="Base URL">
-          <Input
-            value={form.baseUrl}
-            onChange={e => form.setBaseUrl(e.target.value)}
-            placeholder={basePreset.fixedBaseUrl || 'https://api.example.com/v1'}
-          />
-        </Field>
-      )}
+      <div className={`grid grid-cols-1 gap-3 ${showBaseUrl ? 'xl:grid-cols-2' : ''}`}>
+        {/* Base URL */}
+        {showBaseUrl && (
+          <ProviderField label="Base URL">
+            <Input
+              value={form.baseUrl}
+              onChange={e => form.setBaseUrl(e.target.value)}
+              placeholder={basePreset.fixedBaseUrl || 'https://api.example.com/v1'}
+              className="h-9"
+            />
+          </ProviderField>
+        )}
 
-      {/* API Key */}
-      <Field
-        label={<>API Key <span className="text-muted-foreground/50 font-normal">{locale === 'zh' ? '(可选)' : '(optional)'}</span></>}
-      >
-        <PasswordInput
-          value={form.apiKey}
-          onChange={form.setApiKey}
-          placeholder="sk-..."
-        />
-      </Field>
+        {/* API Key */}
+        <ProviderField
+          label={<>API Key <span className="font-normal text-muted-foreground/55">{locale === 'zh' ? '(可选)' : '(optional)'}</span></>}
+        >
+          <PasswordInput
+            value={form.apiKey}
+            onChange={form.setApiKey}
+            placeholder="sk-..."
+            className="min-h-9"
+          />
+        </ProviderField>
+      </div>
 
       {/* Model */}
-      <Field label={locale === 'zh' ? '模型' : 'Model'}>
+      <ProviderField label={locale === 'zh' ? '模型' : 'Model'}>
         <ModelInput
           value={form.model}
           onChange={form.setModel}
@@ -91,7 +119,7 @@ export default function CustomProviderFields({
           browseLabel={t.settings.ai.listModels}
           noModelsLabel={t.settings.ai.noModelsFound}
         />
-      </Field>
+      </ProviderField>
     </div>
   );
 }

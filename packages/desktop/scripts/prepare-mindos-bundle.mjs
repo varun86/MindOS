@@ -11,7 +11,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   unlinkSync,
 } from 'fs';
 import path from 'path';
@@ -481,12 +480,17 @@ function readPackageJson(packageDir) {
 }
 
 function pruneEmptyParents(startPath, stopAt) {
+  const stopRoot = path.resolve(stopAt);
   let current = path.dirname(startPath);
-  while (current.startsWith(stopAt) && current !== path.dirname(current)) {
+  while (current !== path.dirname(current)) {
+    // path.relative boundary check — a string prefix would treat /a/b-extra
+    // as inside stopAt /a/b
+    const rel = path.relative(stopRoot, path.resolve(current));
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return;
     if (!existsSync(current)) return;
     if (readdirSync(current).length > 0) return;
     rmSync(current, { recursive: true, force: true });
-    if (current === stopAt) return;
+    if (rel === '') return; // just removed stopAt itself
     current = path.dirname(current);
   }
 }
@@ -666,8 +670,11 @@ function isClaudeAgentSdkNativePackageDir(dir, name) {
 /**
  * Turbopack appends a content hash to serverExternalPackages names
  * (e.g. `@mariozechner/pi-agent-core-805d1afb58d9a138`).
- * standalone/node_modules only has the original name. Create symlinks so
- * the hashed require resolves to the real package.
+ * standalone/node_modules only has the original name. Materialize the hashed
+ * name as a REAL directory copy — not a symlink (the desktop pipeline strips
+ * all symlinks for codesign safety and Windows can't create them unprivileged)
+ * and not a package.json "main" shim (can't replicate ESM `exports` maps or
+ * subpath requires like `pkg-<hash>/dist/x`).
  */
 function fixTurbopackHashedExternals(destAppDir) {
   const chunksDir = path.join(destAppDir, '.next', 'standalone', '.next', 'server', 'chunks');
@@ -692,10 +699,10 @@ function fixTurbopackHashedExternals(destAppDir) {
 
       if (existsSync(originalDir) && !existsSync(hashedDir)) {
         try {
-          symlinkSync(originalPkgName, hashedDir);
-          console.log(`[prepare-mindos-bundle] Symlink: ${hashed} → ${original}`);
+          copyDereferenced(originalDir, hashedDir);
+          console.log(`[prepare-mindos-bundle] Materialized hashed external: ${hashed} → copy of ${original}`);
         } catch (e) {
-          console.warn(`[prepare-mindos-bundle] Failed to symlink ${hashed}:`, e.message);
+          console.warn(`[prepare-mindos-bundle] Failed to materialize ${hashed}:`, e.message);
         }
       }
     }

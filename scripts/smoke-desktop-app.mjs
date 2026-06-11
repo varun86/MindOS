@@ -2,7 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const args = parseArgs(process.argv.slice(2));
 const appPath = args.app ? resolve(args.app) : findPackagedApp();
@@ -29,9 +29,17 @@ if (!appPath || !existsSync(appPath)) {
   process.exit(1);
 }
 
+// arm64 Macs can execute the x64 build under Rosetta — actually smoke it
+// instead of skipping (a skip means the Intel build ships unverified).
+let rosettaPrefix = null;
 if (args.skipIfArchMismatch && isArchMismatch(appPath)) {
-  console.log(`[smoke-desktop-app] SKIP arch mismatch for ${appPath}`);
-  process.exit(0);
+  if (canRunUnderRosetta(appPath)) {
+    console.log(`[smoke-desktop-app] arch mismatch — running x64 app under Rosetta`);
+    rosettaPrefix = ['arch', '-x86_64'];
+  } else {
+    console.log(`[smoke-desktop-app] SKIP arch mismatch for ${appPath}`);
+    process.exit(0);
+  }
 }
 
 writeFileSync(join(mindRoot, 'README.md'), '# MindOS smoke\n', 'utf-8');
@@ -118,7 +126,12 @@ function appendLog(chunk) {
 
 function spawnDesktopApp(executablePath) {
   const launchArgs = process.platform === 'linux' ? ['--no-sandbox'] : [];
-  return spawn(executablePath, launchArgs, {
+  // Under Rosetta, `arch` becomes the process-group leader; group kill in
+  // terminateChild still reaches the app since it shares the group.
+  const [command, ...prefixArgs] = rosettaPrefix
+    ? [...rosettaPrefix, executablePath]
+    : [executablePath];
+  return spawn(command, [...prefixArgs, ...launchArgs], {
     cwd: dirname(executablePath),
     detached: process.platform !== 'win32',
     env: {
@@ -322,6 +335,18 @@ function isArchMismatch(app) {
     if (wantsArm && process.arch !== 'arm64') return true;
   }
   return false;
+}
+
+/** Only the darwin x64-on-arm64 mismatch is runnable — probe that Rosetta is installed. */
+function canRunUnderRosetta(app) {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') return false;
+  if (!app.includes('/mac/')) return false;
+  const probe = spawnSync('arch', ['-x86_64', '/usr/bin/true']);
+  if (probe.status !== 0) {
+    console.warn('[smoke-desktop-app] Rosetta unavailable — falling back to skip');
+    return false;
+  }
+  return true;
 }
 
 function parseArgs(argv) {

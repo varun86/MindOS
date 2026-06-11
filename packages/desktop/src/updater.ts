@@ -4,6 +4,28 @@
  */
 import { autoUpdater } from 'electron-updater';
 import { ipcMain, BrowserWindow, app, type IpcMainInvokeEvent } from 'electron';
+import semver from 'semver';
+
+/**
+ * Decide whether a feed version is a real upgrade over the running version.
+ * A plain string-inequality check would treat a DOWNGRADE (user running a
+ * version newer than the feed, e.g. after a rollback) as an available update,
+ * producing a permanent update prompt and a failing download loop.
+ */
+export function isUpdateAvailable(
+  updateVersion: string | undefined,
+  currentVersion: string,
+  electronUpdaterFlag?: boolean,
+): boolean {
+  if (!updateVersion) return false;
+  if (electronUpdaterFlag === false) return false;
+  if (semver.valid(updateVersion) && semver.valid(currentVersion)) {
+    return semver.gt(updateVersion, currentVersion);
+  }
+  // Versions not comparable — only trust electron-updater's own judgment,
+  // never claim an update just because the strings differ.
+  return electronUpdaterFlag === true;
+}
 
 export interface UpdaterOptions {
   /** Called right before quitAndInstall so main can skip its cleanup handler */
@@ -26,7 +48,7 @@ export function setupUpdater(opts?: UpdaterOptions): () => void {
   let isDownloaded = false;
 
   autoUpdater.on('update-available', (info) => {
-    if (info.version === app.getVersion()) return;
+    if (!isUpdateAvailable(info.version, app.getVersion())) return;
 
     const wins = BrowserWindow.getAllWindows();
     for (const win of wins) {
@@ -73,7 +95,7 @@ export function setupUpdater(opts?: UpdaterOptions): () => void {
     try {
       const result = await autoUpdater.checkForUpdates();
       const updateVersion = result?.updateInfo?.version;
-      const available = !!updateVersion && updateVersion !== app.getVersion();
+      const available = isUpdateAvailable(updateVersion, app.getVersion(), result?.isUpdateAvailable);
       return { available, version: updateVersion };
     } catch {
       return { available: false };

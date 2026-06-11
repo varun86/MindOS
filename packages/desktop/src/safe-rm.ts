@@ -1,14 +1,16 @@
 /**
  * Safe file deletion utilities that prevent symlink attacks.
- * 
+ *
  * Security guarantees:
- * - Refuses to delete symlinks (direct or in parent chain)
+ * - Refuses to delete symlinks directly
+ * - When a `boundary` option is provided, refuses symlinks in the parent
+ *   chain between the target and that boundary
  * - Validates paths before deletion
  * - Atomic operations with rollback on failure
- * 
+ *
  * Usage:
  *   assertNotSymlink(path);  // Verify before deletion
- *   safeRmSync(dir, { recursive: true });  // Safe deletion
+ *   safeRmSync(dir, { recursive: true, boundary: configDir });  // Safe deletion
  */
 
 import path from 'path';
@@ -67,55 +69,73 @@ export function assertNoSymlinksInPath(targetPath: string, rootBoundary: string)
 }
 
 /**
+ * Detect Windows device-namespace path injection (`\\?\`, `\\.\`).
+ * Normal UNC shares (`\\server\share\...`) are intentionally allowed —
+ * folder-redirected user profiles live on UNC paths.
+ */
+export function isWindowsDeviceNamespacePath(filePath: string): boolean {
+  const normPath = path.win32.normalize(filePath);
+  return /^\\\\[?.]\\/.test(normPath);
+}
+
+export type SafeRmOptions = Parameters<typeof rmSync>[1] & {
+  /**
+   * When provided, every parent directory between the target and this
+   * boundary is checked for symlinks before deletion. The boundary itself
+   * (and anything above it) is not checked, so OS-level symlinks like
+   * macOS /tmp -> /private/tmp don't cause false positives.
+   */
+  boundary?: string;
+};
+
+/**
  * Safe recursive deletion that refuses symlinks.
- * 
+ *
  * Security checks:
  * 1. Target path is not a symlink
- * 2. Parent chain has no symlinks
- * 3. Path doesn't escape expected boundaries (Windows only)
- * 
+ * 2. Parent chain between target and `boundary` has no symlinks (when
+ *    `boundary` is provided)
+ * 3. Path doesn't use the Windows device namespace (Windows only)
+ *
  * @param dir Directory to delete
- * @param options Options passed to rmSync()
+ * @param options Options passed to rmSync(), plus optional `boundary`
  * @throws Error if symlink detected or deletion fails
  */
-export function safeRmSync(
-  dir: string,
-  options: Parameters<typeof rmSync>[1] = {}
-): void {
+export function safeRmSync(dir: string, options: SafeRmOptions = {}): void {
+  const { boundary, ...rmOptions } = options;
+
   // ✅ Check 1: Target must not be a symlink
   if (isSymlink(dir)) {
     throw new Error(`SECURITY: Refusing to delete symlink: ${dir}`);
   }
 
-  // ✅ Check 2: Directory must exist before deletion attempt
+  // ✅ Check 2: Parent chain between target and boundary must be symlink-free
+  if (boundary) {
+    assertNoSymlinksInPath(path.dirname(path.resolve(dir)), path.resolve(boundary));
+  }
+
+  // ✅ Check 3: Directory must exist before deletion attempt
   if (!existsSync(dir)) {
     // Safe to return silently (idempotent behavior)
     return;
   }
 
-  // ✅ Check 3: Must be a directory (if recursive requested)
-  if (options.recursive) {
-    try {
-      const stats = statSync(dir);
-      if (!stats.isDirectory()) {
-        throw new Error(`SECURITY: Not a directory: ${dir}`);
-      }
-    } catch (err) {
-      throw err;
+  // ✅ Check 4: Must be a directory (if recursive requested)
+  if (rmOptions.recursive) {
+    const stats = statSync(dir);
+    if (!stats.isDirectory()) {
+      throw new Error(`SECURITY: Not a directory: ${dir}`);
     }
   }
 
-  // ✅ Check 4: On Windows, prevent long-path manipulation attacks
-  if (process.platform === 'win32') {
-    const normPath = path.normalize(dir);
-    if (normPath.includes('\\\\?\\') || normPath.startsWith('\\')) {
-      throw new Error(`SECURITY: Suspicious path format on Windows: ${dir}`);
-    }
+  // ✅ Check 5: On Windows, prevent device-namespace path manipulation attacks
+  if (process.platform === 'win32' && isWindowsDeviceNamespacePath(dir)) {
+    throw new Error(`SECURITY: Suspicious path format on Windows: ${dir}`);
   }
 
   // ✅ All checks passed, proceed with deletion
   try {
-    rmSync(dir, { force: true, ...options });
+    rmSync(dir, { force: true, ...rmOptions });
   } catch (err) {
     throw new Error(`Failed to delete ${dir}: ${err instanceof Error ? err.message : err}`);
   }
@@ -169,6 +189,21 @@ export interface DeletionRiskFactors {
   isSuspiciousOwnership: boolean;
 }
 
+/**
+ * Case-aware "is target strictly inside boundary" check.
+ * path.win32.relative already compares case-insensitively on Windows; macOS
+ * filesystems are typically case-insensitive too, so fold case there as well.
+ */
+function isInsideBoundary(boundary: string, target: string): boolean {
+  if (process.platform === 'win32') {
+    const rel = path.win32.relative(boundary, target);
+    return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.win32.sep}`) && !path.win32.isAbsolute(rel);
+  }
+  const fold = (p: string) => (process.platform === 'darwin' ? p.toLowerCase() : p);
+  const rel = path.relative(fold(boundary), fold(target));
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
 export function assessDeletionRisk(
   filePath: string,
   configDir: string
@@ -192,7 +227,7 @@ export function assessDeletionRisk(
       }
       const parent = path.dirname(current);
       if (parent === current) break;
-      if (!current.startsWith(boundary + path.sep) && current !== boundary) break;
+      if (current !== boundary && !isInsideBoundary(boundary, current)) break;
       current = parent;
     }
   } catch {

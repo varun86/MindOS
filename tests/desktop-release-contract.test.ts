@@ -148,7 +148,10 @@ describe('Desktop release packaging contract', () => {
     const sshTunnel = readText('packages/desktop/src/ssh-tunnel.ts');
 
     expect(home).toContain('process.env.MINDOS_DESKTOP_HOME_DIR');
-    expect(main).toContain('const DESKTOP_HOME = getDesktopHome()');
+    // DESKTOP_HOME moved to desktop-config during the main.ts split; main must
+    // keep consuming the shared env-overridable home instead of os.homedir()
+    expect(readText('packages/desktop/src/desktop-config.ts')).toContain('export const DESKTOP_HOME = getDesktopHome()');
+    expect(main).toContain('DESKTOP_HOME,');
     expect(main).toContain('let trayAvailable = false');
     expect(main).toContain('let closingSplashForTransition = false');
     expect(main).toContain('if (!mainWindow && !transitionClose) app.quit();');
@@ -181,7 +184,9 @@ describe('Desktop release packaging contract', () => {
     expect(workflow).toContain('node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-only');
     expect(workflow.indexOf('Smoke packaged app')).toBeGreaterThan(workflow.indexOf('Package (${{ matrix.platform }})'));
     expect(workflow.indexOf('Upload artifacts')).toBeGreaterThan(workflow.indexOf('Smoke packaged app'));
-    expect(workflow).toContain('if: matrix.platform == \'mac\' || matrix.platform == \'linux\' || matrix.platform == \'win\'');
+    // mac x64 smokes under Rosetta on the arm64 runner instead of being skipped
+    expect(smoke).toContain("['arch', '-x86_64']");
+    expect(smoke).toContain('canRunUnderRosetta');
     expect(workflow).toContain('electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never');
     expect(workflow).not.toContain('--publish always');
     expect(workflow).toContain('WINDOWS_CERTIFICATE_BASE64');
@@ -199,7 +204,10 @@ describe('Desktop release packaging contract', () => {
     expect(workflow).toContain('gh release delete-asset "$DESIRED_TAG" "MindOS.Setup.${VERSION}.exe.blockmap" --yes');
     expect(workflow).toContain('candidates=(');
     expect(workflow).toContain('artifacts/*.dmg');
-    expect(workflow).toContain('artifacts/*.yaml');
+    // Only updater feeds (latest*.yml) are published — a bare *.yml/*.yaml glob
+    // also uploaded electron-builder's builder-debug/effective-config files
+    expect(workflow).toContain('artifacts/latest*.yml');
+    expect(workflow).not.toContain('artifacts/*.yaml');
     expect(workflow).toContain('[ -f "$asset" ] && assets+=("$asset")');
     expect(workflow).toContain('gh release upload "$DESIRED_TAG" "${assets[@]}" --clobber');
     expect(workflow).not.toContain('assets=(artifacts/*)');

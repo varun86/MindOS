@@ -36,7 +36,7 @@ export function TestButton({
       type="button"
       disabled={disabled || isTesting}
       onClick={onTest}
-      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 disabled:cursor-not-allowed ${
+      className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed ${
         isOk
           ? 'bg-success/10 text-success border border-success/20'
           : isError

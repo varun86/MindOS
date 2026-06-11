@@ -54,7 +54,20 @@ function loadTrayIcon(): Electron.NativeImage {
     }
   }
 
-  // Windows/Linux: use colored icon
+  // Windows: .ico carries multiple sizes so the shell picks a sharp one at any DPI
+  if (process.platform === 'win32') {
+    const ico = path.join(appRoot, 'src', 'icons', 'icon.ico');
+    if (existsSync(ico)) {
+      try {
+        const img = nativeImage.createFromPath(ico);
+        if (!img.isEmpty()) return img;
+      } catch { /* fallback */ }
+    }
+  }
+
+  // Linux: colored PNG. Note: under appindicator/StatusNotifier the 'click'
+  // event never fires — the context menu (with "Open MindOS" first) is the
+  // reliable entry point there.
   const p = path.join(appRoot, 'src', 'icons', 'icon.png');
   if (existsSync(p)) {
     try {
@@ -168,7 +181,8 @@ export function updateTrayMenu(
     // ── Exit ──
     {
       label: zh ? '退出 MindOS' : 'Quit MindOS',
-      accelerator: 'CmdOrCtrl+Q',
+      // Tray accelerators are display-only; Cmd+Q is real on macOS, misleading elsewhere
+      ...(process.platform === 'darwin' ? { accelerator: 'CmdOrCtrl+Q' } : {}),
       click: () => app.quit(),
     },
   );

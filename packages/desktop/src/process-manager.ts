@@ -12,6 +12,7 @@ import { desktopTelemetry } from './telemetry';
 import { resolveCliPath, resolveMcpBundlePath, resolveMcpDir, resolveWebAppDir } from './mindos-runtime-layout';
 import { verifyMindOsWebHealth } from './mindos-web-health';
 import { getDesktopConfigDir } from './desktop-home';
+import { resolveExecTarget } from './exec-target';
 
 const IS_WIN = process.platform === 'win32';
 const execFileAsync = promisify(execFile);
@@ -34,7 +35,7 @@ export function isMindosOwnedCommandLine(commandLine: string): boolean {
 function forceKillChildProcess(proc: ChildProcess): void {
   try {
     if (IS_WIN && proc.pid) {
-      execFile('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], () => {});
+      execFile('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
       proc.kill();
     } else if (proc.pid) {
       try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* process may not own a group */ }
@@ -66,6 +67,13 @@ function terminateChildProcess(proc: ChildProcess | null, timeoutMs = CHILD_PROC
     proc.once('exit', done);
 
     try {
+      if (IS_WIN && proc.pid) {
+        // proc.kill() on Windows only terminates the DIRECT child (cmd.exe for
+        // shell-wrapped spawns); its exit clears the force-kill timer, so the
+        // timeout taskkill never ran and grandchildren kept the port. Kill the
+        // whole tree up front instead.
+        execFile('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
+      }
       if (!IS_WIN && proc.pid) {
         try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* process may not own a group */ }
       }
@@ -86,9 +94,16 @@ function isPidAlive(pid: number): boolean {
 }
 
 async function terminatePid(pid: number, timeoutMs = PID_TERM_TIMEOUT_MS): Promise<void> {
+  if (!isPidAlive(pid)) return;
+
   try {
-    if (IS_WIN) process.kill(pid);
-    else process.kill(pid, 'SIGTERM');
+    if (IS_WIN) {
+      // Tree-kill first — killing only the direct PID leaves grandchildren
+      // (node spawned via cmd.exe) holding the port. See terminateChildProcess.
+      execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
+    } else {
+      process.kill(pid, 'SIGTERM');
+    }
   } catch {
     return;
   }
@@ -101,7 +116,7 @@ async function terminatePid(pid: number, timeoutMs = PID_TERM_TIMEOUT_MS): Promi
 
   try {
     if (IS_WIN) {
-      execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], () => {});
+      execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
       process.kill(pid);
     }
     else process.kill(pid, 'SIGKILL');
@@ -145,6 +160,8 @@ export class ProcessManager extends EventEmitter {
   private mcpStderrLines: string[] = [];
   /** Set to true when web process exits during startup (before health check succeeds) */
   private webProcessDied = false;
+  /** Set on spawn 'error' (e.g. ENOENT) — no exit event fires, so crashCount never reaches 3 */
+  private webSpawnFailed = false;
 
   constructor(opts: ProcessManagerOptions) {
     super();
@@ -181,6 +198,7 @@ export class ProcessManager extends EventEmitter {
     console.info('[MindOS:ProcessManager] start() called');
     this.stopped = false;
     this.webProcessDied = false;
+    this.webSpawnFailed = false;
     this.webStderrLines = [];
     this.mcpStderrLines = [];
     this.externalMcp = false;
@@ -318,7 +336,10 @@ export class ProcessManager extends EventEmitter {
       ...(this.opts.env || process.env as Record<string, string>),
       MCP_TRANSPORT: 'http', // Desktop always uses HTTP transport (not stdio). MCP clients must use http://127.0.0.1:<port>/mcp
       MCP_PORT: String(mcpPort),
-      MCP_HOST: '0.0.0.0',
+      // Loopback by default: AUTH_TOKEN is optional, so binding all interfaces
+      // exposed an unauthenticated MCP API to the LAN. MINDOS_MCP_HOST is the
+      // explicit opt-in for non-loopback setups.
+      MCP_HOST: (this.opts.env || process.env as Record<string, string>).MINDOS_MCP_HOST || '127.0.0.1',
       MINDOS_URL: `http://127.0.0.1:${webPort}`,
       ...(token ? { AUTH_TOKEN: token } : {}),
       ...(verbose ? { MCP_VERBOSE: '1' } : {}),
@@ -329,6 +350,7 @@ export class ProcessManager extends EventEmitter {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: !IS_WIN,
+      windowsHide: true,
     });
     return proc;
   }
@@ -374,6 +396,7 @@ export class ProcessManager extends EventEmitter {
         env: { ...env, PORT: String(webPort) },
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: !IS_WIN,
+        windowsHide: true,
       });
     }
 
@@ -387,22 +410,26 @@ export class ProcessManager extends EventEmitter {
       return base ? `--require ${quoted} ${base}` : `--require ${quoted}`;
     };
     if (existsSync(localNext)) {
-      return spawn(localNext, ['start', '-p', String(webPort)], {
+      // resolveExecTarget wraps .cmd in cmd.exe with quoted argv — shell:true
+      // concatenates unquoted and breaks on install paths containing spaces.
+      const target = resolveExecTarget(localNext, ['start', '-p', String(webPort)]);
+      return spawn(target.command, target.args, {
         cwd: appDir,
         env: { ...env, NODE_OPTIONS: injectNodeOpts(env.NODE_OPTIONS || '') },
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: IS_WIN, // .cmd files require shell on Windows
         detached: !IS_WIN,
+        windowsHide: true,
       });
     }
 
     // Last resort: npx next start
-    return spawn(this.opts.npxPath, ['next', 'start', '-p', String(webPort)], {
+    const npxTarget = resolveExecTarget(this.opts.npxPath, ['next', 'start', '-p', String(webPort)]);
+    return spawn(npxTarget.command, npxTarget.args, {
       cwd: appDir,
       env: { ...env, NODE_OPTIONS: injectNodeOpts(env.NODE_OPTIONS || '') },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: IS_WIN, // npx.cmd requires shell on Windows
       detached: !IS_WIN,
+      windowsHide: true,
     });
   }
 
@@ -415,9 +442,10 @@ export class ProcessManager extends EventEmitter {
     while (Date.now() - start <= timeoutMs) {
       if (this.stopped) return false;
 
-      // If web process has been marked dead AND crash handler exhausted retries (>=3),
-      // bail out immediately instead of polling until timeout.
-      if (this.webProcessDied && this.crashCount.web >= 3) return false;
+      // Bail early when the web process is unrecoverable: crash handler
+      // exhausted retries, or spawn itself failed (no exit event → crashCount
+      // never increments and we'd poll the full timeout for nothing).
+      if (this.webProcessDied && (this.crashCount.web >= 3 || this.webSpawnFailed)) return false;
 
       if (await verifyMindOsWebHealth(port, 2000)) return true;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -433,6 +461,7 @@ export class ProcessManager extends EventEmitter {
       if (label === 'web') {
         this.webStderrLines.push(`spawn error: ${err.message}`);
         this.webProcessDied = true;
+        this.webSpawnFailed = true;
       }
     });
     // Prevent EPIPE crash when child exits while stdin pipe is still open
@@ -489,6 +518,8 @@ export class ProcessManager extends EventEmitter {
   /**
    * Wait up to 10s for a port to become free, then fall back to findFreePort.
    * Keeps ports stable across restarts (important for bookmarks, MCP client configs).
+   * Rejects when neither the port nor any fallback frees up — returning the
+   * occupied port would guarantee an EADDRINUSE crash loop downstream.
    */
   private async waitForPortOrFallback(port: number): Promise<number> {
     for (let i = 0; i < 20; i++) {
@@ -499,7 +530,9 @@ export class ProcessManager extends EventEmitter {
       await new Promise((r) => setTimeout(r, 500)); // wait 500ms, retry
     }
     // 10s elapsed, port still occupied — fall back to next available
-    return this.findFreePort(port + 1).catch(() => port);
+    return this.findFreePort(port + 1).catch(() => {
+      throw new Error(`Port ${port} is still occupied and no fallback port is free in ${port + 1}-${port + 11}`);
+    });
   }
 
   /** Persist crash info to ~/.mindos/crash.log for post-mortem diagnosis */
@@ -778,7 +811,7 @@ export class ProcessManager extends EventEmitter {
         const { stdout } = await execFileAsync('powershell.exe', [
           '-NoProfile', '-Command',
           `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
-        ], { encoding: 'utf-8', timeout });
+        ], { encoding: 'utf-8', timeout, windowsHide: true });
         const pids = (stdout as string).trim().split(/\r?\n/).map(Number).filter((p: number) => p > 0 && !isNaN(p));
         stop({ port, method: 'powershell', pidCount: pids.length, success: true });
         return pids;
@@ -792,7 +825,7 @@ export class ProcessManager extends EventEmitter {
     {
       const stop = desktopTelemetry.startTimer('desktop.port.find_pids', { port, method: 'lsof' });
       try {
-        const { stdout } = await execFileAsync('lsof', [`-ti:${port}`], { encoding: 'utf-8', timeout });
+        const { stdout } = await execFileAsync('lsof', [`-ti:${port}`], { encoding: 'utf-8', timeout, windowsHide: true });
         if (stdout.trim()) {
           const pids = stdout.trim().split('\n').map(Number).filter((p: number) => p > 0 && !isNaN(p));
           stop({ port, method: 'lsof', pidCount: pids.length, success: true });
@@ -808,7 +841,7 @@ export class ProcessManager extends EventEmitter {
     if (process.platform === 'linux') {
       const stop = desktopTelemetry.startTimer('desktop.port.find_pids', { port, method: 'ss' });
       try {
-        const { stdout } = await execFileAsync('ss', ['-tlnp', 'sport', '=', `:${port}`], { encoding: 'utf-8', timeout });
+        const { stdout } = await execFileAsync('ss', ['-tlnp', 'sport', '=', `:${port}`], { encoding: 'utf-8', timeout, windowsHide: true });
         const pids: number[] = [];
         for (const match of (stdout as string).matchAll(/pid=(\d+)/g)) {
           const p = parseInt(match[1], 10);
@@ -830,7 +863,7 @@ export class ProcessManager extends EventEmitter {
       let output = '';
       let fuserSucceeded = true;
       try {
-        const { stdout, stderr } = await execFileAsync('fuser', [`${port}/tcp`], { encoding: 'utf-8', timeout });
+        const { stdout, stderr } = await execFileAsync('fuser', [`${port}/tcp`], { encoding: 'utf-8', timeout, windowsHide: true });
         output = `${stdout}${stderr}`;
       } catch (err) {
         fuserSucceeded = false;
@@ -867,14 +900,14 @@ export class ProcessManager extends EventEmitter {
           const { stdout } = await execFileAsync('powershell.exe', [
             '-NoProfile', '-Command',
             `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction SilentlyContinue).CommandLine`,
-          ], { encoding: 'utf-8', timeout });
+          ], { encoding: 'utf-8', timeout, windowsHide: true });
           if (!isMindosOwnedCommandLine((stdout as string).trim())) {
             stop({ pid, label, verifiedMindosProcess: false, success: true });
             return;
           }
         } catch {
           try {
-            const { stdout } = await execFileAsync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/format:value'], { encoding: 'utf-8', timeout });
+            const { stdout } = await execFileAsync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/format:value'], { encoding: 'utf-8', timeout, windowsHide: true });
             if (!isMindosOwnedCommandLine((stdout as string).trim())) {
               stop({ pid, label, verifiedMindosProcess: false, success: true });
               return;
@@ -886,7 +919,7 @@ export class ProcessManager extends EventEmitter {
         }
       } else {
         try {
-          const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf-8', timeout: 2000 });
+          const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf-8', timeout: 2000, windowsHide: true });
           if (!isMindosOwnedCommandLine((stdout as string).trim())) {
             stop({ pid, label, verifiedMindosProcess: false, success: true });
             return;

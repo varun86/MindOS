@@ -52,18 +52,24 @@ echo -e "\n${YELLOW}Building Electron...${NC}"
 cd "$PROJECT_DIR"
 pnpm run build
 
-# Prepare runtime
-echo -e "\n${YELLOW}Preparing bundled runtime...${NC}"
-pnpm run prepare-mindos-runtime
-
 # Package
 if [ "$MAC_ZIP" = true ]; then
     echo -e "\n${YELLOW}Building macOS zip (unsigned, cross-compile from Linux)...${NC}"
-    CSC_IDENTITY_AUTO_DISCOVERY=false pnpm exec electron-builder --mac zip --publish never
+    # One prepare+build cycle per arch: the bundled Node in resources/ must
+    # match BOTH the target platform (darwin — not this Linux host!) and the
+    # arch being packed, since electron-builder copies the same extraResources
+    # dir into every package it produces.
+    for ARCH in x64 arm64; do
+        echo -e "\n${YELLOW}Preparing darwin-${ARCH} runtime...${NC}"
+        MINDOS_BUNDLE_NODE_PLATFORM=darwin MINDOS_BUNDLE_NODE_ARCH="$ARCH" pnpm run prepare-mindos-runtime
+        CSC_IDENTITY_AUTO_DISCOVERY=false pnpm exec electron-builder --mac zip "--$ARCH" --publish never
+    done
     echo -e "\n${GREEN}Done!${NC}"
     ls -lh dist/*.zip 2>/dev/null
     echo -e "\n${YELLOW}These builds are UNSIGNED. Users need: xattr -cr /Applications/MindOS.app${NC}"
 else
+    echo -e "\n${YELLOW}Preparing bundled runtime...${NC}"
+    pnpm run prepare-mindos-runtime
     echo -e "\n${YELLOW}Building Linux packages...${NC}"
     pnpm exec electron-builder --linux --publish never
     echo -e "\n${GREEN}Done!${NC}"

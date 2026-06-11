@@ -16,6 +16,7 @@ const ALLOWED_SUBDIRS = [
   'runtime-downloading',
   'runtime-old',
   'runtime-download.tar.gz',
+  'runtime-update.lock',
   'config.json',
   'node',
   'bin',
@@ -37,7 +38,8 @@ function isOutsideDirectory(root: string, target: string): boolean {
  * 1. Must be within ~/.mindos/
  * 2. Must be in ALLOWED_SUBDIRS whitelist
  * 3. Must not contain .. for path traversal
- * 4. Must resolve without symlink escaping
+ * 4. Path checks are lexical; symlink checks are the caller's responsibility
+ *    (safe-rm assertNotSymlink / assertNoSymlinksInPath)
  */
 export function validateRuntimePath(targetPath: string): string {
   if (!targetPath) {
@@ -137,6 +139,7 @@ export function getRuntimePaths() {
     downloadDir: path.join(configDir, 'runtime-downloading'),
     oldDir: path.join(configDir, 'runtime-old'),
     tarballPath: path.join(configDir, 'runtime-download.tar.gz'),
+    lockPath: path.join(configDir, 'runtime-update.lock'),
   };
 }
 

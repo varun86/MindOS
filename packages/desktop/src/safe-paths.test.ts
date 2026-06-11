@@ -23,6 +23,7 @@ describe('safe runtime paths', () => {
       expect(validateRuntimePath(paths.downloadDir)).toBe(paths.downloadDir);
       expect(validateRuntimePath(paths.oldDir)).toBe(paths.oldDir);
       expect(validateRuntimePath(paths.tarballPath)).toBe(paths.tarballPath);
+      expect(validateRuntimePath(paths.lockPath)).toBe(paths.lockPath);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

@@ -44,16 +44,17 @@ function writeTarString(buf: Buffer, offset: number, length: number, value: stri
   buf.write(value.slice(0, length), offset, length, 'utf-8');
 }
 
-function tarHeader(name: string, size: number, typeflag: string): Buffer {
+function tarHeader(name: string, size: number, typeflag: string, options: { mode?: number; linkName?: string } = {}): Buffer {
   const header = Buffer.alloc(512);
   writeTarString(header, 0, 100, name);
-  writeOctal(header, 100, 8, 0o644);
+  writeOctal(header, 100, 8, options.mode ?? 0o644);
   writeOctal(header, 108, 8, 0);
   writeOctal(header, 116, 8, 0);
   writeOctal(header, 124, 12, size);
   writeOctal(header, 136, 12, 0);
   header.fill(0x20, 148, 156);
   header.write(typeflag, 156, 1, 'ascii');
+  if (options.linkName) writeTarString(header, 157, 100, options.linkName);
   writeTarString(header, 257, 6, 'ustar ');
   writeTarString(header, 263, 2, ' \0');
 
@@ -245,5 +246,58 @@ describe('extractTarGzJs — GNU LongLink support', () => {
 
     await expect(extractTarGzJs(TARBALL, DEST_DIR)).rejects.toThrow(/outside extraction directory/);
     expect(existsSync(path.join(DEST_DIR, 'C:evil.txt'))).toBe(false);
+  });
+});
+
+describe('extractTarGzJs — archive hardening', () => {
+  it('throws on symlink tar entry instead of writing an empty file', async () => {
+    const chunks = [
+      tarHeader('bin/evil', 0, '2', { linkName: '../../target' }),
+      Buffer.alloc(1024),
+    ];
+    writeFileSync(TARBALL, gzipSync(Buffer.concat(chunks)));
+
+    await expect(extractTarGzJs(TARBALL, DEST_DIR)).rejects.toThrow(/Unsupported tar link entry/);
+    expect(existsSync(path.join(DEST_DIR, 'bin', 'evil'))).toBe(false);
+  });
+
+  it('throws on hardlink tar entry', async () => {
+    const chunks = [
+      tarHeader('bin/evil-hard', 0, '1', { linkName: 'bin/original' }),
+      Buffer.alloc(1024),
+    ];
+    writeFileSync(TARBALL, gzipSync(Buffer.concat(chunks)));
+
+    await expect(extractTarGzJs(TARBALL, DEST_DIR)).rejects.toThrow(/Unsupported tar link entry/);
+    expect(existsSync(path.join(DEST_DIR, 'bin', 'evil-hard'))).toBe(false);
+  });
+
+  it('preserves executable file mode on POSIX', async () => {
+    if (process.platform === 'win32') return;
+
+    const data = Buffer.from('#!/bin/sh\necho hi\n');
+    const chunks = [
+      tarHeader('bin/tool', data.length, '0', { mode: 0o755 }),
+      paddedData(data),
+      Buffer.alloc(1024),
+    ];
+    writeFileSync(TARBALL, gzipSync(Buffer.concat(chunks)));
+
+    await extractTarGzJs(TARBALL, DEST_DIR);
+
+    const out = path.join(DEST_DIR, 'bin', 'tool');
+    expect(existsSync(out)).toBe(true);
+    expect(statSync(out).mode & 0o111).not.toBe(0);
+  });
+
+  it('throws on truncated archive', async () => {
+    // Header declares 2048 bytes but only 512 bytes of data follow.
+    const chunks = [
+      tarHeader('big.bin', 2048, '0'),
+      Buffer.alloc(512),
+    ];
+    writeFileSync(TARBALL, gzipSync(Buffer.concat(chunks)));
+
+    await expect(extractTarGzJs(TARBALL, DEST_DIR)).rejects.toThrow(/Truncated tar archive/);
   });
 });

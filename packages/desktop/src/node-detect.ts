@@ -14,6 +14,7 @@ import path from 'path';
 import { getPrivateNodePath, isPrivateNodeInstalled, getBundledNodePath, isBundledNodeInstalled } from './node-bootstrap';
 import { getAppConfigStore } from './app-config-store';
 import { getDesktopHome } from './desktop-home';
+import { resolveExecTarget } from './exec-target';
 
 const IS_WIN = process.platform === 'win32';
 
@@ -65,23 +66,6 @@ function enrichedPath(extraBinDir?: string): string {
     process.env.PATH,
   ].filter(Boolean);
   return dirs.join(path.delimiter);
-}
-
-function quoteCmdArg(value: string): string {
-  if (value.includes('"')) {
-    throw new Error('Invalid Windows command argument: double quote is not allowed');
-  }
-  return `"${value}"`;
-}
-
-function resolveExecTarget(command: string, args: string[]): { command: string; args: string[] } {
-  if (IS_WIN && /\.(?:cmd|bat)$/i.test(command)) {
-    return {
-      command: 'cmd.exe',
-      args: ['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')],
-    };
-  }
-  return { command, args };
 }
 
 /** Run an executable with enriched PATH and argv-safe arguments */

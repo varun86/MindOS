@@ -7,6 +7,8 @@ import { globalShortcut, BrowserWindow } from 'electron';
 export function registerShortcuts(mainWindow: BrowserWindow): boolean {
   // Toggle window visibility
   const ok = globalShortcut.register('CmdOrCtrl+Shift+M', () => {
+    // The shortcut stays registered globally — the window may be gone by the time it fires
+    if (mainWindow.isDestroyed()) return;
     if (mainWindow.isVisible() && mainWindow.isFocused()) {
       mainWindow.hide();
     } else {

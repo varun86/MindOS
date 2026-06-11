@@ -250,7 +250,8 @@ jobs:
           cd packages/desktop && pnpm exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never "${EXTRA_ARGS[@]}"
 
       - name: Smoke packaged app
-        if: matrix.platform == 'mac' || matrix.platform == 'linux' || matrix.platform == 'win'
+        # mac x64 runs under Rosetta on the arm64 runner (smoke-desktop-app.mjs
+        # detects the mismatch and prepends `arch -x86_64` instead of skipping)
         run: |
           if [ "${{ matrix.platform }}" = "win" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
             node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-only
@@ -381,8 +382,10 @@ jobs:
             packages/desktop/dist/*.AppImage
             packages/desktop/dist/*.deb
             packages/desktop/dist/*.blockmap
-            packages/desktop/dist/*.yml
-            packages/desktop/dist/*.yaml
+            # latest*.yml only — a bare *.yml would also pick up electron-builder's
+            # builder-debug.yml / builder-effective-config.yaml, which then collide
+            # across matrix jobs in the merged dir and get published to the Release
+            packages/desktop/dist/latest*.yml
           if-no-files-found: warn
 
   # After all platforms finish: upload to CDN mirrors + finalize GitHub Release
@@ -599,8 +602,7 @@ jobs:
             artifacts/*.AppImage
             artifacts/*.deb
             artifacts/*.blockmap
-            artifacts/*.yml
-            artifacts/*.yaml
+            artifacts/latest*.yml
           )
           assets=()
           for asset in "${candidates[@]}"; do

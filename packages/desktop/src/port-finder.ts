@@ -4,7 +4,9 @@
  */
 import net from 'net';
 
-/** Check if a port is in use on localhost (bind approach — no false positives) */
+/** Check if a port is in use on localhost (bind approach — no false positives).
+ *  Binds IPv4 loopback only — intentional: all MindOS services pin
+ *  HOSTNAME/MCP_HOST to 127.0.0.1, so ::1-only listeners are irrelevant here. */
 export function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();

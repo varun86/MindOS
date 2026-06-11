@@ -712,4 +712,28 @@ describe('copyAppForBundledRuntime', () => {
     expect(lstatSync(copiedPackage).isSymbolicLink()).toBe(false);
     expect(readFileSync(path.join(copiedPackage, 'dist', 'index.js'), 'utf-8')).toBe('module.exports = {};');
   });
+
+  it('materializes Turbopack hashed externals as real directories (not symlinks)', () => {
+    const src = makeTemp('mindos-src-hashed-');
+    const dest = path.join(makeTemp('mindos-dest-hashed-'), 'app');
+    const hashed = '@mariozechner/pi-agent-core-805d1afb58d9a138';
+    const originalDir = path.join(src, '.next', 'standalone', 'node_modules', '@mariozechner', 'pi-agent-core');
+    const chunksDir = path.join(src, '.next', 'standalone', '.next', 'server', 'chunks');
+
+    mkdirSync(path.join(originalDir, 'dist'), { recursive: true });
+    writeFileSync(path.join(originalDir, 'package.json'), '{"name":"@mariozechner/pi-agent-core","main":"dist/index.js"}');
+    writeFileSync(path.join(originalDir, 'dist', 'index.js'), 'module.exports = 1;');
+    mkdirSync(chunksDir, { recursive: true });
+    writeFileSync(path.join(chunksDir, 'page.js'), `module.exports = require("${hashed}");`);
+
+    copyAppForBundledRuntime(src, dest);
+
+    const hashedDir = path.join(dest, '.next', 'standalone', 'node_modules', '@mariozechner', 'pi-agent-core-805d1afb58d9a138');
+    // Real directory copy: survives the desktop symlink sweep, works on Windows,
+    // and keeps subpath requires (pkg-<hash>/dist/x) resolvable
+    expect(lstatSync(hashedDir).isDirectory()).toBe(true);
+    expect(lstatSync(hashedDir).isSymbolicLink()).toBe(false);
+    expect(readFileSync(path.join(hashedDir, 'dist', 'index.js'), 'utf-8')).toBe('module.exports = 1;');
+    expect(readFileSync(path.join(hashedDir, 'package.json'), 'utf-8')).toContain('pi-agent-core');
+  });
 });

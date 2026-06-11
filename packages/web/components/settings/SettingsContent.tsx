@@ -477,7 +477,6 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-foreground">{t.settings.title}</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">{activeTabLabel}</div>
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-3">

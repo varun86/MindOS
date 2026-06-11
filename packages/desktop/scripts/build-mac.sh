@@ -3,7 +3,8 @@
 # ============================================
 # MindOS Desktop - macOS Build Script
 # Usage: ./scripts/build-mac.sh [--no-sign] [--no-notarize]
-# Output: dist/*.dmg, dist/*.zip (arm64 and x64)
+# Output: dist/*.dmg, dist/*.zip (host arch only — electron-builder --mac
+#         builds the arch of the machine running this script)
 # ============================================
 
 set -e
@@ -68,7 +69,10 @@ pnpm run prepare-mindos-runtime
 # ── Step 4: Package (sign but skip notarization) ──
 echo -e "\n${YELLOW}Step 4/5: Packaging...${NC}"
 if [ "$SIGN" = true ]; then
-    CERT_COUNT=$(security find-identity -v -p codesigning 2>/dev/null | grep -c "Developer ID Application" || echo "0")
+    # grep -c prints 0 AND exits 1 on no match — an `|| echo "0"` fallback
+    # would produce "0\n0", break the integer test, and silently take the
+    # signed path with no certificate. `|| true` keeps the single "0".
+    CERT_COUNT=$(security find-identity -v -p codesigning 2>/dev/null | grep -c "Developer ID Application" || true)
     if [ "$CERT_COUNT" -eq "0" ]; then
         echo -e "${RED}No Developer ID Application certificate found${NC}"
         echo "Run with --no-sign for unsigned build, or install a certificate."
@@ -87,11 +91,23 @@ if [ "$SIGN" = true ] && [ "$NOTARIZE" = true ]; then
     echo -e "\n${YELLOW}Step 5/5: Notarizing...${NC}"
 
     # Detect auth method (use array to avoid word-splitting on paths with spaces)
-    API_KEY_FILE=~/private_keys/AuthKey_${APPLE_API_KEY_ID:-"NQ8ZM3WLHB"}.p8
-    if [ -f "$API_KEY_FILE" ] && [ -n "${APPLE_API_KEY_ID:-}" ]; then
+    if [ -n "${APPLE_API_KEY_ID:-}" ]; then
+        API_KEY_FILE=~/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+        if [ ! -f "$API_KEY_FILE" ]; then
+            echo -e "${RED}APPLE_API_KEY_ID is set but $API_KEY_FILE does not exist${NC}"
+            exit 1
+        fi
+        if [ -z "${APPLE_API_ISSUER:-}" ]; then
+            echo -e "${RED}APPLE_API_KEY_ID requires APPLE_API_ISSUER to be set${NC}"
+            exit 1
+        fi
         AUTH_ARGS=(--key "$API_KEY_FILE" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER")
         echo "Using API Key authentication"
     elif [ -n "${APPLE_ID:-}" ]; then
+        if [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo -e "${RED}APPLE_ID requires APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID to be set${NC}"
+            exit 1
+        fi
         AUTH_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
         echo "Using Apple ID authentication"
     else
@@ -101,15 +117,16 @@ if [ "$SIGN" = true ] && [ "$NOTARIZE" = true ]; then
     fi
 
     if [ "$NOTARIZE" = true ]; then
-        # Only notarize DMG (Apple does not accept ZIP for notarization)
-        for file in dist/*.dmg; do
+        # notarytool accepts both DMG and ZIP — the updater ZIP must be
+        # notarized too, or auto-updated apps hit Gatekeeper on first launch.
+        for file in dist/*.dmg dist/*.zip; do
             [ -f "$file" ] || continue
             echo "Submitting: $(basename "$file")"
             xcrun notarytool submit "$file" "${AUTH_ARGS[@]}" --wait --timeout 2h
             echo -e "${GREEN}Notarized: $(basename "$file")${NC}"
         done
 
-        # Staple
+        # Staple DMG only — ZIP archives cannot be stapled
         for file in dist/*.dmg; do
             [ -f "$file" ] || continue
             echo "Stapling: $(basename "$file")"

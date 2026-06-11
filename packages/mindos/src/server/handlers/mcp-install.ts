@@ -340,7 +340,9 @@ function buildEntry(
     const fallbackPort = Number(services.env?.MINDOS_MCP_PORT) || services.readSettings?.().mcpPort || 8781;
     const entry: Record<string, unknown> = {
       type: 'remote',
-      url: url || `http://localhost:${fallbackPort}/mcp`,
+      // 127.0.0.1 (not localhost): the MCP server binds an IPv4 socket and some
+      // Windows HTTP stacks resolve localhost to ::1 first without fallback
+      url: url || `http://127.0.0.1:${fallbackPort}/mcp`,
       enabled: true,
     };
     if (token) entry.headers = { Authorization: `Bearer ${token}` };
@@ -351,7 +353,8 @@ function buildEntry(
     return { type: 'stdio', command: 'mindos', args: ['mcp'], env: { MCP_TRANSPORT: 'stdio' } };
   }
   const fallbackPort = Number(services.env?.MINDOS_MCP_PORT) || services.readSettings?.().mcpPort || 8781;
-  const entry: Record<string, unknown> = { url: url || `http://localhost:${fallbackPort}/mcp` };
+  // 127.0.0.1 (not localhost) — see remote-entry comment above
+  const entry: Record<string, unknown> = { url: url || `http://127.0.0.1:${fallbackPort}/mcp` };
   if (token) entry.headers = { Authorization: `Bearer ${token}` };
   return entry;
 }

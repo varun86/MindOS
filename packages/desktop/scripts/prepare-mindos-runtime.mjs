@@ -22,6 +22,7 @@ import {
   pruneClaudeAgentSdkNativePackages,
 } from './prepare-mindos-bundle.mjs';
 import { writeRuntimeManifest } from '../../../scripts/runtime-manifest.mjs';
+import { isBundledNodeCurrent, writeNodeBundleMarker } from './node-bundle-marker.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.join(__dirname, '..');
@@ -202,13 +203,15 @@ if (!process.env.MINDOS_SKIP_BUNDLE_NODE) {
   const nodeDest = path.join(dest, 'node');
   const tmpDir = path.join(desktopRoot, '.node-bundle-tmp');
 
-  // Check if already present (idempotent)
+  // Check if already present AND matching the requested target — a bare
+  // existsSync would happily reuse a wrong-platform/arch node dir
   const expectedBin = plat === 'win32'
     ? path.join(nodeDest, 'node.exe')
     : path.join(nodeDest, 'bin', 'node');
+  const bundleTarget = { platform: plat, arch: nodeArch, nodeVersion: NODE_VERSION };
 
-  if (existsSync(expectedBin)) {
-    console.log(`[prepare-mindos-runtime] Node.js already bundled at ${nodeDest}`);
+  if (isBundledNodeCurrent(nodeDest, expectedBin, bundleTarget)) {
+    console.log(`[prepare-mindos-runtime] Node.js already bundled at ${nodeDest} (${plat}-${nodeArch})`);
   } else {
     console.log(`[prepare-mindos-runtime] Downloading Node.js ${NODE_VERSION} (${plat}-${nodeArch})...`);
 
@@ -278,6 +281,7 @@ if (!process.env.MINDOS_SKIP_BUNDLE_NODE) {
     if (!existsSync(expectedBin)) {
       fail(`Node.js extraction succeeded but binary not found at ${expectedBin}`);
     }
+    writeNodeBundleMarker(nodeDest, bundleTarget);
 
     // Cleanup tmp
     rmSync(tmpDir, { recursive: true, force: true });
@@ -445,9 +449,9 @@ function isZeroBlock(buffer) {
 
 // ── Remove symlinks ──
 // macOS codesign rejects bundles containing symlinks with invalid destinations.
-// Standalone node_modules may contain symlinks from fixTurbopackHashedExternals
-// or leftover from npm's hoisting. Remove them all — they're not needed at runtime
-// since webpack already bundles everything, and standalone traces all required files.
+// Standalone node_modules may contain symlinks left over from npm/pnpm hoisting.
+// (Turbopack hashed externals are materialized as real directory copies by
+// fixTurbopackHashedExternals, so nothing required at runtime is a symlink.)
 // Keep the bundled Node.js directory intact: official npm/npx launchers are
 // symlinks on POSIX platforms, and extractTarGzSafe already validates that tar
 // symlink targets stay inside the Node extraction root.

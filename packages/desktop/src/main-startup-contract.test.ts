@@ -1,0 +1,48 @@
+import { readFileSync } from 'fs';
+import path from 'path';
+import { describe, expect, it } from 'vitest';
+
+const source = readFileSync(path.join(__dirname, 'main.ts'), 'utf-8');
+
+describe('desktop main startup contract', () => {
+  it('acquires the single-instance lock before any heal/boot logic runs', () => {
+    expect(source).toContain('app.requestSingleInstanceLock()');
+    expect(source).toContain("app.on('second-instance'");
+    // whenReady must bail for the losing instance before healPreviousInstallation
+    // (heal kills processes on the configured ports — i.e. the FIRST instance's servers)
+    const whenReady = source.indexOf('app.whenReady()');
+    const lockGuard = source.indexOf('if (!hasSingleInstanceLock) return;');
+    const heal = source.indexOf('await healPreviousInstallation();');
+    expect(whenReady).toBeGreaterThan(-1);
+    expect(lockGuard).toBeGreaterThan(whenReady);
+    expect(heal).toBeGreaterThan(lockGuard);
+  });
+
+  it('routes every navigation-denied URL through the external-open guard', () => {
+    expect(source).toContain("import { isSafeExternalUrl } from './open-external-guard';");
+    expect(source).toContain('function openExternalGuarded(');
+    // The only dynamic-URL openExternal lives inside the guarded helper;
+    // any other call site must be a hard-coded https constant.
+    expect(source.split('shell.openExternal(url)').length - 1).toBe(1);
+    const dynamicish = source
+      .split('shell.openExternal(')
+      .slice(1)
+      .filter((rest) => !rest.startsWith('url)') && !rest.startsWith("'https://"));
+    expect(dynamicish).toEqual([]);
+  });
+
+  it('spawns .cmd targets via quoted cmd.exe argv instead of shell:true', () => {
+    expect(source).not.toContain('shell: needsShell');
+    expect(source).not.toContain('shell: true');
+    expect(source).toContain('resolveExecTarget(bin, args)');
+  });
+
+  it('saves window state synchronously at quit (debounced timer never fires before app.exit)', () => {
+    expect(source).toContain('saveWindowStateNow(mainWindow)');
+  });
+
+  it('uses the per-platform uninstall plan instead of bare trashItem', () => {
+    expect(source).toContain("import { planUninstall } from './uninstall-plan';");
+    expect(source).toContain('planUninstall({');
+  });
+});
