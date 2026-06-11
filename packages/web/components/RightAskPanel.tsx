@@ -123,7 +123,7 @@ export default function RightAskPanel({
   return (
     <aside
       className={`
-        hidden md:flex fixed top-0 right-0 h-screen z-40
+        hidden md:flex fixed top-[var(--app-titlebar-h)] right-0 h-[calc(100vh-var(--app-titlebar-h))] z-40
         flex-col bg-background border-l border-border/40 shadow-[-4px_0_16px_rgba(0,0,0,0.04)]
         ${isDragging ? '' : 'transition-[width,transform] duration-200 ease-out'}
         ${open ? 'translate-x-0' : 'translate-x-full pointer-events-none'}

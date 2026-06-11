@@ -24,6 +24,25 @@ try {
   }
 } catch { /* sandbox may restrict process access */ }
 
+// Shell capability flags — exposed synchronously so the layout.tsx inline head
+// script can read them before first paint (spec-titlebar-row).
+try {
+  contextBridge.exposeInMainWorld('mindosShell', {
+    macTitlebarRow: process.platform === 'darwin',
+  });
+} catch { /* sandbox may restrict process access */ }
+
+// macOS fullscreen state → html[data-mac-fullscreen]; main resends on every
+// did-finish-load because each navigation creates a fresh document.
+try {
+  if (process.platform === 'darwin') {
+    onChannel('mindos:mac-fullscreen', (isFullScreen) => {
+      if (isFullScreen) document.documentElement.setAttribute('data-mac-fullscreen', '');
+      else document.documentElement.removeAttribute('data-mac-fullscreen');
+    });
+  }
+} catch { /* sandbox may restrict process access */ }
+
 contextBridge.exposeInMainWorld('mindos', {
   // App info
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),

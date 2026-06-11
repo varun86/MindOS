@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Settings, Menu, X, FolderInput } from 'lucide-react';
 import ActivityBar from './ActivityBar';
+import TitlebarRow from './TitlebarRow';
 import Panel from './Panel';
 import FileTree from './FileTree';
 import Logo from './Logo';
@@ -567,7 +568,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         Skip to main content
       </a>
 
-      {/* ── Desktop: Activity Bar + Panel ── */}
+      {/* ── Desktop: Titlebar row + Activity Bar + Panel ── */}
+      <TitlebarRow />
       <ActivityBar
         activePanel={railActivePanel}
         onPanelChange={lp.setActivePanel}
@@ -703,7 +705,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       />
 
       {/* ── Mobile ── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-30 bg-card border-b border-border flex items-center justify-between px-3 py-2" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {/* top: var(--app-titlebar-h) — when the mac shell viewport drops below md, the header sits below the titlebar drag row */}
+      <header className="md:hidden fixed top-[var(--app-titlebar-h)] left-0 right-0 z-30 bg-card border-b border-border flex items-center justify-between px-3 py-2" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <button onClick={() => setMobileOpen(true)} className="p-3 -ml-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors active:bg-accent" aria-label="Open menu">
           <Menu size={20} />
         </button>
@@ -816,13 +819,14 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       <style>{`
         @media (min-width: 768px) {
           :root {
+            --rail-width: ${lp.railWidth}px;
             --right-panel-width: ${ap.askMaximized ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${ap.askPanelOpen ? ap.askPanelWidth : 0}px`};
             --right-agent-detail-width: ${agentDockOpen ? agentDetailWidth : 0}px;
           }
           #main-content {
             padding-left: ${panelOpen && effectivePanelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`} !important;
             padding-right: calc(var(--right-panel-width) + var(--right-agent-detail-width) + var(--toc-extra-right, 0px)) !important;
-            padding-top: 0;
+            padding-top: var(--app-titlebar-h);
           }
         }
       `}</style>

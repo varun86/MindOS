@@ -789,6 +789,27 @@ input[type="radio"].form-radio:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-/* macOS Electron: traffic-light safe zone. Actual CSS is injected by Electron
-   main process via webContents.insertCSS(); this is a no-op fallback. */
-.electron-mac-titlebar-pad { display: none; }
+/* ── macOS desktop shell titlebar row (spec-titlebar-row) ──
+   Variables default to 0 so every consumer (rail, panels, main padding) keeps
+   today's geometry outside the mac shell: browser/win/linux/old shell = zero diff.
+   html[data-mac-titlebar-row] is set pre-paint by the layout.tsx inline script
+   when the shell preload exposes mindosShell.macTitlebarRow. */
+:root {
+  --app-titlebar-h: 0px;
+  --window-controls-left: 0px;
+  --rail-titlebar-offset: 0px;
+  --rail-width: 0px;
+}
+html[data-mac-titlebar-row] {
+  --app-titlebar-h: 46px;
+  --window-controls-left: 70px; /* traffic lights span x12..64 + 6px margin */
+  --rail-titlebar-offset: 46px;
+}
+/* Fullscreen hides the traffic lights: no clearance, rail logo back to top */
+html[data-mac-titlebar-row][data-mac-fullscreen] {
+  --window-controls-left: 0px;
+  --rail-titlebar-offset: 0px;
+}
+/* Render gating — the row only exists in the mac shell */
+.titlebar-row { display: none; }
+html[data-mac-titlebar-row] .titlebar-row { display: flex; }

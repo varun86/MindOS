@@ -234,7 +234,7 @@ export default function Panel({
   return (
     <aside
       className={`
-        hidden md:flex fixed top-0 h-screen z-30
+        hidden md:flex fixed top-[var(--app-titlebar-h)] h-[calc(100vh-var(--app-titlebar-h))] z-30
         flex-col bg-card border-r border-border
         transition-[transform,left,width] duration-200 ease-out
         ${open ? 'translate-x-0' : '-translate-x-full pointer-events-none'}

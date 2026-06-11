@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useState, useEffect, useTransition } from 'react';
+import { useRef, useCallback, useState, useEffect, useTransition, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Brain, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
@@ -297,13 +297,18 @@ export default function ActivityBar({
 
   return (
     <aside
-      className="group hidden md:flex fixed top-0 left-0 h-screen z-[31] flex-col bg-background border-r border-border transition-[width] duration-200 ease-out"
+      className="group hidden md:flex fixed top-0 left-0 h-screen z-[31] flex-col bg-background transition-[width] duration-200 ease-out after:absolute after:top-[var(--rail-titlebar-offset)] after:right-0 after:bottom-0 after:w-px after:bg-border after:pointer-events-none after:content-['']"
       style={{ width: `${railWidth}px` }}
       role="navigation"
       aria-label="Navigation"
     >
       {/* Content wrapper — overflow-hidden prevents text flash during width transitions */}
       <div className="flex flex-col h-full w-full overflow-hidden">
+        {/* macOS titlebar row: draggable spacer pushes the logo below the traffic-light row (0px elsewhere) */}
+        <div
+          className="w-full shrink-0 h-[var(--rail-titlebar-offset)]"
+          style={{ WebkitAppRegion: 'drag' } as CSSProperties}
+        />
         {/* ── Top: Logo — h-[45px] aligns divider with PanelHeader h-[46px] border-b (both at y=45) ── */}
         <button
           type="button"

@@ -233,7 +233,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 800, minHeight: 600,
     title: 'MindOS',
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
-    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 17 } : undefined,
     /** Match app light `globals.css` --background (#f8f6f1); reduces white flash before first paint. */
     backgroundColor: '#f8f6f1',
     webPreferences: {
@@ -254,6 +254,13 @@ function createMainWindow(): BrowserWindow {
   });
   win.on('resize', () => saveWindowState(win));
   win.on('move', () => saveWindowState(win));
+
+  // macOS: forward fullscreen state so the Web titlebar row can drop the
+  // traffic-light clearance (html[data-mac-fullscreen], see preload.ts)
+  if (process.platform === 'darwin') {
+    win.on('enter-full-screen', () => win.webContents.send('mindos:mac-fullscreen', true));
+    win.on('leave-full-screen', () => win.webContents.send('mindos:mac-fullscreen', false));
+  }
 
   return win;
 }
@@ -1884,40 +1891,10 @@ async function bootApp(): Promise<void> {
       }
       firstLoad = false;
     }
-    // macOS: inject titlebar CSS (navigation resets injected stylesheets, so re-inject)
-    if (process.platform === 'darwin') {
-      mainWindow?.webContents.insertCSS(`
-        html { --electron-mac-titlebar-h: 28px; }
-        /* Full-width drag zone at the very top of the window */
-        body::before {
-          content: '';
-          display: block;
-          position: fixed;
-          top: 0; left: 0; right: 0;
-          height: var(--electron-mac-titlebar-h);
-          -webkit-app-region: drag;
-          z-index: 9999;
-          pointer-events: auto;
-        }
-        /* Buttons/links inside the drag zone must be clickable */
-        button, a, input, select, textarea, [role="button"] {
-          -webkit-app-region: no-drag;
-        }
-        /* Activity Bar (rail) + Side Panel: shift down together so separators align */
-        [role="toolbar"][aria-label="Navigation"],
-        [role="navigation"][aria-label="Navigation"],
-        [role="toolbar"][aria-label="Navigation"] ~ aside[role="region"],
-        [role="navigation"][aria-label="Navigation"] ~ aside[role="region"] {
-          top: var(--electron-mac-titlebar-h) !important;
-          height: calc(100vh - var(--electron-mac-titlebar-h)) !important;
-        }
-        /* Old sidebar layout fallback */
-        .electron-mac-titlebar-pad {
-          display: block !important;
-          height: var(--electron-mac-titlebar-h);
-          -webkit-app-region: drag;
-        }
-      `);
+    // macOS: resend fullscreen state — each load creates a fresh document,
+    // so the html attribute must be rebuilt (Cmd+R, connection-lost recovery)
+    if (process.platform === 'darwin' && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mindos:mac-fullscreen', mainWindow.isFullScreen());
     }
   });
 
