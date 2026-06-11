@@ -35,6 +35,7 @@ import {
   loadLastSelectedAgentRuntime,
   persistLastSelectedAgentRuntime,
 } from '@/lib/ask-runtime-preference';
+import { refreshSessions } from '@/lib/ask-session-store';
 import { cn } from '@/lib/utils';
 import { useNativeRuntimeDetection } from '@/hooks/useNativeRuntimeDetection';
 import type { AcpAgentSelection } from '@/hooks/useAskModal';
@@ -134,6 +135,10 @@ interface AskContentProps {
   initialAcpAgent?: AcpAgentSelection | null;
   /** Runtime pre-selected by an opener; supersedes initialAcpAgent when present. */
   initialAgentRuntime?: AgentRuntimeIdentity | null;
+  /** Route-driven session selection (/chat/[sessionId]): the route already
+   * called loadSession, so init skips initSessions' selection phase (which
+   * would clobber it) and only refreshes session metadata. */
+  initialSessionId?: string;
   onFirstMessage?: () => void;
   /** 'modal' renders close button + ESC handler; 'panel' renders compact header; 'home' renders embedded on homepage */
   variant: 'modal' | 'panel' | 'home';
@@ -149,7 +154,7 @@ interface AskContentProps {
   onDockToPanel?: () => void;
 }
 
-export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, onFirstMessage, variant, onClose, maximized, onMaximize, askMode, onModeSwitch, onDockToPanel }: AskContentProps) {
+export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, initialSessionId, onFirstMessage, variant, onClose, maximized, onMaximize, askMode, onModeSwitch, onDockToPanel }: AskContentProps) {
   const isPanel = variant === 'panel';
   const isHome = variant === 'home';
 
@@ -570,7 +575,13 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
       pendingOpenAgentRef.current = preferredRuntime;
       if (openerRuntime) persistLastSelectedAgentRuntime(openerRuntime);
       setTimeout(() => inputRef.current?.focus(), 50);
-      void session.initSessions(preferredRuntime ?? undefined);
+      if (initialSessionId) {
+        // Route owns selection — initSessions' selection phase would move the
+        // active session away from the route's loadSession. Metadata only.
+        void refreshSessions();
+      } else {
+        void session.initSessions(preferredRuntime ?? undefined);
+      }
       setInput(initialMessage || '');
       chat.firstMessageFired.current = false;
       setAttachedFiles(currentFile ? [currentFile] : []);

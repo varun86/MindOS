@@ -789,27 +789,39 @@ input[type="radio"].form-radio:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-/* ── macOS desktop shell titlebar row (spec-titlebar-row) ──
+/* ── Workspace titlebar row (spec-titlebar-row) ──
    Variables default to 0 so every consumer (rail, panels, main padding) keeps
-   today's geometry outside the mac shell: browser/win/linux/old shell = zero diff.
-   html[data-mac-titlebar-row] is set pre-paint by the layout.tsx inline script
-   when the shell preload exposes mindosShell.macTitlebarRow. */
+   today's geometry on mobile and old shells.
+   Phase 1 (mac shell): html[data-mac-titlebar-row] is set pre-paint by the
+   layout.tsx inline script when the shell preload exposes
+   mindosShell.macTitlebarRow — the row doubles as the window drag strip.
+   Phase 2 (all desktop): the ≥768px media query gives browser/win/linux the
+   row as the workspace tab strip. The media rule is additive coverage — the
+   mac attribute rule still owns traffic-light clearance and keeps the row
+   alive when a mac shell window is zoomed below 768px. */
 :root {
   --app-titlebar-h: 0px;
   --window-controls-left: 0px;
-  --rail-titlebar-offset: 0px;
+  --rail-titlebar-offset: var(--app-titlebar-h);
   --rail-width: 0px;
+}
+@media (min-width: 768px) {
+  :root {
+    --app-titlebar-h: 46px;
+  }
 }
 html[data-mac-titlebar-row] {
   --app-titlebar-h: 46px;
   --window-controls-left: 70px; /* traffic lights span x12..64 + 6px margin */
-  --rail-titlebar-offset: 46px;
 }
 /* Fullscreen hides the traffic lights: no clearance, rail logo back to top */
 html[data-mac-titlebar-row][data-mac-fullscreen] {
   --window-controls-left: 0px;
   --rail-titlebar-offset: 0px;
 }
-/* Render gating — the row only exists in the mac shell */
+/* Render gating — desktop viewports or the mac shell (any viewport) */
 .titlebar-row { display: none; }
 html[data-mac-titlebar-row] .titlebar-row { display: flex; }
+@media (min-width: 768px) {
+  .titlebar-row { display: flex; }
+}

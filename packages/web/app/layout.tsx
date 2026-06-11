@@ -11,6 +11,7 @@ import RegisterSW from './register-sw';
 import UpdateOverlay from '@/components/UpdateOverlay';
 import UpdateToast from '@/components/UpdateToast';
 import { cookies, headers } from 'next/headers';
+import { createHash } from 'crypto';
 import type { Locale } from '@/lib/i18n';
 import '@/lib/renderers/index'; // globally register built-in renderers once
 
@@ -39,9 +40,14 @@ export default async function RootLayout({
 }>) {
   let fileTree: import('@/lib/types').FileNode[] = [];
   let mindSystemSlots: MindSystemSlot[] = [];
+  // Workspace-tab sets are namespaced per mind root (spec-titlebar-row Phase 2):
+  // a stable opaque id keeps vault-relative doc keys from leaking across roots.
+  let mindRootId = 'default';
   try {
     fileTree = getFileTree();
-    mindSystemSlots = listMindSystemSlots(getMindRoot());
+    const mindRoot = getMindRoot();
+    mindSystemSlots = listMindSystemSlots(mindRoot);
+    mindRootId = createHash('sha256').update(mindRoot).digest('hex').slice(0, 12);
   } catch (err) {
     console.error('[RootLayout] Failed to load file tree:', err);
   }
@@ -63,7 +69,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang={ssrLocale} suppressHydrationWarning style={{ backgroundColor: '#f8f6f1', color: '#1c1a17' }}>
+    <html lang={ssrLocale} suppressHydrationWarning data-mind-root-id={mindRootId} style={{ backgroundColor: '#f8f6f1', color: '#1c1a17' }}>
       <head>
         <meta name="theme-color" content="#c8873a" />
         {/* Patch Node.removeChild/insertBefore to swallow errors caused by browser

@@ -163,4 +163,6 @@ afterEach(async () => {
   resetAskRunStoreForTests();
   const { resetAskSessionStoreForTests } = await import('@/lib/ask-session-store');
   resetAskSessionStoreForTests();
+  const { resetWorkspaceTabsForTests } = await import('@/lib/workspace-tabs');
+  resetWorkspaceTabsForTests();
 });

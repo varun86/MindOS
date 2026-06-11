@@ -7,6 +7,7 @@ import { panelsEn, panelsZh } from './modules/panels';
 import { settingsEn, settingsZh } from './modules/settings';
 import { onboardingEn, onboardingZh } from './modules/onboarding';
 import { featuresEn, featuresZh } from './modules/features';
+import { workspaceTabsEn, workspaceTabsZh } from './modules/workspace-tabs';
 import { exploreEn, exploreZh } from './generated/explore-i18n.generated';
 
 export const en = {
@@ -18,6 +19,7 @@ export const en = {
   ...settingsEn,
   ...onboardingEn,
   ...featuresEn,
+  ...workspaceTabsEn,
   explore: exploreEn,
 } as const;
 
@@ -30,6 +32,7 @@ export const zh: Widen<typeof en> = {
   ...settingsZh,
   ...onboardingZh,
   ...featuresZh,
+  ...workspaceTabsZh,
   explore: exploreZh,
 };
 

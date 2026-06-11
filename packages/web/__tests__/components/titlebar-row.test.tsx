@@ -1,25 +1,38 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'fs';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import TitlebarRow from '@/components/TitlebarRow';
 
+// Phase 2: the row hosts TitlebarTabStrip, whose sync hook reads the route and
+// fires the initial session fetch — mock both so the row renders standalone.
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
+}));
+
 const webRoot = path.join(__dirname, '..', '..');
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe('TitlebarRow (spec-titlebar-row Phase 1)', () => {
+describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
+
+  beforeEach(() => {
+    // Keep the strip's refreshSessions pending: these tests only assert geometry.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<never>(() => {})));
+  });
 
   afterEach(() => {
     if (root) act(() => root!.unmount());
     container?.remove();
     container = null;
     root = null;
+    vi.unstubAllGlobals();
   });
 
   function render(): HTMLElement {
@@ -59,10 +72,19 @@ describe('TitlebarRow (spec-titlebar-row Phase 1)', () => {
     expect(style).toMatch(/transition:[^;]*padding-left 200ms ease-out/);
   });
 
-  it('has no interactive children in Phase 1 (empty drag strip)', () => {
+  it('hosts the tab strip and reserves >=110px of pure drag space at the right end', () => {
     const el = render();
-    expect(el.childElementCount).toBe(0);
-    expect(el.querySelector('button, a, input, select, textarea, [role="button"]')).toBeNull();
+    // Phase 2: interactive content lives inside, so the row is no longer aria-hidden
+    expect(el.getAttribute('aria-hidden')).toBeNull();
+    expect(el.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(el.querySelector('button[aria-label="New chat"]')).not.toBeNull();
+
+    const spacer = el.querySelector<HTMLElement>('[data-drag-spacer]');
+    expect(spacer).not.toBeNull();
+    expect(spacer!.style.minWidth).toBe('110px');
+    expect((spacer!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('drag');
+    // The spacer is the last child: nothing can render to its right
+    expect(el.lastElementChild).toBe(spacer);
   });
 
   it('globals.css gates display and defines the shell variables', () => {

@@ -120,15 +120,15 @@ function sortAndCap(list: ChatSession[]): ChatSession[] {
 // ---------------------------------------------------------------------------
 // Server I/O (ported from useAskSession's module helpers)
 
-async function fetchSessions(): Promise<ChatSession[]> {
+async function fetchSessions(): Promise<ChatSession[] | null> {
   try {
     const res = await fetch('/api/ask-sessions', { cache: 'no-store' });
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const data = (await res.json()) as ChatSession[];
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) return null;
     return data.slice(0, MAX_SESSIONS);
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -252,9 +252,18 @@ export function noteCurrentFile(sessionId: string, currentFile: string | undefin
 // decides" semantics as the per-instance era).
 
 let pendingFetchMerge: Promise<ChatSession[]> | null = null;
+/** True once at least one server fetch+merge completed this page lifetime —
+ * consumers like the workspace-tab reconcile must not treat the pre-fetch
+ * empty list as "the server has no sessions". */
+let sessionsLoaded = false;
 
 async function fetchAndMergeSessions(): Promise<ChatSession[]> {
-  const all = sortAndCap(await fetchSessions());
+  const fetched = await fetchSessions();
+  // Transient failure (network down, 5xx, bad payload): keep the local list
+  // untouched and stay "not loaded" — an empty failure result must never be
+  // merged as truth, or the tab-strip reconcile would close every chat tab.
+  if (fetched === null) return sessions;
+  const all = sortAndCap(fetched);
 
   // Prune abandoned empty sessions from older versions, but keep metadata-only
   // sessions that intentionally bind MindOS to a native runtime session.
@@ -272,11 +281,36 @@ async function fetchAndMergeSessions(): Promise<ChatSession[]> {
     storeSetMessages(s.id, s.messages, { skipPersist: true });
   }
 
-  // Keep local sessions with live runs that the server doesn't know yet
-  // (brand-new sessions are only persisted after their first flush).
-  const localRunning = sessions.filter((p) => getRun(p.id) && !sorted.some((s) => s.id === p.id));
-  emitSessions([...localRunning, ...sorted].slice(0, MAX_SESSIONS));
+  // Keep local sessions the server doesn't know yet: ones with live runs, and
+  // the active session itself (brand-new sessions are only persisted after
+  // their first flush — a concurrent refresh from another consumer, e.g. the
+  // titlebar tab strip, must not wipe a chat the user just created).
+  const activeId = getActiveSessionId();
+  const localOnly = sessions.filter((p) => (
+    !sorted.some((s) => s.id === p.id)
+    && (getRun(p.id) || p.id === activeId || storeHasMessages(p.id) || hasDurableRuntimeBinding(p))
+  ));
+  emitSessions([...localOnly, ...sorted].slice(0, MAX_SESSIONS));
+  sessionsLoaded = true;
   return sorted;
+}
+
+/**
+ * Fetch + merge without the selection phase: refreshes the shared list for
+ * read-only consumers (titlebar tab strip, future inspectors) that must not
+ * move the active session. Shares the single-flight slot with initSessions.
+ */
+export async function refreshSessions(): Promise<void> {
+  if (!pendingFetchMerge) {
+    pendingFetchMerge = fetchAndMergeSessions().finally(() => {
+      pendingFetchMerge = null;
+    });
+  }
+  await pendingFetchMerge;
+}
+
+export function getSessionsLoaded(): boolean {
+  return sessionsLoaded;
 }
 
 /** Load sessions from the server, pick the matching one or create/reuse a fresh empty. */
@@ -536,6 +570,7 @@ export function useActiveSessionId(): string | null {
 export function resetAskSessionStoreForTests() {
   sessions = EMPTY_SESSIONS;
   pendingFetchMerge = null;
+  sessionsLoaded = false;
   sessionsListeners.clear();
   activeListeners.clear();
   // resetAskRunStoreForTests() nulls the bridge slots — restore them so the

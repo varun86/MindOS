@@ -16,9 +16,11 @@ import {
   deleteSession,
   getActiveSessionId,
   getSessions,
+  getSessionsLoaded,
   initSessions,
   loadSession,
   noteCurrentFile,
+  refreshSessions,
   renameSession,
   resetAskSessionStoreForTests,
   resetSession,
@@ -319,6 +321,75 @@ describe('ask-session-store', () => {
       expect(attachRuntimeSession(codexRuntime, { externalSessionId: 'ext-1' }, { title: 'Thread' })).toBe(true);
       expect(getActiveSessionId()).toBe('bound');
       expect(getSessions().find((s) => s.id === 'bound')?.title).toBe('Thread');
+    });
+  });
+
+  describe('refreshSessions / getSessionsLoaded (titlebar Phase 2)', () => {
+    it('marks sessions loaded only after a successful fetch+merge', async () => {
+      installFetchMock([serverSession({ id: 's1' })]);
+      expect(getSessionsLoaded()).toBe(false);
+      await refreshSessions();
+      expect(getSessionsLoaded()).toBe(true);
+      expect(getSessions().some((s) => s.id === 's1')).toBe(true);
+    });
+
+    it('keeps local sessions and stays "not loaded" when the fetch fails', async () => {
+      installFetchMock([serverSession({ id: 'kept' })]);
+      await refreshSessions();
+      expect(getSessionsLoaded()).toBe(true);
+      resetAskSessionStoreForTests();
+
+      // Network down: a failure result must not be merged as an empty list,
+      // or the tab-strip reconcile would close every chat tab.
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+      loadSession('local-only'); // no-op for unknown id, but list may hold local entries
+      const before = getSessions();
+      await refreshSessions();
+      expect(getSessionsLoaded()).toBe(false);
+      expect(getSessions()).toEqual(before);
+    });
+
+    it('treats non-ok and non-array payloads as failures', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => [] }) as Response));
+      await refreshSessions();
+      expect(getSessionsLoaded()).toBe(false);
+
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ nope: 1 }) }) as Response));
+      await refreshSessions();
+      expect(getSessionsLoaded()).toBe(false);
+    });
+
+    it('does not move the active session (no selection phase)', async () => {
+      installFetchMock([serverSession({ id: 's1' }), serverSession({ id: 's2' })]);
+      await initSessions({});
+      loadSession('s2');
+      await refreshSessions();
+      expect(getActiveSessionId()).toBe('s2');
+    });
+
+    it('keeps a just-created (unflushed) active session across a concurrent refresh', async () => {
+      // /chat/new flow: resetSession creates a fresh empty session that the
+      // server has never seen; the tab strip's refreshSessions on mount must
+      // not wipe it (would dead-end the route on the fallback page).
+      installFetchMock([serverSession({ id: 'server-1' })]);
+      resetSession({});
+      const freshId = getActiveSessionId();
+      expect(freshId).toBeTruthy();
+
+      await refreshSessions();
+      expect(getSessions().some((s) => s.id === freshId)).toBe(true);
+      expect(getActiveSessionId()).toBe(freshId);
+      expect(getSessions().some((s) => s.id === 'server-1')).toBe(true);
+    });
+
+    it('still drops abandoned empty local sessions that are not active', async () => {
+      installFetchMock([serverSession({ id: 'server-1' })]);
+      resetSession({});
+      const abandonedId = getActiveSessionId()!;
+      await refreshSessions();
+      loadSession('server-1'); // navigating away drops the empty leftover
+      await refreshSessions();
+      expect(getSessions().some((s) => s.id === abandonedId)).toBe(false);
     });
   });
 });
