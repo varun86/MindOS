@@ -88,8 +88,9 @@ const sessionListeners = new Map<string, Set<() => void>>();
 const summaryListeners = new Set<() => void>();
 let summarySnapshot: RunSummary = EMPTY_SUMMARY;
 
-// Registered by useAskSession; kept across unmounts so background persistence
-// still has metadata. Single slot — last registration wins (PR3 removes this).
+// Injection seam kept to avoid a two-way import with ask-session-store, which
+// wires all three slots exactly once at its module load (PR3) — registration
+// is no longer tied to any component instance.
 let metaResolver: MetaResolver | null = null;
 let sessionsUpdater: SessionsUpdater | null = null;
 let runtimeBindingWriter: RuntimeBindingWriter | null = null;

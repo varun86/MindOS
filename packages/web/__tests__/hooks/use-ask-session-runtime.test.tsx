@@ -312,3 +312,99 @@ describe('useAskSession native runtime lane', () => {
     });
   });
 });
+
+describe('useAskSession shared metadata across instances (PR3)', () => {
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const serverSessions: ChatSession[] = [
+    {
+      id: 'shared-a',
+      createdAt: 20,
+      updatedAt: 20,
+      messages: [{ role: 'user', content: 'first chat' }],
+    },
+    {
+      id: 'shared-b',
+      createdAt: 10,
+      updatedAt: 10,
+      messages: [{ role: 'user', content: 'second chat' }],
+    },
+  ];
+
+  function stubServer() {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.method || init.method === 'GET') {
+        return { ok: true, json: async () => serverSessions };
+      }
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('two mounted instances see one list, one active session, and each other\'s edits', async () => {
+    const fetchMock = stubServer();
+    const a = renderUseAskSession();
+    const b = renderUseAskSession();
+
+    await act(async () => {
+      await Promise.all([a.getLatest().initSessions(), b.getLatest().initSessions()]);
+    });
+
+    // Concurrent inits share a single GET (single-flight).
+    expect(fetchMock.mock.calls.filter(([, init]) => !init?.method || init.method === 'GET').length).toBe(1);
+    expect(a.getLatest().sessions.map((s) => s.id)).toEqual(b.getLatest().sessions.map((s) => s.id));
+    expect(a.getLatest().activeSessionId).toBe(b.getLatest().activeSessionId);
+
+    // Metadata edits propagate: rename and pin from A are visible through B.
+    act(() => {
+      a.getLatest().renameSession('shared-b', 'Renamed by A');
+      a.getLatest().togglePinSession('shared-b');
+    });
+    const seenByB = b.getLatest().sessions.find((s) => s.id === 'shared-b');
+    expect(seenByB?.title).toBe('Renamed by A');
+    expect(seenByB?.pinned).toBe(true);
+
+    // Activation is one shared fact: switching in A switches B too.
+    act(() => {
+      a.getLatest().loadSession('shared-b');
+    });
+    expect(b.getLatest().activeSessionId).toBe('shared-b');
+    expect(b.getLatest().messages.map((m) => m.content)).toEqual(['second chat']);
+
+    act(() => {
+      a.root.unmount();
+      b.root.unmount();
+    });
+  });
+
+  it('survives one instance unmounting: the remaining instance keeps the shared state', async () => {
+    stubServer();
+    const a = renderUseAskSession();
+    const b = renderUseAskSession();
+
+    await act(async () => {
+      await a.getLatest().initSessions();
+    });
+    act(() => {
+      a.getLatest().renameSession('shared-a', 'Kept title');
+    });
+
+    act(() => {
+      a.root.unmount();
+    });
+
+    expect(b.getLatest().sessions.find((s) => s.id === 'shared-a')?.title).toBe('Kept title');
+    expect(b.getLatest().activeSessionId).toBe('shared-a');
+
+    act(() => {
+      b.root.unmount();
+    });
+  });
+});
