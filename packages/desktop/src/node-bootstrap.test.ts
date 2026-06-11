@@ -4,7 +4,12 @@ import { EventEmitter } from 'events';
 import os from 'os';
 import { gzipSync } from 'zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { _downloadFile_forTest, _extractTarGzSafe_forTest, removeMacQuarantineAttribute } from './node-bootstrap';
+import {
+  _downloadFile_forTest,
+  _extractTarGzSafe_forTest,
+  _verifyNodeArchiveSha256_forTest,
+  removeMacQuarantineAttribute,
+} from './node-bootstrap';
 
 const httpsGetMock = vi.hoisted(() => vi.fn());
 
@@ -90,7 +95,9 @@ describe('node-bootstrap', () => {
     const source = readFileSync(path.join(__dirname, 'node-bootstrap.ts'), 'utf-8');
 
     expect(source).not.toContain("spawnAsync('tar', ['xzf', tmpFile");
-    expect(source).toContain('extractTarGzSafe(tmpFile, NODE_DIR, 1)');
+    expect(source).toContain('import { getDesktopConfigDir } from \'./desktop-home\'');
+    expect(source).toContain('const nodeDir = getNodeDir();');
+    expect(source).toContain('extractTarGzSafe(tmpFile, nodeDir, 1)');
     expect(source).toContain('function resolveTarEntryPath(destDir: string, entryName: string)');
     expect(source).toContain('function resolveTarSymlinkTarget(destDir: string, entryPath: string, linkName: string)');
     expect(source).toContain('symlinkSync(safeLinkName, entryPath)');
@@ -184,6 +191,20 @@ describe('node-bootstrap', () => {
         'https://node.example/dist/node.tar.gz',
         'https://node.example/mirrors/node.tar.gz',
       ]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects downloaded Node.js archives whose SHA-256 does not match the pinned official checksum', () => {
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'mindos-node-checksum-'));
+    const archive = path.join(tmpDir, 'node.tar.gz');
+
+    try {
+      writeFileSync(archive, 'not the official Node.js archive', 'utf-8');
+      expect(() => {
+        _verifyNodeArchiveSha256_forTest(archive, 'node-v22.16.0-linux-x64.tar.gz');
+      }).toThrow('Node.js archive checksum mismatch');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

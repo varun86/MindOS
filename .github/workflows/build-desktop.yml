@@ -30,7 +30,7 @@ jobs:
             platform: mac
             arch: arm64
             node_platform: darwin
-            publish_channel: latest
+            publish_channel: latest-arm64
           - os: macos-latest
             platform: mac
             arch: x64
@@ -59,6 +59,36 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate release inputs
+        run: |
+          if [ "${{ inputs.publish }}" = "true" ] && [ -z "${{ inputs.tag }}" ]; then
+            echo "Publishing Desktop releases requires tag=desktop-vX.Y.Z"
+            exit 1
+          fi
+          if [ "${{ inputs.publish }}" = "true" ] && [ "${{ matrix.platform }}" = "mac" ] && [ "${{ inputs.sign_mac }}" != "true" ]; then
+            echo "Publishing macOS releases requires sign_mac=true"
+            exit 1
+          fi
+
+      - name: Validate requested tag
+        if: inputs.tag != ''
+        run: |
+          TAG="${{ inputs.tag }}"
+          git fetch --tags origin
+          if ! git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Requested tag does not exist: ${TAG}"
+            exit 1
+          fi
+          TAG_SHA="$(git rev-list -n 1 "refs/tags/${TAG}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "Checkout SHA ${HEAD_SHA} does not match ${TAG} (${TAG_SHA})"
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
         with:
@@ -167,14 +197,40 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           EP_DRAFT: false
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           # macOS: set signing env vars (notarization is a separate step)
           if [ "${{ matrix.platform }}" = "mac" ] && [ "${{ inputs.sign_mac }}" = "true" ]; then
-            export CSC_LINK="${{ secrets.APPLE_CERTIFICATE_BASE64 }}"
-            export CSC_KEY_PASSWORD="${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
-            export ELECTRON_BUILDER_SKIP_NOTARIZE=true
+            if [ -z "$APPLE_CERTIFICATE_BASE64" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+              if [ "${{ inputs.publish }}" = "true" ]; then
+                echo "Publishing macOS releases requires APPLE_CERTIFICATE_BASE64 and APPLE_CERTIFICATE_PASSWORD"
+                exit 1
+              fi
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+            else
+              export CSC_LINK="$APPLE_CERTIFICATE_BASE64"
+              export CSC_KEY_PASSWORD="$APPLE_CERTIFICATE_PASSWORD"
+              export ELECTRON_BUILDER_SKIP_NOTARIZE=true
+            fi
           elif [ "${{ matrix.platform }}" = "mac" ]; then
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+
+          # Windows: sign when secrets are configured. Missing secrets are allowed so
+          # Desktop releases are not blocked before the project has a code-signing cert.
+          if [ "${{ matrix.platform }}" = "win" ]; then
+            if [ -n "$WINDOWS_CERTIFICATE_BASE64" ] && [ -n "$WINDOWS_CERTIFICATE_PASSWORD" ]; then
+              export CSC_LINK="$WINDOWS_CERTIFICATE_BASE64"
+              export CSC_KEY_PASSWORD="$WINDOWS_CERTIFICATE_PASSWORD"
+            elif [ "${{ inputs.publish }}" = "true" ]; then
+              echo "::warning::Publishing unsigned Windows artifacts because WINDOWS_CERTIFICATE_BASE64/WINDOWS_CERTIFICATE_PASSWORD are not configured."
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+            else
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+            fi
           fi
 
           VERSION="${{ steps.version.outputs.version }}"
@@ -194,13 +250,42 @@ jobs:
           cd packages/desktop && pnpm exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never "${EXTRA_ARGS[@]}"
 
       - name: Smoke packaged app
-        if: matrix.platform == 'mac' || matrix.platform == 'linux'
+        if: matrix.platform == 'mac' || matrix.platform == 'linux' || matrix.platform == 'win'
         run: |
-          if [ "${{ matrix.platform }}" = "linux" ]; then
+          if [ "${{ matrix.platform }}" = "win" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
+            node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-only
+          elif [ "${{ matrix.platform }}" = "linux" ]; then
             xvfb-run -a node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000
           else
             node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000
           fi
+
+      - name: Verify Windows signatures
+        if: matrix.platform == 'win' && inputs.publish == true
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE_BASE64 -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            Write-Warning "Skipping Windows Authenticode verification because code-signing secrets are not configured; unsigned artifacts will be published."
+            exit 0
+          }
+          $files = Get-ChildItem -Path packages/desktop/dist -Recurse -Include *.exe
+          if ($files.Count -eq 0) {
+            throw "No Windows .exe artifacts found to verify."
+          }
+          $expectedPublisher = "${{ secrets.WINDOWS_PUBLISHER_NAME }}"
+          foreach ($file in $files) {
+            $sig = Get-AuthenticodeSignature $file.FullName
+            if ($sig.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature for $($file.FullName): $($sig.Status)"
+            }
+            if ($expectedPublisher -and ($sig.SignerCertificate.Subject -notlike "*$expectedPublisher*")) {
+              throw "Unexpected Windows signer for $($file.FullName): $($sig.SignerCertificate.Subject)"
+            }
+            Write-Host "Valid signature: $($file.Name) -> $($sig.SignerCertificate.Subject)"
+          }
 
       # macOS: verify DMGs are valid before notarization
       # electron-builder can swallow hdiutil errors and produce corrupted DMGs
@@ -214,7 +299,7 @@ jobs:
             echo "  OK: $(basename "$file")"
           done
 
-      # macOS: notarize DMG files with retry logic
+      # macOS: notarize user DMGs and updater ZIPs with retry logic
       - name: Notarize macOS builds
         if: matrix.platform == 'mac' && inputs.sign_mac == true
         env:
@@ -232,7 +317,11 @@ jobs:
             AUTH_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
             echo "Using Apple ID authentication"
           else
-            echo "No notarization credentials configured, skipping"
+            if [ "${{ inputs.publish }}" = "true" ]; then
+              echo "No notarization credentials configured for a publish build"
+              exit 1
+            fi
+            echo "No notarization credentials configured, skipping non-publish notarization"
             exit 0
           fi
 
@@ -260,7 +349,7 @@ jobs:
           }
 
           FAILED=0
-          for file in packages/desktop/dist/*.dmg; do
+          for file in packages/desktop/dist/*.dmg packages/desktop/dist/*.zip; do
             [ -f "$file" ] || continue
             notarize_file "$file" || FAILED=1
           done
@@ -274,15 +363,18 @@ jobs:
             [ -f "$file" ] || continue
             echo "📎 Stapling: $(basename "$file")"
             xcrun stapler staple "$file"
+            xcrun stapler validate "$file"
             echo "  ✅ Stapled: $(basename "$file")"
           done
 
       # Upload artifacts (always, even if not publishing)
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mindos-desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
+            packages/desktop/dist/smoke-logs/**
             packages/desktop/dist/*.dmg
             packages/desktop/dist/*.zip
             packages/desktop/dist/*.exe
@@ -300,6 +392,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Get version
         id: version
@@ -308,7 +403,8 @@ jobs:
             TAG="${{ inputs.tag }}"
             VERSION="${TAG#desktop-v}"
           else
-            VERSION=$(cd packages/desktop && node -p "require('./package.json').version")
+            echo "Publishing Desktop releases requires tag=desktop-vX.Y.Z"
+            exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -337,7 +433,7 @@ jobs:
           #      "MindOS Setup 0.1.0.exe" → "MindOS-Setup.exe"
           #      "MindOS-0.1.0.AppImage"  → "MindOS.AppImage"
           strip_version() {
-            echo "$1" | sed "s/-${VERSION}//g; s/ ${VERSION}//g; s/ /-/g"
+            echo "$1" | sed "s/-${VERSION}//g; s/_${VERSION}//g; s/ ${VERSION}//g; s/ /-/g"
           }
           for file in artifacts/*.dmg artifacts/*.zip artifacts/*.exe artifacts/*.AppImage artifacts/*.deb; do
             [ -f "$file" ] || continue
@@ -390,7 +486,7 @@ jobs:
 
           VERSION="${{ steps.version.outputs.version }}"
           strip_version() {
-            echo "$1" | sed "s/-${VERSION}//g; s/ ${VERSION}//g; s/ /-/g"
+            echo "$1" | sed "s/-${VERSION}//g; s/_${VERSION}//g; s/ ${VERSION}//g; s/ /-/g"
           }
 
           # Parallel upload all files to versioned path (multipart + concurrent)
@@ -467,8 +563,17 @@ jobs:
           Full changelog: ${CHANGELOG_URL}
           EOF
 
-          git tag "$DESIRED_TAG" 2>/dev/null || true
-          git push origin "$DESIRED_TAG" 2>/dev/null || true
+          git fetch --tags origin
+          if ! git rev-parse "refs/tags/${DESIRED_TAG}" >/dev/null 2>&1; then
+            echo "Release tag does not exist: ${DESIRED_TAG}"
+            exit 1
+          fi
+          TAG_SHA="$(git rev-list -n 1 "refs/tags/${DESIRED_TAG}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "Finalize checkout ${HEAD_SHA} does not match ${DESIRED_TAG} (${TAG_SHA})"
+            exit 1
+          fi
 
           if gh release view "$DESIRED_TAG" >/dev/null 2>&1; then
             gh release edit "$DESIRED_TAG" \
@@ -487,7 +592,20 @@ jobs:
           shopt -s nullglob
           gh release delete-asset "$DESIRED_TAG" "MindOS.Setup.${VERSION}.exe" --yes 2>/dev/null || true
           gh release delete-asset "$DESIRED_TAG" "MindOS.Setup.${VERSION}.exe.blockmap" --yes 2>/dev/null || true
-          assets=(artifacts/*)
+          candidates=(
+            artifacts/*.dmg
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.blockmap
+            artifacts/*.yml
+            artifacts/*.yaml
+          )
+          assets=()
+          for asset in "${candidates[@]}"; do
+            [ -f "$asset" ] && assets+=("$asset")
+          done
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No desktop artifacts downloaded; refusing to finalize release."
             exit 1

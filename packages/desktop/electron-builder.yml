@@ -52,6 +52,9 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  artifactName: MindOS-Setup-${version}.${ext}
+  include: build/installer.nsh
+  runAfterFinish: false
 
 linux:
   icon: src/icons/icon.png

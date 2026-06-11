@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { clipUrl, createFallbackWebClip, isSafeHttpUrlForFetch, isValidUrl } from '@/lib/core/web-clip';
+import { captureUrl, clipUrl, createFallbackWebClip, isSafeHttpUrlForFetch, isValidUrl } from '@/lib/core/web-clip';
 
 describe('isValidUrl', () => {
   it('accepts http URLs', () => {
@@ -123,6 +123,42 @@ describe('clipUrl', () => {
     expect(result.wordCount).toBeGreaterThan(0);
   });
 
+  it('preserves embedded image URLs in clipped web pages without downloading them', async () => {
+    const html = `<!DOCTYPE html>
+<html><head><title>Article With Image</title></head>
+<body>
+  <article>
+    <h1>Article With Image</h1>
+    <p>This article includes a meaningful image but the web clip should keep the
+       original remote image URL in Markdown instead of saving the image as a
+       separate Inbox file. We add enough article text so Readability extracts
+       the article body consistently in this test environment.</p>
+    <img src="https://cdn.example.com/figures/chart.png" alt="Research chart">
+    <p>Additional body text keeps the article extraction stable and verifies that
+       normal web-page clipping remains an article capture, not a binary capture.</p>
+  </article>
+</body></html>`;
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      url: 'https://example.com/article-with-image',
+      headers: new Headers({
+        'content-type': 'text/html; charset=utf-8',
+      }),
+      text: () => Promise.resolve(html),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await captureUrl('https://example.com/article-with-image');
+
+    expect(result.mode).toBe('article');
+    if (result.mode !== 'article') throw new Error('Expected article capture');
+    expect(result.fileName).toBe('Article With Image.md');
+    expect(result.markdown).toContain('![Research chart](https://cdn.example.com/figures/chart.png)');
+    expect(result.markdown).not.toContain('contentBase64');
+  });
+
   it('handles non-HTML content type', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -137,6 +173,58 @@ describe('clipUrl', () => {
 
     await expect(clipUrl('https://example.com/image.png'))
       .rejects.toThrow('URL does not point to an HTML page');
+  });
+
+  it('captures a PDF URL as the original binary file', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.7\nbinary body');
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      url: 'https://papers.example.com/download?id=123',
+      headers: new Headers({
+        'content-type': 'application/pdf',
+        'content-length': String(pdfBytes.length),
+        'content-disposition': 'attachment; filename="MindOS Paper.pdf"',
+      }),
+      arrayBuffer: () => Promise.resolve(pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength)),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await captureUrl('https://papers.example.com/download?id=123');
+
+    expect(result.mode).toBe('file');
+    if (result.mode !== 'file') throw new Error('Expected PDF file capture');
+    expect(result.fileName).toBe('MindOS Paper.pdf');
+    expect(result.contentType).toBe('application/pdf');
+    expect(result.contentBase64).toBe(pdfBytes.toString('base64'));
+    expect(result.byteLength).toBe(pdfBytes.length);
+    expect(result.url).toBe('https://papers.example.com/download?id=123');
+  });
+
+  it('captures an image URL as the original binary file', async () => {
+    const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]);
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      url: 'https://assets.example.com/images/diagram',
+      headers: new Headers({
+        'content-type': 'image/png',
+        'content-length': String(imageBytes.length),
+        'content-disposition': "inline; filename*=UTF-8''MindOS%20Diagram.png",
+      }),
+      arrayBuffer: () => Promise.resolve(imageBytes.buffer.slice(imageBytes.byteOffset, imageBytes.byteOffset + imageBytes.byteLength)),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await captureUrl('https://assets.example.com/images/diagram');
+
+    expect(result.mode).toBe('file');
+    if (result.mode !== 'file') throw new Error('Expected image file capture');
+    expect(result.fileName).toBe('MindOS Diagram.png');
+    expect(result.contentType).toBe('image/png');
+    expect(result.contentBase64).toBe(imageBytes.toString('base64'));
+    expect(result.byteLength).toBe(imageBytes.length);
+    expect(result.url).toBe('https://assets.example.com/images/diagram');
   });
 
   it('handles HTTP error response', async () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Settings, Loader2, AlertCircle, CheckCircle2, RotateCcw, Sparkles, Palette, Database, RefreshCw, Plug, Download, X, Trash2, HelpCircle, Puzzle } from 'lucide-react';
+import { Settings, Loader2, AlertCircle, CheckCircle2, RotateCcw, Sparkles, Palette, RefreshCw, Plug, Download, X, Trash2, HelpCircle, Puzzle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useLocale } from '@/lib/stores/locale-store';
 import { apiFetch } from '@/lib/api';
@@ -15,6 +15,7 @@ import { PluginsTab } from './PluginsTab';
 import { UpdateTab } from './UpdateTab';
 import { UninstallTab } from './UninstallTab';
 import { restoreAiSettingsFromEnvironment } from './ai-env-restore';
+import { saveSettingsDocument } from './settings-save';
 
 interface SettingsContentProps {
   visible: boolean;
@@ -23,20 +24,17 @@ interface SettingsContentProps {
   onClose?: () => void;
 }
 
-function buildSettingsSaveBody(d: SettingsData) {
-  return {
-    ai: d.ai,
-    agent: d.agent,
-    embedding: d.embedding,
-    webSearch: d.webSearch,
-    mindRoot: d.mindRoot,
-    webPassword: d.webPassword,
-    authToken: d.authToken,
-    allowNetworkAccess: d.allowNetworkAccess === true,
-    skillPaths: d.skillPaths,
-    agentRuntimeEnv: d.agentRuntimeEnv,
-    connectionMode: d.connectionMode,
-  };
+function readStoredProseFont(storage: Storage): string {
+  const stored = storage.getItem('prose-font');
+  return stored && stored !== 'geist' ? stored : 'inter';
+}
+
+function migrateStoredContentWidth(raw: string): string {
+  if (!raw.endsWith('px')) return raw;
+  const px = parseInt(raw, 10);
+  if (px >= 960) return '100%';
+  if (px >= 780) return '80%';
+  return '65%';
 }
 
 export default function SettingsContent({ visible, initialTab, variant, onClose }: SettingsContentProps) {
@@ -55,6 +53,7 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   const saveAgain = useRef(false);
   const latestData = useRef<SettingsData | null>(null);
   const suppressNextAutosave = useRef(false);
+  const mountedRef = useRef(true);
 
   const showTransientStatus = useCallback((next: 'saved' | 'error') => {
     if (statusTimer.current) {
@@ -74,16 +73,21 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   const [dark, setDark] = useState(true);
   const [pluginStates, setPluginStates] = useState<Record<string, boolean>>({});
 
-  // Update available badge on Update tab
-  const [hasUpdate, setHasUpdate] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const dismissed = localStorage.getItem('mindos_update_dismissed');
-    const latest = localStorage.getItem('mindos_update_latest');
-    return !!latest && latest !== dismissed;
-  });
+  // Update available badge on Update tab. Start false so SSR and client hydration match.
+  const [hasUpdate, setHasUpdate] = useState(false);
   useEffect(() => {
+    const syncStoredUpdate = () => {
+      try {
+        const dismissed = localStorage.getItem('mindos_update_dismissed');
+        const latest = localStorage.getItem('mindos_update_latest');
+        setHasUpdate(!!latest && latest !== dismissed);
+      } catch {
+        setHasUpdate(false);
+      }
+    };
     const onAvail = () => setHasUpdate(true);
     const onDismiss = () => setHasUpdate(false);
+    syncStoredUpdate();
     window.addEventListener('mindos:update-available', onAvail);
     window.addEventListener('mindos:update-dismissed', onDismiss);
     return () => {
@@ -114,14 +118,9 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       }).catch(() => {
         if (!cancelled && requestId === loadRequestId.current && visible) setStatus('load-error');
       });
-      setFont(localStorage.getItem('prose-font') === 'geist' ? 'inter' : localStorage.getItem('prose-font') ?? 'inter');
+      setFont(readStoredProseFont(localStorage));
       setFontSize(localStorage.getItem('prose-font-size') ?? '15px');
-      // Migrate old px-based content-width to percentage
-      const storedCW = localStorage.getItem('content-width') ?? '80%';
-      const migratedCW = storedCW.endsWith('px')
-        ? (() => { const px = parseInt(storedCW); if (px >= 960) return '100%'; if (px >= 780) return '80%'; return '65%'; })()
-        : storedCW;
-      setContentWidth(migratedCW);
+      setContentWidth(migrateStoredContentWidth(localStorage.getItem('content-width') ?? '80%'));
       const stored = localStorage.getItem('theme');
       setDark(stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches);
       setStatus('idle');
@@ -175,9 +174,13 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   // Track unsaved data so we can flush on close/unmount
   const pendingData = useRef<SettingsData | null>(null);
 
-  const flushSave = useCallback(async (payload?: SettingsData | null) => {
+  const flushSave = useCallback(async (
+    payload?: SettingsData | null,
+    options: { background?: boolean } = {},
+  ) => {
     const initialPayload = payload ?? pendingData.current ?? latestData.current;
     if (!initialPayload) return;
+    const reportUi = !options.background;
 
     latestData.current = initialPayload;
     pendingData.current = null;
@@ -188,24 +191,20 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
     }
 
     saveInFlight.current = true;
-    setSaving(true);
+    if (reportUi && mountedRef.current) setSaving(true);
 
     let nextPayload: SettingsData | null = initialPayload;
     while (nextPayload) {
       const savingPayload = nextPayload;
       saveAgain.current = false;
       try {
-        await apiFetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildSettingsSaveBody(savingPayload)),
-        });
-        if (!saveAgain.current) {
+        await saveSettingsDocument(savingPayload);
+        if (!saveAgain.current && reportUi && mountedRef.current) {
           showTransientStatus('saved');
           window.dispatchEvent(new Event('mindos:settings-changed'));
         }
       } catch {
-        if (!saveAgain.current) {
+        if (!saveAgain.current && reportUi && mountedRef.current) {
           showTransientStatus('error');
         }
       }
@@ -214,14 +213,14 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
     }
 
     saveInFlight.current = false;
-    setSaving(false);
+    if (reportUi && mountedRef.current) setSaving(false);
 
     if (saveAgain.current && latestData.current) {
       const queuedPayload = latestData.current;
       saveAgain.current = false;
-      void flushSave(queuedPayload);
+      void flushSave(queuedPayload, options);
     }
-  }, []);
+  }, [showTransientStatus]);
 
   useEffect(() => {
     if (!data || !dataLoaded.current) return;
@@ -253,16 +252,13 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
   // Flush unsaved changes on unmount (modal variant: SettingsModal returns null when !open)
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (pendingData.current) {
         clearTimeout(saveTimer.current);
         const d = pendingData.current;
         pendingData.current = null;
-        apiFetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildSettingsSaveBody(d)),
-        }).catch(() => {});
+        flushSave(d, { background: true }).catch(() => {});
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,8 +328,14 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       {status === 'load-error' && (tab === 'ai' || tab === 'knowledge') ? (
         <div className="flex flex-col items-center gap-2 py-8 text-center">
           <AlertCircle size={isPanel ? 18 : 20} className="text-destructive" />
-          <p className={`${isPanel ? 'text-xs' : 'text-sm'} text-destructive font-medium`}>Failed to load settings</p>
-          {!isPanel && <p className="text-xs text-muted-foreground">Check that the server is running and AUTH_TOKEN is configured correctly.</p>}
+          <p className={`${isPanel ? 'text-xs' : 'text-sm'} text-destructive font-medium`}>
+            {t.settings.loadFailed ?? 'Failed to load settings'}
+          </p>
+          {!isPanel && (
+            <p className="text-xs text-muted-foreground">
+              {t.settings.loadFailedHint ?? 'Check that the server is running and AUTH_TOKEN is configured correctly.'}
+            </p>
+          )}
         </div>
       ) : !data && tab !== 'appearance' && tab !== 'mcp' && tab !== 'sync' && tab !== 'update' && tab !== 'uninstall' ? (
         <div className="flex justify-center py-8">
@@ -386,6 +388,42 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
     );
   };
 
+  const renderHorizontalTabs = (mode: 'panel' | 'mobile') => {
+    const isMobileTabs = mode === 'mobile';
+    const buttonClassName = isMobileTabs
+      ? 'flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap'
+      : 'flex items-center gap-1 px-2 py-2 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap';
+
+    return (
+      <div className={`flex border-b border-border ${isMobileTabs ? 'px-4' : 'px-3 shrink-0'} overflow-x-auto scrollbar-none gap-0`}>
+        {TABS.map(tabItem => (
+          <button
+            key={tabItem.id}
+            onClick={() => switchTab(tabItem.id)}
+            className={`${buttonClassName} ${
+              tab === tabItem.id
+                ? 'border-[var(--amber)] text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tabItem.icon}
+            {tabItem.label}
+            {tabItem.badge && <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0" />}
+          </button>
+        ))}
+        {isMobileTabs && (
+          <button
+            onClick={() => { onClose?.(); router.push('/help'); }}
+            className={`${buttonClassName} border-transparent text-muted-foreground hover:text-foreground`}
+          >
+            <HelpCircle size={iconSize} />
+            {t.sidebar.help}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   /* ── Panel variant: unchanged (horizontal tabs) ── */
   if (isPanel) {
     return (
@@ -393,29 +431,13 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Settings size={14} className="text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Settings</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t.settings.title}</span>
           </div>
           <div className="flex items-center gap-1.5">
             {renderInlineSaveStatus('compact')}
           </div>
         </div>
-        <div className="flex border-b border-border px-3 shrink-0 overflow-x-auto scrollbar-none gap-0">
-          {TABS.map(tabItem => (
-            <button
-              key={tabItem.id}
-              onClick={() => switchTab(tabItem.id)}
-              className={`flex items-center gap-1 px-2 py-2 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                tab === tabItem.id
-                  ? 'border-[var(--amber)] text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tabItem.icon}
-              {tabItem.label}
-              {tabItem.badge && <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0" />}
-            </button>
-          ))}
-        </div>
+        {renderHorizontalTabs('panel')}
         {renderContent()}
         {renderFooter()}
       </>
@@ -424,13 +446,12 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
 
   /* ── Modal variant ── */
   return (
-    <>
-      {/* Mobile: original vertical layout */}
-      <div className="flex flex-col h-full md:hidden">
-        {/* Mobile header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <div className="flex justify-center pt-2 pb-0 absolute top-0 left-1/2 -translate-x-1/2">
-            <div className="w-8 h-1 rounded-full bg-muted-foreground/20" />
+    <div className="flex h-full min-h-0 flex-col md:flex-row">
+      {/* Mobile header + horizontal tabs */}
+      <div className="shrink-0 md:hidden">
+        <div className="relative flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="absolute top-2 left-1/2 -translate-x-1/2">
+            <div className="h-1 w-8 rounded-full bg-muted-foreground/20" />
           </div>
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Settings size={15} className="text-muted-foreground" />
@@ -445,117 +466,85 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
             )}
           </div>
         </div>
-        {/* Mobile horizontal tabs */}
-        <div className="flex border-b border-border px-4 shrink-0 overflow-x-auto scrollbar-none gap-0">
-          {TABS.map(tabItem => (
-            <button
-              key={tabItem.id}
-              onClick={() => switchTab(tabItem.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                tab === tabItem.id
-                  ? 'border-[var(--amber)] text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tabItem.icon}
-              {tabItem.label}
-              {tabItem.badge && <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0" />}
-            </button>
-          ))}
+        {renderHorizontalTabs('mobile')}
+      </div>
+
+      {/* Desktop sidebar — vertical tabs */}
+      <div className="hidden md:flex w-[232px] shrink-0 border-r border-border/60 bg-card/35 flex-col">
+        <div className={`${desktopHeaderClass} gap-3 px-4`}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
+            <Settings size={15} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground">{t.settings.title}</div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">{activeTabLabel}</div>
+          </div>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="space-y-4">
+            {TAB_GROUPS.map(group => {
+              const items = TABS.filter(item => item.group === group.id);
+              return (
+                <div key={group.id} className="space-y-1">
+                  <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/70">
+                    {group.label}
+                  </div>
+                  {items.map(tabItem => {
+                    const active = tab === tabItem.id;
+                    return (
+                      <button
+                        key={tabItem.id}
+                        type="button"
+                        onClick={() => switchTab(tabItem.id)}
+                        className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          active
+                            ? 'bg-[var(--amber-subtle)] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--amber)_22%,transparent)]'
+                            : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
+                        }`}
+                      >
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+                          active
+                            ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
+                            : 'bg-background/60 text-muted-foreground group-hover:text-foreground'
+                        }`}>
+                          {tabItem.icon}
+                        </span>
+                        <span className="truncate">{tabItem.label}</span>
+                        {tabItem.badge && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-error shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+        <div className="shrink-0 border-t border-border/60 p-3">
           <button
             onClick={() => { onClose?.(); router.push('/help'); }}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap border-transparent text-muted-foreground hover:text-foreground"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <HelpCircle size={iconSize} />
+            <HelpCircle size={13} />
             {t.sidebar.help}
           </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col min-w-0 min-h-0">
+        <div className={`${desktopHeaderClass} hidden md:flex justify-between px-6`}>
+          <span className="text-sm font-semibold text-foreground">{activeTabLabel}</span>
+          <div className="flex items-center gap-1.5">
+            {renderInlineSaveStatus('full')}
+            {onClose && (
+              <button onClick={onClose} className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <X size={15} />
+              </button>
+            )}
+          </div>
         </div>
         {renderContent()}
         {renderFooter()}
       </div>
-
-      {/* Desktop: left-right layout */}
-      <div className="hidden md:flex flex-row h-full min-h-0">
-        {/* Left sidebar — vertical tabs */}
-        <div className="w-[232px] shrink-0 border-r border-border/60 bg-card/35 flex flex-col">
-          <div className={`${desktopHeaderClass} gap-3 px-4`}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
-              <Settings size={15} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">{t.settings.title}</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">{activeTabLabel}</div>
-            </div>
-          </div>
-          <nav className="flex-1 overflow-y-auto px-3 py-3">
-            <div className="space-y-4">
-              {TAB_GROUPS.map(group => {
-                const items = TABS.filter(item => item.group === group.id);
-                return (
-                  <div key={group.id} className="space-y-1">
-                    <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/70">
-                      {group.label}
-                    </div>
-                    {items.map(tabItem => {
-                      const active = tab === tabItem.id;
-                      return (
-                        <button
-                          key={tabItem.id}
-                          type="button"
-                          onClick={() => switchTab(tabItem.id)}
-                          className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                            active
-                              ? 'bg-[var(--amber-subtle)] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--amber)_22%,transparent)]'
-                              : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
-                          }`}
-                        >
-                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
-                            active
-                              ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
-                              : 'bg-background/60 text-muted-foreground group-hover:text-foreground'
-                          }`}>
-                            {tabItem.icon}
-                          </span>
-                          <span className="truncate">{tabItem.label}</span>
-                          {tabItem.badge && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-error shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </nav>
-          {/* Help link at bottom of sidebar */}
-          <div className="shrink-0 border-t border-border/60 p-3">
-            <button
-              onClick={() => { onClose?.(); router.push('/help'); }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <HelpCircle size={13} />
-              {t.sidebar.help}
-            </button>
-          </div>
-        </div>
-
-        {/* Right content area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Right header: tab title + status + close */}
-          <div className={`${desktopHeaderClass} justify-between px-6`}>
-            <span className="text-sm font-semibold text-foreground">{activeTabLabel}</span>
-            <div className="flex items-center gap-1.5">
-              {renderInlineSaveStatus('full')}
-              {onClose && (
-                <button onClick={onClose} className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <X size={15} />
-                </button>
-              )}
-            </div>
-          </div>
-          {renderContent()}
-          {renderFooter()}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }

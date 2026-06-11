@@ -3,15 +3,19 @@
  * Uses electron-updater with non-intrusive notifications.
  */
 import { autoUpdater } from 'electron-updater';
-import { ipcMain, BrowserWindow, app, dialog } from 'electron';
+import { ipcMain, BrowserWindow, app, type IpcMainInvokeEvent } from 'electron';
 
 export interface UpdaterOptions {
   /** Called right before quitAndInstall so main can skip its cleanup handler */
   onBeforeQuitAndInstall?: () => void;
+  /** Trusted-side IPC guard supplied by main.ts. */
+  assertTrustedLocalRenderer?: (event: IpcMainInvokeEvent, capability: string) => void;
 }
 
 export function setupUpdater(opts?: UpdaterOptions): () => void {
-  if (process.platform === 'win32' && process.arch === 'arm64') {
+  if (process.platform === 'darwin' && process.arch === 'arm64') {
+    autoUpdater.channel = 'latest-arm64';
+  } else if (process.platform === 'win32' && process.arch === 'arm64') {
     autoUpdater.channel = 'latest-arm64';
   }
 
@@ -64,7 +68,8 @@ export function setupUpdater(opts?: UpdaterOptions): () => void {
   });
 
   // IPC handlers
-  ipcMain.handle('check-update', async () => {
+  ipcMain.handle('check-update', async (event) => {
+    opts?.assertTrustedLocalRenderer?.(event, 'check-update');
     try {
       const result = await autoUpdater.checkForUpdates();
       const updateVersion = result?.updateInfo?.version;
@@ -75,7 +80,8 @@ export function setupUpdater(opts?: UpdaterOptions): () => void {
     }
   });
 
-  ipcMain.handle('install-update', async () => {
+  ipcMain.handle('install-update', async (event) => {
+    opts?.assertTrustedLocalRenderer?.(event, 'install-update');
     if (!isDownloaded) {
       await autoUpdater.downloadUpdate();
     }

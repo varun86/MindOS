@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, Plus, Loader2, AlertCircle } from 'lucide-react';
+import type { SettingsMcpMessages } from './types';
 
 const skillFrontmatter = (n: string) => `---
 name: ${n}
@@ -65,7 +66,7 @@ interface SkillCreateFormProps {
   onCancel: () => void;
   saving: boolean;
   error: string;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
 }
 
 export default function SkillCreateForm({ onSave, onCancel, saving, error, m }: SkillCreateFormProps) {

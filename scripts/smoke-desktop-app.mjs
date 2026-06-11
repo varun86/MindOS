@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
 const args = parseArgs(process.argv.slice(2));
@@ -11,6 +11,7 @@ const webPort = Number(args.webPort ?? 3456);
 const home = mkdtempSync(join(tmpdir(), 'mindos-desktop-smoke-home-'));
 const mindRoot = mkdtempSync(join(tmpdir(), 'mindos-desktop-smoke-mind-'));
 const logPath = join(tmpdir(), `mindos-desktop-smoke-${Date.now()}.log`);
+const artifactLogDir = resolve('packages/desktop/dist/smoke-logs');
 const seededConfigs = [];
 const fatalPatterns = [
   /MCP bundle not found/i,
@@ -34,28 +35,16 @@ if (args.skipIfArchMismatch && isArchMismatch(appPath)) {
 }
 
 writeFileSync(join(mindRoot, 'README.md'), '# MindOS smoke\n', 'utf-8');
+writeFileSync(logPath, `[smoke-desktop-app] log started ${new Date().toISOString()}\n`, 'utf-8');
 seedDesktopConfig();
 
 const executable = resolveExecutable(appPath);
 console.log(`[smoke-desktop-app] Launching ${executable}`);
 console.log(`[smoke-desktop-app] Log: ${logPath}`);
 
-const launchArgs = process.platform === 'linux' ? ['--no-sandbox'] : [];
-const child = spawn(executable, launchArgs, {
-  cwd: dirname(executable),
-  detached: process.platform !== 'win32',
-  env: {
-    ...process.env,
-    HOME: home,
-    USERPROFILE: home,
-    APPIMAGE_EXTRACT_AND_RUN: process.platform === 'linux' ? '1' : process.env.APPIMAGE_EXTRACT_AND_RUN,
-    MIND_ROOT: mindRoot,
-    MINDOS_WEB_PORT: String(webPort),
-    MINDOS_MCP_PORT: String(args.mcpPort ?? 8781),
-    MINDOS_RUNTIME_POLICY: 'bundled-only',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
+const child = process.platform === 'win32' && args.windowsRuntimeOnly
+  ? spawnWindowsRuntime(executable)
+  : spawnDesktopApp(executable);
 
 let log = '';
 child.stdout.on('data', (chunk) => appendLog(chunk));
@@ -71,9 +60,10 @@ try {
 } catch (error) {
   scanFatalLog(false);
   console.error(`[smoke-desktop-app] FAILED: ${error instanceof Error ? error.message : String(error)}`);
-  console.error(log.split('\n').slice(-120).join('\n'));
+  dumpDiagnostics();
   process.exitCode = 1;
 } finally {
+  persistSmokeLogArtifact();
   terminateChild();
   restoreSeededConfigs();
   rmSync(home, { recursive: true, force: true });
@@ -121,8 +111,69 @@ function currentWebPort() {
 }
 
 function appendLog(chunk) {
-  log += chunk.toString();
-  writeFileSync(logPath, log);
+  const text = chunk.toString();
+  log += text;
+  appendFileSync(logPath, text);
+}
+
+function spawnDesktopApp(executablePath) {
+  const launchArgs = process.platform === 'linux' ? ['--no-sandbox'] : [];
+  return spawn(executablePath, launchArgs, {
+    cwd: dirname(executablePath),
+    detached: process.platform !== 'win32',
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      ELECTRON_ENABLE_LOGGING: '1',
+      ELECTRON_ENABLE_STACK_DUMPING: '1',
+      APPIMAGE_EXTRACT_AND_RUN: process.platform === 'linux' ? '1' : process.env.APPIMAGE_EXTRACT_AND_RUN,
+      MIND_ROOT: mindRoot,
+      MINDOS_DESKTOP_CI_LOG: logPath,
+      MINDOS_DESKTOP_HOME_DIR: home,
+      MINDOS_DISABLE_CLI_SHIM_PATH_APPEND: '1',
+      MINDOS_WEB_PORT: String(webPort),
+      MINDOS_MCP_PORT: String(args.mcpPort ?? 8781),
+      MINDOS_RUNTIME_POLICY: 'bundled-only',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function spawnWindowsRuntime(executablePath) {
+  const runtimeRoot = join(dirname(executablePath), 'resources', 'mindos-runtime');
+  const nodePath = join(runtimeRoot, 'node', 'node.exe');
+  const appDir = join(runtimeRoot, 'packages', 'web');
+  const serverPath = join(appDir, '.next', 'standalone', 'server.js');
+
+  for (const requiredPath of [runtimeRoot, nodePath, appDir, serverPath]) {
+    if (!existsSync(requiredPath)) {
+      throw new Error(`Windows packaged runtime smoke missing required path: ${requiredPath}`);
+    }
+  }
+
+  console.log(`[smoke-desktop-app] Windows runtime-only smoke: ${serverPath}`);
+  return spawn(nodePath, [serverPath], {
+    cwd: appDir,
+    detached: false,
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      MIND_ROOT: mindRoot,
+      MINDOS_DESKTOP_HOME_DIR: home,
+      MINDOS_DISABLE_CLI_SHIM_PATH_APPEND: '1',
+      MINDOS_WEB_PORT: String(webPort),
+      MINDOS_MCP_PORT: String(args.mcpPort ?? 8781),
+      MINDOS_PROJECT_ROOT: runtimeRoot,
+      MINDOS_CLI_PATH: join(runtimeRoot, 'packages', 'mindos', 'bin', 'cli.js'),
+      MINDOS_MANAGED: '1',
+      NODE_ENV: 'production',
+      HOSTNAME: '127.0.0.1',
+      PORT: String(webPort),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 function seedDesktopConfig() {
@@ -130,14 +181,12 @@ function seedDesktopConfig() {
     desktopMode: 'local',
     mindRoot,
     setupPending: false,
+    mindosRuntimePolicy: 'bundled-only',
     port: webPort,
     mcpPort: Number(args.mcpPort ?? 8781),
   }, null, 2);
 
   seedConfigPath(join(home, '.mindos', 'config.json'), config);
-  // Electron's app.getPath('home') can resolve to the OS account home instead
-  // of the HOME env passed to child_process.spawn, especially on macOS runners.
-  seedConfigPath(join(homedir(), '.mindos', 'config.json'), config);
 }
 
 function seedConfigPath(configPath, contents) {
@@ -158,6 +207,44 @@ function restoreSeededConfigs() {
       // Best effort only: CI homes are disposable, and local runs should not fail
       // after the app itself has already been validated.
     }
+  }
+}
+
+function dumpDiagnostics() {
+  const paths = [
+    logPath,
+    join(home, '.mindos', 'crash.log'),
+  ];
+
+  console.error(`[smoke-desktop-app] Home: ${home}`);
+  console.error(`[smoke-desktop-app] Mind root: ${mindRoot}`);
+  console.error(`[smoke-desktop-app] Seeded configs: ${seededConfigs.map((entry) => entry.configPath).join(', ')}`);
+
+  for (const diagnosticPath of [...new Set(paths)]) {
+    if (!existsSync(diagnosticPath)) {
+      console.error(`[smoke-desktop-app] Missing diagnostic file: ${diagnosticPath}`);
+      continue;
+    }
+    console.error(`[smoke-desktop-app] --- tail ${diagnosticPath} ---`);
+    console.error(tailFile(diagnosticPath, 180));
+  }
+}
+
+function persistSmokeLogArtifact() {
+  try {
+    if (!existsSync(logPath)) return;
+    mkdirSync(artifactLogDir, { recursive: true });
+    writeFileSync(join(artifactLogDir, basename(logPath)), readFileSync(logPath, 'utf-8'), 'utf-8');
+  } catch {
+    // Best effort only; the console dump above is the primary diagnostic surface.
+  }
+}
+
+function tailFile(filePath, maxLines) {
+  try {
+    return readFileSync(filePath, 'utf-8').split('\n').slice(-maxLines).join('\n');
+  } catch (error) {
+    return `[unreadable: ${error instanceof Error ? error.message : String(error)}]`;
   }
 }
 
@@ -246,6 +333,7 @@ function parseArgs(argv) {
     else if (arg === '--web-port') parsed.webPort = argv[++i];
     else if (arg === '--mcp-port') parsed.mcpPort = argv[++i];
     else if (arg === '--skip-if-arch-mismatch') parsed.skipIfArchMismatch = true;
+    else if (arg === '--windows-runtime-only') parsed.windowsRuntimeOnly = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return parsed;

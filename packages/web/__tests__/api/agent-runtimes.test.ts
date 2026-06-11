@@ -256,6 +256,42 @@ describe('/api/agent-runtimes', () => {
     });
   });
 
+  it('returns Claude Code CLI fallback bridge metadata when the SDK bridge is unavailable', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => {
+      if (command === 'claude') return '/usr/local/bin/claude';
+      return null;
+    });
+    mockCheckNativeRuntimeHealth.mockResolvedValue({
+      status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason: 'SDK missing',
+      },
+      diagnosticHints: ['Claude Code CLI is available; Claude Agent SDK bridge is unavailable, so MindOS will use CLI fallback. SDK missing'],
+    });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { GET } = await import('../../app/api/agent-runtimes/route');
+    const res = await GET(new Request('http://localhost/api/agent-runtimes?runtime=claude'));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.runtime).toMatchObject({
+      id: 'claude',
+      kind: 'claude',
+      adapter: 'claude-cli',
+      status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason: 'SDK missing',
+      },
+    });
+  });
+
   it('compacts native runtime startup stacks before returning them to the UI', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => {
       if (command === 'codex') return '/opt/homebrew/bin/codex';

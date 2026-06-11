@@ -14,6 +14,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, read
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { gunzipSync } from 'zlib';
+import { createHash } from 'crypto';
 import {
   RUNTIME_DEPENDENCY_SEEDS,
   copyAppForBundledRuntime,
@@ -54,6 +55,14 @@ const productPkg = path.join(source, 'packages', 'mindos', 'package.json');
 const targetNodePlatform = process.env.MINDOS_BUNDLE_NODE_PLATFORM || process.platform;
 const targetNodeArch = process.env.MINDOS_BUNDLE_NODE_ARCH || process.arch;
 const NODE_ZIP_EXTRACT_TIMEOUT_MS = 300000;
+const NODE_DOWNLOAD_SHA256 = {
+  'node-v22.16.0-darwin-arm64.tar.gz': '1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9',
+  'node-v22.16.0-darwin-x64.tar.gz': '838d400f7e66c804e5d11e2ecb61d6e9e878611146baff69d6a2def3cc23f4ac',
+  'node-v22.16.0-linux-arm64.tar.gz': '1725602e9fb150eb8b8220a899085190e1c04d1a5f3862b01c3dc1dfce0157f9',
+  'node-v22.16.0-linux-x64.tar.gz': 'fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547',
+  'node-v22.16.0-win-arm64.zip': '31e885dcd06355f67b4be8cca86464270d83d0f5b8d4e3d4369c16ed22a5f4fa',
+  'node-v22.16.0-win-x64.zip': '21c2d9735c80b8f86dab19305aa6a9f6f59bbc808f68de3eef09d5832e3bfbbd',
+};
 
 if (!existsSync(rootPkg)) fail(`Not a MindOS repo root (no package.json): ${source}`);
 if (!existsSync(productPkg)) fail(`Missing packages/mindos/package.json under ${source}`);
@@ -211,12 +220,23 @@ if (!process.env.MINDOS_SKIP_BUNDLE_NODE) {
 
     const tmpFile = path.join(tmpDir, `node.${nodeFormat}`);
 
-    // Download using curl — try official first, fall back to China mirror (npmmirror.com)
+    // Download using curl — try official first, fall back to China mirror (npmmirror.com).
+    // Both sources must match the pinned checksum from Node's official SHASUMS256.txt.
+    let downloaded = false;
     const curlResult = spawnSync('curl', ['-fsSL', '--connect-timeout', '15', '-o', tmpFile, nodeUrl], {
       stdio: 'inherit',
       timeout: 120000,
     });
-    if (curlResult.status !== 0) {
+    if (curlResult.status === 0) {
+      try {
+        verifyNodeArchiveSha256(tmpFile, nodeFile);
+        downloaded = true;
+      } catch (e) {
+        console.warn(`[prepare-mindos-runtime] Official Node.js checksum failed: ${e.message}`);
+        rmSync(tmpFile, { force: true });
+      }
+    }
+    if (!downloaded) {
       console.log(`[prepare-mindos-runtime] Official download failed, trying mirror: ${nodeMirrorUrl}`);
       const mirrorResult = spawnSync('curl', ['-fsSL', '-o', tmpFile, nodeMirrorUrl], {
         stdio: 'inherit',
@@ -225,6 +245,7 @@ if (!process.env.MINDOS_SKIP_BUNDLE_NODE) {
       if (mirrorResult.status !== 0) {
         fail(`Failed to download Node.js from both ${nodeUrl} and ${nodeMirrorUrl}`);
       }
+      verifyNodeArchiveSha256(tmpFile, nodeFile);
     }
 
     // Extract
@@ -277,6 +298,15 @@ if (!process.env.MINDOS_SKIP_BUNDLE_NODE) {
   }
 } else {
   console.log('[prepare-mindos-runtime] MINDOS_SKIP_BUNDLE_NODE=1 — skipping Node.js bundle');
+}
+
+function verifyNodeArchiveSha256(filePath, fileName) {
+  const expected = NODE_DOWNLOAD_SHA256[fileName];
+  if (!expected) fail(`No pinned SHA-256 checksum for Node.js archive ${fileName}`);
+  const actual = createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  if (actual !== expected) {
+    fail(`Node.js archive checksum mismatch for ${fileName}: expected ${expected}, got ${actual}`);
+  }
 }
 
 function extractTarGzSafe(tarPath, destDir, stripComponents = 0) {

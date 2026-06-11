@@ -68,23 +68,33 @@ jobs:
           echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
 
       - name: Generate manifest
+        env:
+          RUNTIME_OSS_BASE_URL: ${{ vars.RUNTIME_OSS_BASE_URL }}
         run: |
           VERSION="${{ steps.archive.outputs.version }}"
           SHA256="${{ steps.archive.outputs.sha256 }}"
           SIZE="${{ steps.archive.outputs.size }}"
           MIN_DESKTOP="${{ inputs.min_desktop_version || '0.1.2' }}"
-          GH_URL="https://github.com/GeminiLight/MindOS/releases/download/runtime-latest/mindos-runtime-${VERSION}.tar.gz"
-          cat > /tmp/latest.json << EOF
-          {
-            "version": "${VERSION}",
-            "minDesktopVersion": "${MIN_DESKTOP}",
-            "size": ${SIZE},
-            "sha256": "${SHA256}",
-            "urls": [
-              "${GH_URL}"
-            ]
+          VERSION="$VERSION" SHA256="$SHA256" SIZE="$SIZE" MIN_DESKTOP="$MIN_DESKTOP" node <<'NODE'
+          const version = process.env.VERSION;
+          const ossBase = process.env.RUNTIME_OSS_BASE_URL?.replace(/\/$/, '');
+          const urls = [
+            `https://releases.mindos.com/runtime/mindos-runtime-${version}.tar.gz`,
+            `https://github.com/GeminiLight/MindOS/releases/download/runtime-latest/mindos-runtime-${version}.tar.gz`,
+          ];
+          if (ossBase) {
+            urls.push(`${ossBase}/runtime/mindos-runtime-${version}.tar.gz`);
           }
-          EOF
+
+          const manifest = {
+            version,
+            minDesktopVersion: process.env.MIN_DESKTOP,
+            size: Number(process.env.SIZE),
+            sha256: process.env.SHA256,
+            urls,
+          };
+          require('node:fs').writeFileSync('/tmp/latest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
           echo "📄 latest.json:"
           cat /tmp/latest.json
 
@@ -100,14 +110,26 @@ jobs:
             gh release create "$TAG" --title "MindOS Core Runtime (Latest)" \
               --notes "Auto-updated by Publish Runtime workflow. Current version: v${VERSION}" \
               --prerelease
-          # Delete old tarball assets (keep only current version)
+
+          # Upload the new tarball first; only publish latest.json after the
+          # referenced archive is present, so clients never see a manifest that
+          # points to a missing asset.
+          gh release upload "$TAG" "$ARCHIVE" --clobber
+          gh release upload "$TAG" /tmp/latest.json --clobber
+
+          # Delete old tarball assets after the new archive + manifest are live.
           for asset in $(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null); do
             case "$asset" in
+              "mindos-runtime-${VERSION}.tar.gz") ;;
               mindos-runtime-*.tar.gz) gh release delete-asset "$TAG" "$asset" --yes 2>/dev/null || true ;;
             esac
           done
-          # Upload new tarball + manifest
-          gh release upload "$TAG" "$ARCHIVE" /tmp/latest.json --clobber
+
+          gh release view "$TAG" --json assets \
+            --jq '.assets[].name' > /tmp/runtime-assets.txt
+          grep -Fx "mindos-runtime-${VERSION}.tar.gz" /tmp/runtime-assets.txt
+          grep -Fx "latest.json" /tmp/runtime-assets.txt
+
           # Update release notes with current version
           gh release edit "$TAG" --notes "Auto-updated by Publish Runtime workflow. Current version: v${VERSION}"
           echo "✅ Uploaded to GitHub Release: $TAG (v${VERSION})"

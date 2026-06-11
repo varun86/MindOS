@@ -68,8 +68,8 @@ export function handleUninstallPost(
 }
 
 function resolveRemoveConfig(body: UninstallPostPayload | unknown): boolean {
-  if (!body || typeof body !== 'object') return true;
-  return (body as UninstallPostPayload).removeConfig !== false;
+  if (!body || typeof body !== 'object') return false;
+  return (body as UninstallPostPayload).removeConfig === true;
 }
 
 function buildUninstallAnswers(removeConfig: boolean): string {

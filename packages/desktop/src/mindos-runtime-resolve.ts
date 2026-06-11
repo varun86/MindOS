@@ -4,11 +4,11 @@
  */
 import { existsSync } from 'fs';
 import path from 'path';
-import { app } from 'electron';
 import { getMindosInstallPath } from './node-detect';
 import { analyzeMindOsLayout } from './mindos-runtime-layout';
 import { pickMindOsRuntime, type MindOsRuntimePickResult, type MindOsRuntimePolicy } from './mindos-runtime-pick';
 import { getDefaultBundledMindOsDirectory } from './mindos-runtime-path';
+import { getDesktopConfigDir } from './desktop-home';
 
 function parseRuntimePolicy(raw: unknown): MindOsRuntimePolicy {
   if (raw === 'bundled-only' || raw === 'user-only' || raw === 'prefer-newer') return raw;
@@ -35,7 +35,7 @@ export async function resolveLocalMindOsProjectRoot(
   config: Record<string, unknown>,
   nodePath: string,
 ): Promise<ResolveMindOsOk | ResolveMindOsErr> {
-  const policy = parseRuntimePolicy(config.mindosRuntimePolicy);
+  const policy = parseRuntimePolicy(config.mindosRuntimePolicy ?? process.env.MINDOS_RUNTIME_POLICY);
   const strictCompat = config.mindosRuntimeStrictCompat === true;
   const minUser =
     typeof config.minMindOsVersion === 'string' && config.minMindOsVersion.trim()
@@ -82,7 +82,7 @@ export async function resolveLocalMindOsProjectRoot(
   const bundledAnalysis = bundledExists && bundledDir ? analyzeMindOsLayout(bundledDir) : { version: null, runnable: false };
 
   // Cached runtime: downloaded by Core Hot Update to ~/.mindos/runtime/
-  const cachedDir = path.join(app.getPath('home'), '.mindos', 'runtime');
+  const cachedDir = path.join(getDesktopConfigDir(), 'runtime');
   const cachedExists = existsSync(cachedDir);
   const cachedAnalysis = cachedExists ? analyzeMindOsLayout(cachedDir) : { version: null, runnable: false };
 

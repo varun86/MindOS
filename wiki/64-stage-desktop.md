@@ -474,6 +474,9 @@ inputs:
 
 jobs:
   build:
+    checkout:
+      ref: desktop-vX.Y.Z
+      verify: tag SHA == HEAD
     matrix:
       - macos-latest / mac / arm64
       - macos-latest / mac / x64
@@ -486,12 +489,15 @@ jobs:
       - pnpm --filter @mindos/desktop run build
       - pnpm --filter @mindos/desktop run prepare-mindos-runtime
       - electron-builder --${platform} --${arch}
+      - smoke packaged app
+      - verify signing/notarization gates when credentials are configured
 
   finalize:
     needs: build
     steps:
       - upload versioned artifacts to GitHub Release / CDN mirrors
-      - rename electron-builder's vX.Y.Z release to desktop-vX.Y.Z
+      - GitHub Release upload is installer/update metadata whitelist only; smoke logs stay CI artifacts
+      - update the existing desktop-vX.Y.Z release; do not create or retarget tags
 ```
 
 ### 平台产物
@@ -504,19 +510,23 @@ macOS:
       - MindOS-{version}.dmg
       - MindOS-{version}-arm64-mac.zip
       - MindOS-{version}-mac.zip
+      - latest-arm64-mac.yml
+      - latest-mac.yml
+    note: arm64 uses updater channel latest-arm64, which electron-updater maps to latest-arm64-mac.yml; x64 stays on latest -> latest-mac.yml.
 
 Windows x64:
     runs-on: windows-latest
     upload:
       - MindOS-Setup-{version}.exe
       - latest.yml
+    note: publish builds start the packaged Electron app for smoke. Signing is best-effort: configured Windows signing secrets enable Authenticode signing/verification; missing secrets publish unsigned artifacts with an explicit workflow warning. NSIS install/update stops the MindOS.exe process tree plus MindOS-owned Node runtime children before file copy, runs the expensive runtime cleanup only once per installer lifecycle, disables run-after-finish, and uninstall invokes ~/.mindos/uninstall.bat while preserving the knowledge base.
 
 Windows ARM64:
     runs-on: windows-latest
     upload:
       - MindOS-Setup-{version}-arm64.exe
       - latest-arm64.yml
-    note: uses native win-arm64 Electron and bundled Node; updater channel is latest-arm64 to avoid overwriting x64 update metadata.
+    note: uses native win-arm64 Electron and bundled Node; updater channel is latest-arm64 to avoid overwriting x64 update metadata. Current x64 GitHub runner can only run runtime-only smoke for ARM64, so real ARM64 launch remains a device/runner verification item.
 
 Linux x64:
     runs-on: ubuntu-latest
@@ -551,9 +561,9 @@ Linux deb 的 `packageName` 必须保持 `mindos-desktop`，不能回退到 scop
 | Node.js SEA 对 Next.js standalone 支持不完善 | 14A 方案不可行 | ~~已规避：主方案改为内嵌 Node.js binary + 目录，不依赖 SEA~~ |
 | Tauri v2 sidecar 对长运行 Node.js 进程管理有 bug | 14C 不稳定 | 独立进程 + PID 文件管理（复用现有 daemon 逻辑） |
 | macOS 公证要求严格（Hardened Runtime 限制） | .dmg 无法分发 | 临时：引导用户手动允许；长期：购买 Developer ID |
-| Windows Defender/SmartScreen 拦截 | 用户安装体验差 | EV 签名 或 提交给 Microsoft 审查 |
-| 包体积过大 (>100MB) | 下载慢，用户流失 | `next build` standalone 精简 + 压缩 + 分平台优化 |
-| 与 npm 版 daemon 冲突 | 端口争用 | 启动前检测已有 MindOS 进程 |
+| Windows Defender/SmartScreen 拦截 | 用户安装体验差 | EV 签名 或 提交给 Microsoft 审查；publish 构建允许 unsigned 兜底发布，但有证书时必须 Authenticode 校验通过 |
+| 包体积过大 (>100MB) | 下载/解压慢，用户流失 | `next build` standalone 精简 + 分平台 native/runtime 剪枝；不盲目移除 bundled runtime，避免把慢点转移到首启下载/构建 |
+| 与 npm 版 daemon 或旧 Desktop 进程冲突 | 端口争用、Windows 安装器文件锁 | 启动前检测已有 MindOS 进程；Windows NSIS 安装/更新前停止 MindOS.exe 进程树和 MindOS-owned Node 子进程 |
 | Webview 兼容性（Tauri Phase 2） | 渲染差异 | macOS WebKit / Windows WebView2 / Linux WebKitGTK 行为不一致。MindOS 前端用 TipTap + CodeMirror + 复杂 CSS，需在三端 Webview 逐一测试。Windows WebView2 需 Edge Runtime（Win10 旧版本可能缺失，Tauri 自动下载但增加首次启动时间）。Linux WebKitGTK 跨发行版版本差异大。**降级方案：** 始终保留"在浏览器中打开"选项，Webview 不可用时回退到外部浏览器 |
 
 ---

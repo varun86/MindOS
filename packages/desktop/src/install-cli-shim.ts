@@ -15,12 +15,13 @@ import {
 } from 'fs';
 import { getDefaultBundledMindOsDirectory } from './mindos-runtime-path';
 import { resolveCliPath } from './mindos-runtime-layout';
+import { getDesktopConfigDir, getDesktopHome } from './desktop-home';
 import semver from 'semver';
 
 const SHELL_MARKER = '# MindOS Desktop — CLI (mindos)';
 
 function shimDir(): string {
-  return path.join(app.getPath('home'), '.mindos', 'bin');
+  return path.join(getDesktopConfigDir(), 'bin');
 }
 
 function shimPath(): string {
@@ -47,7 +48,7 @@ function resolveCliJs(): string | null {
   }
 
   // Check cached runtime (installed by Core Hot Update)
-  const cachedRoot = path.join(app.getPath('home'), '.mindos', 'runtime');
+  const cachedRoot = path.join(getDesktopConfigDir(), 'runtime');
   const cachedCli = path.join(cachedRoot, 'bin', 'cli.js');
   if (existsSync(cachedCli)) {
     let cachedVersion: string | null = null;
@@ -132,7 +133,7 @@ export function escapeCmdSetValue(value: string): string {
 }
 
 function writeWindowsShim(cliJs: string): void {
-  const nodePrivate = path.join(app.getPath('home'), '.mindos', 'node', 'node.exe');
+  const nodePrivate = path.join(getDesktopConfigDir(), 'node', 'node.exe');
   const cliEsc = escapeCmdSetValue(cliJs);
   const privEsc = escapeCmdSetValue(nodePrivate);
   const lines = [
@@ -215,7 +216,7 @@ function appendMindosBinToWindowsPath(): boolean {
 function appendMindosBinToShellRc(): boolean {
   if (process.platform === 'win32') return appendMindosBinToWindowsPath();
 
-  const home = app.getPath('home');
+  const home = getDesktopHome();
   const block = `\n${SHELL_MARKER}\nexport PATH="$HOME/.mindos/bin:$PATH"\n`;
 
   // Files to write, in order. "mustCreate" means create the file if it doesn't exist.
@@ -296,7 +297,7 @@ export function buildWindowsUninstallScript(): string {
     'for %%F in ("%MINDOS_DIR%\\mindos.pid" "%MINDOS_DIR%\\desktop-children.pid" "%MINDOS_DIR%\\ssh-tunnel.pid") do (',
     '  if exist "%%~F" (',
     '    for /f "usebackq delims=" %%P in ("%%~F") do (',
-    '      for /f "usebackq delims=" %%C in (`powershell.exe -NoProfile -Command "$p = Get-CimInstance Win32_Process -Filter \'ProcessId = %%P\' -ErrorAction SilentlyContinue; if ($p) { $p.CommandLine }" 2^>nul`) do (',
+    '      for /f "usebackq delims=" %%C in (`powershell.exe -NoProfile -NonInteractive -Command "$p = Get-CimInstance Win32_Process -Filter \'ProcessId = %%P\' -ErrorAction SilentlyContinue; if ($p) { $p.CommandLine }" 2^>nul`) do (',
     '        echo %%C | findstr /I /C:"\\.mindos\\runtime\\" /C:"mindos-runtime" /C:"@geminilight\\mindos" /C:"\\packages\\web\\.next\\standalone\\server.js" /C:"\\dist\\protocols\\mcp-server\\index.cjs" >nul && taskkill /PID %%P /T /F >nul 2>nul',
     '      )',
     '    )',
@@ -304,13 +305,16 @@ export function buildWindowsUninstallScript(): string {
     '  )',
     ')',
     '',
-    'rem 2. Remove private runtime and CLI shim',
-    'if exist "%MINDOS_DIR%\\node" rmdir /s /q "%MINDOS_DIR%\\node"',
+    'rem 2. Remove Desktop-managed runtimes and CLI shim. Knowledge base is NOT touched.',
+    'for %%D in ("%MINDOS_DIR%\\node" "%MINDOS_DIR%\\runtime" "%MINDOS_DIR%\\runtime-downloading" "%MINDOS_DIR%\\runtime-old") do (',
+    '  if exist "%%~D" rmdir /s /q "%%~D"',
+    ')',
+    'del /f /q "%MINDOS_DIR%\\runtime-download.tar.gz" >nul 2>nul',
     'if exist "%MINDOS_DIR%\\bin\\mindos.cmd" del /f /q "%MINDOS_DIR%\\bin\\mindos.cmd"',
     'if exist "%MINDOS_DIR%\\bin" rmdir "%MINDOS_DIR%\\bin" >nul 2>nul',
     '',
     'rem 3. Remove MindOS bin from the user PATH',
-    `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$bin = Join-Path $env:USERPROFILE '.mindos\\bin'; $path = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($path) { $parts = $path -split ';' | Where-Object { $_ -and ($_.TrimEnd('\\') -ine $bin.TrimEnd('\\')) }; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }" >nul 2>nul`,
+    `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "function Normalize-MindOSPath([string]$p) { if ([string]::IsNullOrWhiteSpace($p)) { return '' }; $expanded = [Environment]::ExpandEnvironmentVariables($p); try { return ([IO.Path]::GetFullPath($expanded)).TrimEnd('\\').ToLowerInvariant() } catch { return $expanded.TrimEnd('\\').ToLowerInvariant() } }; $bin = Join-Path $env:USERPROFILE '.mindos\\bin'; $binNorm = Normalize-MindOSPath $bin; $path = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($path) { $parts = $path -split ';' | Where-Object { $norm = Normalize-MindOSPath $_; $norm -and $norm -ne $binNorm }; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User') }" >nul 2>nul`,
     '',
     'rem 4. Remove Desktop config and state files. Knowledge base is NOT touched.',
     'del /f /q "%MINDOS_DIR%\\config.json" >nul 2>nul',
@@ -352,24 +356,64 @@ is_mindos_cmd() {
   return 1
 }
 
+is_ssh_cmd() {
+  comm="$1"
+  case "$(basename "$comm")" in
+    ssh|ssh.exe)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+terminate_pid() {
+  pid="$1"
+  label="$2"
+  kill "$pid" 2>/dev/null && echo "  Stopped $label process $pid" || true
+  i=0
+  while [ "$i" -lt 10 ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
 # 1. Kill running MindOS processes
 for pid_file in "$HOME/.mindos/mindos.pid" "$HOME/.mindos/desktop-children.pid"; do
   if [ -f "$pid_file" ]; then
     while IFS= read -r pid; do
       cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
       if is_mindos_cmd "$cmd"; then
-        kill "$pid" 2>/dev/null && echo "  Stopped process $pid" || true
+        terminate_pid "$pid" "MindOS"
       fi
     done < "$pid_file"
     rm -f "$pid_file"
   fi
 done
 
-# 2. Remove private Node.js (~220MB)
-if [ -d "$HOME/.mindos/node" ]; then
-  echo "  Removing private Node.js..."
-  rm -rf "$HOME/.mindos/node"
+# 1b. Kill orphaned SSH tunnel if it is still owned by ssh.
+pid_file="$HOME/.mindos/ssh-tunnel.pid"
+if [ -f "$pid_file" ]; then
+  while IFS= read -r pid; do
+    comm="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+    if is_ssh_cmd "$comm"; then
+      terminate_pid "$pid" "SSH tunnel"
+    fi
+  done < "$pid_file"
+  rm -f "$pid_file"
 fi
+
+# 2. Remove Desktop-managed runtimes and caches. Knowledge base is NOT touched.
+for managed in "$HOME/.mindos/node" "$HOME/.mindos/runtime" "$HOME/.mindos/runtime-downloading" "$HOME/.mindos/runtime-old"; do
+  if [ -e "$managed" ]; then
+    echo "  Removing $managed..."
+    rm -rf "$managed"
+  fi
+done
+rm -f "$HOME/.mindos/runtime-download.tar.gz"
 
 # 3. Remove CLI shim
 rm -f "$HOME/.mindos/bin/mindos"
@@ -377,12 +421,12 @@ rmdir "$HOME/.mindos/bin" 2>/dev/null || true
 
 # 4. Clean PATH injection from shell rc files
 for rc in "$HOME/.zshenv" "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
-  if [ -f "$rc" ] && grep -q '# MindOS Desktop' "$rc"; then
-    # Remove the marker line and the export line that follows it
+  if [ -f "$rc" ] && grep -Eq '# MindOS Desktop|# MindOS CLI|export PATH="\$HOME/\.mindos/bin:\$PATH"' "$rc"; then
+    # Remove current Desktop marker blocks, legacy CLI marker blocks, and exact raw PATH lines.
     if [ "$(uname)" = "Darwin" ]; then
-      sed -i '' '/# MindOS Desktop/,+1d' "$rc"
+      sed -i '' -e '/# MindOS Desktop/,+1d' -e '/# MindOS CLI/,+1d' -e '\\#export PATH="$HOME/.mindos/bin:$PATH"#d' "$rc"
     else
-      sed -i '/# MindOS Desktop/,+1d' "$rc"
+      sed -i -e '/# MindOS Desktop/,+1d' -e '/# MindOS CLI/,+1d' -e '\\#export PATH="$HOME/.mindos/bin:$PATH"#d' "$rc"
     fi
     echo "  Cleaned $rc"
   fi
@@ -405,7 +449,6 @@ rm -f "$HOME/.mindos/config.json"
 rm -f "$HOME/.mindos/stdin-watchdog.cjs"
 rm -f "$HOME/.mindos/desktop-cli-path-notify-v1"
 rm -f "$HOME/.mindos/update-status.json"
-rm -f "$HOME/.mindos/ssh-tunnel.pid"
 rm -rf "$HOME/.mindos/tmp"
 rm -rf "$HOME/.mindos/sessions"
 
@@ -428,7 +471,7 @@ echo "To also remove it: rm -rf ~/MindOS/mind"
 
 /** Generate ~/.mindos/uninstall.sh/.bat for cleanup after app deletion */
 function writeUninstallScript(): void {
-  const home = app.getPath('home');
+  const home = getDesktopHome();
   if (process.platform === 'win32') {
     const scriptPath = path.join(home, '.mindos', 'uninstall.bat');
     if (existsSync(scriptPath)) return;
@@ -453,7 +496,7 @@ function writeUninstallScript(): void {
 const NOTIFY_FLAG = 'desktop-cli-path-notify-v1';
 
 function notifyFlagPath(): string {
-  return path.join(app.getPath('home'), '.mindos', NOTIFY_FLAG);
+  return path.join(getDesktopConfigDir(), NOTIFY_FLAG);
 }
 
 function showMessageBoxSafe(

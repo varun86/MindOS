@@ -7,13 +7,13 @@
  * Instead, we use filesystem-only checks first (instant), then shell fallbacks
  * with an enriched PATH that includes the discovered node's bin directory.
  */
-import { app } from 'electron';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { getPrivateNodePath, isPrivateNodeInstalled, getBundledNodePath, isBundledNodeInstalled } from './node-bootstrap';
 import { getAppConfigStore } from './app-config-store';
+import { getDesktopHome } from './desktop-home';
 
 const IS_WIN = process.platform === 'win32';
 
@@ -52,7 +52,7 @@ function isVersionDirAcceptable(ver: string): boolean {
 
 /** Build an enriched PATH that includes common Node.js bin directories */
 function enrichedPath(extraBinDir?: string): string {
-  const home = app.getPath('home');
+  const home = getDesktopHome();
   const dirs = [
     extraBinDir,
     path.join(home, '.mindos', 'bin'),           // MindOS CLI shim
@@ -101,7 +101,7 @@ async function execFileWithPath(command: string, args: string[], opts: { timeout
  * Fast checks (fs only) run first, slow checks (shell spawn) run last.
  */
 export async function getNodePath(): Promise<string | null> {
-  const home = app.getPath('home');
+  const home = getDesktopHome();
 
   // 0a. Bundled Node.js shipped with the Desktop app (highest priority — zero download)
   if (isBundledNodeInstalled()) {
@@ -222,7 +222,7 @@ export async function getMindosInstallPath(nodePath?: string | null): Promise<st
   }
 
   // Strategy 2: Check common global npm paths directly (no shell needed)
-  const home = app.getPath('home');
+  const home = getDesktopHome();
   const commonGlobalPaths = [
     // Private MindOS node
     path.join(home, '.mindos', 'node', 'lib', 'node_modules', '@geminilight', 'mindos'),

@@ -12,6 +12,7 @@ import {
   type ClaudeCodeSdkModule,
 } from '../../agent-runtime/claude-code-sdk.js';
 import {
+  compactRuntimeFailureMessage,
   compactRuntimeDiagnosticHints,
   summarizeRuntimeFailure,
 } from '../../agent-runtime/runtime-errors.js';
@@ -51,6 +52,13 @@ export type AgentRuntimeAdapter =
 
 export type AgentRuntimeOwner = 'mindos' | 'external';
 
+export type AgentRuntimeBridge = {
+  kind: 'codex-app-server' | 'claude-sdk' | 'claude-cli';
+  label: string;
+  fallback?: boolean;
+  reason?: string;
+};
+
 export type AgentRuntimeDescriptor = {
   id: string;
   name: string;
@@ -62,6 +70,7 @@ export type AgentRuntimeDescriptor = {
   sessionOwner: AgentRuntimeOwner;
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
+  runtimeBridge?: AgentRuntimeBridge;
   description?: string;
   sourceAgentId?: string;
   canonicalAgentId?: string;
@@ -92,6 +101,7 @@ export type DetectedRuntimeAgent = {
   status?: Exclude<AgentRuntimeStatus, 'missing'>;
   reason?: string;
   diagnosticHints?: string[];
+  runtimeBridge?: AgentRuntimeBridge;
 };
 
 export type MissingRuntimeAgent = {
@@ -123,6 +133,7 @@ export type NativeRuntimeHealthResult = {
   status: Exclude<AgentRuntimeStatus, 'missing'>;
   reason?: string;
   diagnosticHints?: string[];
+  runtimeBridge?: AgentRuntimeBridge;
 };
 
 export type NativeRuntimeHealthInput = {
@@ -289,11 +300,29 @@ function normalizeDiagnosticHints(value: unknown): string[] | undefined {
   return hints.length > 0 ? Array.from(new Set(hints)) : undefined;
 }
 
+function isRuntimeBridgeKind(value: unknown): value is AgentRuntimeBridge['kind'] {
+  return value === 'codex-app-server' || value === 'claude-sdk' || value === 'claude-cli';
+}
+
+function normalizeRuntimeBridge(value: unknown): AgentRuntimeBridge | undefined {
+  if (!isRecord(value)) return undefined;
+  if (!isRuntimeBridgeKind(value.kind) || typeof value.label !== 'string' || !value.label.trim()) return undefined;
+  return {
+    kind: value.kind,
+    label: value.label.trim(),
+    ...(typeof value.fallback === 'boolean' ? { fallback: value.fallback } : {}),
+    ...(typeof value.reason === 'string' && value.reason.trim()
+      ? { reason: compactRuntimeFailureMessage(value.reason, { runtime: value.kind === 'claude-cli' || value.kind === 'claude-sdk' ? 'claude' : 'codex' }) }
+      : {}),
+  };
+}
+
 function normalizeInstalled(value: unknown): DetectedRuntimeAgent | null {
   if (!isRecord(value)) return null;
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.binaryPath !== 'string') return null;
   const resolved = normalizeResolvedCommand(value.resolvedCommand);
   const diagnosticHints = normalizeDiagnosticHints(value.diagnosticHints);
+  const runtimeBridge = normalizeRuntimeBridge(value.runtimeBridge);
   return {
     id: value.id,
     name: value.name,
@@ -302,6 +331,7 @@ function normalizeInstalled(value: unknown): DetectedRuntimeAgent | null {
     ...(isInstalledRuntimeStatus(value.status) ? { status: value.status } : {}),
     ...(typeof value.reason === 'string' && value.reason.trim() ? { reason: value.reason } : {}),
     ...(diagnosticHints ? { diagnosticHints } : {}),
+    ...(runtimeBridge ? { runtimeBridge } : {}),
   };
 }
 
@@ -338,6 +368,7 @@ function nativeDescriptor(input: {
   missing?: MissingRuntimeAgent;
 }): AgentRuntimeDescriptor {
   const status = input.source ? input.source.status ?? 'available' : input.missing?.status ?? 'missing';
+  const runtimeBridge = input.source?.runtimeBridge;
   const rawReason = input.source?.reason ?? input.missing?.reason;
   const reasonSummary = rawReason ? summarizeRuntimeFailure(rawReason, { runtime: input.id }) : null;
   const reason = reasonSummary?.reason;
@@ -362,13 +393,14 @@ function nativeDescriptor(input: {
     id: input.id,
     name: input.name,
     kind: input.id,
-    adapter: input.id === 'codex' ? 'codex-app-server' : 'claude-sdk',
+    adapter: input.id === 'codex' ? 'codex-app-server' : runtimeBridge?.kind === 'claude-cli' ? 'claude-cli' : 'claude-sdk',
     modelOwner: 'external',
     authOwner: 'external',
     permissionOwner: 'external',
     sessionOwner: 'external',
     status,
     capabilities: input.id === 'codex' ? codexCapabilities : claudeCapabilities,
+    ...(runtimeBridge ? { runtimeBridge } : {}),
     description: input.id === 'codex'
       ? 'Local Codex app-server runtime. Model, approval, and thread behavior are owned by Codex.'
       : 'Local Claude Code runtime. Model, permission, and session behavior are owned by Claude Code.',
@@ -698,6 +730,10 @@ export async function checkClaudeRuntimeHealth(input: {
     if (typeof sdk.query === 'function') {
       return {
         status: 'available',
+        runtimeBridge: {
+          kind: 'claude-sdk',
+          label: 'SDK bridge active',
+        },
         diagnosticHints: [
           ...(cliHealth.diagnosticHints ?? []),
           `Claude Agent SDK bridge is available and will use the local Claude Code CLI at ${binaryPath}.`,
@@ -706,17 +742,33 @@ export async function checkClaudeRuntimeHealth(input: {
     }
     return {
       status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason: 'Claude Agent SDK bridge did not expose query().',
+      },
       diagnosticHints: [
         ...(cliHealth.diagnosticHints ?? []),
         `Claude Code CLI is available at ${binaryPath}; Claude Agent SDK bridge did not expose query(), so MindOS will use CLI fallback.`,
       ],
     };
   } catch (error) {
+    const reason = compactRuntimeFailureMessage(error instanceof Error ? error.message : String(error), {
+      runtime: 'claude',
+      fallback: 'Claude Agent SDK bridge is unavailable.',
+    });
     return {
       status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason,
+      },
       diagnosticHints: [
         ...(cliHealth.diagnosticHints ?? []),
-        `Claude Code CLI is available at ${binaryPath}; Claude Agent SDK bridge is unavailable, so MindOS will use CLI fallback. ${error instanceof Error ? error.message : String(error)}`,
+        `Claude Code CLI is available at ${binaryPath}; Claude Agent SDK bridge is unavailable, so MindOS will use CLI fallback. ${reason}`,
       ],
     };
   }
@@ -744,6 +796,7 @@ async function applyNativeRuntimeHealth(
         status: health.status,
         ...(health.reason ? { reason: health.reason } : {}),
         ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
+        ...(health.runtimeBridge ? { runtimeBridge: health.runtimeBridge } : {}),
       };
     } catch (error) {
       const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), runtime);
@@ -791,6 +844,7 @@ async function detectNativeRuntimeDefinition(
       status: health.status,
       ...(health.reason ? { reason: health.reason } : {}),
       ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
+      ...(health.runtimeBridge ? { runtimeBridge: health.runtimeBridge } : {}),
     };
   } catch (error) {
     const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), candidate.runtime);
@@ -852,6 +906,7 @@ async function detectClaudeNativeRuntimeDefinition(
       status: health.status,
       ...(health.reason ? { reason: health.reason } : {}),
       ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
+      ...(health.runtimeBridge ? { runtimeBridge: health.runtimeBridge } : {}),
     };
   } catch (error) {
     const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), candidate.runtime);

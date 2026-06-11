@@ -10,11 +10,12 @@ import { apiFetch } from '@/lib/api';
 import { useMcpDataOptional } from '@/lib/stores/mcp-store';
 import { ConfirmDialog } from '@/components/agents/AgentsPrimitives';
 import { copyToClipboard } from '@/lib/clipboard';
-import type { SkillInfo, McpSkillsSectionProps } from './types';
+import type { SkillInfo, McpSkillsSectionProps, SettingsMcpMessages } from './types';
 import SkillRow from './McpSkillRow';
 import SkillCreateForm from './McpSkillCreateForm';
 import CustomSelect from '@/components/CustomSelect';
 import type { SelectItem } from '@/components/CustomSelect';
+import { saveSettingsPatch } from './settings-save';
 
 /* ── Skills Section ────────────────────────────────────────────── */
 
@@ -405,7 +406,7 @@ function SkillSearchPathsSection({
   m,
   onChanged,
 }: {
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
   onChanged: () => void | Promise<void>;
 }) {
   const [enableAgentsDir, setEnableAgentsDir] = useState(true);
@@ -431,11 +432,7 @@ function SkillSearchPathsSection({
     setSavingPaths(true);
     setPathMessage(null);
     try {
-      await apiFetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skillPaths: { enableAgentsDir: agentsDir, custom: paths } }),
-      });
+      await saveSettingsPatch({ skillPaths: { enableAgentsDir: agentsDir, custom: paths } });
       await onChanged();
       window.dispatchEvent(new Event('mindos:skills-changed'));
       setPathMessage({ type: 'success', text: m?.skillPathSaved ?? 'Skill paths saved' });
@@ -553,7 +550,7 @@ function SkillSearchPathsSection({
 function SkillCliHint({ agents, skillName, m }: {
   agents: { key: string; name: string; present?: boolean; installed?: boolean }[];
   skillName: string;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
 }) {
   const [selectedAgent, setSelectedAgent] = useState('claude-code');
   const cmd = `npx skills add GeminiLight/MindOS --skill ${skillName} -a ${selectedAgent} -g -y`;

@@ -22,6 +22,25 @@ describe('process-manager subprocess cleanup contract', () => {
     expect(source).toContain("execFileAsync('ps', ['-p', String(pid), '-o', 'args=']");
   });
 
+  it('uses a single Desktop-managed home for PID files and crash logs', () => {
+    const source = readFileSync(path.join(__dirname, 'process-manager.ts'), 'utf-8');
+
+    expect(source).toContain("import { getDesktopConfigDir } from './desktop-home'");
+    expect(source).toContain("path.join(getDesktopConfigDir(), 'config.json')");
+    expect(source).toContain("path.join(getDesktopConfigDir(), 'desktop-children.pid')");
+    expect(source).toContain("path.join(getDesktopConfigDir(), 'mindos.pid')");
+    expect(source).not.toContain("process.env.HOME || process.env.USERPROFILE || '/tmp'");
+  });
+
+  it('terminates managed subprocess trees across platforms', () => {
+    const source = readFileSync(path.join(__dirname, 'process-manager.ts'), 'utf-8');
+
+    expect(source).toContain("execFile('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F']");
+    expect(source).toContain("process.kill(-proc.pid, 'SIGTERM')");
+    expect(source).toContain("process.kill(-proc.pid, 'SIGKILL')");
+    expect(source).toContain('detached: !IS_WIN');
+  });
+
   it('only treats MindOS-owned command lines as safe cleanup targets', () => {
     expect(isMindosOwnedCommandLine('/usr/local/bin/node /Users/me/app/server.js')).toBe(false);
     expect(isMindosOwnedCommandLine('/usr/local/bin/next start -p 3000')).toBe(false);

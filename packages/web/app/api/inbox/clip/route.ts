@@ -5,7 +5,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { effectiveSopRoot } from '@/lib/settings';
 import { saveToInbox } from '@/lib/core/inbox';
-import { clipUrl, createFallbackWebClip, isSafeHttpUrlForFetch, isValidUrl } from '@/lib/core/web-clip';
+import {
+  captureUrl,
+  createFallbackWebClip,
+  isSafeHttpUrlForFetch,
+  isValidUrl,
+  type UrlCaptureResult,
+} from '@/lib/core/web-clip';
 import { invalidateCache } from '@/lib/fs';
 import { handleRouteErrorSimple } from '@/lib/errors';
 
@@ -35,9 +41,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let clip;
+    let clip: UrlCaptureResult;
     try {
-      clip = await clipUrl(url);
+      clip = await captureUrl(url);
     } catch (clipError) {
       if (clipError instanceof Error && /unsafe/i.test(clipError.message)) {
         throw clipError;
@@ -45,11 +51,11 @@ export async function POST(req: NextRequest) {
       clip = createFallbackWebClip(url);
     }
 
-    const result = saveToInbox(
-      mindRoot,
-      [{ name: clip.fileName, content: clip.markdown }],
-      'web-clipper',
-    );
+    const files = clip.mode === 'file'
+      ? [{ name: clip.fileName, content: clip.contentBase64, encoding: 'base64' as const }]
+      : [{ name: clip.fileName, content: clip.markdown }];
+
+    const result = saveToInbox(mindRoot, files, 'web-clipper');
 
     if (result.saved.length > 0) {
       invalidateCache();
@@ -69,6 +75,7 @@ export async function POST(req: NextRequest) {
       siteName: clip.siteName,
       url: clip.url,
       mode: clip.mode,
+      ...(clip.mode === 'file' ? { contentType: clip.contentType, byteLength: clip.byteLength } : {}),
     });
   } catch (err) {
     if (err instanceof Error) {

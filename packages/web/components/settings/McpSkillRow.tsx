@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Trash2, Pencil, Loader2, AlertCircle } from 'lucide-react';
 import { Toggle } from './Primitives';
 import dynamic from 'next/dynamic';
-import type { SkillInfo } from './types';
+import type { SkillInfo, SettingsMcpMessages } from './types';
 
 const MarkdownView = dynamic(() => import('@/components/MarkdownView'), { ssr: false });
 
@@ -33,7 +33,7 @@ interface SkillRowProps {
   fullContent: Record<string, string>;
   loadingContent: string | null;
   loadErrors: Record<string, string>;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
 }
 
 export default function SkillRow({

@@ -1,8 +1,32 @@
-<!-- Last verified: 2026-06-09 | Current version: v1.0.19 -->
+<!-- Last verified: 2026-06-11 | Current version: v1.1.5 -->
 
 # 变更日志 (CHANGELOG)
 
 ## Unreleased
+
+## v1.1.5 (2026-06-11)
+
+### Runtime / Local Agents
+
+- **Claude Code bridge 状态可见**：Claude Code runtime 现在区分 SDK bridge 与 CLI fallback，Ask Panel 会展示当前桥接方式，方便判断用户本机到底走的是 SDK 还是本地 CLI。
+- **Codex 错误展示收敛**：Codex app-server / optional dependency / Node stack 失败会被压缩成用户可理解的短错误，不再把长堆栈直接塞进 runtime 下拉和对话流。
+- **Agent runtime API 兼容增强**：`/api/agent-runtimes` 与 Product Server runtime health 增加 bridge metadata，并保留旧 dist/runtime 的兼容推断路径。
+
+### Desktop / Runtime 发布
+
+- **Desktop installer 加固**：Windows NSIS installer 增加旧进程/旧安装目录清理逻辑，Electron builder 明确引用安装脚本，减少升级残留导致的启动失败。
+- **Desktop IPC 与导航安全增强**：主进程增加 trusted IPC / navigation guard，限制 renderer 与外部链接入口，降低 packaged app 中误触不可信地址的风险。
+- **Node runtime 准备更稳**：Desktop runtime 准备流程补强 Node 下载、校验、私有 runtime 解析和 PATH 处理，发布 smoke 会输出更明确的诊断。
+- **Runtime latest 发布顺序修复**：`runtime-latest` 先上传版本 tarball，再发布 `latest.json`，最后清理旧 tarball，避免客户端拿到指向缺失 asset 的 manifest。
+- **公共仓同步增强**：dev → public sync 会同步版本 tag，并在公共仓触发 runtime/npm workflows；发布验证需分别检查 public runtime artifact 与 npm registry。
+
+### Inbox / Web Clip
+
+- **网页剪藏更健壮**：Inbox clip 对 HTML/PDF、HTTP 错误、解析失败和 Unicode 内容增加覆盖，失败时返回更稳定的错误语义。
+
+### Settings
+
+- **Embedding / Search 设置拆分**：Embedding Search card 抽出更清晰的状态和测试覆盖，降低设置页后续迭代时的回归风险。
 
 ### Git Sync / Settings
 

@@ -59,6 +59,7 @@ export {
   handleAgentRuntimesGet,
   mergeCodexProviderAndLoginHealth,
   type AgentRuntimeCapabilities,
+  type AgentRuntimeBridge,
   type AgentRuntimeDescriptor,
   type AgentRuntimeKind,
   type AgentRuntimePayload,

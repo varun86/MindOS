@@ -11,12 +11,12 @@
  * 2. Start new mode in background
  * 3. Success → loadURL new mode; Failure → remove overlay, keep old mode
  */
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, renameSync, rmSync } from 'fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, renameSync, rmSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { execFile as execFileChild, spawn as spawnChild } from 'child_process';
-import { promisify } from 'util';
+import { execFile as execFileChild, spawn as spawnChild, type ChildProcess } from 'child_process';
+import { inspect, promisify } from 'util';
 import { ProcessManager } from './process-manager';
 import { findAvailablePort, waitForPortRelease, isPortInUse } from './port-finder';
 import { createTray, updateTrayMenu, type TrayCallbacks } from './tray';
@@ -46,8 +46,17 @@ import { registerMindosConnectSchemePrivileged, registerMindosConnectProtocol } 
 import { CoreUpdater } from './core-updater';
 import { getAppConfigStore } from './app-config-store';
 import { desktopTelemetry } from './telemetry';
+import { getDesktopHome } from './desktop-home';
+import {
+  isAllowedMainWindowNavigation,
+  isTrustedLocalRenderer,
+  trustedLocalRendererError,
+  type RendererTrustSnapshot,
+} from './ipc-trust';
 
 registerMindosConnectSchemePrivileged();
+
+installSmokeFileLogger();
 
 // Intel Mac GPU workaround: some Intel HD/Iris/UHD GPUs are on Chromium's
 // blocklist, which disables GPU compositing and breaks backdrop-filter.
@@ -58,7 +67,8 @@ if (process.platform === 'darwin' && process.arch === 'x64') {
 }
 
 // ── Constants ──
-const CONFIG_DIR = path.join(app.getPath('home'), '.mindos');
+const DESKTOP_HOME = getDesktopHome();
+const CONFIG_DIR = path.join(DESKTOP_HOME, '.mindos');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const PID_PATH = path.join(CONFIG_DIR, 'mindos.pid');
 const DEFAULT_WEB_PORT = 3456;
@@ -92,6 +102,8 @@ let processManager: ProcessManager | null = null;
 let connectionMonitor: ConnectionMonitor | null = null;
 let isQuitting = false;
 let isUpdating = false; // Set before quitAndInstall — skips cleanup so the installer can launch
+let trayAvailable = false;
+let closingSplashForTransition = false;
 let activeRecoveryPoll: ReturnType<typeof setInterval> | null = null;
 let cleanupUpdater: (() => void) | null = null;
 let currentMode: 'local' | 'remote' = 'local';
@@ -101,6 +113,41 @@ let currentRemoteAddress: string | undefined;
 let cachedConfig: MindOSConfig | null = null;
 const coreUpdater = new CoreUpdater();
 let currentCoreVersion: string | null = null;
+
+function installSmokeFileLogger(): void {
+  const logPath = process.env.MINDOS_DESKTOP_CI_LOG?.trim();
+  if (!logPath) return;
+
+  const write = (level: string, args: unknown[]) => {
+    try {
+      mkdirSync(path.dirname(logPath), { recursive: true });
+      const line = args.map((arg) => {
+        if (arg instanceof Error) return arg.stack || arg.message;
+        if (typeof arg === 'string') return arg;
+        return inspect(arg, { depth: 6, breakLength: 160 });
+      }).join(' ');
+      appendFileSync(logPath, `[desktop ${new Date().toISOString()} ${level}] ${line}\n`, 'utf-8');
+    } catch {
+      // Smoke diagnostics must never affect normal startup.
+    }
+  };
+
+  const wrap = (level: 'log' | 'info' | 'warn' | 'error') => {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      write(level, args);
+      original(...args);
+    };
+  };
+
+  wrap('log');
+  wrap('info');
+  wrap('warn');
+  wrap('error');
+  process.on('uncaughtException', (error) => write('uncaughtException', [error]));
+  process.on('unhandledRejection', (reason) => write('unhandledRejection', [reason]));
+  write('info', ['MindOS Desktop smoke file logger enabled']);
+}
 
 // ── Config ──
 interface MindOSConfig {
@@ -237,8 +284,10 @@ function createSplash(): BrowserWindow {
 
   // If user closes splash, quit the app
   win.on('closed', () => {
+    const transitionClose = closingSplashForTransition;
+    closingSplashForTransition = false;
     splashWindow = null;
-    if (!mainWindow) app.quit();
+    if (!mainWindow && !transitionClose) app.quit();
   });
 
   return win;
@@ -252,6 +301,7 @@ function splashStatus(data: Record<string, unknown>): void {
 
 function closeSplash(): void {
   if (splashWindow && !splashWindow.isDestroyed()) {
+    closingSplashForTransition = true;
     splashWindow.close();
     splashWindow = null;
   }
@@ -281,9 +331,11 @@ function createMainWindow(): BrowserWindow {
 
   if (savedState?.maximized) win.maximize();
 
-  // macOS: hide window instead of closing (unless quitting or updating)
+  // Hide window instead of closing only when the tray is actually available.
+  // If tray creation fails (common on some Linux desktops), closing the last
+  // window must quit so users do not get an invisible background app.
   win.on('close', (e) => {
-    if (!isQuitting && !isUpdating) { e.preventDefault(); win.hide(); }
+    if (!isQuitting && !isUpdating && trayAvailable) { e.preventDefault(); win.hide(); }
   });
   win.on('resize', () => saveWindowState(win));
   win.on('move', () => saveWindowState(win));
@@ -486,19 +538,30 @@ async function startLocalMode(): Promise<string | null> {
 
   splashStatus({ status: 'starting' });
 
-  // 5. Find ports + spawn (retry once if port was stolen between check and bind)
+  const findLocalModePorts = async (webStart: number, mcpStart: number) => {
+    const resolvedWebPort = await findAvailablePort(webStart);
+    let probe = mcpStart;
+    for (let i = 0; i < 30; i++) {
+      const resolvedMcpPort = await findAvailablePort(probe);
+      if (resolvedMcpPort !== resolvedWebPort) {
+        return { webPort: resolvedWebPort, mcpPort: resolvedMcpPort };
+      }
+      probe = resolvedMcpPort + 1;
+    }
+    throw new Error(`No distinct MCP port available near ${mcpStart}`);
+  };
+
+  // 5. Find distinct ports + spawn (retry once if a port was stolen between check and bind)
   let webPort: number;
   let mcpPort: number;
   try {
-    webPort = await findAvailablePort(config.port || DEFAULT_WEB_PORT);
-    mcpPort = await findAvailablePort(config.mcpPort || DEFAULT_MCP_PORT);
+    ({ webPort, mcpPort } = await findLocalModePorts(config.port || DEFAULT_WEB_PORT, config.mcpPort || DEFAULT_MCP_PORT));
   } catch (portErr) {
     // Port range exhausted — likely orphaned processes from a previous crash.
     // Kill them and retry instead of showing a dead-end error.
     await ProcessManager.cleanupOrphanedChildren();
     try {
-      webPort = await findAvailablePort(config.port || DEFAULT_WEB_PORT);
-      mcpPort = await findAvailablePort(config.mcpPort || DEFAULT_MCP_PORT);
+      ({ webPort, mcpPort } = await findLocalModePorts(config.port || DEFAULT_WEB_PORT, config.mcpPort || DEFAULT_MCP_PORT));
     } catch {
       const basePort = config.port || DEFAULT_WEB_PORT;
       const portHint = process.platform === 'win32'
@@ -521,7 +584,7 @@ async function startLocalMode(): Promise<string | null> {
     nodePath, npxPath, projectRoot, webPort: wp, mcpPort: mp,
     mindRoot:
       getEffectiveMindRootFromConfig(config) ||
-      path.join(app.getPath('home'), 'MindOS', 'mind'),
+      path.join(DESKTOP_HOME, 'MindOS', 'mind'),
     authToken: config.authToken,
     webPassword: typeof config.webPassword === 'string' ? config.webPassword : undefined,
     installDir: getDesktopInstallPath(),
@@ -545,8 +608,7 @@ async function startLocalMode(): Promise<string | null> {
     if (msg.includes('EADDRINUSE') || msg.includes('address already in use')) {
       console.warn('[MindOS] Port conflict detected, retrying with fresh ports...');
       try { await processManager.stop(); } catch { /* best-effort */ }
-      webPort = await findAvailablePort(webPort + 1);
-      mcpPort = await findAvailablePort(mcpPort + 1);
+      ({ webPort, mcpPort } = await findLocalModePorts(webPort + 1, mcpPort + 1));
       processManager = createProcessManager(webPort, mcpPort);
       await processManager.start(); // let this throw if it fails again
     } else {
@@ -800,7 +862,7 @@ function navigator_lang(): 'zh' | 'en' {
  * Safe for stdio configs (no url field → no change).
  */
 function updateMcpClientConfigs(oldPort: number, newPort: number): void {
-  const home = app.getPath('home');
+  const home = DESKTOP_HOME;
   const resolve = (p: string) => p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
   // All known MCP client config paths (global only — project configs are repo-specific)
   const configPaths = [
@@ -946,7 +1008,7 @@ async function healPreviousInstallation(): Promise<void> {
 async function validatePrivateNode(): Promise<'missing' | 'ok' | 'removed'> {
   const stop = desktopTelemetry.startTimer('desktop.boot.validate_node');
   const nodeBin = path.join(
-    app.getPath('home'), '.mindos', 'node',
+    DESKTOP_HOME, '.mindos', 'node',
     process.platform === 'win32' ? 'node.exe' : 'bin/node',
   );
   if (!existsSync(nodeBin)) {
@@ -971,7 +1033,7 @@ async function validatePrivateNode(): Promise<'missing' | 'ok' | 'removed'> {
   }
 
   // Remove the entire private node directory — downloadNode() will replace it
-  const nodeDir = path.join(app.getPath('home'), '.mindos', 'node');
+  const nodeDir = path.join(DESKTOP_HOME, '.mindos', 'node');
   try { rmSync(nodeDir, { recursive: true, force: true }); } catch { /* best effort */ }
   stop({ result: 'removed' });
   return 'removed';
@@ -1060,7 +1122,7 @@ async function cleanupConflictingLaunchdService(): Promise<void> {
     }
 
     // Step 2: Remove the plist file to prevent re-registration on next login
-    const plistPath = path.join(app.getPath('home'), 'Library', 'LaunchAgents', 'com.mindos.app.plist');
+    const plistPath = path.join(DESKTOP_HOME, 'Library', 'LaunchAgents', 'com.mindos.app.plist');
     if (existsSync(plistPath)) {
       try {
         unlinkSync(plistPath);
@@ -1141,11 +1203,32 @@ async function cleanupLinuxSystemdService(): Promise<void> {
 }
 
 /** Spawn a process with enriched env, wait for exit. Rejects on non-zero or timeout. */
+function forceTerminateProcessTree(proc: ChildProcess): void {
+  try {
+    if (process.platform === 'win32' && proc.pid) {
+      execFileChild('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], () => {});
+      proc.kill();
+      return;
+    }
+    if (proc.pid) {
+      try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* process may not own a group */ }
+    }
+    if (process.platform === 'win32') proc.kill();
+    else proc.kill('SIGKILL');
+  } catch { /* already exited */ }
+}
+
 function spawnWithEnv(bin: string, args: string[], cwd: string, env: Record<string, string>, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     // On Windows, .cmd/.bat files (npm.cmd, next.cmd) require shell:true for spawn.
     const needsShell = process.platform === 'win32' && /\.cmd$/i.test(bin);
-    const proc = spawnChild(bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], shell: needsShell });
+    const proc = spawnChild(bin, args, {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: needsShell,
+      detached: process.platform !== 'win32',
+    });
     let settled = false;
 
     // Log last output for diagnostics on failure
@@ -1156,7 +1239,7 @@ function spawnWithEnv(bin: string, args: string[], cwd: string, env: Record<stri
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      proc.kill(); // No signal arg — uses SIGTERM on Unix, TerminateProcess on Windows
+      forceTerminateProcessTree(proc);
       reject(new Error(`${path.basename(bin)} ${args[0] || ''} timed out after ${Math.round(timeoutMs / 1000)}s\nLast output: ${lastOutput}`));
     }, timeoutMs);
     proc.on('exit', (code: number | null) => {
@@ -1289,7 +1372,13 @@ async function handleRestartServices(): Promise<void> {
     refreshTray('starting');
     if (processManager) {
       // Desktop owns the processes — restart them
+      const previousMcpPort = currentMcpPort;
       await processManager.restart();
+      currentWebPort = processManager.webPort;
+      currentMcpPort = processManager.mcpPort;
+      if (previousMcpPort !== undefined && currentMcpPort !== previousMcpPort) {
+        updateMcpClientConfigs(previousMcpPort, currentMcpPort);
+      }
       refreshTray('running');
       await removeOverlay('mindos-switch-overlay');
       if (mainWindow && currentWebPort !== undefined) {
@@ -1324,7 +1413,7 @@ const trayCallbacks: TrayCallbacks = {
   onChangeMode: handleChangeMode,
   onOpenMindRoot: () => {
     const configured = getEffectiveMindRootFromConfig(loadConfig());
-    shell.openPath(configured || path.join(app.getPath('home'), 'MindOS', 'mind'));
+    shell.openPath(configured || path.join(DESKTOP_HOME, 'MindOS', 'mind'));
   },
   onRestartServices: handleRestartServices,
   onSwitchServer: handleSwitchServer,
@@ -1349,20 +1438,121 @@ const trayCallbacks: TrayCallbacks = {
 
 // ── IPC Handlers ──
 
+function rendererTrustSnapshot(event: IpcMainInvokeEvent): RendererTrustSnapshot {
+  return {
+    currentMode,
+    currentWebPort,
+    currentRemoteAddress,
+    senderMatchesMainWindow:
+      !!mainWindow &&
+      !mainWindow.isDestroyed() &&
+      event.sender === mainWindow.webContents,
+    senderUrl: event.senderFrame?.url || event.sender.getURL(),
+    mainWindowUrl:
+      mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow.webContents.getURL()
+        : undefined,
+  };
+}
+
+function assertTrustedLocalRenderer(event: IpcMainInvokeEvent, capability: string): void {
+  const snapshot = rendererTrustSnapshot(event);
+  if (isTrustedLocalRenderer(snapshot)) return;
+  console.warn('[MindOS:ipc] blocked local-only capability', {
+    capability,
+    mode: snapshot.currentMode,
+    senderUrl: snapshot.senderUrl,
+    mainWindowUrl: snapshot.mainWindowUrl,
+  });
+  throw trustedLocalRendererError(capability);
+}
+
+function isTrustedActiveMainWindowRenderer(event: IpcMainInvokeEvent): boolean {
+  const snapshot = rendererTrustSnapshot(event);
+  if (!snapshot.senderMatchesMainWindow) return false;
+  return isAllowedMainWindowNavigation(snapshot.senderUrl, {
+    currentMode,
+    currentWebPort,
+    currentRemoteAddress,
+  });
+}
+
+function assertTrustedActiveMainWindowRenderer(event: IpcMainInvokeEvent, capability: string): void {
+  if (isTrustedActiveMainWindowRenderer(event)) return;
+  throw trustedLocalRendererError(capability);
+}
+
+function handleLocalOnly<TArgs extends unknown[]>(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: TArgs) => unknown,
+): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedLocalRenderer(event, channel);
+    return handler(event, ...(args as TArgs));
+  });
+}
+
+function handleActiveMainWindowOnly<TArgs extends unknown[]>(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: TArgs) => unknown,
+): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedActiveMainWindowRenderer(event, channel);
+    return handler(event, ...(args as TArgs));
+  });
+}
+
+function installMainWindowNavigationGuard(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedMainWindowNavigation(url, { currentMode, currentWebPort, currentRemoteAddress })) {
+      return { action: 'allow' };
+    }
+    shell.openExternal(url).catch((err) => {
+      console.warn('[MindOS] Failed to open external URL:', err instanceof Error ? err.message : err);
+    });
+    return { action: 'deny' };
+  });
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isAllowedMainWindowNavigation(url, { currentMode, currentWebPort, currentRemoteAddress })) {
+      return;
+    }
+    event.preventDefault();
+    shell.openExternal(url).catch((err) => {
+      console.warn('[MindOS] Failed to open external URL:', err instanceof Error ? err.message : err);
+    });
+  });
+}
+
+function parseCoreDownloadArgs(
+  urls: unknown,
+  version: unknown,
+  size: unknown,
+  sha256: unknown,
+): { urls: string[]; version: string; size: number; sha256: string } {
+  if (!Array.isArray(urls) || urls.some((url) => typeof url !== 'string')) {
+    throw new Error('Invalid core update URLs');
+  }
+  if (typeof version !== 'string' || !version.trim()) throw new Error('Invalid core update version');
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) throw new Error('Invalid core update size');
+  if (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(sha256)) throw new Error('Invalid core update SHA-256');
+  return { urls, version, size, sha256 };
+}
+
 function setupIPC(): void {
-  ipcMain.handle('get-app-info', () => ({
+  handleActiveMainWindowOnly('get-app-info', () => ({
     version: app.getVersion(),
     platform: process.platform,
     mode: currentMode,
   }));
 
-  ipcMain.handle('open-mindroot', () => {
+  handleLocalOnly('open-mindroot', () => {
     const configured = getEffectiveMindRootFromConfig(loadConfig());
-    shell.openPath(configured || path.join(app.getPath('home'), 'MindOS', 'mind'));
+    shell.openPath(configured || path.join(DESKTOP_HOME, 'MindOS', 'mind'));
   });
 
   // Directory picker for onboarding setup
-  ipcMain.handle('select-directory', async () => {
+  handleLocalOnly('select-directory', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
       title: 'Select Knowledge Base Directory',
@@ -1370,13 +1560,13 @@ function setupIPC(): void {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
 
-  ipcMain.handle('switch-mode', () => handleChangeMode());
-  ipcMain.handle('restart-services', () => handleRestartServices());
-  ipcMain.handle('switch-server', () => handleSwitchServer());
+  handleActiveMainWindowOnly('switch-mode', () => handleChangeMode());
+  handleLocalOnly('restart-services', () => handleRestartServices());
+  handleActiveMainWindowOnly('switch-server', () => handleSwitchServer());
 
   // ── Core Hot Update IPC ──
 
-  ipcMain.handle('check-core-update', async () => {
+  handleActiveMainWindowOnly('check-core-update', async () => {
     // CRITICAL FIX: Always force a fresh read of currentCoreVersion for the check
     // This ensures that after apply(), the new version is immediately reflected
     if (currentMode !== 'local') {
@@ -1402,7 +1592,8 @@ function setupIPC(): void {
     return coreUpdater.check(versionToCheck);
   });
 
-  ipcMain.handle('download-core-update', async (_e: unknown, urls: string[], version: string, size: number, sha256: string) => {
+  handleLocalOnly('download-core-update', async (_e, urls: unknown, version: unknown, size: unknown, sha256: unknown) => {
+    const download = parseCoreDownloadArgs(urls, version, size, sha256);
     // Forward progress events to renderer
     const onProgress = (p: { percent: number; transferred: number; total: number }) => {
       const wins = BrowserWindow.getAllWindows();
@@ -1412,21 +1603,21 @@ function setupIPC(): void {
     };
     coreUpdater.on('progress', onProgress);
     try {
-      await coreUpdater.download(urls, version, size, sha256);
+      await coreUpdater.download(download.urls, download.version, download.size, download.sha256);
     } finally {
       coreUpdater.removeListener('progress', onProgress);
     }
   });
 
-  ipcMain.handle('cancel-core-download', () => {
+  handleLocalOnly('cancel-core-download', () => {
     coreUpdater.cancelDownload();
   });
 
-  ipcMain.handle('get-core-update-pending', () => {
+  handleActiveMainWindowOnly('get-core-update-pending', () => {
     return { version: coreUpdater.getPendingVersion() };
   });
 
-  ipcMain.handle('apply-core-update', async () => {
+  handleLocalOnly('apply-core-update', async () => {
     if (isQuitting || isUpdating) throw new Error('App is shutting down');
     const zh = navigator_lang() === 'zh';
     const previousVersion = currentCoreVersion;
@@ -1514,7 +1705,7 @@ function setupIPC(): void {
   // Uninstall: move the Desktop .app bundle to Trash, then quit.
   // Server-side cleanup (stop services, remove config) is handled by /api/uninstall
   // before this IPC is called.
-  ipcMain.handle('uninstall-app', async () => {
+  handleLocalOnly('uninstall-app', async () => {
     try {
       // Stop managed child processes first
       await processManager?.stop();
@@ -1673,21 +1864,26 @@ async function bootApp(): Promise<void> {
   // Create main window
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
+    installMainWindowNavigationGuard(mainWindow);
     setupIPC();
     try {
       const trayInstance = createTray(mainWindow, trayCallbacks);
       if (!trayInstance) {
         // createTray swallowed the error and returned null — same recovery as catch
         console.warn('[MindOS] Tray creation returned null — close will quit instead of hide');
-        mainWindow.removeAllListeners('close');
+        trayAvailable = false;
+      } else {
+        trayAvailable = true;
       }
     } catch (trayErr) {
       console.warn('[MindOS] Tray creation failed — close will quit instead of hide:', (trayErr as Error)?.message);
-      // Without tray, let window close normally (remove the hide-on-close behavior)
-      mainWindow.removeAllListeners('close');
+      trayAvailable = false;
     }
     registerShortcuts(mainWindow);
-    cleanupUpdater = setupUpdater({ onBeforeQuitAndInstall: () => { isUpdating = true; } });
+    cleanupUpdater = setupUpdater({
+      onBeforeQuitAndInstall: () => { isUpdating = true; },
+      assertTrustedLocalRenderer,
+    });
 
     // Core Hot Update: silent check 30s after startup
     setTimeout(async () => {
@@ -1809,7 +2005,7 @@ app.whenReady().then(async () => {
   setupAppMenu({
     onOpenMindRoot: () => {
       const configured = getEffectiveMindRootFromConfig(loadConfig());
-      shell.openPath(configured || path.join(app.getPath('home'), 'MindOS', 'mind'));
+      shell.openPath(configured || path.join(DESKTOP_HOME, 'MindOS', 'mind'));
     },
     onChangeMode: handleChangeMode,
     onRestartServices: handleRestartServices,
@@ -1819,7 +2015,7 @@ app.whenReady().then(async () => {
 
   const stopBoot = desktopTelemetry.startTimer('desktop.boot.total');
   try {
-    ensureMindosCliShim();
+    ensureMindosCliShim({ appendPath: process.env.MINDOS_DISABLE_CLI_SHIM_PATH_APPEND !== '1' });
     cleanupOrphanedSshTunnel();
 
     // Show splash BEFORE healing so users see immediate visual feedback
@@ -1849,7 +2045,9 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', () => { /* tray keeps alive */ });
+app.on('window-all-closed', () => {
+  if (!trayAvailable && !isQuitting && !isUpdating) app.quit();
+});
 app.on('activate', () => { if (mainWindow) mainWindow.show(); });
 
 app.on('before-quit', (e) => {

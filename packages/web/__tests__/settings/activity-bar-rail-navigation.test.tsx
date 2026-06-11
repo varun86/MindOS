@@ -141,6 +141,43 @@ describe('ActivityBar rail navigation', () => {
     });
   });
 
+  it('clicking Settings action invokes the settings handler', async () => {
+    const mockSettingsClick = vi.fn();
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel="files"
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={mockSettingsClick}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const settingsButton = host.querySelector('button[aria-label="Settings"]');
+    expect(settingsButton).not.toBeNull();
+
+    await act(async () => {
+      settingsButton?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    expect(mockSettingsClick).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('clicking Files on /wiki page toggles sidebar off', async () => {
     mockPathname = '/wiki';
     const mockPanelChange = vi.fn();

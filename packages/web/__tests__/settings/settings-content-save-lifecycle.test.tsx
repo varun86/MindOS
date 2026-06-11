@@ -6,6 +6,7 @@ import type { SettingsData } from '@/components/settings/types';
 
 const mockApiFetch = vi.hoisted(() => vi.fn());
 const mockAiTab = vi.hoisted(() => vi.fn());
+const mockUninstallTab = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api', () => ({
   apiFetch: mockApiFetch,
@@ -48,7 +49,7 @@ vi.mock('@/components/settings/SyncTab', () => ({ SyncTab: () => null }));
 vi.mock('@/components/settings/McpTab', () => ({ McpTab: () => null }));
 vi.mock('@/components/settings/PluginsTab', () => ({ PluginsTab: () => null }));
 vi.mock('@/components/settings/UpdateTab', () => ({ UpdateTab: () => null }));
-vi.mock('@/components/settings/UninstallTab', () => ({ UninstallTab: () => null }));
+vi.mock('@/components/settings/UninstallTab', () => ({ UninstallTab: () => mockUninstallTab() }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
@@ -108,6 +109,7 @@ describe('SettingsContent save lifecycle', () => {
         <button type="button" onClick={() => updateAi({ activeProvider: 'p_second' })}>second</button>
       </div>
     ));
+    mockUninstallTab.mockImplementation(() => <div data-testid="uninstall-tab-content" />);
   });
 
   afterEach(() => {
@@ -318,6 +320,65 @@ describe('SettingsContent save lifecycle', () => {
     host.remove();
   });
 
+  it('queues the final unmount save behind an in-flight autosave', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    const firstPost = deferred<Record<string, never>>();
+    const postBodies: Array<Record<string, any>> = [];
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(makeSettings('p_initial'));
+      if (url === '/api/settings' && opts?.method === 'POST') {
+        postBodies.push(JSON.parse(String(opts.body)));
+        return postBodies.length === 1 ? firstPost.promise : Promise.resolve({});
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="ai" variant="modal" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.clearAllTimers();
+    postBodies.length = 0;
+
+    const [firstButton, secondButton] = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent === 'first' || button.textContent === 'second');
+
+    await act(async () => {
+      firstButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+    });
+    expect(postBodies.map((body) => body.ai.activeProvider)).toEqual(['p_first']);
+
+    await act(async () => {
+      secondButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+
+    expect(postBodies.map((body) => body.ai.activeProvider)).toEqual(['p_first']);
+
+    await act(async () => {
+      firstPost.resolve({});
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postBodies.map((body) => body.ai.activeProvider)).toEqual(['p_first', 'p_second']);
+
+    host.remove();
+  });
+
   it('does not surface a stale save error when a queued save later succeeds', async () => {
     const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
     const firstPost = deferred<Record<string, never>>();
@@ -389,6 +450,61 @@ describe('SettingsContent save lifecycle', () => {
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'mindos:settings-changed' }));
     expect(host.textContent).not.toContain('Save failed');
     dispatchSpy.mockRestore();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('mounts modal tab content once across responsive layouts', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(makeSettings('p_initial'));
+      if (url === '/api/settings' && opts?.method === 'POST') return Promise.resolve({});
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="uninstall" variant="modal" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelectorAll('[data-testid="uninstall-tab-content"]')).toHaveLength(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('migrates legacy appearance preferences when settings opens', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    localStorage.setItem('prose-font', 'geist');
+    localStorage.setItem('content-width', '960px');
+    mockApiFetch.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url === '/api/settings' && !opts?.method) return Promise.resolve(makeSettings('p_initial'));
+      if (url === '/api/settings' && opts?.method === 'POST') return Promise.resolve({});
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="appearance" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(localStorage.getItem('prose-font')).toBe('inter');
+    expect(localStorage.getItem('content-width')).toBe('100%');
 
     await act(async () => {
       root.unmount();

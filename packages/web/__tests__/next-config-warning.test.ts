@@ -89,10 +89,10 @@ describe('next config warning hygiene', () => {
     })).toBe(false);
   });
 
-  it('externalizes only pi-ai so Node handles its runtime node:* probes', () => {
+  it('externalizes only PI runtime packages that need Node to handle dynamic probes', () => {
     expect(nextConfig.serverExternalPackages).toContain('@earendil-works/pi-ai');
+    expect(nextConfig.serverExternalPackages).toContain('@earendil-works/pi-coding-agent');
     expect(nextConfig.serverExternalPackages).not.toContain('@earendil-works/pi-agent-core');
-    expect(nextConfig.serverExternalPackages).not.toContain('@earendil-works/pi-coding-agent');
   });
 
   it('keeps PI runtime packages out of Desktop startup route module imports', () => {

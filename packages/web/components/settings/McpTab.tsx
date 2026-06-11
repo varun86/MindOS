@@ -8,10 +8,11 @@ import { apiFetch } from '@/lib/api';
 import { revealMcpAuthToken } from '@/lib/mcp-token';
 import CustomSelect from '@/components/CustomSelect';
 import type { SelectItem } from '@/components/CustomSelect';
-import type { McpTabProps, McpStatus, AgentInfo, ConnectionMode } from './types';
+import type { McpTabProps, McpStatus, AgentInfo, ConnectionMode, SettingsMcpMessages } from './types';
 import AgentInstall from './McpAgentInstall';
 import SkillsSection from './McpSkillsSection';
 import McpExternalTools from './McpExternalTools';
+import { saveSettingsPatch } from './settings-save';
 
 /* ── Main Connections Tab ────────────────────────────────────────── */
 
@@ -52,12 +53,8 @@ export function McpTab({ t }: McpTabProps) {
   const handleToggleMcp = async (enabled: boolean) => {
     setSavingMode(true);
     try {
-      await apiFetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          connectionMode: { cli: true, mcp: enabled },
-        }),
+      await saveSettingsPatch({
+        connectionMode: { cli: true, mcp: enabled },
       });
       await mcp.refresh({ force: true });
       // Switch view to MCP tab when enabling
@@ -174,7 +171,7 @@ function ConnectionModeCard({ mcpEnabled, onToggle, saving, mcpRunning, m }: {
   onToggle: (enabled: boolean) => void;
   saving: boolean;
   mcpRunning: boolean;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -248,7 +245,7 @@ function ConnectionModeCard({ mcpEnabled, onToggle, saving, mcpRunning, m }: {
 
 function AuthTokenCard({ status, m }: {
   status: McpStatus | null;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
 }) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);

@@ -30,7 +30,7 @@ export function UninstallTab() {
   // Checkboxes — "stop services" is always on (not toggleable)
   // CLI mode: stop + config + npm uninstall (npm always runs as part of CLI uninstall)
   // Desktop mode: stop + config + move app to Trash
-  const [removeConfig, setRemoveConfig] = useState(true);
+  const [removeConfig, setRemoveConfig] = useState(false);
   const [removeApp, setRemoveApp] = useState(true); // Desktop only
 
   const handleUninstall = async () => {

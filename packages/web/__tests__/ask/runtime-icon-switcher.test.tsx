@@ -117,6 +117,68 @@ describe('RuntimeIconSwitcher', () => {
     });
   });
 
+  it('shows Claude Code CLI fallback as an available compatibility bridge', async () => {
+    const onSelect = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <RuntimeIconSwitcher
+          selectedRuntime={null}
+          onSelect={onSelect}
+          nativeRuntimes={[
+            {
+              id: 'claude',
+              name: 'Claude Code',
+              kind: 'claude',
+              status: 'available',
+              runtimeBridge: {
+                kind: 'claude-cli',
+                label: 'CLI fallback active',
+                fallback: true,
+                reason: 'SDK missing',
+              },
+            },
+          ]}
+          loading={false}
+        />,
+      );
+    });
+
+    const trigger = host.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement;
+    await act(async () => {
+      trigger.click();
+    });
+
+    expect(document.body.textContent).toContain('CLI fallback active. SDK missing');
+    expect(document.body.textContent).not.toContain('Use local Claude Code.');
+    const claudeButton = Array.from(document.body.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('CLI fallback active. SDK missing')) as HTMLButtonElement;
+    expect(claudeButton.disabled).toBe(false);
+
+    await act(async () => {
+      claudeButton.click();
+    });
+    expect(onSelect).toHaveBeenCalledWith({
+      id: 'claude',
+      name: 'Claude Code',
+      kind: 'claude',
+      status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason: 'SDK missing',
+      },
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('shows unavailable native runtimes as disabled options with their status reason without listing ACP agents', async () => {
     const onSelect = vi.fn();
     const host = document.createElement('div');

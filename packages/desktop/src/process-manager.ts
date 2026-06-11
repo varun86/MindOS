@@ -11,6 +11,7 @@ import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdirSync, chmodSy
 import { desktopTelemetry } from './telemetry';
 import { resolveCliPath, resolveMcpBundlePath, resolveMcpDir, resolveWebAppDir } from './mindos-runtime-layout';
 import { verifyMindOsWebHealth } from './mindos-web-health';
+import { getDesktopConfigDir } from './desktop-home';
 
 const IS_WIN = process.platform === 'win32';
 const execFileAsync = promisify(execFile);
@@ -32,8 +33,16 @@ export function isMindosOwnedCommandLine(commandLine: string): boolean {
 
 function forceKillChildProcess(proc: ChildProcess): void {
   try {
-    if (IS_WIN) proc.kill();
-    else proc.kill('SIGKILL');
+    if (IS_WIN && proc.pid) {
+      execFile('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], () => {});
+      proc.kill();
+    } else if (proc.pid) {
+      try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* process may not own a group */ }
+      proc.kill('SIGKILL');
+    } else {
+      if (IS_WIN) proc.kill();
+      else proc.kill('SIGKILL');
+    }
   } catch { /* already dead */ }
 }
 
@@ -57,6 +66,9 @@ function terminateChildProcess(proc: ChildProcess | null, timeoutMs = CHILD_PROC
     proc.once('exit', done);
 
     try {
+      if (!IS_WIN && proc.pid) {
+        try { process.kill(-proc.pid, 'SIGTERM'); } catch { /* process may not own a group */ }
+      }
       proc.kill('SIGTERM');
     } catch {
       done();
@@ -75,7 +87,8 @@ function isPidAlive(pid: number): boolean {
 
 async function terminatePid(pid: number, timeoutMs = PID_TERM_TIMEOUT_MS): Promise<void> {
   try {
-    process.kill(pid, 'SIGTERM');
+    if (IS_WIN) process.kill(pid);
+    else process.kill(pid, 'SIGTERM');
   } catch {
     return;
   }
@@ -87,7 +100,10 @@ async function terminatePid(pid: number, timeoutMs = PID_TERM_TIMEOUT_MS): Promi
   }
 
   try {
-    if (IS_WIN) process.kill(pid);
+    if (IS_WIN) {
+      execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], () => {});
+      process.kill(pid);
+    }
     else process.kill(pid, 'SIGKILL');
   } catch { /* already dead */ }
 }
@@ -143,7 +159,7 @@ export class ProcessManager extends EventEmitter {
   startMcpOnPort(port: number): void {
     // Kill old MCP process to avoid orphan
     if (this.mcpProcess && !this.mcpProcess.killed) {
-      try { this.mcpProcess.kill('SIGTERM'); } catch { /* already dead */ }
+      void terminateChildProcess(this.mcpProcess);
       this.mcpProcess = null;
     }
     this.opts.mcpPort = port;
@@ -292,7 +308,7 @@ export class ProcessManager extends EventEmitter {
     let token = authToken;
     if (!token) {
       try {
-        const configPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.mindos', 'config.json');
+        const configPath = path.join(getDesktopConfigDir(), 'config.json');
         const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
         token = cfg.authToken;
       } catch { /* no config */ }
@@ -312,6 +328,7 @@ export class ProcessManager extends EventEmitter {
       cwd: mcpDir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: !IS_WIN,
     });
     return proc;
   }
@@ -356,6 +373,7 @@ export class ProcessManager extends EventEmitter {
         cwd: appDir,
         env: { ...env, PORT: String(webPort) },
         stdio: ['pipe', 'pipe', 'pipe'],
+        detached: !IS_WIN,
       });
     }
 
@@ -374,6 +392,7 @@ export class ProcessManager extends EventEmitter {
         env: { ...env, NODE_OPTIONS: injectNodeOpts(env.NODE_OPTIONS || '') },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: IS_WIN, // .cmd files require shell on Windows
+        detached: !IS_WIN,
       });
     }
 
@@ -383,6 +402,7 @@ export class ProcessManager extends EventEmitter {
       env: { ...env, NODE_OPTIONS: injectNodeOpts(env.NODE_OPTIONS || '') },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: IS_WIN, // npx.cmd requires shell on Windows
+      detached: !IS_WIN,
     });
   }
 
@@ -485,7 +505,7 @@ export class ProcessManager extends EventEmitter {
   /** Persist crash info to ~/.mindos/crash.log for post-mortem diagnosis */
   private logCrash(which: string, code: number | null, signal: string | null, stderr: string[]): void {
     try {
-      const logDir = path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.mindos');
+      const logDir = getDesktopConfigDir();
       if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
       const logPath = path.join(logDir, 'crash.log');
       const ts = new Date().toISOString();
@@ -658,7 +678,7 @@ export class ProcessManager extends EventEmitter {
    * MCP server has built-in monitoring so it doesn't need this file.
    */
   static ensureStdinWatchdog(): string | null {
-    const dir = path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.mindos');
+    const dir = getDesktopConfigDir();
     const filePath = path.join(dir, 'stdin-watchdog.cjs');
     try {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -671,10 +691,9 @@ export class ProcessManager extends EventEmitter {
 
   // ── Child PID tracking (secondary safety net for orphan cleanup) ──
 
-  private static readonly PID_FILE = path.join(
-    process.env.HOME || process.env.USERPROFILE || '/tmp',
-    '.mindos', 'desktop-children.pid',
-  );
+  private static childPidFile(): string {
+    return path.join(getDesktopConfigDir(), 'desktop-children.pid');
+  }
 
   /** Write current child PIDs to disk so next launch can clean up orphans */
   private writeChildPids(): void {
@@ -683,15 +702,17 @@ export class ProcessManager extends EventEmitter {
     if (this.mcpProcess?.pid) pids.push(this.mcpProcess.pid);
     if (pids.length === 0) return;
     try {
-      const dir = path.dirname(ProcessManager.PID_FILE);
+      const pidFile = ProcessManager.childPidFile();
+      const dir = path.dirname(pidFile);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(ProcessManager.PID_FILE, pids.join('\n'), 'utf-8');
+      writeFileSync(pidFile, pids.join('\n'), 'utf-8');
     } catch { /* best effort */ }
   }
 
   /** Remove PID file on clean shutdown */
   private clearChildPids(): void {
-    try { if (existsSync(ProcessManager.PID_FILE)) unlinkSync(ProcessManager.PID_FILE); } catch { /* best effort */ }
+    const pidFile = ProcessManager.childPidFile();
+    try { if (existsSync(pidFile)) unlinkSync(pidFile); } catch { /* best effort */ }
   }
 
   /**
@@ -700,14 +721,15 @@ export class ProcessManager extends EventEmitter {
    */
   static async cleanupOrphanedChildren(): Promise<void> {
     try {
-      if (!existsSync(ProcessManager.PID_FILE)) return;
-      const raw = readFileSync(ProcessManager.PID_FILE, 'utf-8').trim();
+      const pidFile = ProcessManager.childPidFile();
+      if (!existsSync(pidFile)) return;
+      const raw = readFileSync(pidFile, 'utf-8').trim();
       if (!raw) return;
       const pids = raw.split('\n').map(Number).filter(p => p > 0 && !isNaN(p));
       for (const pid of pids) {
         await ProcessManager.killIfNodeProcess(pid, 'orphaned child');
       }
-      unlinkSync(ProcessManager.PID_FILE);
+      unlinkSync(pidFile);
     } catch { /* non-critical */ }
   }
 
@@ -716,8 +738,7 @@ export class ProcessManager extends EventEmitter {
    * Desktop and CLI use separate PID files — both must be cleaned up on reinstall.
    */
   static async cleanupCliPidFile(): Promise<void> {
-    const home = process.env.HOME || process.env.USERPROFILE || '/tmp';
-    const cliPidPath = path.join(home, '.mindos', 'mindos.pid');
+    const cliPidPath = path.join(getDesktopConfigDir(), 'mindos.pid');
     try {
       if (!existsSync(cliPidPath)) return;
       const raw = readFileSync(cliPidPath, 'utf-8').trim();

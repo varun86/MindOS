@@ -303,6 +303,13 @@ export type AgentRuntimeAdapter =
 
 export type AgentRuntimeOwner = 'mindos' | 'external';
 
+export interface AgentRuntimeBridge {
+  kind: 'codex-app-server' | 'claude-sdk' | 'claude-cli';
+  label: string;
+  fallback?: boolean;
+  reason?: string;
+}
+
 export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
   adapter: AgentRuntimeAdapter;
   modelOwner: AgentRuntimeOwner;
@@ -311,6 +318,7 @@ export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
   sessionOwner: AgentRuntimeOwner;
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
+  runtimeBridge?: AgentRuntimeBridge;
   description?: string;
   sourceAgentId?: string;
   canonicalAgentId?: string;

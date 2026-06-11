@@ -231,7 +231,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const mention = useMention();
   const slash = useSlashCommand();
   const nativeDetection = useNativeRuntimeDetection();
-  const nativeRuntimes = useMemo<Array<AgentRuntimeIdentity & Partial<Pick<AgentRuntimeDescriptor, 'status' | 'availability' | 'installCmd' | 'packageName' | 'binaryPath'>>>>(() => {
+  const nativeRuntimes = useMemo<Array<AgentRuntimeIdentity & Partial<Pick<AgentRuntimeDescriptor, 'status' | 'availability' | 'installCmd' | 'packageName' | 'binaryPath' | 'runtimeBridge'>>>>(() => {
     return nativeDetection.runtimes
       .filter((runtime) => runtime.kind === 'codex' || runtime.kind === 'claude')
       .map((runtime) => ({
@@ -240,6 +240,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
         kind: runtime.kind,
         status: runtime.status,
         availability: runtime.availability,
+        ...(runtime.runtimeBridge ? { runtimeBridge: runtime.runtimeBridge } : {}),
         ...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
         ...(runtime.installCmd ? { installCmd: runtime.installCmd } : {}),
         ...(runtime.packageName ? { packageName: runtime.packageName } : {}),

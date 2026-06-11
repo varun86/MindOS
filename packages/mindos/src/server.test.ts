@@ -3603,6 +3603,60 @@ describe('MindOS product server contract', () => {
     expect(childEnv.WEB_SESSION_SECRET).toBeUndefined();
   });
 
+  it('defaults uninstall to preserving local configuration when removeConfig is omitted', () => {
+    const writes: string[] = [];
+    const spawned: Array<{ command: string; args: string[]; options: Record<string, unknown>; unrefCalled: boolean; stdinEnded: boolean }> = [];
+    const spawn = (command: string, args: string[], options: Record<string, unknown>) => {
+      const record = { command, args, options, unrefCalled: false, stdinEnded: false };
+      spawned.push(record);
+      return {
+        stdin: {
+          write: (value: string) => { writes.push(value); },
+          end: () => { record.stdinEnded = true; },
+        },
+        unref: () => { record.unrefCalled = true; },
+      };
+    };
+
+    const response = handleUninstallPost({}, {
+      cliPath: '/opt/mindos/bin/cli.js',
+      nodeBin: '/usr/local/bin/node',
+      env: { PATH: '/usr/bin' },
+      spawn,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(writes).toEqual(['Y\nN\nN\n']);
+  });
+
+  it('removes local configuration only when removeConfig is explicitly true', () => {
+    const writes: string[] = [];
+    const spawned: Array<{ command: string; args: string[]; options: Record<string, unknown>; unrefCalled: boolean; stdinEnded: boolean }> = [];
+    const spawn = (command: string, args: string[], options: Record<string, unknown>) => {
+      const record = { command, args, options, unrefCalled: false, stdinEnded: false };
+      spawned.push(record);
+      return {
+        stdin: {
+          write: (value: string) => { writes.push(value); },
+          end: () => { record.stdinEnded = true; },
+        },
+        unref: () => { record.unrefCalled = true; },
+      };
+    };
+
+    const response = handleUninstallPost({ removeConfig: true }, {
+      cliPath: '/opt/mindos/bin/cli.js',
+      nodeBin: '/usr/local/bin/node',
+      env: { PATH: '/usr/bin' },
+      spawn,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(writes).toEqual(['Y\nY\nN\n']);
+  });
+
   it('applies init templates idempotently from the product runtime', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-init-'));
     const templateRoot = join(root, 'templates');
@@ -5536,6 +5590,10 @@ describe('MindOS product server contract', () => {
 
     expect(result).toMatchObject({
       status: 'available',
+      runtimeBridge: {
+        kind: 'claude-sdk',
+        label: 'SDK bridge active',
+      },
       diagnosticHints: [
         'Claude Agent SDK bridge is available and will use the local Claude Code CLI at /Users/tester/.local/bin/claude.',
       ],
@@ -5555,6 +5613,12 @@ describe('MindOS product server contract', () => {
 
     expect(result).toMatchObject({
       status: 'available',
+      runtimeBridge: {
+        kind: 'claude-cli',
+        label: 'CLI fallback active',
+        fallback: true,
+        reason: 'SDK missing',
+      },
       diagnosticHints: expect.arrayContaining([
         expect.stringContaining('Claude Code CLI is available at /Users/tester/.local/bin/claude'),
         expect.stringContaining('SDK missing'),

@@ -32,9 +32,9 @@ xattr -cr /Applications/MindOS.app          # 未签名版本才需要
 chmod +x MindOS-*.AppImage && ./MindOS-*.AppImage   # AppImage
 sudo dpkg -i mindos-desktop_*_amd64.deb             # deb
 
-# ── CI 触发（需要 gh CLI）──
-gh workflow run build-desktop.yml -R GeminiLight/MindOS -f sign_mac=false -f publish=true
-gh workflow run build-desktop.yml -R GeminiLight/MindOS -f sign_mac=true -f publish=true
+# ── CI 触发（需要 gh CLI；正式发布必须传 tag）──
+gh workflow run build-desktop.yml -R GeminiLight/MindOS -f publish=false -f sign_mac=false
+gh workflow run build-desktop.yml -R GeminiLight/MindOS -f publish=true -f sign_mac=true -f tag=desktop-v0.3.14
 
 # ── Secrets 生成 ──
 base64 -i cert.p12 | tr -d '\n'             # 证书 → APPLE_CERTIFICATE_BASE64
@@ -51,23 +51,24 @@ base64 -i AuthKey_XXXXXXXX.p8 | tr -d '\n'  # API Key → APPLE_API_KEY_BASE64
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `publish` | false | 是否发布到 GitHub Releases + CDN |
+| `publish` | true | 是否发布到 GitHub Releases + CDN |
 | `sign_mac` | true | 是否签名 + 公证 macOS 构建 |
-| `tag` | 自动 | Release tag 名称 |
+| `tag` | 空 | Release tag 名称；`publish=true` 时必填 |
 
-发布时必须传 `tag=desktop-vX.Y.Z`。Finalize 阶段会把 electron-builder 先创建的 `vX.Y.Z` release 统一改成 `desktop-vX.Y.Z`，标题固定为 `MindOS Desktop vX.Y.Z`。Release notes 使用固定模板：下载表格（系统 / CPU / 推荐文件 / 直达链接）、版本表格（Desktop 壳版本 / 内置 MindOS Core 版本）、自动更新文件说明和 changelog 链接。
+发布时必须传 `tag=desktop-vX.Y.Z`。Workflow 会直接 checkout 这个 tag，并校验 `HEAD` 与 tag 指向一致；Finalize 只更新同一个 `desktop-vX.Y.Z` release，不再临时创建或重推 tag。Release notes 使用固定模板：下载表格（系统 / CPU / 推荐文件 / 直达链接）、版本表格（Desktop 壳版本 / 内置 MindOS Core 版本）、自动更新文件说明和 changelog 链接。
 
 ### CI 流程（macOS）
 
 ```
 Install deps → Build Next.js (webpack) → Build Electron → Prepare runtime
   → Package (签名，不公证)
+  → Smoke packaged app
   → Notarize (xcrun notarytool, 3 次重试, 2h 超时)
-  → Staple (xcrun stapler staple)
+  → Staple + validate (xcrun stapler)
   → Upload artifacts
 ```
 
-`sign_mac=false` 时跳过签名、公证、staple 步骤。
+`publish=true` 时 `sign_mac=false` 会直接失败；未配置签名/公证凭证也会失败。`publish=false` 的调试构建可以跳过签名、公证、staple 步骤。
 
 ### CI 所需 GitHub Secrets
 
@@ -96,6 +97,16 @@ Install deps → Build Next.js (webpack) → Build Electron → Prepare runtime
 
 API Key 和 Apple ID 同时配置时优先使用 API Key。
 
+**Windows 签名（正式发布推荐）：**
+
+| Secret | 说明 |
+|--------|------|
+| `WINDOWS_CERTIFICATE_BASE64` | Windows code signing 证书的 base64 编码 |
+| `WINDOWS_CERTIFICATE_PASSWORD` | 证书密码 |
+| `WINDOWS_PUBLISHER_NAME` | 可选；用于校验 Authenticode signer subject |
+
+`publish=true` 的 Windows x64 构建会启动真实 packaged Electron app 做 smoke；Windows ARM64 在 x64 runner 上保留 runtime-only smoke 与结构校验。有 `WINDOWS_CERTIFICATE_BASE64` / `WINDOWS_CERTIFICATE_PASSWORD` 时会签名并用 `Get-AuthenticodeSignature` 校验所有 `.exe` 产物；没有证书时会继续发布 unsigned artifacts，并在 workflow 日志中写 warning。NSIS 安装器会在安装/更新前停止 `MindOS.exe` 进程树和 MindOS-owned Node 子进程，避免文件锁导致 “MindOS cannot be closed” 重试弹窗；同一个 installer 生命周期只跑一次 runtime child cleanup，避免 Windows 上重复 PowerShell/WMI 扫描拖慢安装。安装完成默认不自动拉起 App。NSIS 卸载器会调用 `~/.mindos/uninstall.bat` 清理残留 runtime/cache、进程、SSH tunnel、PATH 和 app data；知识库不删除。
+
 ## 内置 MindOS 运行时
 
 安装包将已构建的 MindOS 打进 `Resources/mindos-runtime`，离线时也能启动本地模式。
@@ -110,15 +121,15 @@ API Key 和 Apple ID 同时配置时优先使用 API Key。
 |------|------|------|
 | macOS ARM64 | `MindOS-{ver}-arm64.dmg` | Apple Silicon |
 | macOS Intel | `MindOS-{ver}.dmg` | Intel Mac |
-| macOS (更新用) | `MindOS-{ver}-arm64-mac.zip`, `MindOS-{ver}-mac.zip` | electron-updater 自动更新 |
+| macOS (更新用) | `MindOS-{ver}-arm64-mac.zip`, `MindOS-{ver}-mac.zip` + `latest-arm64-mac.yml` / `latest-mac.yml` | electron-updater 自动更新 |
 | Windows x64 | `MindOS-Setup-{ver}.exe` | NSIS 安装程序 |
-| Windows ARM64 | `MindOS-Setup-{ver}-arm64.exe` | Native ARM64 NSIS 安装程序 |
+| Windows ARM64 | `MindOS-Setup-{ver}-arm64.exe` + `latest-arm64.yml` | Native ARM64 NSIS 安装程序 |
 | Linux | `MindOS-{ver}.AppImage`, `mindos-desktop_{ver}_amd64.deb` | AppImage + deb |
 
 ## CDN 分发
 
 CI publish 模式自动上传到：
-- **Cloudflare R2**（国际）：`desktop/latest/MindOS-arm64.dmg` 等（去版本号）
+- **Cloudflare R2**（国际）：`desktop/latest/MindOS-arm64.dmg`、`desktop/latest/mindos-desktop_amd64.deb` 等（去版本号）
 - **阿里云 OSS**（中国）：同上
 - **GitHub Releases**：原始文件名（带版本号）
 

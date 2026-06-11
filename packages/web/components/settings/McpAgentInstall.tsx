@@ -9,7 +9,7 @@ import { revealMcpAuthToken } from '@/lib/mcp-token';
 import { SKILL_AGENT_REGISTRY } from '@/lib/mcp-agent-registry';
 import { toast } from '@/lib/toast';
 import { PasswordInput } from './Primitives';
-import type { AgentInfo, McpAgentInstallProps } from './types';
+import type { AgentInfo, McpAgentInstallProps, SettingsMcpMessages } from './types';
 
 /* ── Agent Install ─────────────────────────────────────────────── */
 
@@ -242,7 +242,7 @@ export default function AgentInstall({ agents, t, onRefresh, mode = 'mcp', activ
 
 function CliSkillInstall({ agents, m, activeSkillName }: {
   agents: AgentInfo[];
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
   activeSkillName: string;
 }) {
   const installableAgents = useMemo(() => agents.filter(agent => agent.present), [agents]);

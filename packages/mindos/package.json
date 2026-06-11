@@ -1,6 +1,6 @@
 {
   "name": "@geminilight/mindos",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "MindOS — Human-Agent Collaborative Mind System. Local-first knowledge base that syncs your mind to all AI Agents via MCP.",
   "keywords": [
     "mindos",
@@ -73,6 +73,10 @@
       "types": "./dist/agent-runtime.d.ts",
       "import": "./dist/agent-runtime.js"
     },
+    "./agent-runtime/runtime-env": {
+      "types": "./dist/agent-runtime/runtime-env.d.ts",
+      "import": "./dist/agent-runtime/runtime-env.js"
+    },
     "./foundation": {
       "types": "./dist/foundation.d.ts",
       "import": "./dist/foundation.js"
@@ -123,14 +127,14 @@
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
-    "@geminilight/mindos-darwin-arm64": "1.1.4",
-    "@geminilight/mindos-darwin-x64": "1.1.4",
-    "@geminilight/mindos-linux-arm64": "1.1.4",
-    "@geminilight/mindos-linux-arm64-musl": "1.1.4",
-    "@geminilight/mindos-linux-x64": "1.1.4",
-    "@geminilight/mindos-linux-x64-musl": "1.1.4",
-    "@geminilight/mindos-windows-arm64": "1.1.4",
-    "@geminilight/mindos-windows-x64": "1.1.4"
+    "@geminilight/mindos-darwin-arm64": "1.1.5",
+    "@geminilight/mindos-darwin-x64": "1.1.5",
+    "@geminilight/mindos-linux-arm64": "1.1.5",
+    "@geminilight/mindos-linux-arm64-musl": "1.1.5",
+    "@geminilight/mindos-linux-x64": "1.1.5",
+    "@geminilight/mindos-linux-x64-musl": "1.1.5",
+    "@geminilight/mindos-windows-arm64": "1.1.5",
+    "@geminilight/mindos-windows-x64": "1.1.5"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "^0.18.2",

@@ -33,7 +33,7 @@ type RuntimeOption = {
 };
 
 type RuntimeSelectable = AgentRuntimeIdentity & { status?: AgentRuntimeStatus };
-type NativeRuntimeOption = AgentRuntimeIdentity & Partial<Pick<AgentRuntimeDescriptor, 'status' | 'availability' | 'installCmd' | 'packageName' | 'binaryPath'>>;
+type NativeRuntimeOption = AgentRuntimeIdentity & Partial<Pick<AgentRuntimeDescriptor, 'status' | 'availability' | 'installCmd' | 'packageName' | 'binaryPath' | 'runtimeBridge'>>;
 
 function isCodexAgent(agent: Pick<AgentRuntimeIdentity | NotInstalledAgent, 'id' | 'name'>): boolean {
   const name = agent.name.toLowerCase();
@@ -82,6 +82,19 @@ function resolveNativeOptionStatus(
   if (loading) return 'checking';
   if (runtime?.status) return runtime.status;
   return runtime ? 'available' : 'missing';
+}
+
+function nativeRuntimeAvailableDescription(kind: 'codex' | 'claude', runtime: NativeRuntimeOption | undefined): string {
+  if (runtime?.runtimeBridge) {
+    if (runtime.runtimeBridge.fallback) {
+      const reason = runtime.runtimeBridge.reason
+        ? ` ${compactRuntimeDisplayReason(runtime.runtimeBridge.reason, { runtime: kind })}`
+        : '';
+      return `${runtime.runtimeBridge.label}.${reason}`;
+    }
+    return `${runtime.runtimeBridge.label}.`;
+  }
+  return kind === 'codex' ? 'Use local Codex.' : 'Use local Claude Code.';
 }
 
 function RuntimeMark({ option, small = false }: { option: Pick<RuntimeOption, 'icon' | 'label'>; small?: boolean }) {
@@ -165,9 +178,7 @@ export default function RuntimeIconSwitcher({
             ? compactRuntimeDisplayReason(runtime.availability.reason, { runtime: kind })
             : (missingAgent
               ? `Not detected. ${missingAgent.installCmd ? `Install: ${missingAgent.installCmd}` : 'Configure it in Agents settings.'}`
-              : kind === 'codex'
-                ? 'Use local Codex.'
-                : 'Use local Claude Code.');
+              : nativeRuntimeAvailableDescription(kind, runtime));
       const diagnosticHints = status === 'available'
         ? undefined
         : status === 'checking'

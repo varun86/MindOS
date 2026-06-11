@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, ChevronRight, Code2, Copy, Globe, Link2, Loader2, Monitor, Plug, RefreshCw, RotateCcw, Terminal, Users, Wifi, WifiOff } from 'lucide-react';
-import type { McpStatus, AgentInfo, McpTabProps, ConnectionMode } from './types';
+import type { McpStatus, AgentInfo, McpTabProps, ConnectionMode, SettingsMcpMessages } from './types';
 import type { Messages } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
 import { useMcpData } from '@/lib/stores/mcp-store';
@@ -47,7 +47,7 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
   onRefresh: () => void;
   activeSkillName: string;
   mcpEnabled: boolean;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
   t: McpTabProps['t'];
 }) {
   if (!status) return null;
@@ -125,7 +125,7 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
 
 function CliGuide({ status, activeSkillName, agents, connectedAgents, detectedAgents, notFoundAgents, onRefresh, m, t }: {
   status: McpStatus; activeSkillName: string; agents: AgentInfo[]; connectedAgents: AgentInfo[]; detectedAgents: AgentInfo[]; notFoundAgents: AgentInfo[];
-  onRefresh: () => void; m: Record<string, any> | undefined; t: McpTabProps['t'];
+  onRefresh: () => void; m: SettingsMcpMessages | undefined; t: McpTabProps['t'];
 }) {
   const { copiedField, handleCopy } = useCopyField();
 
@@ -226,7 +226,7 @@ function McpGuide({ status, agents, activeSkillName, connectedAgents, detectedAg
   restarting: boolean;
   onRestart: () => void;
   onRefresh: () => void;
-  m: Record<string, any> | undefined;
+  m: SettingsMcpMessages | undefined;
   t: McpTabProps['t'];
 }) {
   const { copiedField, handleCopy } = useCopyField();
@@ -400,7 +400,7 @@ function StepBlock({ step, label, children }: { step: string; label: string; chi
 /* ── MCP Status (compact inline) ── */
 
 function McpStatusInline({ status, restarting, onRestart, onRefresh, m }: {
-  status: McpStatus; restarting: boolean; onRestart: () => void; onRefresh: () => void; m: Record<string, any> | undefined;
+  status: McpStatus; restarting: boolean; onRestart: () => void; onRefresh: () => void; m: SettingsMcpMessages | undefined;
 }) {
   return (
     <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-muted/30">

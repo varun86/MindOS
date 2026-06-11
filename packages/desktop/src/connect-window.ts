@@ -15,6 +15,7 @@ import { parseSshConfig, isSshAvailable, SshTunnel, PASSPHRASE_NEEDED, addKeyToA
 import { findAvailablePort } from './port-finder';
 import { analyzeMindOsLayout, resolveWebAppDir } from './mindos-runtime-layout';
 import { getDefaultBundledMindOsDirectory } from './mindos-runtime-path';
+import { getDesktopHome } from './desktop-home';
 
 // Active SSH tunnel (shared across windows)
 let activeTunnel: SshTunnel | null = null;
@@ -309,7 +310,7 @@ function registerSshHandlers(
       const cachedPassphrase = loadSshPassphrase(host);
       if (cachedPassphrase && isSshAgentRunning()) {
         // Try to add the default key to ssh-agent with cached passphrase
-        const home = app.getPath('home');
+        const home = getDesktopHome();
         const defaultKeys = ['id_ed25519', 'id_rsa', 'id_ecdsa'].map(k => path.join(home, '.ssh', k));
         for (const keyPath of defaultKeys) {
           if (existsSync(keyPath)) {
@@ -394,7 +395,7 @@ function registerSshHandlers(
   safeHandle('connect:ssh-add-key', async (_: unknown, host: string, remotePort: number, passphrase: string, remember: boolean) => {
     try {
       // Find the SSH key for this host
-      const home = app.getPath('home');
+      const home = getDesktopHome();
       const defaultKeys = ['id_ed25519', 'id_rsa', 'id_ecdsa'].map(k => path.join(home, '.ssh', k));
       let keyAdded = false;
 

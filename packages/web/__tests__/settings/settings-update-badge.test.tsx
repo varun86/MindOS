@@ -83,6 +83,44 @@ describe('Settings update badge synchronization', () => {
     });
   });
 
+  it('hydrates the Update tab badge from stored availability after mount', async () => {
+    const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
+    localStorage.setItem('mindos_update_latest', '2.0.0');
+
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/api/settings') {
+        return Promise.resolve({
+          ai: {
+            provider: 'anthropic',
+            providers: {
+              anthropic: { apiKey: '', model: 'claude-sonnet-4-6' },
+              openai: { apiKey: '', model: 'gpt-5.4', baseUrl: '' },
+            },
+          },
+          mindRoot: '/tmp/mind',
+          envOverrides: {},
+        });
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<SettingsContent visible initialTab="mcp" variant="panel" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelectorAll('.bg-error').length).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('shows the Update tab badge after the embedded UpdateTab finds an update', async () => {
     const SettingsContent = (await import('@/components/settings/SettingsContent')).default;
 

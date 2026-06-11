@@ -68,6 +68,7 @@ describe('MindOS runtime product kernel contract', () => {
       '.',
       './agent',
       './agent-runtime',
+      './agent-runtime/runtime-env',
       './capabilities',
       './cli',
       './client',

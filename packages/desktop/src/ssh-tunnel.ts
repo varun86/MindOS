@@ -7,6 +7,7 @@ import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'fs';
 import { promisify } from 'util';
 import path from 'path';
 import { app } from 'electron';
+import { getDesktopConfigDir, getDesktopHome } from './desktop-home';
 
 const execFileAsync = promisify(execFile);
 
@@ -14,7 +15,9 @@ const execFileAsync = promisify(execFile);
 export const PASSPHRASE_NEEDED = '__PASSPHRASE_NEEDED__';
 
 // PID file for SSH tunnel — allows cleanup of orphaned tunnels on next launch
-const SSH_TUNNEL_PID_FILE = path.join(app.getPath('home'), '.mindos', 'ssh-tunnel.pid');
+function getSshTunnelPidFile(): string {
+  return path.join(getDesktopConfigDir(), 'ssh-tunnel.pid');
+}
 
 type ExecFileSyncLike = (
   command: string,
@@ -71,12 +74,13 @@ export function buildWindowsAskpassScript(passphrase: string): string {
 
 /** Write SSH child PID to disk so we can clean up orphans on next launch */
 function writeTunnelPid(pid: number): void {
-  try { writeFileSync(SSH_TUNNEL_PID_FILE, String(pid), 'utf-8'); } catch { /* best effort */ }
+  try { writeFileSync(getSshTunnelPidFile(), String(pid), 'utf-8'); } catch { /* best effort */ }
 }
 
 /** Remove PID file when tunnel is intentionally stopped */
 function clearTunnelPid(): void {
-  try { if (existsSync(SSH_TUNNEL_PID_FILE)) unlinkSync(SSH_TUNNEL_PID_FILE); } catch { /* best effort */ }
+  const pidFile = getSshTunnelPidFile();
+  try { if (existsSync(pidFile)) unlinkSync(pidFile); } catch { /* best effort */ }
 }
 
 /**
@@ -85,8 +89,9 @@ function clearTunnelPid(): void {
  */
 export function cleanupOrphanedSshTunnel(): void {
   try {
-    if (!existsSync(SSH_TUNNEL_PID_FILE)) return;
-    const pid = parseInt(readFileSync(SSH_TUNNEL_PID_FILE, 'utf-8').trim(), 10);
+    const pidFile = getSshTunnelPidFile();
+    if (!existsSync(pidFile)) return;
+    const pid = parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
     if (!pid || isNaN(pid)) { clearTunnelPid(); return; }
     // Check if process is alive
     try {
@@ -130,7 +135,7 @@ export interface SshHost {
  * Excludes wildcard entries (* patterns).
  */
 export function parseSshConfig(): SshHost[] {
-  const configPath = path.join(app.getPath('home'), '.ssh', 'config');
+  const configPath = path.join(getDesktopHome(), '.ssh', 'config');
   if (!existsSync(configPath)) return [];
 
   try {
@@ -152,7 +157,7 @@ function parseSshConfigFile(filePath: string, visited: Set<string>): SshHost[] {
   const content = readFileSync(resolved, 'utf-8');
   const hosts: SshHost[] = [];
   let current: SshHost | null = null;
-  const home = app.getPath('home');
+  const home = getDesktopHome();
 
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trim();
@@ -245,7 +250,7 @@ export async function isSshAgentLoaded(host: string, sshCmd: string = 'ssh'): Pr
  * Returns true on success, false on failure.
  */
 export async function addKeyToAgent(keyPath: string, passphrase: string): Promise<{ ok: boolean; error?: string }> {
-  const home = app.getPath('home');
+  const home = getDesktopHome();
   // Resolve keyPath if relative
   const resolvedKey = path.isAbsolute(keyPath) ? keyPath : path.join(home, '.ssh', keyPath);
 

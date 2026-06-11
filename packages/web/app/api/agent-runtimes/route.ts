@@ -21,6 +21,17 @@ const services: AgentRuntimesServices = {
   checkNativeRuntimeHealth: checkNativeRuntimeHealth as AgentRuntimesServices['checkNativeRuntimeHealth'],
 };
 
+type NativeRuntimeBridge = {
+  kind: 'codex-app-server' | 'claude-sdk' | 'claude-cli';
+  label: string;
+  fallback?: boolean;
+  reason?: string;
+};
+
+type AgentRuntimeDescriptorWithBridge = AgentRuntimeDescriptor & {
+  runtimeBridge?: NativeRuntimeBridge;
+};
+
 export async function GET(req: Request) {
   const response = await handleAgentRuntimesGet(new URL(req.url).searchParams, services);
   if (response.status === 200 && response.body) {
@@ -42,14 +53,50 @@ function compactNativeRuntimeDescriptor(runtime: AgentRuntimeDescriptor): AgentR
     : undefined;
   const diagnosticHints = compactRuntimeDisplayHints(runtime.availability.diagnosticHints, { runtime: runtime.kind })
     .filter((hint) => hint !== reason);
+  const inferredRuntimeBridge = inferNativeRuntimeBridge(runtime, diagnosticHints);
+  const runtimeBridge = inferredRuntimeBridge?.reason
+    ? {
+      ...inferredRuntimeBridge,
+      reason: compactRuntimeDisplayReason(inferredRuntimeBridge.reason, { runtime: runtime.kind }),
+    }
+    : inferredRuntimeBridge;
   return {
     ...runtime,
+    ...(runtime.kind === 'claude' && runtimeBridge?.kind === 'claude-cli' ? { adapter: 'claude-cli' as const } : {}),
+    ...(runtimeBridge ? { runtimeBridge } : {}),
     availability: {
       ...runtime.availability,
       ...(reason ? { reason } : {}),
       diagnosticHints: diagnosticHints.length > 0 ? diagnosticHints : undefined,
     },
   };
+}
+
+function inferNativeRuntimeBridge(
+  runtime: AgentRuntimeDescriptor,
+  diagnosticHints: string[],
+): NativeRuntimeBridge | undefined {
+  const runtimeWithBridge = runtime as AgentRuntimeDescriptorWithBridge;
+  if (runtimeWithBridge.runtimeBridge) return runtimeWithBridge.runtimeBridge;
+  if (runtime.kind === 'codex' && runtime.status === 'available') {
+    return { kind: 'codex-app-server', label: 'App server active' };
+  }
+  if (runtime.kind !== 'claude' || runtime.status !== 'available') return undefined;
+
+  const joinedHints = diagnosticHints.join(' ');
+  if (/Claude Agent SDK bridge is available/i.test(joinedHints)) {
+    return { kind: 'claude-sdk', label: 'SDK bridge active' };
+  }
+  if (/CLI fallback|will use CLI fallback|SDK bridge is unavailable|did not expose query/i.test(joinedHints)) {
+    const reasonMatch = joinedHints.match(/fallback\.\s*(.+)$/i);
+    return {
+      kind: 'claude-cli',
+      label: 'CLI fallback active',
+      fallback: true,
+      ...(reasonMatch?.[1] ? { reason: reasonMatch[1] } : {}),
+    };
+  }
+  return undefined;
 }
 
 function compactNativeRuntimePayload<T extends AgentRuntimesPayload | AgentRuntimePayload | { error: string }>(body: T): T {

@@ -127,6 +127,17 @@ describe('GitHub workflow migration contract', () => {
     expect(yml).not.toContain('pnpm --filter @mindos/mcp-server build');
     expect(yml).toContain('pnpm --filter @mindos/web run build');
     expect(yml).toContain('packages/web/.next/cache');
+    expect(yml).toContain('https://releases.mindos.com/runtime/mindos-runtime-${version}.tar.gz');
+    expect(yml).toContain('https://github.com/GeminiLight/MindOS/releases/download/runtime-latest/mindos-runtime-${version}.tar.gz');
+    expect(yml).toContain('RUNTIME_OSS_BASE_URL');
+    expect(yml.indexOf('gh release upload "$TAG" "$ARCHIVE" --clobber')).toBeLessThan(
+      yml.indexOf('gh release upload "$TAG" /tmp/latest.json --clobber'),
+    );
+    expect(yml.indexOf('gh release upload "$TAG" /tmp/latest.json --clobber')).toBeLessThan(
+      yml.indexOf('Delete old tarball assets after the new archive + manifest are live'),
+    );
+    expect(yml).toContain('grep -Fx "mindos-runtime-${VERSION}.tar.gz" /tmp/runtime-assets.txt');
+    expect(yml).toContain('grep -Fx "latest.json" /tmp/runtime-assets.txt');
     expect(yml).not.toMatch(/\bcd app\b|\bcd \.\.\/mcp\b|app\/package-lock\.json/);
   });
 
@@ -139,6 +150,11 @@ describe('GitHub workflow migration contract', () => {
     expect(desktop).toContain('pnpm --filter @geminilight/mindos build');
     expect(desktop).toContain('pnpm --filter @mindos/web run build');
     expect(desktop).toContain('pnpm --filter @mindos/desktop run build');
+    expect(desktop).toContain('ref: ${{ inputs.tag != \'\' && inputs.tag || github.ref }}');
+    expect(desktop).toContain('fetch-depth: 0');
+    expect(desktop).toContain('Validate requested tag');
+    expect(desktop).toContain('TAG_SHA="$(git rev-list -n 1 "refs/tags/${TAG}")"');
+    expect(desktop).toContain('HEAD_SHA="$(git rev-parse HEAD)"');
     expect(desktop).toContain('platform: win\n            arch: arm64');
     expect(desktop).toContain('MINDOS_BUNDLE_NODE_PLATFORM: ${{ matrix.node_platform }}');
     expect(desktop).toContain('MINDOS_BUNDLE_NODE_ARCH: ${{ matrix.arch }}');
@@ -150,6 +166,10 @@ describe('GitHub workflow migration contract', () => {
 
     expect(sync).toContain('\\"tag\\":\\"${TAG}\\"');
     expect(sync).toContain('\\"publish\\":\\"true\\"');
+    expect(sync).toContain('\\"ref\\":\\"${TAG}\\"');
+    expect(sync).toContain('Failed to dispatch desktop build');
+    expect(sync).toContain('exit 1');
+    expect(sync).not.toContain('\\"ref\\":\\"main\\"');
   });
 
   it('keeps release workflow triggers single-sourced by tag family', () => {

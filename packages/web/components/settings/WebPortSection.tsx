@@ -1,29 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Monitor, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { SettingCard } from './Primitives';
 import { fetchMindosHealth } from '@/lib/mindos-health';
-
-/* ── Types ─────────────────────────────────────────────────────── */
-
-interface PortStatus {
-  checking: boolean;
-  available: boolean | null;
-  isSelf: boolean;
-  suggestion: number | null;
-  invalid?: boolean;
-}
-
-interface CheckPortResult {
-  available: boolean;
-  isSelf?: boolean;
-  suggestion?: number | null;
-}
-
-const EMPTY_STATUS: PortStatus = { checking: false, available: null, isSelf: false, suggestion: null };
+import { saveSettingsPatch } from './settings-save';
+import { PORT_MAX, PORT_MIN, type CheckPortResult } from './settings-port';
+import { useSettingsPort } from './use-settings-port';
+import type { SettingsMcpMessages } from './types';
 
 /* ── Full-screen restart overlay ───────────────────────────────── */
 
@@ -41,52 +27,33 @@ function RestartOverlay({ message, sub }: { message: string; sub?: string }) {
 
 /* ── WebPortSection ────────────────────────────────────────────── */
 
-export default function WebPortSection({ m }: { m: Record<string, any> }) {
-  const [origPort, setOrigPort] = useState<number>(0);
-  const [port, setPort] = useState<number>(0);
-  const [status, setStatus] = useState<PortStatus>(EMPTY_STATUS);
+export default function WebPortSection({ m }: { m: SettingsMcpMessages }) {
   const [updating, setUpdating] = useState(false);
   const [overlayMsg, setOverlayMsg] = useState<string | null>(null);
   const [overlaySub, setOverlaySub] = useState<string | undefined>(undefined);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const {
+    origPort,
+    port,
+    status,
+    setStatus,
+    setResolvedPort,
+    hasChanges,
+    portInvalid,
+    portUnavailable,
+    handlePortInputChange,
+    handlePortInputBlur,
+    useSuggestedPort,
+  } = useSettingsPort();
 
   useEffect(() => {
     apiFetch<{ port?: number }>('/api/settings').then(d => {
       const p = d.port || 3456;
-      setOrigPort(p);
-      setPort(p);
+      setResolvedPort(p);
     }).catch(() => {});
-  }, []);
+  }, [setResolvedPort]);
 
-  useEffect(() => () => { clearInterval(pollRef.current); clearTimeout(timerRef.current); }, []);
-
-  const hasChanges = port !== origPort;
-  const portInvalid = port < 1024 || port > 65535;
-  const portUnavailable = status.checking || (status.available === false && !status.isSelf);
-
-  const checkPort = useCallback(async (p: number) => {
-    if (p < 1024 || p > 65535) {
-      setStatus({ ...EMPTY_STATUS, available: false, invalid: true });
-      return;
-    }
-    setStatus({ ...EMPTY_STATUS, checking: true });
-    try {
-      const res = await apiFetch<CheckPortResult>('/api/setup/check-port', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port: p }),
-      });
-      setStatus({
-        checking: false,
-        available: res.available,
-        isSelf: res.isSelf ?? false,
-        suggestion: res.suggestion ?? null,
-      });
-    } catch {
-      setStatus(EMPTY_STATUS);
-    }
-  }, []);
+  useEffect(() => () => { clearInterval(pollRef.current); }, []);
 
   const handleUpdate = async () => {
     if (!hasChanges || portInvalid || portUnavailable || updating) return;
@@ -112,11 +79,7 @@ export default function WebPortSection({ m }: { m: Record<string, any> }) {
       }
 
       // Save port
-      await apiFetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port }),
-      });
+      await saveSettingsPatch({ port });
 
       // Full restart — Web port changed
       setOverlayMsg(m.portWebRestarting);
@@ -166,20 +129,9 @@ export default function WebPortSection({ m }: { m: Record<string, any> }) {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <input
-              type="number" min={1024} max={65535} value={port}
-              onChange={e => {
-                const v = parseInt(e.target.value, 10) || port;
-                setPort(v);
-                setStatus(EMPTY_STATUS);
-                clearTimeout(timerRef.current);
-                if (v >= 1024 && v <= 65535) {
-                  timerRef.current = setTimeout(() => checkPort(v), 500);
-                }
-              }}
-              onBlur={() => {
-                clearTimeout(timerRef.current);
-                if (port >= 1024 && port <= 65535) checkPort(port);
-              }}
+              type="number" min={PORT_MIN} max={PORT_MAX} value={port}
+              onChange={e => handlePortInputChange(e.target.value)}
+              onBlur={handlePortInputBlur}
               className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-border bg-muted/30 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring tabular-nums"
             />
             <button
@@ -209,7 +161,7 @@ export default function WebPortSection({ m }: { m: Record<string, any> }) {
               </p>
               {status.suggestion !== null && (
                 <button type="button"
-                  onClick={() => { setPort(status.suggestion!); setStatus(EMPTY_STATUS); setTimeout(() => checkPort(status.suggestion!), 0); }}
+                  onClick={() => useSuggestedPort(status.suggestion!)}
                   className="text-xs px-2 py-0.5 rounded border border-[var(--amber)] text-[var(--amber)] transition-colors hover:bg-[var(--amber-subtle)]"
                 >
                   {m.portSuggest(status.suggestion)}

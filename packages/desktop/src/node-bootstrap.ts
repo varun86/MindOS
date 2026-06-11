@@ -7,7 +7,6 @@
  *
  * Platform support: macOS (arm64/x64), Linux (x64), Windows (arm64/x64).
  */
-import { app } from 'electron';
 import { createWriteStream, existsSync, mkdirSync, chmodSync, statSync, readFileSync, writeFileSync, symlinkSync, type WriteStream } from 'fs';
 import { rm } from 'fs/promises';
 import { execFileSync, spawn } from 'child_process';
@@ -15,17 +14,48 @@ import path from 'path';
 import https from 'https';
 import type { ClientRequest, IncomingMessage } from 'http';
 import { gunzipSync } from 'zlib';
+import { createHash } from 'crypto';
+import { getDesktopConfigDir } from './desktop-home';
 
 // Node.js LTS version to download (also used by prepare-mindos-runtime to bundle Node)
 export const NODE_VERSION = '22.16.0';
+const NODE_DOWNLOAD_SHA256: Record<string, string> = {
+  [`node-v${NODE_VERSION}-darwin-arm64.tar.gz`]: '1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9',
+  [`node-v${NODE_VERSION}-darwin-x64.tar.gz`]: '838d400f7e66c804e5d11e2ecb61d6e9e878611146baff69d6a2def3cc23f4ac',
+  [`node-v${NODE_VERSION}-linux-arm64.tar.gz`]: '1725602e9fb150eb8b8220a899085190e1c04d1a5f3862b01c3dc1dfce0157f9',
+  [`node-v${NODE_VERSION}-linux-x64.tar.gz`]: 'fb870226119d47378fa9c92c4535389c72dae14fcc7b47e6fdcc82c43de5a547',
+  [`node-v${NODE_VERSION}-win-arm64.zip`]: '31e885dcd06355f67b4be8cca86464270d83d0f5b8d4e3d4369c16ed22a5f4fa',
+  [`node-v${NODE_VERSION}-win-x64.zip`]: '21c2d9735c80b8f86dab19305aa6a9f6f59bbc808f68de3eef09d5832e3bfbbd',
+};
 
-const MINDOS_DIR = path.join(app.getPath('home'), '.mindos');
-const NODE_DIR = path.join(MINDOS_DIR, 'node');
 const IS_WIN = process.platform === 'win32';
 const PATH_SEP = IS_WIN ? ';' : ':';
 
+function getMindosDir(): string {
+  return getDesktopConfigDir();
+}
+
+function getNodeDir(): string {
+  return path.join(getMindosDir(), 'node');
+}
+
 function needsWindowsShell(command: string): boolean {
   return IS_WIN && /\.(?:cmd|bat)$/i.test(command);
+}
+
+function forceTerminateProcessTree(proc: ReturnType<typeof spawn>): void {
+  try {
+    if (IS_WIN && proc.pid) {
+      spawn('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+      proc.kill();
+      return;
+    }
+    if (proc.pid) {
+      try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* process may not own a group */ }
+    }
+    if (IS_WIN) proc.kill();
+    else proc.kill('SIGKILL');
+  } catch { /* already exited */ }
 }
 
 /** Path to the bundled Node.js shipped inside the packaged app (resources/mindos-runtime/node/) */
@@ -44,10 +74,11 @@ export function isBundledNodeInstalled(): boolean {
 
 /** Path to the private node binary (may not exist yet) */
 export function getPrivateNodePath(): string {
+  const nodeDir = getNodeDir();
   if (process.platform === 'win32') {
-    return path.join(NODE_DIR, 'node.exe');
+    return path.join(nodeDir, 'node.exe');
   }
-  return path.join(NODE_DIR, 'bin', 'node');
+  return path.join(nodeDir, 'bin', 'node');
 }
 
 /** Check if private Node.js is already installed */
@@ -56,7 +87,7 @@ export function isPrivateNodeInstalled(): boolean {
 }
 
 /** Resolve the download URL for the current platform */
-function getDownloadUrl(): { url: string; mirrorUrl: string; format: 'tar.gz' | 'zip' } {
+function getDownloadUrl(): { url: string; mirrorUrl: string; file: string; format: 'tar.gz' | 'zip' } {
   const plat = process.platform;
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
 
@@ -66,14 +97,14 @@ function getDownloadUrl(): { url: string; mirrorUrl: string; format: 'tar.gz' | 
 
   if (plat === 'darwin') {
     const file = `node-v${NODE_VERSION}-darwin-${arch}.tar.gz`;
-    return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, format: 'tar.gz' };
+    return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, file, format: 'tar.gz' };
   }
   if (plat === 'linux') {
     const file = `node-v${NODE_VERSION}-linux-${arch}.tar.gz`;
-    return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, format: 'tar.gz' };
+    return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, file, format: 'tar.gz' };
   }
   const file = `node-v${NODE_VERSION}-win-${arch}.zip`;
-  return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, format: 'zip' };
+  return { url: `${OFFICIAL_BASE}/${file}`, mirrorUrl: `${MIRROR_BASE}/${file}`, file, format: 'zip' };
 }
 
 /**
@@ -88,10 +119,12 @@ export async function downloadNode(
     return getPrivateNodePath();
   }
 
-  const { url, mirrorUrl, format } = getDownloadUrl();
-  const tmpDir = path.join(MINDOS_DIR, 'tmp');
+  const { url, mirrorUrl, file, format } = getDownloadUrl();
+  const mindosDir = getMindosDir();
+  const nodeDir = getNodeDir();
+  const tmpDir = path.join(mindosDir, 'tmp');
   mkdirSync(tmpDir, { recursive: true });
-  mkdirSync(NODE_DIR, { recursive: true });
+  mkdirSync(nodeDir, { recursive: true });
 
   const tmpFile = path.join(tmpDir, `node.${format}`);
 
@@ -101,18 +134,21 @@ export async function downloadNode(
     await downloadFile(url, tmpFile, (percent) => {
       onProgress?.(Math.round(percent * 0.8), 'downloading');
     }, 30000); // 30s timeout for official — fail fast if blocked
+    verifyNodeArchiveSha256(tmpFile, file);
   } catch (primaryErr) {
     console.warn(`[MindOS] Official Node.js download failed (${primaryErr instanceof Error ? primaryErr.message : primaryErr}), trying mirror...`);
+    try { await rm(tmpFile, { force: true }); } catch { /* best effort */ }
     onProgress?.(0, 'downloading');
     await downloadFile(mirrorUrl, tmpFile, (percent) => {
       onProgress?.(Math.round(percent * 0.8), 'downloading');
     }); // default timeout for mirror
+    verifyNodeArchiveSha256(tmpFile, file);
   }
 
   // 2. Extract (using spawn with argument arrays — no shell injection)
   onProgress?.(80, 'extracting');
   if (format === 'tar.gz') {
-    extractTarGzSafe(tmpFile, NODE_DIR, 1);
+    extractTarGzSafe(tmpFile, nodeDir, 1);
   } else {
     // Windows: PowerShell extract — use -NoProfile and -ExecutionPolicy Bypass
     // to avoid user profile interference and restrictive execution policies.
@@ -130,7 +166,7 @@ export async function downloadNode(
     const nodeFolder = entries.find((e: string) => e.startsWith('node-'));
     if (nodeFolder) {
       const { cpSync: cpSyncFn } = require('fs');
-      cpSyncFn(path.join(extractDir, nodeFolder), NODE_DIR, { recursive: true });
+      cpSyncFn(path.join(extractDir, nodeFolder), nodeDir, { recursive: true });
     }
   }
 
@@ -146,7 +182,7 @@ export async function downloadNode(
     // Remove macOS quarantine attribute — Gatekeeper may silently kill quarantined binaries
     // spawned as child processes, causing the 120s health-check timeout.
     if (process.platform === 'darwin') {
-      removeMacQuarantineAttribute(NODE_DIR);
+      removeMacQuarantineAttribute(nodeDir);
     }
   }
 
@@ -296,7 +332,7 @@ function isZeroBlock(buffer: Buffer): boolean {
 type ExecFileSyncLike = (command: string, args: string[], options: { stdio: 'ignore' }) => unknown;
 
 export function removeMacQuarantineAttribute(
-  nodeDir = NODE_DIR,
+  nodeDir = getNodeDir(),
   execFile: ExecFileSyncLike = execFileSync,
 ): void {
   try {
@@ -415,13 +451,29 @@ function downloadFile(
 
 export const _downloadFile_forTest = downloadFile;
 export const _extractTarGzSafe_forTest = extractTarGzSafe;
+export const _verifyNodeArchiveSha256_forTest = verifyNodeArchiveSha256;
+
+function verifyNodeArchiveSha256(filePath: string, fileName: string): void {
+  const expected = NODE_DOWNLOAD_SHA256[fileName];
+  if (!expected) {
+    throw new Error(`No pinned SHA-256 checksum for Node.js archive ${fileName}`);
+  }
+  const actual = createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  if (actual !== expected) {
+    throw new Error(`Node.js archive checksum mismatch for ${fileName}: expected ${expected}, got ${actual}`);
+  }
+}
 
 /** Spawn a process and wait for exit. Rejects on non-zero exit or timeout. */
 function spawnAsync(cmd: string, args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: 'ignore', shell: needsWindowsShell(cmd) });
+    const proc = spawn(cmd, args, {
+      stdio: 'ignore',
+      shell: needsWindowsShell(cmd),
+      detached: !IS_WIN,
+    });
     const timer = setTimeout(() => {
-      proc.kill(); // No signal arg — Node.js uses SIGTERM on Unix, TerminateProcess on Windows
+      forceTerminateProcessTree(proc);
       reject(new Error(`${cmd} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
@@ -458,13 +510,14 @@ export async function installMindosWithPrivateNode(
     const proc = spawn(npmBin, ['install', '-g', '@geminilight/mindos@latest'], {
       stdio: 'ignore',
       shell: needsWindowsShell(npmBin),
+      detached: !IS_WIN,
       env: {
         ...process.env,
         PATH: `${binDir}${PATH_SEP}${process.env.PATH || ''}`,
       },
     });
     const timer = setTimeout(() => {
-      proc.kill();
+      forceTerminateProcessTree(proc);
       reject(new Error('npm install timed out after 5 minutes'));
     }, 300000);
 

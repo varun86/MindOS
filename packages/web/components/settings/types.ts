@@ -1,7 +1,7 @@
 import type { Locale, Messages } from '@/lib/i18n';
 import type React from 'react';
 import type { Provider } from '@/lib/custom-endpoints';
-import type { AgentRuntimeEnvironmentSettings } from '@geminilight/mindos/agent-runtime';
+import type { AgentRuntimeEnvironmentSettings } from '@geminilight/mindos/agent-runtime/runtime-env';
 
 export interface AiSettings {
   activeProvider: string;
@@ -179,6 +179,8 @@ export interface SyncStatus {
 export interface McpTabProps {
   t: Messages;
 }
+
+export type SettingsMcpMessages = Messages['settings']['mcp'];
 
 export interface AppearanceTabProps {
   font: string;
