@@ -165,7 +165,7 @@ function spawnWindowsRuntime(executablePath) {
     }
   }
 
-  console.log(`[smoke-desktop-app] Windows runtime-only smoke: ${serverPath}`);
+  console.log(`[smoke-desktop-app] Windows runtime-only smoke from packaged resources: ${serverPath}`);
   return spawn(nodePath, [serverPath], {
     cwd: appDir,
     detached: false,
