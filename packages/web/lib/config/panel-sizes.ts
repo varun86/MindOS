@@ -24,6 +24,18 @@ export const LEFT_PANEL: { DEFAULT: number; MIN: number; MAX_RATIO: number; MAX_
   MAX_ABS: 600, // Absolute pixel max
 };
 
+/**
+ * Single source of truth for the rendered left-panel width.
+ * The stored width is global across panels — once the user resizes, it wins
+ * everywhere. Per-panel defaults only apply before any resize, so the width
+ * can never oscillate while local and route-derived panel state disagree
+ * during a navigation transition.
+ */
+export function getLeftPanelWidth(activeLeftPanel: PanelId | null, userWidth: number | null): number {
+  if (userWidth !== null) return userWidth;
+  return activeLeftPanel ? DEFAULT_LEFT_PANEL_WIDTH[activeLeftPanel] : LEFT_PANEL.DEFAULT;
+}
+
 // ── Right Ask Panel ──
 
 export const RIGHT_ASK_PANEL: { DEFAULT: number; MIN: number; MAX_ABS: number; MIN_CONTENT: number } = {

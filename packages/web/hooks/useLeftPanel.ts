@@ -1,19 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { MIN_PANEL_WIDTH, MAX_PANEL_WIDTH_ABS, PANEL_WIDTH } from '@/components/Panel';
+import { MIN_PANEL_WIDTH, MAX_PANEL_WIDTH_ABS } from '@/components/Panel';
 import type { PanelId } from '@/lib/navigation-panel';
 import { RAIL_WIDTH_COLLAPSED, RAIL_WIDTH_EXPANDED } from '@/components/ActivityBar';
 
 export interface LeftPanelState {
   activePanel: PanelId | null;
   setActivePanel: (p: PanelId | null | ((prev: PanelId | null) => PanelId | null)) => void;
+  /** User-resized width (global across panels) — null until the user resizes */
   panelWidth: number | null;
   panelMaximized: boolean;
   railExpanded: boolean;
   railWidth: number;
-  panelOpen: boolean;
-  effectivePanelWidth: number;
   handlePanelWidthChange: (w: number) => void;
   handlePanelWidthCommit: (w: number) => void;
   handlePanelMaximize: () => void;
@@ -37,21 +36,17 @@ export function useLeftPanel(): LeftPanelState {
     } catch {}
   }, []);
 
-  // Load persisted panel width when activePanel changes
+  // Load the persisted panel width once — the width is one global value, so
+  // re-reading (and force-defaulting) on every panel switch only created
+  // extra width transitions. null means "use the per-panel default".
   useEffect(() => {
-    if (!activePanel) return;
     try {
       const stored = localStorage.getItem('left-panel-width');
-      if (stored) {
-        const w = parseInt(stored, 10);
-        if (w >= MIN_PANEL_WIDTH && w <= MAX_PANEL_WIDTH_ABS) {
-          setPanelWidth(w);
-          return;
-        }
-      }
+      if (!stored) return;
+      const w = parseInt(stored, 10);
+      if (w >= MIN_PANEL_WIDTH && w <= MAX_PANEL_WIDTH_ABS) setPanelWidth(w);
     } catch {}
-    setPanelWidth(280);
-  }, [activePanel]);
+  }, []);
 
   // Exit maximize when switching panels
   useEffect(() => { setPanelMaximized(false); }, [activePanel]);
@@ -68,13 +63,10 @@ export function useLeftPanel(): LeftPanelState {
   }, []);
 
   const railWidth = railExpanded ? RAIL_WIDTH_EXPANDED : RAIL_WIDTH_COLLAPSED;
-  const panelOpen = activePanel !== null;
-  const effectivePanelWidth = panelWidth ?? (activePanel ? PANEL_WIDTH[activePanel] : 280);
 
   return {
     activePanel, setActivePanel,
     panelWidth, panelMaximized, railExpanded, railWidth,
-    panelOpen, effectivePanelWidth,
     handlePanelWidthChange, handlePanelWidthCommit, handlePanelMaximize,
     handleExpandedChange,
   };

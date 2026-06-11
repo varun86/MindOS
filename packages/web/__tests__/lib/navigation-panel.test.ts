@@ -3,6 +3,7 @@ import {
   getActiveLeftPanel,
   getContentRoutePanel,
   getEffectivePanelMaximized,
+  getPendingRoutePanel,
   getRailActivePanel,
   getRailPanelClickDecision,
   getRouteControlledPanel,
@@ -113,6 +114,29 @@ describe('navigation panel route recovery', () => {
     expect(getEffectivePanelMaximized(null, 'files', true)).toBe(false);
     expect(getEffectivePanelMaximized('search', 'search', true)).toBe(true);
     expect(getEffectivePanelMaximized('agents', 'agents', false)).toBe(false);
+  });
+
+  it('keeps the clicked panel active while its rail navigation is in flight', () => {
+    // Click Agents from /capture: pathname has not committed yet — the pending
+    // target must win so the panel/rail switch instantly with no width flip.
+    const pending = { target: 'agents' as const, fromPathname: '/capture' };
+    expect(getPendingRoutePanel('/capture', pending)).toBe('agents');
+    expect(getPendingRoutePanel('/capture', pending) ?? getActiveLeftPanel('/capture', 'agents')).toBe('agents');
+  });
+
+  it('invalidates the pending rail navigation the moment any route commits', () => {
+    const pending = { target: 'agents' as const, fromPathname: '/capture' };
+    // Destination committed
+    expect(getPendingRoutePanel('/agents', pending)).toBeNull();
+    // User navigated somewhere else mid-flight (file tree, back button)
+    expect(getPendingRoutePanel('/view/Notes/example.md', pending)).toBeNull();
+    expect(getPendingRoutePanel('/wiki', pending)).toBeNull();
+  });
+
+  it('ignores pending state that is already satisfied or absent', () => {
+    expect(getPendingRoutePanel('/capture', null)).toBeNull();
+    // Defensive: a pending entry recorded ON its own target route is a no-op
+    expect(getPendingRoutePanel('/agents', { target: 'agents', fromPathname: '/agents' })).toBeNull();
   });
 
   it('computes route-backed rail click behavior from one contract', () => {

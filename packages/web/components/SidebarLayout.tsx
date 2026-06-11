@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Settings, Menu, X, FolderInput } from 'lucide-react';
 import ActivityBar from './ActivityBar';
-import Panel, { PANEL_WIDTH } from './Panel';
+import Panel from './Panel';
 import FileTree from './FileTree';
 import Logo from './Logo';
 import AskFab from './AskFab';
@@ -38,16 +38,18 @@ import { quickDropToInbox } from '@/lib/inbox-upload';
 import {
   getActiveLeftPanel,
   getEffectivePanelMaximized,
+  getPendingRoutePanel,
   getRailActivePanel,
   getRailPanelClickDecision,
   getRouteControlledPanel,
   isNeutralContentRoute,
   recoverStaleRoutePanel,
   type PanelId,
+  type PendingRouteNav,
   type RoutePanelId,
 } from '@/lib/navigation-panel';
 import type { Tab } from './settings/types';
-import { RIGHT_AGENT_DETAIL_PANEL } from '@/lib/config/panel-sizes';
+import { RIGHT_AGENT_DETAIL_PANEL, getLeftPanelWidth } from '@/lib/config/panel-sizes';
 
 const noop = () => {};
 const SYNC_POPOVER_ID = 'sync-popover';
@@ -201,15 +203,30 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   const currentFile = pathname.startsWith('/view/')
     ? pathname.slice('/view/'.length).split('/').map(decodeURIComponent).join('/')
     : undefined;
-  const activeLeftPanel = getActiveLeftPanel(pathname, lp.activePanel);
-  const railActivePanel = getRailActivePanel(pathname, lp.activePanel);
+
+  // ── Optimistic rail navigation ──
+  // A rail click toward another module records a pending target. Until the
+  // route commits, the pending target IS the active panel: the panel content
+  // and rail highlight switch in the click's render, and the local/route
+  // mismatch can't flip any derived state back and forth (the rail-click
+  // flicker). Any pathname change invalidates the pending entry in-render.
+  const [pendingNav, setPendingNav] = useState<PendingRouteNav | null>(null);
+  const pendingRoutePanel = getPendingRoutePanel(pathname, pendingNav);
+  const activeLeftPanel = pendingRoutePanel ?? getActiveLeftPanel(pathname, lp.activePanel);
+  const railActivePanel = pendingRoutePanel ?? getRailActivePanel(pathname, lp.activePanel);
   const agentDockOpen = agentDetailKey !== null && activeLeftPanel === 'agents';
-  const routeControlledPanel = activeLeftPanel !== lp.activePanel;
   const panelOpen = activeLeftPanel !== null;
   const effectivePanelMaximized = getEffectivePanelMaximized(activeLeftPanel, lp.activePanel, lp.panelMaximized);
-  const effectivePanelWidth = activeLeftPanel
-    ? (routeControlledPanel ? PANEL_WIDTH[activeLeftPanel] : lp.effectivePanelWidth)
-    : lp.effectivePanelWidth;
+  // One width for all panels (user-resized wins, per-panel default otherwise).
+  // Deriving width from WHICH state controlled the panel made every
+  // navigation transition animate through 2-4 widths — the flicker.
+  const effectivePanelWidth = getLeftPanelWidth(activeLeftPanel, lp.panelWidth);
+
+  // Drop the pending entry once any route commits (the derivation above
+  // already ignores it from that render on — this is just state hygiene).
+  useEffect(() => {
+    setPendingNav((prev) => (prev && prev.fromPathname !== pathname ? null : prev));
+  }, [pathname]);
 
   // Auto-exit Ask panel maximize when navigating to a different page
   // or when left panel opens (content needs to be visible).
@@ -358,10 +375,13 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   // When leaving a route-owned panel, a slow RSC transition can let the previous
   // route alignment effect run after the destination click. Once the destination
   // route commits, recover the matching panel without overwriting utility panels.
+  // Skipped while a rail navigation is in flight — recovering would undo the
+  // user's optimistic click and re-trigger the state tug-of-war.
   useEffect(() => {
+    if (pendingRoutePanel) return;
     const recoveredPanel = recoverStaleRoutePanel(pathname, lp.activePanel);
     if (recoveredPanel) lp.setActivePanel(recoveredPanel);
-  }, [pathname, lp.activePanel, lp.setActivePanel]);
+  }, [pathname, lp.activePanel, lp.setActivePanel, pendingRoutePanel]);
 
   const handleAgentDetailWidthCommit = useCallback((w: number) => {
     setAgentDetailWidth(w);
@@ -525,7 +545,12 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   ) => {
     exitAskMaximized();
     const decision = getRailPanelClickDecision(pathname, activeLeftPanel, targetPanel);
-    if (decision.preventDefault) event.preventDefault();
+    if (decision.preventDefault) {
+      event.preventDefault();
+    } else {
+      // Real navigation starts — keep the clicked target active until it commits
+      setPendingNav({ target: targetPanel, fromPathname: pathname });
+    }
     lp.setActivePanel(decision.nextPanel);
     if (targetPanel === 'agents') setAgentDetailKey(null);
   }, [activeLeftPanel, exitAskMaximized, lp, pathname]);
@@ -568,7 +593,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         onNavigate={noop}
         onOpenSyncSettings={openSyncSettings}
         railWidth={lp.railWidth}
-        panelWidth={routeControlledPanel ? undefined : (lp.panelWidth ?? undefined)}
+        panelWidth={lp.panelWidth ?? undefined}
         onWidthChange={lp.handlePanelWidthChange}
         onWidthCommit={lp.handlePanelWidthCommit}
         maximized={effectivePanelMaximized}

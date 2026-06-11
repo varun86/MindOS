@@ -121,6 +121,20 @@ rg 'setStep' packages/web/components/SetupWizard.tsx
 
 逐一确认每个入口都有守卫。遗漏一个就是一个可被绕过的通道。
 
+### 规则 9：派生状态不能在异步过渡期间切换"数据来源"
+
+> 复盘 2026-06-12 rail 点击闪烁 bug：点击 Activity Bar 切换模块时，面板宽度/高亮闪烁数次。
+
+App Router 的 `pathname` 在 Link 点击后**异步**提交（RSC fetch 期间仍是旧值）。如果一个渲染值的"来源"由「本地 state 和路由派生 state 是否一致」决定（如 `routeControlled ? PANEL_WIDTH[x] : userWidth`），那么导航过渡期间两者必然短暂不一致，来源会翻转 2-4 次——每次翻转都是一帧动画（`transition-[width]` 放大成肉眼可见的闪烁）。同时，"纠正 stale state" 的 effect 若不感知过渡期，会把用户刚点的目标改回去，形成 tug-of-war。
+
+预防方法：
+
+1. **一个渲染值只允许一个来源**。宽度这类全局值，用户设置永远赢，per-panel 默认只在未设置时生效（见 `getLeftPanelWidth`），不允许"谁控制面板谁决定宽度"。
+2. **导航中的点击用显式 pending state 表达**（`PendingRouteNav { target, fromPathname }`），派生时 pending 优先；任何 pathname 变化使其在同一渲染内失效，不依赖 effect 时序。
+3. **纠正类 effect 必须让位于在途导航**：`if (pendingRoutePanel) return;`——否则它纠正的就是用户的点击本身。
+
+检查方法：**找出所有形如 `cond ? sourceA : sourceB` 的渲染值，问"cond 在异步过渡期间会不会短暂为意外值"**；以及所有自动 `setState` 的 effect，问"它会不会在用户操作还没生效时就把操作撤销"。
+
 ### 本次治理的教训
 
 | 教训 | 行动 |

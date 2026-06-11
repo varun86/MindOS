@@ -7,6 +7,34 @@ export interface RailPanelClickDecision {
   preventDefault: boolean;
 }
 
+/**
+ * A rail click that triggers route navigation, recorded until the route
+ * commits. While in flight the clicked target must stay the active panel —
+ * otherwise the route-derived panel (still the OLD route) wins the
+ * derivation, the local/route mismatch flips the panel width source, and the
+ * recover effect fights the click: the visible result is the rail-click
+ * flicker (width/padding oscillating through several animated values).
+ */
+export interface PendingRouteNav {
+  target: RoutePanelId;
+  fromPathname: string;
+}
+
+/**
+ * The pending target while its navigation is still in flight, else null.
+ * Any pathname change — destination commit, file-tree click, back button —
+ * invalidates the pending state in the same render (no stale frame).
+ */
+export function getPendingRoutePanel(
+  pathname: string | null | undefined,
+  pending: PendingRouteNav | null,
+): RoutePanelId | null {
+  if (!pending) return null;
+  if (pathname !== pending.fromPathname) return null;
+  if (isContentRouteForPanel(pathname, pending.target)) return null;
+  return pending.target;
+}
+
 export const ROUTE_PANEL_HREF: Record<RoutePanelId, string> = {
   files: '/wiki',
   capture: '/capture',
