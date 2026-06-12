@@ -4,6 +4,25 @@
 
 ## Unreleased
 
+### Skill 管理（GUI 操作真正传导到下游 Agent）
+
+- **修复「装不上也卸不掉」**：Settings 里对 skill 的安装/卸载现在通过符号链接真实落到下游 agent 的 skill 目录（`POST /api/skills { action: 'link'|'unlink' }`）；安装=建链接（symlink → Windows junction → copy fallback，副本内置 `.mindos-managed` 标记），卸载=只删链接/标记副本，绝不触碰 skill 本体，也拒绝删除用户手放的真实目录。
+- **统一事实源**：新增 `GET /api/skills/matrix`——`{agentSkillDir}/{skill}` 链接是否存在即该 (skill, agent) 是否启用的唯一依据；MindOS 自身作为矩阵第一列（沿用 `disabledSkills`）。skill 视图与 agent 视图均消费同一矩阵，结构上不可能再不一致。
+- **一次性迁移**：首次读取矩阵时把遗留 `installedSkillAgents[]` 的 copy 安装迁移为 symlink（内容一致→替换为链接；用户改过→保留并标记 managed + warn），完成后清空记账；迁移失败不阻塞请求。
+- **Agent 自有技能可停用（不删除）**：新增 `disable-native`/`enable-native` action——停用 = 把 agent 自有的技能目录整体移入 `{skillDir}/.mindos-disabled/` 暂存（所有 agent 扫描器都跳过点开头目录，下次启动即不加载），恢复 = 原样移回，本体零改动。矩阵新增 `native-disabled` 格子状态；conflict 格（agent 自有真实目录）从"不可操作"变为"点击停用"；对停放中的技能执行 link 会智能恢复原目录而非建链接遮蔽；停用对托管链接拒绝（应走 unlink）。Settings chips 与 Agents 页移除流均已接入。
+- **停放技能永不失踪 + By Agent 卡片分组**：①修复"停用后技能整个消失"——当技能本体目录同时是 MindOS 技能根（如 `~/.codex/skills`）时，停放会把它移出根目录、从列表与矩阵中彻底消失且无恢复入口；现在矩阵会并入各 agent `.mindos-disabled` 中"仅存在于停放区"的技能（MindOS 自身格判 disabled），UI 始终保有恢复句柄。②By Agent 卡片改为三组：已启用/已停放常驻展示，"可链接"折叠收纳（不再一面墙 22 个关闭的开关），行数据源切换到矩阵并集。
+- **universal agent 私房目录感知（修复"打开 .codex/skills 的技能却 link 进共享池"）**：`MindosSkillLinkAgent` 新增 `nativeSkillDir`（如 Codex 的 `~/.codex/skills`），矩阵格子与 link/unlink/停用/恢复全部双目录感知——本体已在 agent 自己目录里的技能显示为"已启用（Agent 自有）"，对它执行 link 直接返回 already、绝不向 `~/.agents/skills` 共享池泄漏链接；停用/恢复在私房目录就地进行。同时 `conflict`（agent 自有、实际加载中）在矩阵 `enabled` 中改判为 true，与 UI 一致。对 universal agent 的"开启"操作新增提示：将进入共享池、所有 universal agent 可见。
+- **技能来源文件夹标注**：Settings 行与 Agents 页技能卡片显示本体真实所在目录（`~/.codex/skills`、`~/.agents/skills` 等，~ 缩写、悬停看全路径），内置技能不重复标注——一眼区分"Codex 自带的 chronicle"与"共享池里的 ai-paper-writing"。
+- **Agent 视图全面接入矩阵（per-agent 真实管理）**：① Agents 页「By Agent」卡片重构为矩阵列视图——每个 MindOS 已知技能一行 per-agent 开关 + 状态徽章（Linked/Agent 自有/已停放/已损坏），开关按格子状态自动选 link/unlink/停放/恢复；此前该卡片把 agent 目录里扫到的一切（含 MindOS link 过去的 symlink）统称 Native Skills，现在只有 MindOS 不认识的 agent 自有技能单列只读「原生技能」组，缺席 agent 也不再显示共享目录扫描结果；全局 MindOS 开关只保留在 MindOS 自己的卡片上（此前每张卡都重复同一份全局列表+全局开关，误导）。② Agent 详情页（/agents/[key]）同步改造：行内 per-agent 开关替代全局开关（MindOS 详情页除外）、徽章按格子状态细化；「装到本 agent」与详情弹窗 add-agent 从旧 copy-skill 切到统一 link；弹窗头像移除接通统一 unlink/停放。③ 修复 availability 误标：按本体位置判定（共享池→Global、custom 路径→Native private、托管未链接→新增"仅 MindOS"、已链接→Linked），不再出现 0 链接技能标 Global（如 sora）。④ 新增共享 useSkillMatrix hook（监听 mindos:skills-changed 自动重拉）与 skill-cell-actions 工具，三处视图同源。
+- **Agents 页 Skills 视图接入统一链路**：Agents 页技能卡片上的「移除 agent」原本是空操作（只弹"已标记，请编辑 Agent 配置文件"提示），现改为真实调用统一接口——托管链接/副本走 `unlink`，agent 自有本体（conflict 格）走停放（可恢复），服务端 409 冲突时提示到 agent 目录管理；「+ 添加 agent」对 MindOS 管理的 skill 改走统一 `link`（symlink），不再用旧的 copy-skill 拷贝，MindOS 不认识的原生 skill 跨 agent 复制保持 copy-skill 不变。
+- **Settings per-agent 链接开关 chips**：Skill 行展开新增 per-agent chips——linked/copied 高亮、broken 点击重链、conflict（agent 自有目录）点击停放、已停放点击恢复；unsupported 模式 agent 不出现在矩阵。
+- **agent 自有 skill 只读化**：`~/.agents/skills` 与自定义路径（如 `~/.codex/skills`、`~/.claude/skills`）指向的是外部 agent 自己的目录，其中的 skill 在 MindOS 中降级为只读 builtin 展示（无 Edit/Delete，管理权归 agent 自己）；新 skill 应在 MindOS 托管 root（`{mindRoot}/.skills`，GUI 创建即落此处）中创建并通过矩阵 link 暴露给各 agent。在 MindOS 里禁用 skill（`disabledSkills`）只影响 MindOS 自身，不会也不应影响 agent 对其自有 skill 的加载。
+- **Agent 自有 skill 标签区分**：来自 `~/.agents/skills` 与自定义路径的 skill 不再标「Built-in/内置」，改标「Agent-owned / Agent 自有」，避免与 MindOS 自带 skill 混淆。
+- **修复自链自毁 bug**：当 skill 本体就住在目标 agent 的 skill 目录里（典型：universal agent 的 `~/.agents/skills` 同时是 skill root）时，link/迁移会把本体删掉并留下指向自身的悬空环（已在真实环境复现并造成 `~/.agents/skills/mindos` 损坏）。现在 link 与迁移在 source 与 link 同路径时一律 no-op；同时 unlink 学会安全删除「无标记但内容与本体一致」的遗留拷贝（旧 copy 链路的产物），内容有差异仍拒删。
+- **幽灵 agent 过滤**：Agents 页技能卡片的拥有者头像只统计本机 `present` 的 agent。此前注册表中所有 universal 模式 agent（含未安装的 kilo-code/kimi/cline 等）都因扫描同一个共享 `~/.agents/skills` 目录而被列为技能拥有者，且因不在可链接列表里而无法移除。
+- **MCP 安装去 skill 副作用**：`/api/mcp/install` 不再拷贝 skill 或写 `installedSkillAgents` 记账（`recordInstallSideEffects` 移除）；前端在 Install 成功后改走统一 link 接口，additional 模式 agent 会提示「下次启动生效」。
+- **修复 stdio MCP 启动崩溃（Desktop runtime）**：`~/.mindos/runtime` 这类打包运行时附带 `src/` 但没有 monorepo 的 `scripts/build-product-protocols.mjs`；部署时 `package.json` 落盘比 MCP bundle 晚几十毫秒，导致 `needsMcpBuild` 永远为真 → 每次 `mindos mcp`（stdio）启动都执行注定失败的重建（`Cannot find module .../scripts/build-product-protocols.mjs`），且 "Rebuilding…" 打到 stdout 污染 JSON-RPC 流（客户端报 `invalid character 'R'`）。现在：构建脚本不存在时直接信任随包 bundle；重建进度一律走 stderr。
+
 ## v1.1.5 (2026-06-11)
 
 ### Runtime / Local Agents
