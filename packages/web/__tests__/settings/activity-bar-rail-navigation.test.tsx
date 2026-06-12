@@ -813,7 +813,7 @@ describe('ActivityBar rail navigation', () => {
     });
   });
 
-  it('places the Echo rail entry below Agents when the labs flag is on', async () => {
+  it('places the Echo rail entry right below Search (above Agents) when the labs flag is on', async () => {
     localStorage.setItem('mindos:labs-echo', '1');
 
     const ActivityBar = (await import('@/components/ActivityBar')).default;
@@ -836,12 +836,14 @@ describe('ActivityBar rail navigation', () => {
       );
     });
 
-    const order = Array.from(host.querySelectorAll('[data-walkthrough]'))
-      .map((el) => el.getAttribute('data-walkthrough'));
-    const agentsIndex = order.indexOf('agents-panel');
-    const echoIndex = order.indexOf('echo-panel');
-    expect(agentsIndex).toBeGreaterThan(-1);
-    expect(echoIndex).toBeGreaterThan(agentsIndex);
+    const order = Array.from(host.querySelectorAll('a[aria-label], button[aria-label]'))
+      .map((el) => el.getAttribute('aria-label'));
+    const searchIndex = order.indexOf('Search');
+    const echoIndex = order.indexOf('Echo');
+    const agentsIndex = order.indexOf('Agents');
+    expect(searchIndex).toBeGreaterThan(-1);
+    expect(echoIndex).toBeGreaterThan(searchIndex);
+    expect(agentsIndex).toBeGreaterThan(echoIndex);
 
     await act(async () => {
       root.unmount();
