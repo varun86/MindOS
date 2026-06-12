@@ -4,6 +4,31 @@ import type {
   IncomingIMMessage,
 } from '@/lib/im/types';
 
+const FEISHU_MESSAGE_DEDUPE_TTL_MS = 10 * 60 * 1000;
+const seenFeishuMessages = new Map<string, number>();
+
+function buildMessageDedupeKey(incoming: IncomingIMMessage): string {
+  return `${incoming.chatId}:${incoming.messageId}`;
+}
+
+function pruneExpiredMessageKeys(now: number): void {
+  for (const [key, expiresAt] of seenFeishuMessages.entries()) {
+    if (expiresAt <= now) {
+      seenFeishuMessages.delete(key);
+    }
+  }
+}
+
+function markMessageForProcessing(incoming: IncomingIMMessage, now = Date.now()): boolean {
+  pruneExpiredMessageKeys(now);
+  const key = buildMessageDedupeKey(incoming);
+  if (seenFeishuMessages.has(key)) {
+    return false;
+  }
+  seenFeishuMessages.set(key, now + FEISHU_MESSAGE_DEDUPE_TTL_MS);
+  return true;
+}
+
 function parseTextContent(content?: string): string {
   if (!content) return '';
   try {
@@ -71,6 +96,15 @@ export async function handleFeishuMessageReceiveEvent(event: FeishuSdkMessageEve
   if (!incoming.text.trim()) {
     return { ok: true, ignored: true, reason: 'empty_text' };
   }
+  if (!markMessageForProcessing(incoming)) {
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'duplicate_message',
+      chatId: incoming.chatId,
+      messageId: incoming.messageId,
+    };
+  }
 
   void import('./feishu-conversation')
     .then(({ processFeishuIncomingMessage }) => processFeishuIncomingMessage(incoming))
@@ -84,4 +118,8 @@ export async function handleFeishuMessageReceiveEvent(event: FeishuSdkMessageEve
     reason: decision.reason,
     incoming,
   };
+}
+
+export function __resetFeishuMessageDedupeForTests(): void {
+  seenFeishuMessages.clear();
 }

@@ -72,6 +72,7 @@ import {
 } from '@/components/inbox/InboxViewModel';
 import { InboxErrorBanner, InboxItemDetailsPanel, InboxProcessNav, HistoryRow } from '@/components/inbox/InboxViewDetails';
 import { InboxFileRow } from '@/components/inbox/InboxFileRow';
+import { ContentPageShell } from '@/components/shared/ContentPageShell';
 
 const HISTORY_VISIBLE = 5;
 const REVIEW_PREVIEW_VISIBLE = 5;
@@ -458,7 +459,7 @@ export default function InboxView() {
     const validPaths = new Set(files.map(file => file.path));
     const normalized = normalizeShelvedInboxPaths(shelvedPaths, validPaths);
     if (normalized.length !== shelvedPaths.length || normalized.some((path, index) => path !== shelvedPaths[index])) {
-      setShelvedPaths(writeShelvedInboxPaths(normalized));
+      writeShelvedInboxPaths(normalized);
     }
   }, [files, inboxError, loading, shelvedPaths]);
 
@@ -662,8 +663,8 @@ export default function InboxView() {
   if (loading) {
     return (
       <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
-        <div className="flex-1 px-4 md:px-6 py-8">
-          <div className="mx-auto max-w-[1320px] space-y-5">
+        <div className="flex-1">
+          <ContentPageShell className="inbox-content-page space-y-5" data-content-page-shell="inbox">
             <div className="max-w-2xl space-y-2">
               <div className="h-7 w-40 rounded bg-muted/55 animate-pulse" />
               <div className="h-4 w-64 rounded bg-muted/40 animate-pulse" />
@@ -671,7 +672,7 @@ export default function InboxView() {
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-12 bg-muted/40 rounded-lg animate-pulse" />
             ))}
-          </div>
+          </ContentPageShell>
         </div>
       </div>
     );
@@ -689,8 +690,8 @@ export default function InboxView() {
         onChange={(e) => addPendingFiles(e.target.files)}
       />
 
-      <div className="flex-1 px-4 md:px-6 py-6">
-        <div className="mx-auto max-w-[1320px] space-y-5">
+      <div className="flex-1">
+        <ContentPageShell className="inbox-content-page space-y-5" data-content-page-shell="inbox">
           <InboxPageHeader
             activeView={activeView}
             title={pageTitle}
@@ -726,15 +727,18 @@ export default function InboxView() {
             />
           )}
 
-          <div className={
-            activeView === 'queue'
-              ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
-              : activeView === 'shelved'
+          <div
+            className={
+              activeView === 'queue'
                 ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
-              : activeView === 'capture'
-                ? 'grid max-w-[1120px] gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-stretch'
-                : 'max-w-[760px]'
-          }>
+                : activeView === 'shelved'
+                  ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
+                  : activeView === 'capture'
+                    ? 'grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] xl:items-stretch'
+                    : 'max-w-[760px]'
+            }
+            data-inbox-main-layout
+          >
             <div className={`min-w-0 space-y-5 ${activeView === 'capture' ? 'h-full' : ''}`}>
               {activeView === 'capture' && (
                 <>
@@ -1096,7 +1100,7 @@ export default function InboxView() {
               </aside>
             )}
           </div>
-        </div>
+        </ContentPageShell>
       </div>
     </div>
   );

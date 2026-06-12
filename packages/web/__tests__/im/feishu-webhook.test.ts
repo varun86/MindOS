@@ -23,9 +23,11 @@ async function importModule() {
 }
 
 describe('Feishu webhook helpers', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { __resetFeishuMessageDedupeForTests } = await import('@/lib/im/webhook/feishu-event');
+    __resetFeishuMessageDedupeForTests();
   });
 
   it('builds pending status when conversation is enabled but public url is missing', async () => {
@@ -151,6 +153,34 @@ describe('Feishu webhook helpers', () => {
     const result = await handleFeishuMessageReceiveEvent(payload);
 
     expect(result).toEqual(expect.objectContaining({ ok: true, queued: true, reason: 'direct_message' }));
+  });
+
+  it('ignores duplicate sdk events with the same chat and message id', async () => {
+    const { handleFeishuMessageReceiveEvent } = await importModule();
+    const payload: FeishuSdkMessageEvent = {
+      event_type: 'im.message.receive_v1',
+      sender: {
+        sender_id: { open_id: 'ou_sender_1' },
+      },
+      message: {
+        message_id: 'om_duplicate_001',
+        chat_id: 'oc_chat_001',
+        chat_type: 'p2p',
+        content: JSON.stringify({ text: '为什么会回复两次' }),
+      },
+    };
+
+    const first = await handleFeishuMessageReceiveEvent(payload);
+    const duplicate = await handleFeishuMessageReceiveEvent(payload);
+
+    expect(first).toEqual(expect.objectContaining({ ok: true, queued: true, reason: 'direct_message' }));
+    expect(duplicate).toEqual({
+      ok: true,
+      ignored: true,
+      reason: 'duplicate_message',
+      chatId: 'oc_chat_001',
+      messageId: 'om_duplicate_001',
+    });
   });
 
   it('ignores sdk events with empty text after normalization', async () => {

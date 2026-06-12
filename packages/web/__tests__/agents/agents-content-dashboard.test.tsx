@@ -190,6 +190,10 @@ describe('Agents content dashboard', () => {
     const capabilitiesLabel = a.overview.capabilitiesLabel.replace('&', '&amp;');
     const channelsHint = a.navHints.channels.replace('&', '&amp;');
 
+    expect(html).toContain('data-content-page-shell="agents"');
+    expect(html).toContain('content-width');
+    expect(html).toContain('workbench-content-page');
+    expect(html).toContain('agents-content-page');
     expect(html).toContain(a.title);
     expect(html).toContain(a.navAriaLabel);
     expect(html).toContain(a.navHints.overview);

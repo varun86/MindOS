@@ -1080,6 +1080,13 @@ export type MindosPiRuntimeResourceLoaderConfig = {
   agentDir: string;
   settingsManager: unknown;
   systemPrompt: string;
+  /**
+   * Re-evaluated by the SDK loader on every reload(). The agent-mode system
+   * prompt suffix (skills XML + active-skill directive) is delivered through
+   * this hook — `systemPrompt` above is captured once at construction, so
+   * appending to it after the loader exists never reaches the session.
+   */
+  systemPromptOverride?(base?: string): string | undefined;
   appendSystemPrompt: string[];
   agentsFilesOverride(result: { agentsFiles: unknown[] }): { agentsFiles: unknown[] };
   skillsOverride(result: { skills: MindosDiscoveredSkill[] }): { skills: MindosDiscoveredSkill[] };
@@ -1096,8 +1103,14 @@ export type MindosPiRuntimeCreateAgentSessionConfig = {
   resourceLoader: MindosPiResourceLoaderAdapter;
   sessionManager: unknown;
   settingsManager: unknown;
-  tools: unknown[];
-  customTools?: unknown[];
+  /**
+   * pi-coding-agent ≥0.62 made `tools` a string-name ALLOWLIST that hard-filters
+   * every tool source (builtin + extension + custom). MindOS must never set it:
+   * extension-registered KB tools would be filtered out. Builtins stay off via
+   * `noTools: 'builtin'` and capabilities come from extensions + customTools.
+   */
+  noTools: 'builtin';
+  customTools: unknown[];
 };
 
 export type MindosPiSessionManagerAdapter = {
@@ -1215,11 +1228,17 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
   const modelRegistry = options.services.createModelRegistry(authStorage);
   const settingsManager = options.services.createSettingsManager(createMindosPiSettingsConfig(options.agentConfig, modelConfig.provider));
   const coreSkillNames = new Set(['mindos', 'mindos-zh', 'mindos-max', 'mindos-max-zh']);
+  // Agent-mode prompt additions (skills XML, active-skill directive) are
+  // discovered only after the first reload(), but the loader captured
+  // `systemPrompt` at construction. The override below re-applies the suffix
+  // on every reload, so the streaming session sees the full prompt.
+  let agentPromptSuffix = '';
   const resourceLoader = options.services.createResourceLoader({
     cwd: options.projectRoot,
     agentDir: options.agentDir,
     settingsManager,
     systemPrompt,
+    systemPromptOverride: (base) => (agentPromptSuffix ? `${base ?? ''}${agentPromptSuffix}` : base),
     appendSystemPrompt: [],
     agentsFilesOverride: (result) => ({ ...result, agentsFiles: [] }),
     skillsOverride: (result) => ({
@@ -1239,16 +1258,21 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
       (skill) => !coreSkillNames.has(skill.name) && !skill.disableModelInvocation && !disabledSkillNames.has(skill.name),
     );
     if (thirdPartySkills.length > 0 && options.services.generateSkillsXml) {
-      systemPrompt += `\n\n---\n\n${options.services.generateSkillsXml(thirdPartySkills)}`;
-      await resourceLoader.reload();
+      agentPromptSuffix += `\n\n---\n\n${options.services.generateSkillsXml(thirdPartySkills)}`;
     }
 
     if (lastUserSkillName) {
-      systemPrompt += '\n\n---\n\n## Active Skill Request\n\n'
+      agentPromptSuffix += '\n\n---\n\n## Active Skill Request\n\n'
         + `The user has selected the "${lastUserSkillName}" skill via slash command. You MUST:\n`
         + `1. Immediately call \`load_skill("${lastUserSkillName}")\` to load the skill's full content\n`
         + "2. Follow the skill's instructions to handle the user's request\n"
         + '3. Do NOT ask the user which skill they mean — they have already selected it';
+    }
+
+    if (agentPromptSuffix) {
+      // Keep the returned prompt (used by the non-streaming fallback) in sync
+      // with what the streaming session sees via the override.
+      systemPrompt += agentPromptSuffix;
       await resourceLoader.reload();
     }
   }
@@ -1267,8 +1291,15 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     resourceLoader,
     sessionManager,
     settingsManager,
-    tools: options.mode === 'agent' ? [options.bashTool] : [],
-    customTools: options.requestTools,
+    // Builtin read/edit/write/bash stay off: KB file access must flow through
+    // the extension-registered KB tools (write-protection + audit log). The
+    // project-root bash tool is the only SDK customTool, and only in agent
+    // mode. options.requestTools is intentionally NOT passed here — SDK
+    // customTools override extension-registered tools by name, which would
+    // strip the kb-extension wrappers; requestTools is still used by the
+    // non-streaming proxy fallback and exposed on the returned runtime.
+    noTools: 'builtin',
+    customTools: options.mode === 'agent' ? [options.bashTool] : [],
   });
 
   return {

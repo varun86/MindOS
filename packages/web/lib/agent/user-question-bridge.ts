@@ -69,6 +69,8 @@ type PendingQuestion = {
   toolCallId: string;
   params: AskUserQuestionParams;
   send: AskUserQuestionBridgeSend;
+  /** The bridge instance this question belongs to — cleanup is scoped to it. */
+  context: AskUserQuestionBridgeContext;
   resolve: (result: AskUserQuestionResult) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -140,8 +142,12 @@ export function runWithAskUserQuestionBridge<T>(
     try {
       return await callback();
     } finally {
-      cancelQuestionsForRun(context.runId);
-      runs.delete(context.runId);
+      // Two bridges can share a runId (e.g. a retried request) — only tear
+      // down state that still belongs to THIS bridge instance.
+      cancelQuestionsForRun(context.runId, context);
+      if (runs.get(context.runId) === context) {
+        runs.delete(context.runId);
+      }
     }
   });
 }
@@ -212,6 +218,7 @@ function enqueueAskUserQuestion(
       toolCallId: input.toolCallId,
       params,
       send: context.send,
+      context,
       resolve: finish,
       reject,
       timeout,
@@ -243,9 +250,10 @@ function enqueueAskUserQuestion(
   });
 }
 
-function cancelQuestionsForRun(runId: string): void {
+function cancelQuestionsForRun(runId: string, context?: AskUserQuestionBridgeContext): void {
   for (const pending of Array.from(pendingQuestions.values())) {
     if (pending.runId !== runId) continue;
+    if (context && pending.context !== context) continue;
     pending.send({
       type: 'user_question_cancelled',
       runId,

@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useEffect, useTransition, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Brain, Search, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
+import { Brain, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { DOT_COLORS, getStatusLevel } from './SyncStatusBar';
 import type { SyncStatus } from './settings/types';
@@ -16,9 +16,10 @@ import {
   type PanelId,
   type RoutePanelId,
 } from '@/lib/navigation-panel';
+import { ACTIVITY_BAR } from '@/lib/config/panel-sizes';
 
-export const RAIL_WIDTH_COLLAPSED = 48;
-export const RAIL_WIDTH_EXPANDED = 180;
+export const RAIL_WIDTH_COLLAPSED = ACTIVITY_BAR.WIDTH_COLLAPSED;
+export const RAIL_WIDTH_EXPANDED = ACTIVITY_BAR.WIDTH_EXPANDED;
 
 interface ActivityBarProps {
   activePanel: PanelId | null;
@@ -234,14 +235,12 @@ export default function ActivityBar({
     };
   }, []);
 
-  // Labs feature flags (Echo, Workflows) — always start false to match SSR, hydrate from localStorage in effect
-  const [labsEcho, setLabsEcho] = useState(false);
+  // Labs feature flags (Workflows) — always start false to match SSR, hydrate from localStorage in effect.
+  // Echo is now the default entry surface, so its rail item must be always visible.
   const [labsWorkflows, setLabsWorkflows] = useState(false);
   useEffect(() => {
-    setLabsEcho(localStorage.getItem('mindos:labs-echo') === '1');
     setLabsWorkflows(localStorage.getItem('mindos:labs-workflows') === '1');
     const sync = () => {
-      setLabsEcho(localStorage.getItem('mindos:labs-echo') === '1');
       setLabsWorkflows(localStorage.getItem('mindos:labs-workflows') === '1');
     };
     window.addEventListener('mindos:labs-changed', sync);
@@ -297,7 +296,7 @@ export default function ActivityBar({
 
   return (
     <aside
-      className="group hidden md:flex fixed top-0 left-0 h-screen z-[31] flex-col bg-background transition-[width] duration-200 ease-out after:absolute after:top-[var(--rail-titlebar-offset)] after:right-0 after:bottom-0 after:w-px after:bg-border after:pointer-events-none after:content-['']"
+      className="group hidden md:flex fixed top-0 left-0 h-screen z-app-rail flex-col bg-background transition-[width] duration-200 ease-out after:absolute after:top-[var(--rail-titlebar-offset)] after:right-0 after:bottom-0 after:w-px after:bg-border after:pointer-events-none after:content-['']"
       style={{ width: `${railWidth}px` }}
       role="navigation"
       aria-label="Navigation"
@@ -309,7 +308,7 @@ export default function ActivityBar({
           className="w-full shrink-0 h-[var(--rail-titlebar-offset)]"
           style={{ WebkitAppRegion: 'drag' } as CSSProperties}
         />
-        {/* ── Top: Logo — h-[45px] aligns divider with PanelHeader h-[46px] border-b (both at y=45) ── */}
+        {/* ── Top: Logo — mirrors the titlebar height so rail and panel start on the same line. ── */}
         <button
           type="button"
           onClick={() => {
@@ -322,7 +321,7 @@ export default function ActivityBar({
               }
             });
           }}
-          className={`flex items-center ${expanded ? 'px-3 gap-2' : 'justify-center'} w-full h-[46px] shrink-0 transition-opacity cursor-pointer ${isHome ? 'opacity-100' : 'opacity-50 hover:opacity-80'}`}
+          className={`flex items-center ${expanded ? 'px-3 gap-2' : 'justify-center'} w-full h-[var(--app-titlebar-h)] shrink-0 transition-opacity cursor-pointer ${isHome ? 'opacity-100' : 'opacity-50 hover:opacity-80'}`}
           aria-label="MindOS Home"
         >
           <Logo id="rail" className="w-7 h-3.5 shrink-0" />
@@ -354,25 +353,15 @@ export default function ActivityBar({
             walkthroughId="files-panel"
           />
           <RailButton
-            icon={<Search size={18} />}
-            label={t.sidebar.searchTitle}
-            active={activePanel === 'search'}
-            pressed={activePanel === 'search'}
+            icon={<Radio size={18} />}
+            label={t.sidebar.echo}
+            active={activeDestination === 'echo'}
+            current={isContentRouteForPanel(pathname, 'echo')}
             expanded={expanded}
-            onClick={() => toggle('search')}
+            href={ROUTE_PANEL_HREF.echo}
+            onClick={(event) => handleRouteRailClick(event, 'echo', onEchoClick)}
+            walkthroughId="echo-panel"
           />
-          {labsEcho && (
-            <RailButton
-              icon={<Radio size={18} />}
-              label={t.sidebar.echo}
-              active={activeDestination === 'echo'}
-              current={isContentRouteForPanel(pathname, 'echo')}
-              expanded={expanded}
-              href={ROUTE_PANEL_HREF.echo}
-              onClick={(event) => handleRouteRailClick(event, 'echo', onEchoClick)}
-              walkthroughId="echo-panel"
-            />
-          )}
           <RailButton
             icon={<Bot size={18} />}
             label={t.sidebar.agents}
@@ -447,12 +436,12 @@ export default function ActivityBar({
       </div>
 
       {/* ── Hover expand/collapse button — vertically centered on right edge ── */}
-      {/* z-[32] ensures it paints above Panel (z-30). Shows on Rail hover OR self-hover. */}
+      {/* Paints above Panel (z-30). Shows on Rail hover OR self-hover. */}
       <button
         onClick={() => onExpandedChange(!expanded)}
         className="
           hit-target-box
-          absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-[32]
+          absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-app-rail-affordance
           w-5 h-5
           border border-transparent
           flex items-center justify-center

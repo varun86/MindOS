@@ -90,4 +90,43 @@ describe('agent file write lock', () => {
     gate.resolve();
     await expect(first).resolves.toBe('moved');
   });
+
+  it('allows the same owner to re-enter a lock it already holds', async () => {
+    const result = await runWithAgentRunContext({ rootRunId: 'root', parentRunId: 'subagent-a' }, () => (
+      withAgentFileWriteLock({ operation: 'write_file', filePath: 'Notes/Today.md' }, () => (
+        withAgentFileWriteLock({ operation: 'append_to_file', filePath: 'Notes/Today.md' }, () => 'nested')
+      ))
+    ));
+    expect(result).toBe('nested');
+  });
+
+  it('keeps blocking other owners until the outermost re-entrant section finishes', async () => {
+    const gate = deferred();
+    const first = runWithAgentRunContext({ rootRunId: 'root', parentRunId: 'subagent-a' }, () => (
+      withAgentFileWriteLock({ operation: 'write_file', filePath: 'Notes/Today.md' }, async () => {
+        await withAgentFileWriteLock({ operation: 'append_to_file', filePath: 'Notes/Today.md' }, () => 'inner');
+        // Inner section released — the outer hold must still block other owners.
+        await expect(runWithAgentRunContext({ rootRunId: 'root', parentRunId: 'subagent-b' }, () => (
+          withAgentFileWriteLock({ operation: 'write_file', filePath: 'Notes/Today.md' }, () => 'stolen')
+        ))).rejects.toBeInstanceOf(AgentFileWriteConflictError);
+        await gate.promise;
+        return 'outer';
+      })
+    ));
+    gate.resolve();
+    await expect(first).resolves.toBe('outer');
+
+    await expect(runWithAgentRunContext({ rootRunId: 'root', parentRunId: 'subagent-b' }, () => (
+      withAgentFileWriteLock({ operation: 'write_file', filePath: 'Notes/Today.md' }, () => 'after release')
+    ))).resolves.toBe('after release');
+  });
+
+  it('locks multi-path operations that mention the same file twice', async () => {
+    await expect(runWithAgentRunContext({ rootRunId: 'root', parentRunId: 'subagent-a' }, () => (
+      withAgentFileWriteLocks([
+        { operation: 'move_file', filePath: 'A.md' },
+        { operation: 'move_file', filePath: 'a.md' },
+      ], () => 'self overlap')
+    ))).resolves.toBe('self overlap');
+  });
 });

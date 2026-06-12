@@ -141,25 +141,41 @@ describe('Panel Mind System collapse', () => {
     vi.unstubAllGlobals();
   });
 
-  it('defaults expanded and toggles the Mind System parent without navigating', async () => {
+  it('defaults collapsed and toggles the Mind System parent without navigating', async () => {
     await act(async () => {
       root = renderPanel(host);
     });
 
     const toggle = getMindSystemToggle(host);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(toggle.getAttribute('data-state')).toBe('expanded');
-    expect(host.querySelector(`#${SLOT_LIST_ID}`)).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('data-state')).toBe('collapsed');
+    expect(host.querySelector(`#${SLOT_LIST_ID}`)).toBeNull();
 
     await act(async () => {
       toggle.click();
     });
 
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.getAttribute('data-state')).toBe('collapsed');
-    expect(host.querySelector(`#${SLOT_LIST_ID}`)).toBeNull();
-    expect(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY)).toBe('1');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('data-state')).toBe('expanded');
+    expect(host.querySelector(`#${SLOT_LIST_ID}`)).not.toBeNull();
+    expect(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY)).toBe('0');
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Mind System parent label inside the toggle row', async () => {
+    await act(async () => {
+      root = renderPanel(host);
+    });
+
+    const section = host.querySelector<HTMLElement>('section[aria-label="Mind System"]');
+    const toggle = getMindSystemToggle(host);
+
+    expect(section?.firstElementChild).toBe(toggle);
+    expect(toggle.textContent).toContain('Mind System');
+    expect(toggle.textContent).not.toContain('Dao / Fa / Shu / Qi');
+    expect(toggle.textContent).not.toContain('道 / 法 / 术 / 器');
+    expect(toggle.textContent).not.toContain('心');
+    expect(toggle.querySelector('svg')).not.toBeNull();
   });
 
   it('restores the persisted collapsed state', async () => {
@@ -172,6 +188,18 @@ describe('Panel Mind System collapse', () => {
     expect(getMindSystemToggle(host).getAttribute('aria-expanded')).toBe('false');
     expect(getMindSystemToggle(host).getAttribute('data-state')).toBe('collapsed');
     expect(host.querySelector(`#${SLOT_LIST_ID}`)).toBeNull();
+  });
+
+  it('restores the persisted expanded state', async () => {
+    localStorage.setItem(MIND_SYSTEM_COLLAPSED_KEY, '0');
+
+    await act(async () => {
+      root = renderPanel(host);
+    });
+
+    expect(getMindSystemToggle(host).getAttribute('aria-expanded')).toBe('true');
+    expect(getMindSystemToggle(host).getAttribute('data-state')).toBe('expanded');
+    expect(host.querySelector(`#${SLOT_LIST_ID}`)).not.toBeNull();
   });
 
   it('does not duplicate visible Mind System slots in the ordinary file tree', async () => {
@@ -197,6 +225,8 @@ describe('Panel Mind System collapse', () => {
   });
 
   it('keeps Mind System sidebar rows focused on navigation only', async () => {
+    localStorage.setItem(MIND_SYSTEM_COLLAPSED_KEY, '0');
+
     await act(async () => {
       root = renderPanel(host);
     });

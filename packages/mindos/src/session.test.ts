@@ -951,6 +951,7 @@ describe('MindOS session event contract', () => {
     const calls: string[] = [];
     const appendedMessages: unknown[] = [];
     let capturedSystemPrompt = '';
+    let capturedSystemPromptOverride: ((base?: string) => string | undefined) | null = null;
     const resourceLoader = {
       reload: async () => { calls.push('resource.reload'); },
       getSkills: () => ({
@@ -1017,6 +1018,7 @@ describe('MindOS session event contract', () => {
         createResourceLoader: (config) => {
           calls.push(`loader:${config.cwd}:${config.additionalSkillPaths.join(',')}:${config.additionalExtensionPaths.join(',')}`);
           capturedSystemPrompt = config.systemPrompt;
+          capturedSystemPromptOverride = config.systemPromptOverride ?? null;
           expect(config.skillsOverride({
             skills: [{ name: 'mindos' }, { name: 'third-party' }],
           }).skills).toEqual([{ name: 'third-party' }]);
@@ -1027,7 +1029,14 @@ describe('MindOS session event contract', () => {
           return messages.map((message, index) => ({ index, message }));
         },
         createAgentSession: async (config) => {
-          calls.push(`agent:${config.cwd}:${config.thinkingLevel}:${config.tools.length}:${config.customTools?.length ?? 0}`);
+          // `tools` on pi-coding-agent ≥0.62 is a string-name allowlist; passing
+          // anything there silently filters out every other tool source, so the
+          // contract is: no allowlist, builtins off, bash exposed as customTool.
+          const allowlist = 'tools' in config ? 'ALLOWLIST' : 'no-allowlist';
+          const customToolNames = ((config.customTools ?? []) as Array<{ name?: string }>)
+            .map((tool) => tool.name)
+            .join(',');
+          calls.push(`agent:${config.cwd}:${config.thinkingLevel}:${allowlist}:${config.noTools}:${customToolNames}`);
           return { session };
         },
         setKbMode: (mode) => calls.push(`kb:${mode}`),
@@ -1043,6 +1052,16 @@ describe('MindOS session event contract', () => {
     expect(runtime.systemPrompt).toContain('<skills>third-party</skills>');
     expect(runtime.systemPrompt).toContain('load_skill("third-party")');
     expect(capturedSystemPrompt).toBe('base prompt');
+    // The streaming session reads its system prompt through the resource
+    // loader's override on reload — the agent-mode suffix (skills XML + active
+    // skill directive) must arrive there, not just in runtime.systemPrompt
+    // (which only the non-streaming fallback uses).
+    expect(capturedSystemPromptOverride).not.toBeNull();
+    const effectiveSessionPrompt = capturedSystemPromptOverride!('base prompt');
+    expect(effectiveSessionPrompt).toContain('base prompt');
+    expect(effectiveSessionPrompt).toContain('<skills>third-party</skills>');
+    expect(effectiveSessionPrompt).toContain('load_skill("third-party")');
+    expect(effectiveSessionPrompt).toBe(runtime.systemPrompt);
     expect(appendedMessages).toEqual([
       { index: 0, message: expect.objectContaining({ role: 'user' }) },
       { index: 1, message: expect.objectContaining({ role: 'assistant' }) },
@@ -1056,11 +1075,65 @@ describe('MindOS session event contract', () => {
       'loader:/repo:/skills:/ext',
       'resource.reload',
       'resource.reload',
-      'resource.reload',
       'session.append:0',
       'session.append:1',
-      'agent:/repo:medium:1:1',
+      'agent:/repo:medium:no-allowlist:builtin:bash',
     ]);
+  });
+
+  it('keeps builtins off and registers no SDK custom tools in chat mode (kb extension owns KB tools)', async () => {
+    let captured: Record<string, unknown> | null = null;
+    const session = {
+      subscribe: () => {},
+      prompt: async () => {},
+      steer: async () => {},
+      abort: async () => {},
+    };
+
+    await createMindosPiAgentRuntime({
+      mode: 'chat',
+      messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      agentConfig: {},
+      serverSettings: {},
+      requestTools: [{ name: 'read_file', execute: async () => ({ content: [] }) }],
+      bashTool: { name: 'bash' },
+      services: {
+        resolveModelConfig: () => ({
+          model: { id: 'model-object' },
+          modelName: 'gpt-test',
+          apiKey: 'key',
+          provider: 'openai',
+        }),
+        toRuntimeProvider: (provider) => provider,
+        createAuthStorage: () => ({ setRuntimeApiKey: () => {} }),
+        createModelRegistry: () => ({}),
+        createSettingsManager: (settings) => ({ settings }),
+        createSessionManager: () => ({ appendMessage: () => {} }),
+        createResourceLoader: () => ({
+          reload: async () => {},
+          getSkills: () => ({ skills: [] }),
+        }),
+        convertToLlm: (messages) => [...messages],
+        createAgentSession: async (config) => {
+          captured = config as unknown as Record<string, unknown>;
+          return { session };
+        },
+        setKbMode: () => {},
+      },
+    });
+
+    expect(captured).not.toBeNull();
+    const config = captured! as Record<string, unknown>;
+    // No tool-name allowlist: it would hard-filter extension-registered KB tools.
+    expect('tools' in config).toBe(false);
+    expect(config.noTools).toBe('builtin');
+    // request tools must NOT be re-registered as SDK customTools: by-name they
+    // override the kb-extension wrappers and lose write-protection + audit log.
+    expect(config.customTools).toEqual([]);
   });
 
   it('converts UI ask messages into product-owned agent history objects', () => {

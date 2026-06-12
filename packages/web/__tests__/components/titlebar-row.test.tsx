@@ -35,11 +35,11 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     vi.unstubAllGlobals();
   });
 
-  function render(): HTMLElement {
+  function render(props: React.ComponentProps<typeof TitlebarRow> = {}): HTMLElement {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    act(() => root!.render(React.createElement(TitlebarRow)));
+    act(() => root!.render(React.createElement(TitlebarRow, props)));
     const el = container.firstElementChild as HTMLElement | null;
     expect(el).not.toBeNull();
     return el!;
@@ -76,6 +76,7 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     const el = render();
     // Phase 2: interactive content lives inside, so the row is no longer aria-hidden
     expect(el.getAttribute('aria-hidden')).toBeNull();
+    expect(el.querySelector('[data-titlebar-search-trigger]')).not.toBeNull();
     expect(el.querySelector('[role="tablist"]')).not.toBeNull();
     expect(el.querySelector('button[aria-label="New chat"]')).not.toBeNull();
 
@@ -85,6 +86,35 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect((spacer!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('drag');
     // The spacer is the last child: nothing can render to its right
     expect(el.lastElementChild).toBe(spacer);
+  });
+
+  it('renders the leading Search trigger before the tablist without joining the tab model', () => {
+    const onSearchOpenOrFocus = vi.fn();
+    const el = render({ searchActive: true, onSearchOpenOrFocus });
+    const searchButton = el.querySelector<HTMLButtonElement>('[data-titlebar-search-trigger]');
+    const tablist = el.querySelector<HTMLElement>('[role="tablist"]');
+
+    expect(searchButton).not.toBeNull();
+    expect(searchButton!.getAttribute('aria-label')).toBe('Search');
+    expect(searchButton!.getAttribute('aria-pressed')).toBe('true');
+    expect(searchButton!.getAttribute('aria-expanded')).toBe('true');
+    expect(searchButton!.getAttribute('title')).toContain('⌘K');
+    expect(searchButton!.getAttribute('role')).toBeNull();
+    expect((searchButton!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('no-drag');
+    expect(searchButton!.parentElement).toBe(el);
+    expect(searchButton!.className).toContain('self-end');
+    expect(searchButton!.className).toContain('mb-1');
+    expect(searchButton!.className).toContain('rounded-full');
+    expect(searchButton!.className).not.toContain('self-center');
+    expect(searchButton!.className).not.toMatch(/(^|\s)border(?:-|\s|$)/);
+    expect(searchButton!.className).not.toContain('border-r');
+    expect(tablist).not.toBeNull();
+    expect(searchButton!.compareDocumentPosition(tablist!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    act(() => {
+      searchButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(onSearchOpenOrFocus).toHaveBeenCalledTimes(1);
   });
 
   it('globals.css gates display and defines the shell variables', () => {
@@ -99,7 +129,7 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // rail logo sits in the first row on browser/win/linux desktops
     expect(css).toMatch(/:root\s*\{[^}]*--rail-titlebar-offset:\s*0px/);
     // Mac shell geometry
-    expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--app-titlebar-h:\s*46px/);
+    expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--app-titlebar-h:\s*42px/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--window-controls-left:\s*70px/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--rail-titlebar-offset:\s*var\(--app-titlebar-h\)/);
     // Fullscreen hides traffic lights: clearance collapses to 0
@@ -109,30 +139,6 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect(css).not.toContain('.electron-mac-titlebar-pad');
   });
 
-  it('suppresses the row inside old mac shells that still inject their own drag band', () => {
-    // Desktop shells <= v0.3.24 insertCSS() a 28px body::before drag band
-    // (z-index 9999) and force aside[role=region]/the rail to top: 28px
-    // !important. Layered over the new 46px web row that band swallows the
-    // tab strip's clicks (the ＋ button dies) and the forced 28px panel top
-    // paints the panel header across the tabs (user-reported 2026-06-12).
-    // Those shells are detected by UA (data-electron-mac) but never expose
-    // mindosShell.macTitlebarRow, so until the shell is updated the web must
-    // fall back to the pre-row layout: no row, zero titlebar height, and let
-    // the injected CSS own the geometry like it did before spec-titlebar-row.
-    const css = readFileSync(path.join(webRoot, 'app', 'globals.css'), 'utf-8');
-    expect(css).toMatch(
-      /html\[data-electron-mac\]:not\(\[data-mac-titlebar-row\]\)\s*\{[^}]*--app-titlebar-h:\s*0px/
-    );
-    expect(css).toMatch(
-      /html\[data-electron-mac\]:not\(\[data-mac-titlebar-row\]\)\s+\.titlebar-row\s*\{\s*display:\s*none;?\s*\}/
-    );
-    // The guard must come after the >=768px media rule in source order — it
-    // wins on specificity alone, but keeping it last documents the override.
-    const guardIdx = css.indexOf('html[data-electron-mac]:not([data-mac-titlebar-row])');
-    const mediaIdx = css.indexOf('--app-titlebar-h: 46px');
-    expect(guardIdx).toBeGreaterThan(mediaIdx);
-  });
-
   it('full-viewport pages subtract the titlebar height instead of using bare 100dvh', () => {
     // #main-content gets padding-top: var(--app-titlebar-h). A child sized
     // h-[100dvh] overflows the document by that padding, so the page can
@@ -140,6 +146,7 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // swallows its clicks (user-reported: focus-mode chat header buttons only
     // clickable along their bottom edge).
     const fullHeightPages = [
+      path.join(webRoot, 'components', 'HomeContent.tsx'),
       path.join(webRoot, 'app', 'chat', '[sessionId]', 'ChatPageClient.tsx'),
     ];
     for (const file of fullHeightPages) {
@@ -148,7 +155,7 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
       expect(src).toContain('h-[calc(100dvh-var(--app-titlebar-h))]');
     }
     // The SidebarLayout children wrapper guarantees a full-height background —
-    // it must subtract the titlebar height too, or every page gets 46px of
+    // it must subtract the titlebar height too, or every page gets a titlebar-height
     // document scroll slack on desktop.
     const layoutSrc = readFileSync(path.join(webRoot, 'components', 'SidebarLayout.tsx'), 'utf-8');
     expect(layoutSrc).toContain('min-h-[calc(100vh-var(--app-titlebar-h))] bg-background');

@@ -177,4 +177,36 @@ describe('subagent orchestrator', () => {
       }),
     ]);
   });
+
+  it('fails the task and finalizes the parent when result normalization itself throws', async () => {
+    // An executor result whose property access explodes throws inside
+    // executeOneTask *after* the child run was started — outside the
+    // runWithTimeout failure handling.
+    const poisoned = {} as SubagentTaskExecutorResult;
+    Object.defineProperty(poisoned, 'status', {
+      enumerable: true,
+      get() { throw new Error('poisoned result'); },
+    });
+
+    const result = await executeSubagentOrchestrationPlan({
+      id: 'orchestration-poisoned',
+      tasks: [
+        { id: 'bad', agent: 'bad-agent', task: 'Return a poisoned result.' },
+      ],
+    }, () => poisoned);
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      reduction: { completed: 0, failed: 1, canceled: 0, timedOut: 0 },
+    });
+    expect(result.tasks).toEqual([
+      expect.objectContaining({ taskId: 'bad', status: 'failed', error: 'poisoned result' }),
+    ]);
+    // The parent run must reach a terminal state — never stuck 'running'.
+    expect(listAgentRuns({ parentRunId: 'orchestration-poisoned' })).toEqual([
+      expect.objectContaining({ runtimeId: 'bad-agent', status: 'failed' }),
+    ]);
+    const parent = listAgentRuns().find((run) => run.id === 'orchestration-poisoned');
+    expect(parent?.status).toBe('failed');
+  });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Desktop layout: fixed titlebar row (var(--app-titlebar-h) = 46px) on top, then the
+// Desktop layout: fixed titlebar row (var(--app-titlebar-h) = 42px) on top, then the
 // 46px view header (sticky md:top-[var(--app-titlebar-h)]). Anything pinned "below the
 // view header" must therefore sit at calc(var(--app-titlebar-h) + 46px), and JS scroll
 // math must read the CSS variable at runtime. See wiki/41-dev-pitfall-patterns.md 规则 10.
@@ -11,7 +11,7 @@ describe('Page header and TOC vertical alignment', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
-    // Toggle button: just below the view header (titlebar 46 + header 46 = 92 on desktop)
+    // Toggle button: just below the view header (titlebar + 46px view header on desktop)
     expect(source).toContain('top-[calc(var(--app-titlebar-h)+46px)]');
     expect(source).not.toContain('top-[46px]');
     expect(source).not.toContain('top-[52px]');

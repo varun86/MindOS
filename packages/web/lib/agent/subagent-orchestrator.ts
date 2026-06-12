@@ -267,48 +267,56 @@ async function executeOneTask(
 ): Promise<SubagentTaskExecutionResult> {
   const run = startAgentRun(buildTaskRunInput(task, plan, parentRun));
   const timeoutMs = positiveInt(task.timeoutMs, positiveInt(plan.timeoutMs, DEFAULT_SUBAGENT_TIMEOUT_MS));
-  const outcome = await runWithAgentRunContext({
-    ...(run.chatSessionId ? { chatSessionId: run.chatSessionId } : {}),
-    rootRunId: run.rootRunId ?? run.id,
-    parentRunId: run.id,
-  }, () => runWithTimeout(task, executor, dependencyResults, timeoutMs, outerSignal, run));
+  // From here on the child run exists in the ledger — any throw below must
+  // still land it (and ultimately the parent) in a terminal state.
+  try {
+    const outcome = await runWithAgentRunContext({
+      ...(run.chatSessionId ? { chatSessionId: run.chatSessionId } : {}),
+      rootRunId: run.rootRunId ?? run.id,
+      parentRunId: run.id,
+    }, () => runWithTimeout(task, executor, dependencyResults, timeoutMs, outerSignal, run));
 
-  if (outcome.type === 'timed_out') {
-    const error = `Subagent task ${task.id} timed out after ${timeoutMs}ms.`;
-    const failed = failAgentRun(run.id, { status: 'timed_out', error, metadata: { timeoutMs } }) ?? run;
-    return { taskId: task.id, agent: task.agent, run: failed, status: 'timed_out', error };
-  }
+    if (outcome.type === 'timed_out') {
+      const error = `Subagent task ${task.id} timed out after ${timeoutMs}ms.`;
+      const failed = failAgentRun(run.id, { status: 'timed_out', error, metadata: { timeoutMs } }) ?? run;
+      return { taskId: task.id, agent: task.agent, run: failed, status: 'timed_out', error };
+    }
 
-  if (outcome.type === 'canceled') {
-    const error = `Subagent task ${task.id} was canceled.`;
-    const canceled = failAgentRun(run.id, { status: 'canceled', error, metadata: { canceled: true } }) ?? run;
-    return { taskId: task.id, agent: task.agent, run: canceled, status: 'canceled', error };
-  }
+    if (outcome.type === 'canceled') {
+      const error = `Subagent task ${task.id} was canceled.`;
+      const canceled = failAgentRun(run.id, { status: 'canceled', error, metadata: { canceled: true } }) ?? run;
+      return { taskId: task.id, agent: task.agent, run: canceled, status: 'canceled', error };
+    }
 
-  if (outcome.type === 'failed') {
-    const error = errorMessage(outcome.error);
-    const failed = failAgentRun(run.id, { error }) ?? run;
-    return { taskId: task.id, agent: task.agent, run: failed, status: 'failed', error };
-  }
+    if (outcome.type === 'failed') {
+      const error = errorMessage(outcome.error);
+      const failed = failAgentRun(run.id, { error }) ?? run;
+      return { taskId: task.id, agent: task.agent, run: failed, status: 'failed', error };
+    }
 
-  const normalized = normalizeExecutorResult(outcome.value);
-  const status = normalized.status ?? 'completed';
-  if (status !== 'completed') {
-    const error = errorMessage(normalized.error ?? normalized.outputSummary ?? `Subagent task ${task.id} ended with ${status}.`);
-    const failed = failAgentRun(run.id, {
-      status,
-      error,
+    const normalized = normalizeExecutorResult(outcome.value);
+    const status = normalized.status ?? 'completed';
+    if (status !== 'completed') {
+      const error = errorMessage(normalized.error ?? normalized.outputSummary ?? `Subagent task ${task.id} ended with ${status}.`);
+      const failed = failAgentRun(run.id, {
+        status,
+        error,
+        outputSummary: normalized.outputSummary,
+        metadata: normalized.metadata,
+      }) ?? run;
+      return { taskId: task.id, agent: task.agent, run: failed, status, outputSummary: normalized.outputSummary, error };
+    }
+
+    const completed = completeAgentRun(run.id, {
       outputSummary: normalized.outputSummary,
       metadata: normalized.metadata,
     }) ?? run;
-    return { taskId: task.id, agent: task.agent, run: failed, status, outputSummary: normalized.outputSummary, error };
+    return { taskId: task.id, agent: task.agent, run: completed, status: 'completed', outputSummary: completed.outputSummary };
+  } catch (error) {
+    const message = errorMessage(error);
+    const failed = failAgentRun(run.id, { error: message }) ?? run;
+    return { taskId: task.id, agent: task.agent, run: failed, status: 'failed', error: message };
   }
-
-  const completed = completeAgentRun(run.id, {
-    outputSummary: normalized.outputSummary,
-    metadata: normalized.metadata,
-  }) ?? run;
-  return { taskId: task.id, agent: task.agent, run: completed, status: 'completed', outputSummary: completed.outputSummary };
 }
 
 function markTaskCanceled(
@@ -385,33 +393,40 @@ export async function executeSubagentOrchestrationPlan(
     }));
   };
 
-  while (pending.size > 0 || running.size > 0) {
-    let launched = false;
-    for (const taskId of Array.from(pending)) {
-      const task = byId.get(taskId)!;
-      const dependencies = normalizeDependencies(task);
-      const dependencyResults = dependencies.map((dependencyId) => results.get(dependencyId));
-      if (dependencyResults.some((result) => result && result.status !== 'completed')) {
-        pending.delete(taskId);
-        results.set(taskId, markTaskCanceled(task, plan, parentRun, results));
-        continue;
+  try {
+    while (pending.size > 0 || running.size > 0) {
+      let launched = false;
+      for (const taskId of Array.from(pending)) {
+        const task = byId.get(taskId)!;
+        const dependencies = normalizeDependencies(task);
+        const dependencyResults = dependencies.map((dependencyId) => results.get(dependencyId));
+        if (dependencyResults.some((result) => result && result.status !== 'completed')) {
+          pending.delete(taskId);
+          results.set(taskId, markTaskCanceled(task, plan, parentRun, results));
+          continue;
+        }
+        if (dependencyResults.every(Boolean)) {
+          launch(task);
+          launched = true;
+        }
       }
-      if (dependencyResults.every(Boolean)) {
-        launch(task);
-        launched = true;
-      }
-    }
 
-    if (running.size === 0) {
-      if (pending.size === 0) break;
-      if (!launched) {
-        throw new SubagentPlanValidationError('Subagent orchestration made no progress; check task dependencies.');
+      if (running.size === 0) {
+        if (pending.size === 0) break;
+        if (!launched) {
+          throw new SubagentPlanValidationError('Subagent orchestration made no progress; check task dependencies.');
+        }
+      }
+
+      if (running.size > 0) {
+        await Promise.race(Array.from(running.values()));
       }
     }
-
-    if (running.size > 0) {
-      await Promise.race(Array.from(running.values()));
-    }
+  } catch (error) {
+    // Backstop: a scheduler failure must never leave the parent run stuck
+    // in 'running' — finalize it before surfacing the error.
+    failAgentRun(parentRun.id, { error: errorMessage(error) });
+    throw error;
   }
 
   const orderedResults = plan.tasks.map((task) => results.get(task.id)!).filter(Boolean);

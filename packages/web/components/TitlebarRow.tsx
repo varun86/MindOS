@@ -1,5 +1,9 @@
+'use client';
+
 import React from 'react';
+import { Search } from 'lucide-react';
 import TitlebarTabStrip from './TitlebarTabStrip';
+import { useLocale } from '@/lib/stores/locale-store';
 
 // Titlebar row (spec-titlebar-row Phase 1 + 2).
 // display: none by default; globals.css flips it to flex for the mac shell
@@ -27,12 +31,59 @@ const DRAG_SPACER_STYLE = {
   WebkitAppRegion: 'drag',
 } as React.CSSProperties;
 
-export default function TitlebarRow() {
+const NO_DRAG_STYLE = { WebkitAppRegion: 'no-drag' } as React.CSSProperties;
+
+interface TitlebarRowProps {
+  searchActive?: boolean;
+  onSearchOpenOrFocus?: () => void;
+}
+
+function TitlebarSearchTrigger({
+  active,
+  onOpenOrFocus,
+  label,
+}: {
+  active: boolean;
+  onOpenOrFocus?: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      aria-expanded={active}
+      title={`${label} (⌘K)`}
+      data-titlebar-search-trigger
+      style={NO_DRAG_STYLE}
+      onClick={onOpenOrFocus}
+      className={`mb-1 ml-1.5 mr-1 hidden h-7 w-7 shrink-0 items-center justify-center self-end rounded-full text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex ${
+        active
+          ? 'bg-[var(--amber)]/10 text-[var(--amber)]'
+          : 'hover:bg-muted hover:text-foreground'
+      }`}
+    >
+      <Search size={15} aria-hidden="true" />
+    </button>
+  );
+}
+
+export default function TitlebarRow({
+  searchActive = false,
+  onSearchOpenOrFocus,
+}: TitlebarRowProps) {
+  const { t } = useLocale();
+
   return (
     <div
       className="titlebar-row fixed top-0 right-0 z-30 bg-background border-b border-border"
       style={ROW_STYLE}
     >
+      <TitlebarSearchTrigger
+        active={searchActive}
+        onOpenOrFocus={onSearchOpenOrFocus}
+        label={t.sidebar.searchTitle}
+      />
       <TitlebarTabStrip />
       <div aria-hidden="true" data-drag-spacer className="h-full shrink-0" style={DRAG_SPACER_STYLE} />
     </div>

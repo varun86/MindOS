@@ -29,6 +29,8 @@ interface ActiveFileWriteLock {
   owner: string;
   operation: string;
   acquiredAt: number;
+  /** Re-entrant hold count: the same owner may nest sections on one file. */
+  depth: number;
 }
 
 export interface AgentFileWriteLockInput {
@@ -84,21 +86,19 @@ export async function withAgentFileWriteLock<T>(
   }
 
   if (active) {
-    throw new AgentFileWriteConflictError({
-      filePath: normalizedPath || input.filePath,
-      operation: input.operation,
-      activeOwner: active.owner,
-      requestedOwner: owner,
-    });
+    active.depth += 1;
+  } else {
+    locks.set(key, { owner, operation: input.operation, acquiredAt: Date.now(), depth: 1 });
   }
-
-  locks.set(key, { owner, operation: input.operation, acquiredAt: Date.now() });
   try {
     return await fn();
   } finally {
     const current = locks.get(key);
-    if (current?.owner === owner && current.operation === input.operation) {
-      locks.delete(key);
+    if (current?.owner === owner) {
+      current.depth -= 1;
+      if (current.depth <= 0) {
+        locks.delete(key);
+      }
     }
   }
 }

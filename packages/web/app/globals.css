@@ -162,12 +162,39 @@ body {
 }
 
 /* Content width — controlled by Settings > Appearance */
-:root { --content-width: 80%; --toc-width: 0px; }
+:root {
+  --content-width: 80%;
+  --toc-width: 0px;
+  --z-app-page: 10;
+  --z-app-sticky: 20;
+  --z-app-nav: 30;
+  --z-app-rail: 31;
+  --z-app-rail-affordance: 32;
+  --z-app-overlay: 40;
+  --z-app-modal: 50;
+  --z-app-popover: 60;
+  --z-app-popover-flyout: 61;
+  --z-app-walkthrough-backdrop: 100;
+  --z-app-walkthrough-surface: 101;
+  --z-app-walkthrough-tooltip: 102;
+  --z-app-critical-overlay: 99999;
+}
 .content-width { max-width: var(--content-width-override, var(--content-width)); margin-left: auto; margin-right: auto; padding-left: 0.75rem; padding-right: 0.75rem; }
 @media (max-width: 639px) {
+  .content-width.workbench-content-page { max-width: 100%; }
   .content-width.agents-content-page { max-width: 100%; }
   .content-width.channel-detail-content { max-width: 100%; }
 }
+
+.z-app-rail { z-index: var(--z-app-rail); }
+.z-app-rail-affordance { z-index: var(--z-app-rail-affordance); }
+.z-app-modal { z-index: var(--z-app-modal); }
+.z-app-popover { z-index: var(--z-app-popover); }
+.z-app-popover-flyout { z-index: var(--z-app-popover-flyout); }
+.z-app-walkthrough-backdrop { z-index: var(--z-app-walkthrough-backdrop); }
+.z-app-walkthrough-surface { z-index: var(--z-app-walkthrough-surface); }
+.z-app-walkthrough-tooltip { z-index: var(--z-app-walkthrough-tooltip); }
+.z-app-critical-overlay { z-index: var(--z-app-critical-overlay); }
 
 /* TOC offset — only on xl screens where TOC is visible.
    --toc-width is set by TableOfContents.tsx (212px when expanded, 0px when collapsed).
@@ -177,6 +204,7 @@ body {
    for Ask panel; the TOC offset is added via --toc-extra-right there. */
 @media (min-width: 1280px) {
   :root { --toc-extra-right: var(--toc-width, 0px); }
+  .toc-reserved-content { margin-right: max(220px, calc(var(--toc-width, 0px) + 8px)); }
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -809,11 +837,11 @@ input[type="radio"].form-radio:focus-visible {
 }
 @media (min-width: 768px) {
   :root {
-    --app-titlebar-h: 46px;
+    --app-titlebar-h: 42px;
   }
 }
 html[data-mac-titlebar-row] {
-  --app-titlebar-h: 46px;
+  --app-titlebar-h: 42px;
   --window-controls-left: 70px; /* traffic lights span x12..64 + 6px margin */
   --rail-titlebar-offset: var(--app-titlebar-h);
 }
@@ -828,14 +856,3 @@ html[data-mac-titlebar-row] .titlebar-row { display: flex; }
 @media (min-width: 768px) {
   .titlebar-row { display: flex; }
 }
-/* Old mac shells (desktop <= v0.3.24) insertCSS() their own 28px drag band
-   (body::before, z-index 9999) and force the rail + aside[role=region] to
-   top: 28px !important. Layered over our 46px row, that band swallows the
-   tab strip's clicks and the forced panel top paints the panel header across
-   the tabs. Those shells set data-electron-mac (UA sniff) but never expose
-   mindosShell.macTitlebarRow — suppress the row and zero the height so the
-   injected CSS owns the geometry exactly like before spec-titlebar-row. */
-html[data-electron-mac]:not([data-mac-titlebar-row]) {
-  --app-titlebar-h: 0px;
-}
-html[data-electron-mac]:not([data-mac-titlebar-row]) .titlebar-row { display: none; }

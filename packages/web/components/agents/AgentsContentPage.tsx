@@ -32,6 +32,7 @@ import AcpRegistrySection from './AcpRegistrySection';
 import CustomAgentModal from './CustomAgentModal';
 import { ConfirmDialog } from './AgentsPrimitives';
 import type { AgentInfo } from '@/components/settings/types';
+import { ContentPageShell } from '@/components/shared/ContentPageShell';
 
 const DEFAULT_AGENT_NAV_HINTS = {
   overview: 'Map',
@@ -200,7 +201,10 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
   };
 
   return (
-    <div className={`content-width agents-content-page px-4 md:px-6 py-8 md:py-10 ${isChannelDetail ? 'channel-detail-content' : ''}`}>
+    <ContentPageShell
+      className={`agents-content-page ${isChannelDetail ? 'channel-detail-content' : ''}`}
+      data-content-page-shell="agents"
+    >
       {!isChannelDetail && (
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{pageHeader.title}</h1>
@@ -343,7 +347,7 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
         onCancel={() => setRemoveAgent(null)}
         variant="destructive"
       />
-    </div>
+    </ContentPageShell>
   );
 }
 

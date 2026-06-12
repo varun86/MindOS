@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect, useCallback, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
+import { Activity, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Layers, MoreHorizontal, Eye, EyeOff, Trash2, Inbox, History } from 'lucide-react';
 import type { PanelId } from '@/lib/navigation-panel';
 import type { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
@@ -466,8 +466,6 @@ export default function Panel({
         >
           <BuiltInMindSpaces
             title={t.sidebar.builtInSpacesTitle}
-            description={t.sidebar.builtInSpacesDesc}
-            rootLabel={mindSystemSlots.map(slot => slot.label).join(' / ') || t.sidebar.builtInSpacesRoot}
             slots={mindSystemSlots}
             onOpen={(path) => router.push(`/view/${encodePath(path)}`)}
           />
@@ -525,24 +523,20 @@ export default function Panel({
 
 function BuiltInMindSpaces({
   title,
-  description,
-  rootLabel,
   slots,
   onOpen,
 }: {
   title: string;
-  description: string;
-  rootLabel: string;
   slots: MindSystemSlot[];
   onOpen: (path: string) => void;
 }) {
   const { t } = useLocale();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const visibleSlots = slots.length > 0 ? slots : [];
 
   useEffect(() => {
     try {
-      setCollapsed(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY) === '1');
+      setCollapsed(localStorage.getItem(MIND_SYSTEM_COLLAPSED_KEY) !== '0');
     } catch { /* localStorage unavailable */ }
   }, []);
 
@@ -560,9 +554,6 @@ function BuiltInMindSpaces({
 
   return (
     <section className="mb-2 px-1 pb-2 border-b border-border/40" aria-label={title}>
-      <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/55">
-        {title}
-      </div>
       <button
         type="button"
         onClick={toggleCollapsed}
@@ -576,16 +567,15 @@ function BuiltInMindSpaces({
             : '[--hit-target-active-border:color-mix(in_srgb,var(--amber)_20%,transparent)] [--hit-target-hover-border:color-mix(in_srgb,var(--amber)_35%,transparent)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-hover-bg:var(--amber-dim)]'
         }`}
       >
-        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors ${
+        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
           collapsed
-            ? 'bg-muted text-muted-foreground'
+            ? 'bg-[var(--amber)]/8 text-[var(--amber)]/70'
             : 'bg-[var(--amber)]/10 text-[var(--amber)]'
         }`}>
-          心
+          <Activity size={15} strokeWidth={2.2} className="shrink-0 motion-safe:animate-pulse" aria-hidden="true" />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold text-foreground">{rootLabel}</span>
-          <span className="block truncate text-2xs text-muted-foreground/70">{description}</span>
+        <span className="min-w-0 flex-1 py-0.5">
+          <span className="block truncate text-xs font-semibold text-foreground">{title}</span>
         </span>
         <ChevronDown
           size={13}

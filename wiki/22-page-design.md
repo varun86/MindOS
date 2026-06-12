@@ -41,7 +41,13 @@
 
 桌面端左侧由 **48px Rail（Activity Bar）** 与 **可切换 Panel（默认宽约 280px，可拖拽调宽）** 组成。上文 ASCII 中的「Sidebar」在实现上对应 **Rail + 当前 Panel 内容** 占用的总宽度（约 48px + 280px 量级）。
 
-**Rail 中部按钮顺序（上 → 下）**：空间（文件树）→ **回响 Echo** → 搜索（⌘K）→ 插件 → 智能体 → 探索。底部为帮助、同步、设置等（不切换主 Panel）。
+实现宽度统一由 `packages/web/lib/config/panel-sizes.ts` 管理：`ACTIVITY_BAR` 定义 Rail，`LEFT_PANEL` / `DEFAULT_LEFT_PANEL_WIDTH` 定义可拖拽 Panel，`SETTINGS_SIDEBAR` 定义 Settings modal 内部导航，`MOBILE_SIDEBAR` 定义移动抽屉。页面组件不应重新硬编码这些 sidebar/chrome 宽度。
+
+页面内容容器统一走 `packages/web/components/shared/ContentPageShell.tsx` 的命名 shell：`WorkbenchPageShell` 用于 Inbox / Agents / Explore 等工作台页面，`ReadingPageShell` 用于 Wiki / 阅读入口，`NarrowPageShell` 用于固定窄宽页面，`LoadingPageShell` 用于 skeleton。非 ViewPage 但需要和 TOC 阅读页视觉对齐时，只能 opt-in `.toc-reserved-content`，不要复制 `xl:mr-[220px]`。
+
+**Rail 中部按钮顺序（上 → 下）**：收集箱 → 空间（文件树）→ **回响 Echo** → 智能体 → 流程（labs 开启时）→ 探索。底部为同步、设置等系统动作（不切换主 Panel）。
+
+**搜索入口**：桌面端搜索不在 Rail 中占位；Titlebar Tab 行在第一枚 workspace tab 前提供一个小号 icon-only Search 入口（`⌘K` 同路径），触发现有 `SearchPanel`。移动端继续使用 Header 右侧 Search 图标打开 `SearchModal`。
 
 **Panel 子视图**：`FileTree`、`EchoPanel`、`SearchPanel`、`PluginsPanel`、`AgentsPanel`、`DiscoverPanel`。回响主内容在 **`/echo/[segment]`**（侧栏五行链入）；不向首页、Guide、探索导流。规格见 `wiki/specs/spec-echo-panel.md`、`wiki/specs/spec-echo-content-pages.md`、`wiki/specs/spec-activity-bar-layout.md`、`wiki/specs/spec-discover-panel.md`。
 
@@ -487,7 +493,7 @@ Step 8: Review   →  总览确认 → 完成
 
 | 属性 | 值 |
 |------|-----|
-| 宽度 | 280px (fixed) |
+| 宽度 | 默认约 280px，可拖拽；来源见 `packages/web/lib/config/panel-sizes.ts` |
 | 背景 | `bg-card` |
 | 边框 | `border-r border-border` |
 | z-index | 30 |
@@ -583,7 +589,7 @@ MindOS 通过 Renderer Registry 支持可插拔的内容渲染器。
 |------|---------|---------|-----|----------|---------------|
 | <768px | 隐藏，Drawer 模式 | 显示 Header | 隐藏 | 底部 sheet 92vh | 水平滚动 |
 | ≥768px | 固定左侧 280px | 不显示 | 隐藏 | 居中 modal 75vh | 左侧竖排 |
-| ≥1280px | 固定左侧 280px | 不显示 | 固定右侧 220px | 居中 modal 75vh | 左侧竖排 |
+| ≥1280px | 固定左侧 280px | 不显示 | 固定右侧，宽度由 `--toc-width`/TOC 状态驱动 | 居中 modal 75vh | 左侧竖排 |
 
 ---
 

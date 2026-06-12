@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
  * Repo-wide geometry contract for the fixed titlebar row (spec-titlebar-row,
  * 实现调整记录 12/13).
  *
- * #main-content gets `padding-top: var(--app-titlebar-h)` (46px on desktop),
+ * #main-content gets `padding-top: var(--app-titlebar-h)` (42px on desktop),
  * and `.titlebar-row` is `fixed top-0 z-30`. Two recurring bug classes follow:
  *
  *  A. Any element in normal document flow sized with a bare full-viewport
- *     height (min-h-screen / h-[100dvh] / ...) makes the document 46px taller
+ *     height (min-h-screen / h-[100dvh] / ...) makes the document a titlebar row taller
  *     than the window. Scrolling that slack slides content underneath the
  *     fixed row, which then swallows its clicks (user-reported three times:
  *     chat focus-mode header, /view breadcrumb, Edit/Source/View toggle).
@@ -105,7 +105,7 @@ describe('titlebar geometry contract (no content may slide under the fixed row)'
     }
     expect(
       violations,
-      `On desktop the titlebar row occupies viewport y 0–46px; a responsive sticky ` +
+      `On desktop the titlebar row occupies viewport y 0–var(--app-titlebar-h); a responsive sticky ` +
         `top-0 sticks underneath it and its top edge becomes unclickable. ` +
         `Use top-[var(--app-titlebar-h)] (plus any extra offset) instead:\n${violations.join('\n')}`,
     ).toEqual([]);

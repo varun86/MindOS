@@ -95,7 +95,7 @@ describe('ActivityBar rail navigation', () => {
     }));
   });
 
-  it('does not show a keyboard shortcut chip on the expanded Search rail item', async () => {
+  it('does not render Search as a rail item', async () => {
     const ActivityBar = (await import('@/components/ActivityBar')).default;
 
     const host = document.createElement('div');
@@ -116,9 +116,71 @@ describe('ActivityBar rail navigation', () => {
       );
     });
 
-    const searchButton = host.querySelector('button[aria-label="Search"]');
-    expect(searchButton?.textContent).toContain('Search');
-    expect(searchButton?.textContent).not.toContain('⌘K');
+    expect(host.querySelector('button[aria-label="Search"]')).toBeNull();
+    expect(host.querySelector('[data-titlebar-search-trigger]')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('shows Echo as a first-class rail destination without a labs flag', async () => {
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const echoButton = host.querySelector('[data-walkthrough="echo-panel"]');
+    expect(echoButton).not.toBeNull();
+    expect(echoButton?.getAttribute('href')).toBe('/echo/imprint');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('keeps the rail home row aligned with the titlebar height variable', async () => {
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const home = host.querySelector<HTMLButtonElement>('button[aria-label="MindOS Home"]');
+    expect(home).not.toBeNull();
+    expect(home!.className).toContain('h-[var(--app-titlebar-h)]');
+    expect(home!.className).not.toContain('h-[46px]');
 
     await act(async () => {
       root.unmount();
@@ -811,43 +873,5 @@ describe('ActivityBar rail navigation', () => {
     await act(async () => {
       root.unmount();
     });
-  });
-
-  it('places the Echo rail entry right below Search (above Agents) when the labs flag is on', async () => {
-    localStorage.setItem('mindos:labs-echo', '1');
-
-    const ActivityBar = (await import('@/components/ActivityBar')).default;
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(
-        <ActivityBar
-          activePanel={null}
-          onPanelChange={vi.fn()}
-          syncStatus={null}
-          expanded
-          onExpandedChange={vi.fn()}
-          onSettingsClick={vi.fn()}
-          onSyncClick={vi.fn()}
-        />,
-      );
-    });
-
-    const order = Array.from(host.querySelectorAll('a[aria-label], button[aria-label]'))
-      .map((el) => el.getAttribute('aria-label'));
-    const searchIndex = order.indexOf('Search');
-    const echoIndex = order.indexOf('Echo');
-    const agentsIndex = order.indexOf('Agents');
-    expect(searchIndex).toBeGreaterThan(-1);
-    expect(echoIndex).toBeGreaterThan(searchIndex);
-    expect(agentsIndex).toBeGreaterThan(echoIndex);
-
-    await act(async () => {
-      root.unmount();
-    });
-    host.remove();
   });
 });

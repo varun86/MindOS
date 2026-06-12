@@ -20,7 +20,6 @@ import { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
 import { useLocale } from '@/lib/stores/locale-store';
 import { telemetry } from '@/lib/telemetry';
-import { createTrailingCoalescer } from '@/lib/files-changed';
 import dynamic from 'next/dynamic';
 
 const SearchModal = dynamic(() => import('./SearchModal'), { ssr: false });
@@ -39,6 +38,7 @@ import { InboxOrganizeProvider } from '@/components/inbox/InboxOrganizeContext';
 import { quickDropToInbox } from '@/lib/inbox-upload';
 import {
   getActiveLeftPanel,
+  getContentRoutePanel,
   getEffectivePanelMaximized,
   getPendingRoutePanel,
   getRailActivePanel,
@@ -51,7 +51,7 @@ import {
   type RoutePanelId,
 } from '@/lib/navigation-panel';
 import type { Tab } from './settings/types';
-import { RIGHT_AGENT_DETAIL_PANEL, getLeftPanelWidth } from '@/lib/config/panel-sizes';
+import { MOBILE_SIDEBAR, RIGHT_AGENT_DETAIL_PANEL, getLeftPanelWidth } from '@/lib/config/panel-sizes';
 
 const noop = () => {};
 const SYNC_POPOVER_ID = 'sync-popover';
@@ -223,6 +223,43 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   // Deriving width from WHICH state controlled the panel made every
   // navigation transition animate through 2-4 widths — the flicker.
   const effectivePanelWidth = getLeftPanelWidth(activeLeftPanel, lp.panelWidth);
+  const previousSearchPanelRef = useRef<PanelId | null>(null);
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+
+  const resolveSearchClosePanel = useCallback((): PanelId | null => {
+    const previous = previousSearchPanelRef.current;
+    if (!previous) return null;
+    if (previous === 'workflows') return 'workflows';
+    const routePanel = getContentRoutePanel(pathname);
+    if (previous === 'files') return routePanel === 'files' ? 'files' : null;
+    return routePanel === previous ? previous : null;
+  }, [pathname]);
+
+  const openOrFocusSearchPanel = useCallback(() => {
+    if (activeLeftPanel && activeLeftPanel !== 'search') {
+      previousSearchPanelRef.current = activeLeftPanel;
+    }
+    lp.setActivePanel('search');
+    setSearchFocusRequest((request) => request + 1);
+  }, [activeLeftPanel, lp.setActivePanel]);
+
+  const closeSearchPanel = useCallback(() => {
+    const nextPanel = resolveSearchClosePanel();
+    previousSearchPanelRef.current = null;
+    lp.setActivePanel(nextPanel);
+  }, [lp.setActivePanel, resolveSearchClosePanel]);
+
+  const toggleSearchPanel = useCallback(() => {
+    if (activeLeftPanel === 'search') {
+      closeSearchPanel();
+      return;
+    }
+    openOrFocusSearchPanel();
+  }, [activeLeftPanel, closeSearchPanel, openOrFocusSearchPanel]);
+
+  useEffect(() => {
+    if (activeLeftPanel !== 'search') previousSearchPanelRef.current = null;
+  }, [activeLeftPanel]);
 
   // Drop the pending entry once any route commits (the derivation above
   // already ignores it from that render on — this is just state hygiene).
@@ -334,11 +371,15 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   useEffect(() => {
     const handler = (e: Event) => {
       const panel = (e as CustomEvent).detail?.panel;
+      if (panel === 'search') {
+        openOrFocusSearchPanel();
+        return;
+      }
       if (panel) lp.setActivePanel(panel);
     };
     window.addEventListener('mindos:open-panel', handler);
     return () => window.removeEventListener('mindos:open-panel', handler);
-  }, [lp]);
+  }, [lp.setActivePanel, openOrFocusSearchPanel]);
 
   // GuideCard first message handler
   const handleFirstMessage = useCallback(() => {
@@ -395,35 +436,27 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   const closeAgentDetailPanel = useCallback(() => setAgentDetailKey(null), []);
 
   // Refresh file tree when server-side tree version changes.
-  // Polls a lightweight version counter every 5s — only triggers a refresh
-  // when the version actually changes. The actual router.refresh() (which
-  // re-serializes the full file tree into the RSC payload) is trailing-edge
-  // coalesced: bursts of version changes (bulk file ops, visibility-triggered
-  // checks) collapse into a single refresh, with ≥2s between refreshes.
+  // Polls a lightweight version counter every 5s — only calls router.refresh()
+  // (which rebuilds the full tree) when the version actually changes.
+  // A 2-second cooldown prevents rapid-fire refreshes during bulk file operations.
   useEffect(() => {
     let lastVersion = -1;
     let stopped = false;
-    let pendingRange: { previousVersion: number; version: number } | null = null;
+    let lastRefreshTime = 0;
+    let pendingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const REFRESH_COALESCE_MS = 1000;
-    const REFRESH_MIN_SPACING_MS = 2000;
-    // Own writes surface immediately via mindos:files-changed events; this
-    // poll only backstops external edits, so it can run slowly.
-    const POLL_INTERVAL_MS = 15000;
-
-    const refreshCoalescer = createTrailingCoalescer(() => {
-      if (stopped || !pendingRange) return;
-      const { previousVersion, version } = pendingRange;
-      pendingRange = null;
+    const doRefresh = (version: number, previousVersion: number) => {
+      lastRefreshTime = Date.now();
       const stopRefresh = telemetry.startTimer('tree.refresh.trigger');
       startTransition(() => {
         router.refresh();
       });
       stopRefresh({ previousVersion, version, reason: 'tree_version_changed' });
-      // Tree-version polling cannot know which paths changed, so the event
-      // carries no detail — listeners treat it as "anything changed".
       window.dispatchEvent(new Event('mindos:files-changed'));
-    }, { delayMs: REFRESH_COALESCE_MS, minSpacingMs: REFRESH_MIN_SPACING_MS });
+    };
+
+    const REFRESH_COOLDOWN_MS = 2000;
+    const POLL_INTERVAL_MS = 5000;
 
     const checkVersion = async () => {
       if (stopped || document.visibilityState === 'hidden') return;
@@ -443,11 +476,20 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         if (v !== lastVersion) {
           const previousVersion = lastVersion;
           lastVersion = v;
-          pendingRange = pendingRange
-            ? { previousVersion: pendingRange.previousVersion, version: v }
-            : { previousVersion, version: v };
-          refreshCoalescer.schedule();
-          stop({ ok: true, changed: true, previousVersion, version: v });
+
+          // Cooldown: if we refreshed recently, delay this one
+          const elapsed = Date.now() - lastRefreshTime;
+          if (elapsed < REFRESH_COOLDOWN_MS) {
+            if (pendingRefreshTimer) clearTimeout(pendingRefreshTimer);
+            pendingRefreshTimer = setTimeout(() => {
+              pendingRefreshTimer = null;
+              if (!stopped) doRefresh(v, previousVersion);
+            }, REFRESH_COOLDOWN_MS - elapsed);
+            stop({ ok: true, changed: true, previousVersion, version: v, deferred: true });
+          } else {
+            doRefresh(v, previousVersion);
+            stop({ ok: true, changed: true, previousVersion, version: v });
+          }
           return;
         }
         stop({ ok: true, changed: false, version: v });
@@ -468,7 +510,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     return () => {
       stopped = true;
       clearInterval(interval);
-      refreshCoalescer.cancel();
+      if (pendingRefreshTimer) clearTimeout(pendingRefreshTimer);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [router]);
@@ -481,11 +523,12 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         if (agentDockOpen) { setAgentDetailKey(null); return; }
         if (ap.askPanelOpen) { ap.closeAskPanel(); return; }
         if (ap.desktopAskPopupOpen) { ap.closeDesktopAskPopup(); return; }
+        if (activeLeftPanel === 'search') { closeSearchPanel(); return; }
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         if (window.innerWidth >= 768) {
-          lp.setActivePanel((p: PanelId | null) => p === 'search' ? null : 'search');
+          toggleSearchPanel();
         } else {
           setMobileSearchOpen(v => !v);
         }
@@ -509,7 +552,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [agentDockOpen, effectivePanelMaximized, lp, ap]);
+  }, [activeLeftPanel, agentDockOpen, closeSearchPanel, effectivePanelMaximized, lp, ap, toggleSearchPanel]);
 
   // ── Settings helpers ──
   const openSyncSettings = useCallback(() => {
@@ -552,6 +595,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       // Real navigation starts — keep the clicked target active until it commits
       setPendingNav({ target: targetPanel, fromPathname: pathname });
     }
+    previousSearchPanelRef.current = null;
     lp.setActivePanel(decision.nextPanel);
     if (targetPanel === 'agents') setAgentDetailKey(null);
   }, [activeLeftPanel, exitAskMaximized, lp, pathname]);
@@ -563,13 +607,16 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       {/* Skip link */}
       <a
         href="#main-content"
-        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2 focus-visible:z-[60] focus-visible:px-4 focus-visible:py-2 focus-visible:rounded-lg focus-visible:text-sm focus-visible:font-medium bg-[var(--amber)] text-[var(--amber-foreground)]"
+        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-2 focus-visible:left-2 focus-visible:z-app-popover focus-visible:px-4 focus-visible:py-2 focus-visible:rounded-lg focus-visible:text-sm focus-visible:font-medium bg-[var(--amber)] text-[var(--amber-foreground)]"
       >
         Skip to main content
       </a>
 
       {/* ── Desktop: Titlebar row + Activity Bar + Panel ── */}
-      <TitlebarRow />
+      <TitlebarRow
+        searchActive={activeLeftPanel === 'search'}
+        onSearchOpenOrFocus={openOrFocusSearchPanel}
+      />
       <ActivityBar
         activePanel={railActivePanel}
         onPanelChange={lp.setActivePanel}
@@ -614,7 +661,13 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         )}
         {isPanelMounted('search') && (
           <div className={`flex flex-col h-full ${activeLeftPanel === 'search' ? '' : 'hidden'}`}>
-            <SearchPanel active={activeLeftPanel === 'search'} maximized={effectivePanelMaximized} onMaximize={lp.handlePanelMaximize} />
+            <SearchPanel
+              active={activeLeftPanel === 'search'}
+              focusRequest={searchFocusRequest}
+              maximized={effectivePanelMaximized}
+              onMaximize={lp.handlePanelMaximize}
+              onClose={closeSearchPanel}
+            />
           </div>
         )}
         {isPanelMounted('agents') && (
@@ -732,7 +785,10 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       </header>
 
       {mobileOpen && <div className="md:hidden fixed inset-0 z-40 overlay-backdrop" onClick={() => setMobileOpen(false)} />}
-      <aside className={`md:hidden fixed top-0 left-0 h-screen w-[85vw] max-w-[320px] z-50 bg-card border-r border-border flex flex-col transition-transform duration-300 ease-in-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside
+        className={`md:hidden fixed top-0 left-0 h-screen z-50 bg-card border-r border-border flex flex-col transition-transform duration-300 ease-in-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: MOBILE_SIDEBAR.WIDTH, maxWidth: MOBILE_SIDEBAR.MAX_WIDTH }}
+      >
         <div className="flex items-center justify-between px-4 py-4 border-b border-border shrink-0">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Logo id="drawer" />

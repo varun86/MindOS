@@ -537,7 +537,11 @@ function appendPersistedOperation(store: AgentRunLedgerStore, op: PersistedAgent
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(op)}\n`, 'utf-8');
     if (fs.statSync(file).size > MAX_LEDGER_LOG_BYTES) {
-      writeCompactedLedger(store);
+      // Other MindOS processes (MCP server, CLI) append to the same log, so
+      // compact from the on-disk state — this process's in-memory view alone
+      // would drop their operations.
+      const onDisk = readJsonlPersistedStore(store.mindRoot);
+      writeCompactedLedger(onDisk ?? store);
     }
   } catch {
     // Ledger persistence must never affect agent execution.

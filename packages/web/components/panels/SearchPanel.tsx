@@ -34,15 +34,18 @@ function formatPath(fullPath: string): { name: string; breadcrumb: string[] } {
 interface SearchPanelProps {
   /** When true the panel is visible — triggers focus & reset */
   active: boolean;
+  /** Increments when an external trigger wants to refocus the existing panel */
+  focusRequest?: number;
   /** Called when user navigates to a result (panel host may want to close) */
   onNavigate?: () => void;
+  onClose?: () => void;
   maximized?: boolean;
   onMaximize?: () => void;
 }
 
 export { getSearchWarmHint, shouldStartSearchPrewarm } from '@/hooks/useSearchPrewarm';
 
-export default function SearchPanel({ active, onNavigate, maximized, onMaximize }: SearchPanelProps) {
+export default function SearchPanel({ active, focusRequest = 0, onNavigate, onClose, maximized, onMaximize }: SearchPanelProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +61,7 @@ export default function SearchPanel({ active, onNavigate, maximized, onMaximize 
     if (active) {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [active]);
+  }, [active, focusRequest]);
 
   const warmState = useSearchPrewarm(active);
 
@@ -175,7 +178,19 @@ export default function SearchPanel({ active, onNavigate, maximized, onMaximize 
   return (
     <>
       {/* Header */}
-      <PanelHeader title="Search" maximized={maximized} onMaximize={onMaximize} />
+      <PanelHeader title="Search" maximized={maximized} onMaximize={onMaximize}>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+            aria-label={t.search.close}
+            title={t.search.close}
+          >
+            <X size={13} />
+          </button>
+        )}
+      </PanelHeader>
 
       {/* Search input */}
       <div className="px-4 py-3 border-b border-border shrink-0 overflow-hidden">

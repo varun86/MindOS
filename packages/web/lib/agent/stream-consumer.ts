@@ -352,6 +352,16 @@ export async function consumeUIMessageStream(
       }));
   }
 
+  // Cancelling the reader is the only way to interrupt a pending read();
+  // the aborted check at the top of the loop can't fire while the stream is
+  // quiet, which left aborted runs awaiting a read that never resolves.
+  const cancelOnAbort = () => { void reader.cancel().catch(() => {}); };
+  if (signal?.aborted) {
+    cancelOnAbort();
+  } else {
+    signal?.addEventListener('abort', cancelOnAbort, { once: true });
+  }
+
   try {
     while (true) {
       if (signal?.aborted) break;
@@ -652,6 +662,11 @@ export async function consumeUIMessageStream(
       if (done) break;
     }
   } finally {
+    signal?.removeEventListener('abort', cancelOnAbort);
+    if (signal?.aborted) {
+      // Release the underlying connection; safe if already cancelled/closed.
+      try { await reader.cancel(); } catch { /* stream already settled */ }
+    }
     reader.releaseLock();
     // Terminal state (completion, error, abort) must never be delayed:
     // flush any pending coalesced snapshot and the batched files-changed

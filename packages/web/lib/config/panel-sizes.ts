@@ -54,6 +54,17 @@ export const RIGHT_AGENT_DETAIL_PANEL: { DEFAULT: number; MIN: number; MAX_ABS: 
   MAX_RATIO: 0.42, // 42% of screen width
 };
 
+// ── Sidebar Chrome ──
+
+export const SETTINGS_SIDEBAR = {
+  WIDTH: 232,
+} as const;
+
+export const MOBILE_SIDEBAR = {
+  WIDTH: '85vw',
+  MAX_WIDTH: 320,
+} as const;
+
 // ── Mobile/Responsive Breakpoints ──
 
 export const RESPONSIVE_BREAKPOINTS = {
@@ -68,4 +79,4 @@ export const RESPONSIVE_BREAKPOINTS = {
 export const ACTIVITY_BAR = {
   WIDTH_COLLAPSED: 48,
   WIDTH_EXPANDED: 180,
-};
+} as const;

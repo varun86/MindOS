@@ -27,6 +27,35 @@ describe('MessageList runtime status rendering', () => {
     copyMessage: 'Copy',
   };
 
+  it('keeps completed message actions inside the bubble flow', () => {
+    const messages: Message[] = [
+      {
+        role: 'user',
+        content: 'Please summarize this.',
+      },
+      {
+        role: 'assistant',
+        content: 'Here is the summary.',
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        loadingPhase="streaming"
+        emptyPrompt="Empty"
+        suggestions={[]}
+        onSuggestionClick={() => {}}
+        labels={labels}
+      />,
+    );
+
+    expect(html).toContain('mt-2 flex justify-start');
+    expect(html).toContain('mt-2 flex justify-end');
+    expect(html).not.toContain('absolute -bottom-3');
+  });
+
   it('renders visible runtime status as a compact status card without assistant text', () => {
     const messages: Message[] = [
       {
@@ -61,18 +90,55 @@ describe('MessageList runtime status rendering', () => {
     expect(html).not.toContain('prose-panel');
   });
 
-  it('uses native runtime icons for native assistant messages', () => {
+  it('does not render routine native runtime lifecycle status cards from saved messages', () => {
     const messages: Message[] = [
       {
         role: 'assistant',
-        content: 'Codex result',
+        content: '',
+        parts: [
+          {
+            type: 'runtime-status',
+            runtime: 'claude',
+            message: 'Claude Code is connected and working in this chat.',
+          },
+          {
+            type: 'runtime-status',
+            runtime: 'codex',
+            message: 'Starting Codex locally.',
+          },
+        ],
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        loadingPhase="streaming"
+        emptyPrompt="Empty"
+        suggestions={[]}
+        onSuggestionClick={() => {}}
+        labels={labels}
+      />,
+    );
+
+    expect(html).not.toContain('Claude Code is connected and working in this chat.');
+    expect(html).not.toContain('Starting Codex locally.');
+    expect(html).not.toContain('role="status"');
+  });
+
+  it('does not repeat native runtime identity inside assistant messages', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: 'Native runtime result one',
         agentId: 'codex',
         agentName: 'Codex',
         agentKind: 'codex',
       },
       {
         role: 'assistant',
-        content: 'Claude result',
+        content: 'Native runtime result two',
         agentId: 'claude',
         agentName: 'Claude Code',
         agentKind: 'claude',
@@ -91,9 +157,40 @@ describe('MessageList runtime status rendering', () => {
       />,
     );
 
-    expect(html).toContain('/agent-icons/openai.svg');
-    expect(html).toContain('/agent-icons/claude.svg');
-    expect(html).not.toContain('lucide-sparkles');
+    expect(html).toContain('Native runtime result one');
+    expect(html).toContain('Native runtime result two');
+    expect(html).not.toContain('/agent-icons/openai.svg');
+    expect(html).not.toContain('/agent-icons/claude.svg');
+    expect(html).not.toContain('Codex');
+    expect(html).not.toContain('Claude Code');
+  });
+
+  it('keeps an agent capsule for ACP assistant messages', () => {
+    const messages: Message[] = [
+      {
+        role: 'assistant',
+        content: 'Delegated answer',
+        agentId: 'gemini',
+        agentName: 'Gemini ACP',
+        agentKind: 'acp',
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        loadingPhase="streaming"
+        emptyPrompt="Empty"
+        suggestions={[]}
+        onSuggestionClick={() => {}}
+        labels={labels}
+      />,
+    );
+
+    expect(html).toContain('Gemini ACP');
+    expect(html).toContain('Delegated answer');
+    expect(html).toContain('rounded-full');
   });
 
   it('renders agent run timeline inside assistant messages', () => {
@@ -116,7 +213,7 @@ describe('MessageList runtime status rendering', () => {
                 runtimeId: 'reviewer',
                 displayName: 'Reviewer',
                 status: 'running',
-                permissionMode: 'readonly',
+                permissionMode: 'chat',
                 inputSummary: 'Review the patch.',
                 startedAt: 1100,
               },
@@ -160,7 +257,7 @@ describe('MessageList runtime status rendering', () => {
     expect(html).toContain('Gemini ACP');
     expect(html).toContain('Failed');
     expect(html).toContain('agent crashed');
-    expect(html).toContain('readonly');
+    expect(html).toContain('chat');
     expect(html).toContain('agent');
     expect(html).toContain('Main answer');
   });

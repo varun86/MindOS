@@ -2,16 +2,19 @@
 
 import { useRef, useEffect, memo, useState, useCallback, useMemo, type CSSProperties } from 'react';
 import { Loader2, AlertCircle, Wrench, WifiOff, Zap, Copy, Check, ArrowDown, FolderInput, Search, PenLine, Lightbulb, FileText, Paperclip, Bot, Sparkles } from 'lucide-react';
-import type { Message, ImagePart, RuntimeStatusPart } from '@/lib/types';import { stripThinkingTags } from '@/hooks/useAiOrganize';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { Message, ImagePart, RuntimeStatusPart } from '@/lib/types';
+import { stripThinkingTags } from '@/hooks/useAiOrganize';
 import { copyToClipboard } from '@/lib/clipboard';
 import ToolCallBlock from './ToolCallBlock';
 import ThinkingBlock from './ThinkingBlock';
-import MarkdownMessage from './MarkdownMessage';
 import { SaveMessageButton } from './SaveSessionInline';
 import UserMessageActions from './UserMessageActions';
 import AgentRunTimeline from './AgentRunTimeline';
 
 const SKILL_PREFIX_RE = /^Use the skill ([^:]+):\s*/;
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
 const MESSAGE_ROW_STYLE: CSSProperties = {
   contentVisibility: 'auto',
   containIntrinsicSize: '0 96px',
@@ -120,8 +123,16 @@ const UserMessageContent = memo(function UserMessageContent({ content, skillName
   );
 });
 
-const AssistantAgentBadge = memo(function AssistantAgentBadge({ agentName }: { agentName?: string }) {
-  if (!agentName) return null;
+function shouldShowAssistantAgentBadge(agentKind?: Message['agentKind'] | string): boolean {
+  return agentKind === 'acp' || agentKind === 'a2a';
+}
+
+function shouldShowAssistantSideMark(agentKind?: Message['agentKind'] | string): boolean {
+  return agentKind !== 'codex' && agentKind !== 'claude';
+}
+
+const AssistantAgentBadge = memo(function AssistantAgentBadge({ agentName, agentKind }: { agentName?: string; agentKind?: Message['agentKind'] | string }) {
+  if (!agentName || !shouldShowAssistantAgentBadge(agentKind)) return null;
   return (
     <div className="mb-2 inline-flex items-center gap-1 rounded-full border border-[var(--amber)]/15 bg-[var(--amber)]/8 px-2 py-0.5 text-[10px] font-medium tracking-wide text-[var(--amber)]">
       <Bot size={10} className="shrink-0" />
@@ -147,7 +158,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming }
       prose-strong:text-foreground prose-strong:font-semibold
       prose-table:text-xs prose-th:py-1.5 prose-td:py-1
     ">
-      <MarkdownMessage content={cleaned} />
+      <ReactMarkdown remarkPlugins={MARKDOWN_REMARK_PLUGINS}>{cleaned}</ReactMarkdown>
       {isStreaming && (
         <span className="inline-block w-1.5 h-3.5 bg-[var(--amber)] ml-0.5 align-middle animate-pulse rounded-full" />
       )}
@@ -161,6 +172,16 @@ function runtimeLabel(runtime: RuntimeStatusPart['runtime']): string {
   if (runtime === 'acp') return 'ACP';
   if (runtime === 'mindos') return 'MindOS';
   return 'Runtime';
+}
+
+function isRoutineRuntimeStatusPart(part: RuntimeStatusPart): boolean {
+  if (part.runtime !== 'codex' && part.runtime !== 'claude') return false;
+  const normalized = part.message.trim();
+  return /^Starting (Claude Code|Codex) locally\.$/.test(normalized)
+    || /^Resuming (Claude Code|Codex) locally\.$/.test(normalized)
+    || /^(Claude Code|Codex) is connected and working in this chat\.$/.test(normalized)
+    || normalized === 'Claude Code is compacting context.'
+    || normalized === 'Claude Code is contacting Claude.';
 }
 
 function RuntimeMark({
@@ -252,6 +273,7 @@ const AssistantMessageWithParts = memo(function AssistantMessageWithParts({ mess
           return <ToolCallBlock key={part.toolCallId} part={part} />;
         }
         if (part.type === 'runtime-status') {
+          if (isRoutineRuntimeStatusPart(part)) return null;
           return (
             <RuntimeStatusBlock
               key={`runtime-status-${idx}`}
@@ -340,7 +362,7 @@ const MessageRow = memo(function MessageRow({
 
   return (
     <div style={MESSAGE_ROW_STYLE} className={`flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-      {message.role === 'assistant' && (
+      {message.role === 'assistant' && shouldShowAssistantSideMark(message.agentKind) && (
         <div className="mt-0.5 shrink-0">
           <RuntimeMark runtime={message.agentKind ?? 'mindos'} label={message.agentName} />
         </div>
@@ -350,22 +372,24 @@ const MessageRow = memo(function MessageRow({
           className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-lg text-sm leading-relaxed whitespace-pre-wrap bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm shadow-[var(--amber)]/10"
         >
           <UserMessageContent content={message.content} skillName={message.skillName} images={message.images} attachedFiles={message.attachedFiles} uploadedFileNames={message.uploadedFileNames} />
-          <UserMessageActions
-            content={message.content}
-            isLastUserMessage={index === lastUserMessageIndex}
-            isLoading={isLoading}
-            onEdit={onEditMessage ? () => onEditMessage(index) : undefined}
-            onResend={onResendMessage ? () => onResendMessage(index) : undefined}
-            labels={{
-              copy: labels.copyMessage ?? 'Copy',
-              edit: labels.editMessage ?? 'Edit',
-              regenerate: labels.regenerateMessage ?? 'Regenerate',
-            }}
-          />
+          <div className="mt-2 flex justify-start">
+            <UserMessageActions
+              content={message.content}
+              isLastUserMessage={index === lastUserMessageIndex}
+              isLoading={isLoading}
+              onEdit={onEditMessage ? () => onEditMessage(index) : undefined}
+              onResend={onResendMessage ? () => onResendMessage(index) : undefined}
+              labels={{
+                copy: labels.copyMessage ?? 'Copy',
+                edit: labels.editMessage ?? 'Edit',
+                regenerate: labels.regenerateMessage ?? 'Regenerate',
+              }}
+            />
+          </div>
         </div>
       ) : message.content.startsWith('__error__') ? (
         <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-bl-md border border-error/30 bg-error/10 text-sm shadow-sm">
-          <AssistantAgentBadge agentName={message.agentName} />
+          <AssistantAgentBadge agentName={message.agentName} agentKind={message.agentKind} />
           <div className="flex items-start gap-2.5 text-error">
             <AlertCircle size={15} className="shrink-0 mt-0.5" />
             <span className="leading-relaxed font-medium">{message.content.slice(9)}</span>
@@ -373,7 +397,7 @@ const MessageRow = memo(function MessageRow({
         </div>
       ) : (
         <div className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-lg bg-card border border-border/30 shadow-sm text-foreground text-sm">
-          <AssistantAgentBadge agentName={message.agentName} />
+          <AssistantAgentBadge agentName={message.agentName} agentKind={message.agentKind} />
           {(message.parts && message.parts.length > 0) || cleanedAssistantContent ? (
             <>
               <AssistantMessageWithParts message={message} isStreaming={isStreamingLast} />
@@ -381,9 +405,11 @@ const MessageRow = memo(function MessageRow({
                 <StepCounter parts={message.parts} />
               )}
               {!isStreamingLast && cleanedAssistantContent && (
-                <div className="absolute -bottom-3 right-1 z-10 flex items-center gap-1 opacity-100 transition-opacity duration-75 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-                  <SaveMessageButton text={message.content} />
-                  <CopyMessageButton text={cleanedAssistantContent} label={labels.copyMessage} />
+                <div className="mt-2 flex justify-end">
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity duration-75 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                    <SaveMessageButton text={message.content} />
+                    <CopyMessageButton text={cleanedAssistantContent} label={labels.copyMessage} />
+                  </div>
                 </div>
               )}
             </>

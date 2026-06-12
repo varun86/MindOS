@@ -69,6 +69,13 @@ describe('InboxView product shape', () => {
 
     expect(host.textContent).toContain('New capture');
     expect(host.textContent).toContain('Paste, drop, save.');
+    const pageShell = host.querySelector('[data-content-page-shell="inbox"]');
+    expect(pageShell?.className).toContain('content-width');
+    expect(pageShell?.className).toContain('workbench-content-page');
+    expect(pageShell?.className).toContain('inbox-content-page');
+    const mainLayout = host.querySelector('[data-inbox-main-layout]');
+    expect(mainLayout?.className).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]');
+    expect(mainLayout?.className).not.toContain('max-w-[1120px]');
     expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('New capture');
     expect(host.querySelector('[data-inbox-back-to-capture]')).toBeNull();
     expect(host.querySelector('[data-inbox-page-upload]')).toBeNull();

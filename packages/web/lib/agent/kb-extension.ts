@@ -11,6 +11,7 @@
 import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { TSchema } from '@sinclair/typebox';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getToolsForMindosAgentPolicy, WRITE_TOOLS } from './tools';
 import { assertNotProtected } from '@/lib/core';
 import { logAgentOp } from './log';
@@ -24,6 +25,25 @@ import {
 export type KbMode = 'agent' | 'chat' | 'organize';
 
 let currentPolicy: MindosAgentPermissionPolicy = createMindosAgentPermissionPolicy('agent');
+
+// Request-scoped policy: concurrent /api/ask requests with different modes
+// must not race on the module-level policy (a chat request could otherwise
+// pick up agent write tools registered for another request's reload).
+// Symbol.for + globalThis keeps one storage across Next.js module instances.
+const KB_POLICY_STORAGE_KEY = Symbol.for('mindos.kbPermissionPolicyStorage');
+
+function getPolicyStorage(): AsyncLocalStorage<MindosAgentPermissionPolicy> {
+  const store = globalThis as typeof globalThis & {
+    [KB_POLICY_STORAGE_KEY]?: AsyncLocalStorage<MindosAgentPermissionPolicy>;
+  };
+  store[KB_POLICY_STORAGE_KEY] ??= new AsyncLocalStorage<MindosAgentPermissionPolicy>();
+  return store[KB_POLICY_STORAGE_KEY];
+}
+
+/** Run fn with a request-scoped policy; kbExtension reads it during reload(). */
+export function runWithKbPermissionPolicy<T>(policy: MindosAgentPermissionPolicy, fn: () => T): T {
+  return getPolicyStorage().run(policy, fn);
+}
 
 /** Set the mode before resourceLoader.reload(). Determines which tools get registered. */
 export function setKbMode(mode: KbMode): void {
@@ -54,7 +74,8 @@ function getProtectedPaths(toolName: string, args: Record<string, unknown>): str
 // ─── Extension Factory ────────────────────────────────────────────────────────
 
 export default function kbExtension(pi: ExtensionAPI) {
-  const tools = getToolsForMindosAgentPolicy(currentPolicy) as AgentTool<any>[];
+  const policy = getPolicyStorage().getStore() ?? currentPolicy;
+  const tools = getToolsForMindosAgentPolicy(policy) as AgentTool<any>[];
 
   for (const tool of tools) {
     pi.registerTool({

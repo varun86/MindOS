@@ -985,7 +985,11 @@ export async function POST(req: NextRequest) {
     } = await import('@/lib/agent/mindos-pi-runtime-host');
     const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, mode: askMode });
     const { createMindosPiCodingAgentRuntime } = await import('@geminilight/mindos/session/pi-coding-agent');
-    const runtime = await createMindosPiCodingAgentRuntime({
+    const { runWithKbPermissionPolicy } = await import('@/lib/agent/kb-extension');
+    // Scope the kb tool policy to this request: runtime creation reloads the
+    // kb extension, and concurrent requests with different modes must not
+    // race on the module-level policy.
+    const runtime = await runWithKbPermissionPolicy(permissionPolicy, () => createMindosPiCodingAgentRuntime({
       mode: askMode,
       messages: mindosUiMessages,
       systemPrompt,
@@ -1004,7 +1008,7 @@ export async function POST(req: NextRequest) {
       additionalSkillPaths: runtimePaths.additionalSkillPaths,
       additionalExtensionPaths: runtimePaths.additionalExtensionPaths,
       hostServices: createWebMindosPiRuntimeHostServices(serverSettings),
-    });
+    }));
     systemPrompt = runtime.systemPrompt;
     const {
       session,
