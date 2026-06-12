@@ -56,7 +56,7 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
    * Normal vs fullscreen is purely a CSS layout change, so chat state is preserved.
    */
   return (
-    <div className="flex flex-col h-[100dvh]">
+    <div className="flex flex-col h-[calc(100dvh-var(--app-titlebar-h))]">
 
       {/* ── Landing chrome: hidden when maximized ── */}
       {!maximized && (

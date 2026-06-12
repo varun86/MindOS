@@ -108,7 +108,7 @@ export default function ChatPageClient({ sessionId: rawSessionId }: { sessionId:
 
   if (status === 'missing') {
     return (
-      <div className="flex h-[100dvh] items-center justify-center px-6">
+      <div className="flex h-[calc(100dvh-var(--app-titlebar-h))] items-center justify-center px-6">
         <div className="max-w-sm text-center">
           <h1 className="font-display text-lg text-foreground mb-2">
             {t.workspaceTabs.sessionNotFoundTitle}
@@ -143,13 +143,13 @@ export default function ChatPageClient({ sessionId: rawSessionId }: { sessionId:
   if (status === 'resolving') {
     // Usually invisible: in-app navigation resolves synchronously above. Only
     // direct URL loads (awaiting refreshSessions) and /chat/new pass through.
-    return <div className="h-[100dvh]" aria-busy="true" />;
+    return <div className="h-[calc(100dvh-var(--app-titlebar-h))]" aria-busy="true" />;
   }
 
   /* Mirrors HomeContent's maximized composition so the full-page chat
    * looks/behaves like the home-page chat in fullscreen. */
   return (
-    <div className="flex flex-col h-[100dvh]">
+    <div className="flex flex-col h-[calc(100dvh-var(--app-titlebar-h))]">
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <AskContent
           visible
