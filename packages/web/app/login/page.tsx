@@ -78,7 +78,7 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-background flex items-center justify-center px-4 py-10">
+    <main className="min-h-[calc(100dvh-var(--app-titlebar-h))] bg-background flex items-center justify-center px-4 py-10">
       <section className="w-full max-w-[26rem]" aria-labelledby="login-title">
         <div className="mb-5 flex items-center justify-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
@@ -200,7 +200,7 @@ function LoginForm() {
 
 function LoginFallback() {
   return (
-    <div className="min-h-[100dvh] bg-background flex items-center justify-center px-4">
+    <div className="min-h-[calc(100dvh-var(--app-titlebar-h))] bg-background flex items-center justify-center px-4">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
         <Loader2 className="h-8 w-8 animate-spin text-[var(--amber)]" aria-hidden />
         <p className="text-sm">Loading…</p>

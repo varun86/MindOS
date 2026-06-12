@@ -245,7 +245,7 @@ export default function ChangesContentPage({ initialPath = '' }: { initialPath?:
   }, [t]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[calc(100vh-var(--app-titlebar-h))] bg-background">
       {/* Header with icon in box */}
       <div className="px-4 md:px-6 pt-6 md:pt-8">
         <div className="content-width xl:mr-[220px] rounded-xl border border-border/60 bg-card p-6 md:p-8 shadow-sm">

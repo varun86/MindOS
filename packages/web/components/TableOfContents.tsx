@@ -35,8 +35,18 @@ function parseHeadings(content: string): Heading[] {
 }
 
 const TOPBAR_H = 46;
-const SCROLL_OFFSET = TOPBAR_H + 12;
 const NAV_W = 212;
+
+// Desktop has a fixed titlebar row above the view header (wiki/41 rule 10).
+// Read var(--app-titlebar-h) at runtime so JS scroll math stays in sync with CSS.
+function titlebarOffset(): number {
+  if (typeof document === 'undefined') return 0;
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--app-titlebar-h'), 10) || 0;
+}
+
+function scrollOffset(): number {
+  return titlebarOffset() + TOPBAR_H + 12;
+}
 
 /**
  * Find the content heading elements in the DOM by index.
@@ -151,7 +161,7 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
             }
           }
         },
-        { rootMargin: `-${SCROLL_OFFSET}px 0% -70% 0%`, threshold: 0 }
+        { rootMargin: `-${scrollOffset()}px 0% -70% 0%`, threshold: 0 }
       );
       validEls.forEach(el => observerRef.current?.observe(el));
     }, 300);
@@ -168,7 +178,7 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
     headingElsRef.current = els;
     const el = els[idx];
     if (!el) return;
-    const top = el.getBoundingClientRect().top + window.scrollY - SCROLL_OFFSET;
+    const top = el.getBoundingClientRect().top + window.scrollY - scrollOffset();
     window.scrollTo({ top, behavior: 'smooth' });
     setActiveIdx(idx);
   };
@@ -178,7 +188,7 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
       {/* Collapse / expand toggle — separate from aside so it stays visible */}
       <button
         onClick={() => setCollapsed(v => !v)}
-        className="hidden xl:flex fixed z-10 top-[46px] flex items-center justify-center w-5 h-8 rounded-l-md border border-r-0 border-border hover:bg-muted transition-colors"
+        className="hidden xl:flex fixed z-10 top-[calc(var(--app-titlebar-h)+46px)] flex items-center justify-center w-5 h-8 rounded-l-md border border-r-0 border-border hover:bg-muted transition-colors"
         style={{
           right: `calc(var(--right-panel-width, 0px) + ${collapsed ? 0 : NAV_W}px)`,
           background: 'var(--background)',
@@ -197,8 +207,8 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
       <aside
         className="hidden xl:flex flex-col fixed z-10 overflow-hidden"
         style={{
-          top: TOPBAR_H,
-          height: `calc(100vh - ${TOPBAR_H}px)`,
+          top: `calc(var(--app-titlebar-h) + ${TOPBAR_H}px)`,
+          height: `calc(100vh - var(--app-titlebar-h) - ${TOPBAR_H}px)`,
           width: NAV_W,
           right: 'var(--right-panel-width, 0px)',
           transform: collapsed ? `translateX(${NAV_W}px)` : 'translateX(0)',

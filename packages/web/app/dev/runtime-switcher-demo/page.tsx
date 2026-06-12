@@ -62,7 +62,7 @@ export default function RuntimeSwitcherDemoPage() {
   }, []);
 
   return (
-    <main className="min-h-screen max-w-[100vw] overflow-x-hidden bg-background text-foreground">
+    <main className="min-h-[calc(100vh-var(--app-titlebar-h))] max-w-[100vw] overflow-x-hidden bg-background text-foreground">
       <div className="mx-0 flex w-full max-w-[100vw] min-w-0 flex-col gap-6 px-6 py-8 sm:mx-auto sm:max-w-3xl">
         <header className="min-w-0 space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -85,7 +85,7 @@ const subagentExamples: ToolCallPart[] = [
 
 export default function SubagentDemoPage() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-[calc(100vh-var(--app-titlebar-h))] bg-background text-foreground">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8">
         <header className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

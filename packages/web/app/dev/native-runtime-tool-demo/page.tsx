@@ -72,7 +72,7 @@ const parts: ToolCallPart[] = [
 
 export default function NativeRuntimeToolDemoPage() {
   return (
-    <main className="box-border min-h-screen max-w-[100vw] overflow-x-hidden bg-background py-8 text-foreground">
+    <main className="box-border min-h-[calc(100vh-var(--app-titlebar-h))] max-w-[100vw] overflow-x-hidden bg-background py-8 text-foreground">
       <div className="mx-6 box-border flex w-[calc(100vw_-_48px)] min-w-0 max-w-[calc(100vw_-_48px)] flex-col gap-6 sm:mx-auto sm:w-full sm:max-w-4xl">
         <header className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">

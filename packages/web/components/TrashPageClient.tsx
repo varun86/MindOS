@@ -91,7 +91,7 @@ export default function TrashPageClient({ initialItems }: { initialItems: TrashM
   }, [t]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-[calc(100vh-var(--app-titlebar-h))]">
       <div className="px-4 md:px-6 pt-6 md:pt-8">
         <div className="content-width xl:mr-[220px] rounded-xl border border-border bg-card px-4 py-3 md:px-5 md:py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">

@@ -12,8 +12,8 @@ export default function LegacyInboxHistoryPage() {
   }, [router]);
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
+    <main className="min-h-[calc(100vh-var(--app-titlebar-h))] bg-background text-foreground">
+      <div className="mx-auto flex min-h-[calc(100vh-var(--app-titlebar-h))] max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-sm text-muted-foreground">Opening capture history...</p>
         <Link href="/capture/history" className="text-sm text-[var(--amber)] hover:underline">
           Go to capture history

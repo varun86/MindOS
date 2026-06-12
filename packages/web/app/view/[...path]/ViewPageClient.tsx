@@ -433,9 +433,9 @@ export default function ViewPageClient({
   }, [editing, router]);
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
       {/* Top bar */}
-      <div className="sticky top-[52px] md:top-0 z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center" style={{ background: 'var(--background)' }}>
+      <div className="sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center" style={{ background: 'var(--background)' }}>
         <div className="w-full min-w-0 flex items-center justify-between gap-3 h-full">
           <div className="min-w-0 flex-1 flex items-center gap-1.5">
             <button
