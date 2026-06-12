@@ -95,10 +95,13 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // Variables default to 0 (browser/win/linux/old shell = zero diff)
     expect(css).toContain('--app-titlebar-h: 0px');
     expect(css).toContain('--window-controls-left: 0px');
-    expect(css).toContain('--rail-titlebar-offset: 0px');
+    // Rail offset exists only for the mac traffic lights: 0 by default so the
+    // rail logo sits in the first row on browser/win/linux desktops
+    expect(css).toMatch(/:root\s*\{[^}]*--rail-titlebar-offset:\s*0px/);
     // Mac shell geometry
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--app-titlebar-h:\s*46px/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--window-controls-left:\s*70px/);
+    expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--rail-titlebar-offset:\s*var\(--app-titlebar-h\)/);
     // Fullscreen hides traffic lights: clearance collapses to 0
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\[data-mac-fullscreen\]\s*\{[^}]*--window-controls-left:\s*0px/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\[data-mac-fullscreen\]\s*\{[^}]*--rail-titlebar-offset:\s*0px/);
