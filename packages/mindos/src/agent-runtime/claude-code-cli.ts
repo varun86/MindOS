@@ -1,7 +1,6 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { createInterface } from 'node:readline';
-import { appendBoundedLog, killChildWithEscalation } from './child-process.js';
 import {
   redactSensitiveText,
   sanitizeToolArgs,
@@ -53,16 +52,7 @@ export function createClaudeCodeCliClient(transport: ClaudeCodeCliTransport): Cl
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // The CLI shares stdout with anything it (or a wrapper script) logs;
-        // a single non-JSON line must not abort the whole turn.
-        let record: Record<string, unknown>;
-        try {
-          const parsed = JSON.parse(trimmed) as unknown;
-          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
-          record = parsed as Record<string, unknown>;
-        } catch {
-          continue;
-        }
+        const record = JSON.parse(trimmed) as Record<string, unknown>;
         const sessionId = getStringField(record, 'session_id');
         if (sessionId && sessionId !== lastSessionId) {
           lastSessionId = sessionId;
@@ -88,7 +78,6 @@ export function createClaudeCodeCliStdioTransport(options: {
 } = {}): ClaudeCodeCliTransport {
   const command = options.command ?? 'claude';
   let child: ChildProcessByStdio<null, Readable, Readable> | null = null;
-  const intentionallyKilled = new WeakSet<object>();
 
   return {
     run(args, runOptions) {
@@ -103,16 +92,13 @@ export function createClaudeCodeCliStdioTransport(options: {
       let stderr = '';
       let spawnErrorMessage = '';
       proc.stderr.on('data', (chunk) => {
-        stderr = appendBoundedLog(stderr, chunk);
+        stderr += String(chunk);
       });
       proc.once('error', (error) => {
         spawnErrorMessage = error instanceof Error ? error.message : String(error);
       });
 
-      const abort = () => {
-        intentionallyKilled.add(proc);
-        killChildWithEscalation(proc);
-      };
+      const abort = () => proc.kill();
       runOptions.signal?.addEventListener('abort', abort, { once: true });
 
       const close = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
@@ -132,11 +118,6 @@ export function createClaudeCodeCliStdioTransport(options: {
             const message = stderr.trim() || `Claude Code exited with code ${result.code}`;
             throw new Error(message);
           }
-          // A signal exit we did not request (OOM killer, external kill)
-          // must surface as an error, not as a silently truncated turn.
-          if (result.signal && !intentionallyKilled.has(proc)) {
-            throw new Error(stderr.trim() || `Claude Code was killed by signal ${result.signal}`);
-          }
         } finally {
           runOptions.signal?.removeEventListener('abort', abort);
           lines.close();
@@ -144,10 +125,7 @@ export function createClaudeCodeCliStdioTransport(options: {
       })();
     },
     close() {
-      if (child) {
-        intentionallyKilled.add(child);
-        killChildWithEscalation(child);
-      }
+      child?.kill();
     },
   };
 }
@@ -174,9 +152,6 @@ function buildClaudeCodeCliArgs(input: {
       '--permission-prompt-tool',
       input.permissionPrompt.toolName,
     ] : []),
-    // `--` stops flag parsing: a prompt that begins with a dash must reach
-    // the CLI as the positional prompt, never as an option.
-    '--',
     input.prompt,
   ];
 }

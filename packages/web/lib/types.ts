@@ -163,7 +163,7 @@ export interface AgentRunTimelineRecord {
   displayName: string;
   status: AgentRunStatus;
   cwd?: string;
-  permissionMode: 'readonly' | 'organize' | 'agent';
+  permissionMode: 'chat' | 'agent';
   inputSummary: string;
   outputSummary?: string;
   error?: string;
@@ -415,11 +415,11 @@ export interface LocalAttachment {
   };
 }
 
-/** User-facing Ask modes. 'organize' is internal-only (not selectable by users). */
+/** User-facing Ask modes. */
 export type AskMode = 'chat' | 'agent';
 
-/** All Ask modes including internal ones sent to the API */
-export type AskModeApi = AskMode | 'organize';
+/** API Ask mode intentionally mirrors the user-facing modes. */
+export type AskModeApi = AskMode;
 
 export interface ChatSession {
   id: string;

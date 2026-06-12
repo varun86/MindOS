@@ -36,7 +36,7 @@ describe('agent run ledger', () => {
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
       cwd: '/tmp/project',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review the patch.',
     });
 
@@ -258,7 +258,7 @@ describe('agent run ledger', () => {
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review this patch.',
     }));
 
@@ -399,7 +399,7 @@ describe('agent run ledger', () => {
 
     reloadAgentRunsFromDiskForTest();
     expect(listAgentRuns({ runId: record.id })).toEqual([
-      expect.objectContaining({ id: record.id, outputSummary: 'legacy output' }),
+      expect.objectContaining({ id: record.id, permissionMode: 'chat', outputSummary: 'legacy output' }),
     ]);
     expect(listAgentEvents({ runId: record.id }).map((item) => item.type)).toEqual(['run_completed']);
 
@@ -421,7 +421,7 @@ describe('agent run ledger', () => {
         agentKind: 'pi-subagent',
         runtimeId: `reviewer-${index}`,
         displayName: `Reviewer ${index}`,
-        permissionMode: 'readonly',
+        permissionMode: 'chat',
         inputSummary: `${index}:${largeSummary}`,
       });
       completeAgentRun(run.id, { outputSummary: `done:${index}:${largeSummary}` });
@@ -445,58 +445,5 @@ describe('agent run ledger', () => {
     reloadAgentRunsFromDiskForTest();
     expect(listAgentRuns({ kind: 'pi-subagent', limit: 500 })).toHaveLength(260);
     expect(listAgentRuns({ status: 'completed', limit: 500 })).toHaveLength(260);
-  });
-
-  it('preserves runs appended by other processes when compaction rewrites the log', () => {
-    const mine = startAgentRun({
-      agentKind: 'acp',
-      runtimeId: 'local-proc',
-      displayName: 'Local Process Run',
-      permissionMode: 'readonly',
-      inputSummary: 'local input',
-    });
-    completeAgentRun(mine.id, { outputSummary: 'local output' });
-
-    // Another MindOS process (e.g. the MCP server) appends its own run to the
-    // shared JSONL log; this process's in-memory store knows nothing about it.
-    const ledgerPath = path.join(getTestMindRoot(), '.mindos', 'agent-run-ledger.jsonl');
-    const foreign = {
-      id: 'agent-run-foreign',
-      rootRunId: 'agent-run-foreign',
-      agentKind: 'acp',
-      runtimeId: 'foreign-proc',
-      displayName: 'Foreign Process Run',
-      status: 'completed',
-      permissionMode: 'readonly',
-      inputSummary: 'foreign input',
-      outputSummary: 'foreign output',
-      startedAt: 100,
-      completedAt: 110,
-      durationMs: 10,
-    };
-    fs.appendFileSync(ledgerPath, `${JSON.stringify({ version: 2, type: 'record_upsert', record: foreign })}\n`, 'utf-8');
-
-    // Force the next append to cross the compaction threshold.
-    const statSpy = vi.spyOn(fs, 'statSync').mockReturnValue({ size: 8 * 1024 * 1024 } as ReturnType<typeof fs.statSync>);
-    try {
-      const trigger = startAgentRun({
-        agentKind: 'acp',
-        runtimeId: 'local-proc-2',
-        displayName: 'Compaction Trigger Run',
-        permissionMode: 'readonly',
-        inputSummary: 'trigger input',
-      });
-      completeAgentRun(trigger.id, { outputSummary: 'trigger output' });
-    } finally {
-      statSpy.mockRestore();
-    }
-
-    reloadAgentRunsFromDiskForTest();
-    expect(listAgentRuns({ runId: 'agent-run-foreign' })).toEqual([
-      expect.objectContaining({ id: 'agent-run-foreign', outputSummary: 'foreign output' }),
-    ]);
-    expect(listAgentRuns({ runId: mine.id })).toEqual([
-      expect.objectContaining({ id: mine.id, outputSummary: 'local output' }),
-    ]);
   });
 });

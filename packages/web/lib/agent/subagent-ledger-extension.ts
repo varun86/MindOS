@@ -205,57 +205,17 @@ export function finalizeSubagentAsyncRunFromEvent(payload: unknown): boolean {
   if (!asyncId) return false;
   const run = listAgentRuns({ kind: 'pi-subagent', limit: 500 })
     .find((candidate) => candidate.status === 'streaming' && candidate.metadata?.asyncId === asyncId);
-  if (!run) {
-    // A fast async run can complete before the tool wrapper has stored the
-    // asyncId on the ledger record. Buffer the payload so the wrapper can
-    // finalize the run as soon as it registers it.
-    bufferEarlyAsyncCompletion(asyncId, payload);
-    return false;
-  }
+  if (!run) return false;
 
-  applyAsyncCompletion(run.id, asyncId, payload);
-  return true;
-}
-
-function applyAsyncCompletion(runId: string, asyncId: string, payload: unknown): void {
   const status = statusFromAsyncCompletePayload(payload);
   const output = textFromAsyncCompletePayload(payload);
   const metadata = { asyncId, asyncComplete: true };
   if (status === 'completed') {
-    completeAgentRun(runId, { outputSummary: output, metadata });
+    completeAgentRun(run.id, { outputSummary: output, metadata });
   } else {
-    failAgentRun(runId, { status, error: output || `Subagent async run ${status}.`, metadata });
+    failAgentRun(run.id, { status, error: output || `Subagent async run ${status}.`, metadata });
   }
-}
-
-const EARLY_ASYNC_COMPLETIONS_KEY = Symbol.for('mindos.subagentEarlyAsyncCompletions');
-const MAX_BUFFERED_ASYNC_COMPLETIONS = 100;
-
-function getEarlyAsyncCompletions(): Map<string, unknown> {
-  const store = globalThis as typeof globalThis & {
-    [EARLY_ASYNC_COMPLETIONS_KEY]?: Map<string, unknown>;
-  };
-  store[EARLY_ASYNC_COMPLETIONS_KEY] ??= new Map();
-  return store[EARLY_ASYNC_COMPLETIONS_KEY];
-}
-
-function bufferEarlyAsyncCompletion(asyncId: string, payload: unknown): void {
-  const buffered = getEarlyAsyncCompletions();
-  buffered.delete(asyncId);
-  buffered.set(asyncId, payload);
-  while (buffered.size > MAX_BUFFERED_ASYNC_COMPLETIONS) {
-    const oldest = buffered.keys().next().value;
-    if (oldest === undefined) break;
-    buffered.delete(oldest);
-  }
-}
-
-function takeEarlyAsyncCompletion(asyncId: string): { payload: unknown } | null {
-  const buffered = getEarlyAsyncCompletions();
-  if (!buffered.has(asyncId)) return null;
-  const payload = buffered.get(asyncId);
-  buffered.delete(asyncId);
-  return { payload };
+  return true;
 }
 
 function subagentDisplayName(params: unknown): string {
@@ -481,21 +441,14 @@ export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWit
           parentRunId: run.id,
         }, () => tool.execute(toolCallId, params, upstreamAbort.signal, onUpdateWithLedger(run.id, onUpdate), ctx));
         if (hasAsyncStartDetails(result) && !resultIsError(result)) {
-          const metadata = resultMetadata(result);
           updateAgentRun(run.id, {
             status: 'streaming',
             outputSummary: outputSummary(result),
             metadata: {
-              ...metadata,
+              ...resultMetadata(result),
               detached: true,
             },
           });
-          // The completion event may have already arrived and been buffered.
-          const asyncId = typeof metadata.asyncId === 'string' ? metadata.asyncId : undefined;
-          const early = asyncId ? takeEarlyAsyncCompletion(asyncId) : null;
-          if (asyncId && early) {
-            applyAsyncCompletion(run.id, asyncId, early.payload);
-          }
           return result;
         }
         if (resultIsError(result)) {

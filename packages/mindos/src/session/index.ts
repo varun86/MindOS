@@ -386,7 +386,7 @@ export function parseMindosSseLine(line: string): MindOSSSEvent | null {
   }
 }
 
-export type MindosAskMode = 'chat' | 'agent' | 'organize';
+export type MindosAskMode = 'chat' | 'agent';
 
 export type MindosAskFileValidationResult = {
   valid: boolean;
@@ -407,7 +407,6 @@ export type MindosAskFileContext = {
 };
 
 export function normalizeMindosAskMode(mode: unknown): MindosAskMode {
-  if (mode === 'organize') return 'organize';
   if (mode === 'chat') return 'chat';
   return 'agent';
 }
@@ -516,7 +515,7 @@ export function createMindosUploadedFileParts(
 
 export type MindosExternalRuntimePromptInput = {
   prompt: string;
-  mode?: 'chat' | 'agent' | 'organize';
+  mode?: MindosAskMode;
   fileContext?: MindosAskFileContext;
   uploadedParts?: string[];
   recalledKnowledge?: Array<{ path: string; content: string }>;
@@ -588,9 +587,6 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 function getExternalRuntimeModeGuidance(mode: MindosExternalRuntimePromptInput['mode']): string | null {
   if (mode === 'chat') {
     return 'MindOS composer mode: chat. Treat this as read-oriented unless the user explicitly asks you to modify files.';
-  }
-  if (mode === 'organize') {
-    return 'MindOS composer mode: organize. Prioritize classification, cleanup, and knowledge organization tasks.';
   }
   if (mode === 'agent') {
     return 'MindOS composer mode: agent. The user expects you to complete the requested task using your local runtime capabilities.';
@@ -1103,14 +1099,10 @@ export type MindosPiRuntimeCreateAgentSessionConfig = {
   resourceLoader: MindosPiResourceLoaderAdapter;
   sessionManager: unknown;
   settingsManager: unknown;
-  /**
-   * pi-coding-agent ≥0.62 made `tools` a string-name ALLOWLIST that hard-filters
-   * every tool source (builtin + extension + custom). MindOS must never set it:
-   * extension-registered KB tools would be filtered out. Builtins stay off via
-   * `noTools: 'builtin'` and capabilities come from extensions + customTools.
-   */
-  noTools: 'builtin';
-  customTools: unknown[];
+  tools?: string[];
+  noTools?: 'all' | 'builtin';
+  excludeTools?: string[];
+  customTools?: unknown[];
 };
 
 export type MindosPiSessionManagerAdapter = {
@@ -1162,7 +1154,8 @@ export type MindosPiAgentRuntimeOptions = {
   additionalSkillPaths?: string[];
   additionalExtensionPaths?: string[];
   requestTools: MindosExecutableTool[];
-  bashTool: unknown;
+  /** @deprecated pi-coding-agent enables Bash through its built-in `bash` tool name. */
+  bashTool?: unknown;
   services: MindosPiAgentRuntimeServices;
 };
 
@@ -1291,15 +1284,10 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     resourceLoader,
     sessionManager,
     settingsManager,
-    // Builtin read/edit/write/bash stay off: KB file access must flow through
-    // the extension-registered KB tools (write-protection + audit log). The
-    // project-root bash tool is the only SDK customTool, and only in agent
-    // mode. options.requestTools is intentionally NOT passed here — SDK
-    // customTools override extension-registered tools by name, which would
-    // strip the kb-extension wrappers; requestTools is still used by the
-    // non-streaming proxy fallback and exposed on the returned runtime.
-    noTools: 'builtin',
-    customTools: options.mode === 'agent' ? [options.bashTool] : [],
+    ...(options.mode === 'agent'
+      ? { excludeTools: ['read', 'edit', 'write'] }
+      : { noTools: 'builtin' as const }),
+    customTools: options.requestTools,
   });
 
   return {

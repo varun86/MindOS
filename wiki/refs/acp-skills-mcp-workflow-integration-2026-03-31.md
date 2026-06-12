@@ -262,14 +262,12 @@ const baseTools = [
 
 **File**: `/app/app/api/ask/route.ts` (639 lines)
 
-**Line 452**:
+**Current shape**:
 ```typescript
-const requestTools = isOrganizeMode 
-  ? getOrganizeTools() 
-  : await getRequestScopedTools();
+const requestTools = getMindosWebRequestTools(askMode);
 ```
 
-**Line 453**:
+Then the tools are converted for the Pi runtime:
 ```typescript
 const customTools = toPiCustomToolDefinitions(requestTools);
 ```
@@ -606,4 +604,3 @@ const res = await fetch('/api/ask', {
   }),
 });
 ```
-

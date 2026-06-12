@@ -13,7 +13,6 @@ import {
 import { knowledgeBaseTools } from './tools';
 import {
   MINDOS_CHAT_KB_TOOL_NAMES,
-  MINDOS_ORGANIZE_KB_TOOL_NAMES,
   MINDOS_WRITE_TOOL_NAMES,
 } from './permission-policy';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath } from '@/lib/acp/detect-local';
@@ -38,7 +37,6 @@ type PiSubagentModule = {
 };
 
 const CHAT_KB_TOOL_NAMES = new Set<string>(MINDOS_CHAT_KB_TOOL_NAMES);
-const ORGANIZE_KB_TOOL_NAMES = new Set<string>(MINDOS_ORGANIZE_KB_TOOL_NAMES);
 const WRITE_KB_TOOL_NAMES = new Set<string>(MINDOS_WRITE_TOOL_NAMES);
 
 export function createAgentCapabilitiesServices(): AgentCapabilitiesServices {
@@ -223,8 +221,8 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
       : runtime.status === 'missing'
         ? 'missing'
         : 'error',
-    permissionRequired: runtime.kind === 'mindos' ? 'readonly' : 'agent',
-    availableInModes: runtime.kind === 'mindos' ? ['chat', 'organize', 'agent'] : ['agent'],
+    permissionRequired: runtime.kind === 'mindos' ? 'chat' : 'agent',
+    availableInModes: runtime.kind === 'mindos' ? ['chat', 'agent'] : ['agent'],
     inputKinds: ['text', 'files', 'context'],
     outputKinds: ['text', 'tool-events'],
     supportsStreaming: true,
@@ -250,15 +248,13 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
   };
 }
 
-function permissionForKbTool(toolName: string): 'readonly' | 'organize' | 'agent' {
-  if (CHAT_KB_TOOL_NAMES.has(toolName)) return 'readonly';
-  if (ORGANIZE_KB_TOOL_NAMES.has(toolName)) return 'organize';
+function permissionForKbTool(toolName: string): 'chat' | 'agent' {
+  if (CHAT_KB_TOOL_NAMES.has(toolName)) return 'chat';
   return 'agent';
 }
 
-function modesForPermission(permission: 'readonly' | 'organize' | 'agent'): Array<'chat' | 'organize' | 'agent'> {
-  if (permission === 'readonly') return ['chat', 'organize', 'agent'];
-  if (permission === 'organize') return ['organize', 'agent'];
+function modesForPermission(permission: 'chat' | 'agent'): Array<'chat' | 'agent'> {
+  if (permission === 'chat') return ['chat', 'agent'];
   return ['agent'];
 }
 

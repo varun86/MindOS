@@ -235,6 +235,7 @@ describe('/api/ask native runtime routing', () => {
         metadata: expect.objectContaining({
           runtimeKind: 'codex',
           externalSessionId: 'thr_123',
+          harnessPermissionMode: 'agent',
         }),
       }),
     ]);
@@ -339,23 +340,23 @@ describe('/api/ask native runtime routing', () => {
     });
   });
 
-  it('maps organize mode native runtime requests to readonly permission mode', async () => {
+  it('maps agent mode native runtime requests to agent harness permission', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
     const { POST } = await import('../../app/api/ask/route');
     const res = await POST(askRequest({
-      messages: [{ role: 'user', content: 'Organize without granting full harness writes' }],
+      messages: [{ role: 'user', content: 'Use the local runtime for this agent task' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'organize',
+      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
     await res.text();
 
     expect(capturedNativeOptions?.runtime.kind).toBe('codex');
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('agent');
   });
 
   it('does not resume a native runtime when the matching session binding is non-active', async () => {
@@ -769,7 +770,7 @@ describe('/api/ask native runtime routing', () => {
     ]);
   });
 
-  it('maps selected ACP runtime in organize mode to readonly session permission', async () => {
+  it('maps selected ACP runtime with agent mode to agent harness permission', async () => {
     mockRunMindosAcpAskSession.mockImplementationOnce(async (options: Record<string, any>) => {
       capturedAcpOptions = options;
       await options.createSession(options.agentId, { cwd: '/tmp/mindos-test' });
@@ -780,9 +781,9 @@ describe('/api/ask native runtime routing', () => {
 
     const { POST } = await import('../../app/api/ask/route');
     const res = await POST(askRequest({
-      messages: [{ role: 'user', content: 'Organize through ACP safely' }],
+      messages: [{ role: 'user', content: 'Run through ACP in agent mode' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
-      mode: 'organize',
+      mode: 'agent',
       chatSessionId: 'chat-acp-1',
     }));
     const text = await res.text();
@@ -792,7 +793,7 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedAcpOptions?.agentId).toBe('gemini');
     expect(mockCreateAcpSession).toHaveBeenCalledWith('gemini', expect.objectContaining({
       cwd: '/tmp/mindos-test',
-      permissionMode: 'readonly',
+      permissionMode: 'agent',
     }));
     const acpRuns = listAgentRuns({ kind: 'acp' });
     expect(acpRuns).toEqual([
@@ -802,7 +803,10 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Gemini ACP',
         status: 'completed',
         chatSessionId: 'chat-acp-1',
-        permissionMode: 'readonly',
+        permissionMode: 'agent',
+        metadata: expect.objectContaining({
+          harnessPermissionMode: 'agent',
+        }),
         outputSummary: 'acp organize ok',
       }),
     ]);
@@ -837,7 +841,7 @@ describe('/api/ask native runtime routing', () => {
         runtimeId: 'gemini',
         displayName: 'Gemini ACP',
         status: 'failed',
-        permissionMode: 'readonly',
+        permissionMode: 'chat',
         outputSummary: 'partial acp output',
         error: 'acp crashed',
       }),

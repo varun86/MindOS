@@ -27,7 +27,7 @@ import ExportModal from '@/components/ExportModal';
 import { useEditorTheme } from '@/lib/stores/editor-theme-store';
 import { twemojiToNative } from '@/lib/twemoji';
 import { splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
-import { isPathAffected, subscribeFilesChanged } from '@/lib/files-changed';
+import { keepTab, openTab } from '@/lib/workspace-tabs';
 
 interface ViewPageClientProps {
   filePath: string;
@@ -84,6 +84,12 @@ export default function ViewPageClient({
   });
   const [editContent, setEditContent] = useState(content);
   const [savedContent, setSavedContent] = useState(content);
+  const keepCurrentTab = useCallback(() => {
+    keepTab(`doc:${filePath}`);
+  }, [filePath]);
+  const keepDocTab = useCallback((targetPath: string) => {
+    openTab('doc', targetPath, targetPath.split('/').pop() || targetPath);
+  }, []);
 
   // Sync savedContent when server re-renders with new content (e.g. after router.refresh)
   const serverContentRef = useRef(content);
@@ -122,6 +128,7 @@ export default function ViewPageClient({
         if (!mountedRef.current) return;
         setAutoSaveStatus('saving');
         const cleanContent = twemojiToNative(editContent);
+        keepCurrentTab();
         await saveAction(cleanContent);
         if (!mountedRef.current) return;
         setSavedContent(cleanContent);
@@ -138,7 +145,7 @@ export default function ViewPageClient({
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [editContent, savedContent, editing, isMarkdown, isDraft, saveAction]);
+  }, [editContent, savedContent, editing, isMarkdown, isDraft, saveAction, keepCurrentTab]);
   const [mdViewMode, setMdViewModeState] = useState<MdViewMode>(() => {
     if (typeof window === 'undefined') return 'wysiwyg';
     if (initialContentHasFrontmatter) return 'preview';
@@ -263,6 +270,7 @@ export default function ViewPageClient({
   }, [renderer]);
 
   const handleEdit = useCallback(() => {
+    keepCurrentTab();
     setEditContent(savedContent);
     if (isMarkdown && splitMarkdownFrontmatter(savedContent).frontmatter !== null) {
       setMdViewMode('source');
@@ -270,7 +278,7 @@ export default function ViewPageClient({
     setEditing(true);
     setSaveError(null);
     setSaveSuccess(false);
-  }, [isMarkdown, savedContent, setMdViewMode]);
+  }, [isMarkdown, savedContent, setMdViewMode, keepCurrentTab]);
 
   const handleCancel = useCallback(() => {
     if (isDraft) {
@@ -304,6 +312,7 @@ export default function ViewPageClient({
     startTransition(async () => {
       try {
         await createDraftAction(targetPath, editContent);
+        keepDocTab(targetPath);
         setSavedContent(editContent);
         setEditing(false);
         setShowSaveAs(false);
@@ -315,7 +324,7 @@ export default function ViewPageClient({
         setSaveError(err instanceof Error ? err.message : 'Failed to save');
       }
     });
-  }, [saveName, createDraftAction, saveDir, editContent, router]);
+  }, [saveName, createDraftAction, saveDir, editContent, router, keepDocTab]);
 
   const handleSave = useCallback(() => {
     if (isCsv) {
@@ -334,6 +343,7 @@ export default function ViewPageClient({
     startTransition(async () => {
       try {
         const cleanContent = twemojiToNative(editContent);
+        keepCurrentTab();
         await saveAction(cleanContent);
         setSavedContent(cleanContent);
         // Markdown auto-save: Ctrl+S saves but stays in edit mode
@@ -346,13 +356,14 @@ export default function ViewPageClient({
         setSaveError(err instanceof Error ? err.message : 'Failed to save');
       }
     });
-  }, [isCsv, isDraft, isMarkdown, saveAction, editContent]);
+  }, [isCsv, isDraft, isMarkdown, saveAction, editContent, keepCurrentTab]);
 
   // Renderer's inline save — updates local savedContent without entering edit mode
   const handleRendererSave = useCallback(async (newContent: string) => {
+    keepCurrentTab();
     await saveAction(newContent);
     setSavedContent(newContent);
-  }, [saveAction]);
+  }, [saveAction, keepCurrentTab]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -413,18 +424,25 @@ export default function ViewPageClient({
   }, [content, editing]);
 
   useEffect(() => {
-    // Coalesced (300ms) files-changed subscription: AI may write multiple
-    // files in sequence. Skips the router.refresh() entirely when the event
-    // declares paths and none of them are the file being viewed.
-    return subscribeFilesChanged(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handler = () => {
       if (editing) return;
-      aiTriggeredRef.current = true;
-      router.refresh();
-      setFileUpdated(true);
-      if (updatedTimerRef.current) clearTimeout(updatedTimerRef.current);
-      updatedTimerRef.current = setTimeout(() => setFileUpdated(false), 3000);
-    }, { isRelevant: (paths) => isPathAffected(paths, filePath) });
-  }, [editing, router, filePath]);
+      // Debounce rapid file changes (AI may write multiple files in sequence)
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        aiTriggeredRef.current = true;
+        router.refresh();
+        setFileUpdated(true);
+        if (updatedTimerRef.current) clearTimeout(updatedTimerRef.current);
+        updatedTimerRef.current = setTimeout(() => setFileUpdated(false), 3000);
+      }, 300);
+    };
+    window.addEventListener('mindos:files-changed', handler);
+    return () => {
+      window.removeEventListener('mindos:files-changed', handler);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, [editing, router]);
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">

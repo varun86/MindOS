@@ -82,14 +82,14 @@ describe('call_acp_agent run ledger integration', () => {
     ]);
   });
 
-  it.each(['chat', 'organize'] as const)('uses readonly ACP sessions when tool context carries %s policy', async (askMode) => {
+  it('uses readonly ACP sessions when tool context carries chat permission', async () => {
     mockFindAcpAgent.mockResolvedValue({
       id: 'gemini',
       name: 'Gemini CLI',
       description: 'Gemini local agent',
       transport: 'stdio',
     });
-    mockCreateSessionFromEntry.mockResolvedValue({ id: `session-${askMode}` });
+    mockCreateSessionFromEntry.mockResolvedValue({ id: 'session-chat' });
     mockPrompt.mockResolvedValue({ text: 'Read-only answer.' });
     mockCloseSession.mockResolvedValue(undefined);
 
@@ -102,7 +102,7 @@ describe('call_acp_agent run ledger integration', () => {
       },
       undefined,
       undefined,
-      { askMode },
+      { permissionMode: 'chat' },
     );
 
     expect(result.content[0]?.text).toContain('**Gemini CLI** responded');
@@ -115,7 +115,7 @@ describe('call_acp_agent run ledger integration', () => {
         agentKind: 'acp',
         runtimeId: 'gemini',
         status: 'completed',
-        permissionMode: 'readonly',
+        permissionMode: 'chat',
         inputSummary: 'Inspect this folder.',
         outputSummary: 'Read-only answer.',
       }),

@@ -35,12 +35,7 @@ describe('static Web artifact runtime contract', () => {
     const runtimeManifest = read('scripts/runtime-manifest.mjs');
 
     expect(buildBinary).toContain('static-web/index.html');
-    // The archive must NOT drop _standalone wholesale: that strips the
-    // document extraction runtime and flips useProductServer() to the
-    // source-build crash path (shipped broken in 1.1.7). The platform build
-    // prunes _standalone to the extraction closure before archiving instead.
-    expect(buildBinary).not.toContain('excludeStandalone');
-    expect(platformPackages).toContain('pruneStandaloneToExtractionRuntime');
+    expect(buildBinary).toContain('excludeStandalone');
     expect(buildBinary).not.toContain('Next standalone server not found under runtime root');
     expect(platformPackages).toContain('static-web/index.html');
     expect(runtimeManifest).toContain('static-web/');

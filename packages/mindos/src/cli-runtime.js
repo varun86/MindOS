@@ -10,38 +10,35 @@ import {
   createCommandRegistry,
 } from './cli.js';
 
-// Command modules are lazy-loaded: `mindos --version` and single-command runs
-// must not pay the import cost of every command module (each pulls in its own
-// dependency tree). Only global help loads everything.
-const agentCmd = () => import('../bin/commands/agent.js');
-const askCmd = () => import('../bin/commands/ask.js');
-const fileCmd = () => import('../bin/commands/file.js');
-const spaceCmd = () => import('../bin/commands/space.js');
-const searchCmd = () => import('../bin/commands/search.js');
-const startCmd = () => import('../bin/commands/start.js');
-const devCmd = () => import('../bin/commands/dev.js');
-const stopCmd = () => import('../bin/commands/stop.js');
-const restartCmd = () => import('../bin/commands/restart.js');
-const buildCmd = () => import('../bin/commands/build.js');
-const statusCmd = () => import('../bin/commands/status.js');
-const openCmd = () => import('../bin/commands/open.js');
-const mcpCmd = () => import('../bin/commands/mcp-cmd.js');
-const tokenCmd = () => import('../bin/commands/token.js');
-const syncCmd = () => import('../bin/commands/sync-cmd.js');
-const gatewayCmd = () => import('../bin/commands/gateway.js');
-const onboardCmd = () => import('../bin/commands/onboard.js');
-const configCmd = () => import('../bin/commands/config.js');
-const authCmd = () => import('../bin/commands/auth.js');
-const doctorCmd = () => import('../bin/commands/doctor.js');
-const updateCmd = () => import('../bin/commands/update.js');
-const uninstallCmd = () => import('../bin/commands/uninstall.js');
-const logsCmd = () => import('../bin/commands/logs.js');
-const apiCmd = () => import('../bin/commands/api.js');
-const initSkillsCmd = () => import('../bin/commands/init-skills.js');
-const channelCmd = () => import('../bin/commands/channel.js');
-const feishuWsCmd = () => import('../bin/commands/feishu-ws.js');
+import * as agentCmd from '../bin/commands/agent.js';
+import * as askCmd from '../bin/commands/ask.js';
+import * as fileCmd from '../bin/commands/file.js';
+import * as spaceCmd from '../bin/commands/space.js';
+import * as searchCmd from '../bin/commands/search.js';
+import * as startCmd from '../bin/commands/start.js';
+import * as devCmd from '../bin/commands/dev.js';
+import * as stopCmd from '../bin/commands/stop.js';
+import * as restartCmd from '../bin/commands/restart.js';
+import * as buildCmd from '../bin/commands/build.js';
+import * as statusCmd from '../bin/commands/status.js';
+import * as openCmd from '../bin/commands/open.js';
+import * as mcpCmd from '../bin/commands/mcp-cmd.js';
+import * as tokenCmd from '../bin/commands/token.js';
+import * as syncCmd from '../bin/commands/sync-cmd.js';
+import * as gatewayCmd from '../bin/commands/gateway.js';
+import * as onboardCmd from '../bin/commands/onboard.js';
+import * as configCmd from '../bin/commands/config.js';
+import * as authCmd from '../bin/commands/auth.js';
+import * as doctorCmd from '../bin/commands/doctor.js';
+import * as updateCmd from '../bin/commands/update.js';
+import * as uninstallCmd from '../bin/commands/uninstall.js';
+import * as logsCmd from '../bin/commands/logs.js';
+import * as apiCmd from '../bin/commands/api.js';
+import * as initSkillsCmd from '../bin/commands/init-skills.js';
+import * as channelCmd from '../bin/commands/channel.js';
+import * as feishuWsCmd from '../bin/commands/feishu-ws.js';
 
-const commandLoaders = [
+const commandModules = [
   agentCmd,
   askCmd,
   fileCmd,
@@ -71,7 +68,7 @@ const commandLoaders = [
   initSkillsCmd,
 ];
 
-const loaderByDisplayName = {
+const moduleByDisplayName = {
   agent: agentCmd,
   ask: askCmd,
   start: startCmd,
@@ -102,35 +99,7 @@ const loaderByDisplayName = {
   uninstall: uninstallCmd,
 };
 
-let allCommandModules = null;
-
-function loadAllCommandModules() {
-  if (!allCommandModules) {
-    allCommandModules = Promise.all(commandLoaders.map((load) => load()));
-  }
-  return allCommandModules;
-}
-
-async function loadCommandRegistry() {
-  return createCommandRegistry(await loadAllCommandModules());
-}
-
-async function loadModulesByDisplayName() {
-  const names = Object.keys(loaderByDisplayName);
-  const mods = await Promise.all(names.map((name) => loaderByDisplayName[name]()));
-  return Object.fromEntries(names.map((name, i) => [name, mods[i]]));
-}
-
-/**
- * Resolve a single command by name. The fast path imports just that module;
- * meta-only aliases (e.g. `setup`) fall back to the full registry.
- */
-async function resolveCommandModule(name) {
-  const loader = loaderByDisplayName[name];
-  if (loader) return loader();
-  const registry = await loadCommandRegistry();
-  return registry[name] ?? null;
-}
+const commands = createCommandRegistry(commandModules);
 
 function readProductVersion() {
   try {
@@ -140,8 +109,7 @@ function readProductVersion() {
   }
 }
 
-async function showGlobalHelp(showAll = false) {
-  const moduleByDisplayName = await loadModulesByDisplayName();
+function showGlobalHelp(showAll = false) {
   const row = ([name, mod]) => `  ${cyan(name.padEnd(14))}${dim(mod.meta.summary)}`;
   const coreEntries = commandEntries(MINDOS_CORE_COMMANDS, moduleByDisplayName);
   const additionalEntries = commandEntries(MINDOS_ADDITIONAL_COMMANDS, moduleByDisplayName);
@@ -202,41 +170,36 @@ export async function runMindosCli(argv = process.argv.slice(2)) {
   const hasHelp = helpValue !== undefined && helpValue !== false;
 
   if (showAll && !cmd) {
-    await showGlobalHelp(true);
+    showGlobalHelp(true);
     process.exit(0);
   }
 
   if (cmd === 'help') {
     const target = cliArgs[0];
-    const targetMod = target ? await resolveCommandModule(target) : null;
-    if (targetMod) {
-      showCommandHelp(targetMod);
+    if (target && commands[target]) {
+      showCommandHelp(commands[target]);
     } else {
-      await showGlobalHelp(showAll);
+      showGlobalHelp(showAll);
     }
     process.exit(0);
   }
 
-  if (hasHelp && typeof helpValue === 'string') {
-    const helpMod = await resolveCommandModule(helpValue);
-    if (helpMod) {
-      showCommandHelp(helpMod);
-      process.exit(0);
-    }
+  if (hasHelp && typeof helpValue === 'string' && commands[helpValue]) {
+    showCommandHelp(commands[helpValue]);
+    process.exit(0);
   }
 
   const resolvedCmd = hasHelp && !cmd ? null : (cmd || null);
-  const mod = resolvedCmd ? await resolveCommandModule(resolvedCmd) : null;
 
-  if (!mod) {
-    await showGlobalHelp(showAll);
+  if (!resolvedCmd || !commands[resolvedCmd]) {
+    showGlobalHelp(showAll);
     process.exit(cmd && !hasHelp ? 1 : 0);
   }
 
   if (hasHelp) {
-    showCommandHelp(mod);
+    showCommandHelp(commands[resolvedCmd]);
     process.exit(0);
   }
 
-  await mod.run(cliArgs, cliFlags);
+  await commands[resolvedCmd].run(cliArgs, cliFlags);
 }

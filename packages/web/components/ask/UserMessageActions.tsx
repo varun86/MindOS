@@ -54,7 +54,7 @@ export default function UserMessageActions({
   const btnBase = 'hit-target-box inline-flex h-7 w-7 items-center justify-center border border-transparent text-muted-foreground transition-colors duration-75 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-bg:var(--card)] [--hit-target-border-width:1px] [--hit-target-border:color-mix(in_srgb,var(--border)_60%,transparent)] [--hit-target-radius:var(--radius-md)] [--hit-target-shadow:0_1px_2px_0_color-mix(in_srgb,var(--foreground)_8%,transparent)]';
 
   return (
-    <div className="absolute -bottom-3 left-1 z-10 flex items-center gap-1 opacity-100 transition-opacity duration-75 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+    <div className="flex items-center gap-1 opacity-100 transition-opacity duration-75 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
       {/* Copy */}
       <ActionTooltip label={labels.copy}>
         <button

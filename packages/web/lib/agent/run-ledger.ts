@@ -22,7 +22,8 @@ export type AgentRunStatus =
   | 'canceled'
   | 'timed_out';
 
-export type AgentRunPermissionMode = 'readonly' | 'organize' | 'agent';
+export type AgentRunPermissionMode = 'chat' | 'agent';
+export type AgentRunPermissionModeInput = AgentRunPermissionMode | 'readonly';
 
 export interface AgentRunRecord {
   id: string;
@@ -167,7 +168,7 @@ export interface StartAgentRunInput {
   displayName: string;
   status?: Extract<AgentRunStatus, 'queued' | 'running' | 'streaming'>;
   cwd?: string;
-  permissionMode?: AgentRunPermissionMode;
+  permissionMode?: AgentRunPermissionModeInput;
   inputSummary: string;
   metadata?: Record<string, unknown>;
 }
@@ -194,7 +195,7 @@ export interface UpdateAgentRunInput {
   displayName?: string;
   runtimeId?: string;
   cwd?: string;
-  permissionMode?: AgentRunPermissionMode;
+  permissionMode?: AgentRunPermissionModeInput;
   inputSummary?: string;
   outputSummary?: string;
   error?: string;
@@ -280,7 +281,10 @@ function normalizeRecord(value: unknown): AgentRunRecord | null {
   if (typeof record.id !== 'string' || typeof record.runtimeId !== 'string' || typeof record.displayName !== 'string') return null;
   if (typeof record.startedAt !== 'number' || typeof record.inputSummary !== 'string') return null;
   if (!record.agentKind || !record.status || !record.permissionMode) return null;
-  return record as AgentRunRecord;
+  return {
+    ...(record as AgentRunRecord),
+    permissionMode: normalizePermissionMode(record.permissionMode),
+  };
 }
 
 function normalizeEvent(value: unknown): AgentEvent | null {
@@ -290,13 +294,19 @@ function normalizeEvent(value: unknown): AgentEvent | null {
   if (typeof event.ts !== 'number' || !event.status || !event.record) return null;
   const type = event.type as AgentEventType;
   const category = normalizeEventCategory(event.category, type);
-  return {
+  const normalizedRecord = normalizeRecord(event.record);
+  if (!normalizedRecord) return null;
+  const normalizedEvent = {
     ...(event as AgentEvent),
     type,
     category,
+    record: normalizedRecord,
     ...(event.message !== undefined ? { message: truncateSummary(event.message) } : {}),
-    data: normalizeAgentEventData(event.data, category, event as AgentEvent),
     ...(event.metadata ? { metadata: redactMetadata(event.metadata) } : {}),
+  };
+  return {
+    ...normalizedEvent,
+    data: normalizeAgentEventData(event.data, category, normalizedEvent),
   };
 }
 
@@ -537,11 +547,7 @@ function appendPersistedOperation(store: AgentRunLedgerStore, op: PersistedAgent
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(op)}\n`, 'utf-8');
     if (fs.statSync(file).size > MAX_LEDGER_LOG_BYTES) {
-      // Other MindOS processes (MCP server, CLI) append to the same log, so
-      // compact from the on-disk state — this process's in-memory view alone
-      // would drop their operations.
-      const onDisk = readJsonlPersistedStore(store.mindRoot);
-      writeCompactedLedger(onDisk ?? store);
+      writeCompactedLedger(store);
     }
   } catch {
     // Ledger persistence must never affect agent execution.
@@ -638,8 +644,9 @@ function redactMetadata(metadata: Record<string, unknown>): Record<string, unkno
 }
 
 function normalizePermissionMode(mode: unknown): AgentRunPermissionMode {
-  if (mode === 'readonly' || mode === 'chat') return 'readonly';
-  if (mode === 'organize') return 'organize';
+  if (mode === 'readonly' || mode === 'chat') return 'chat';
+  // Legacy persisted records used this before product modes were collapsed to chat/agent.
+  if (mode === 'organize') return 'agent';
   return 'agent';
 }
 

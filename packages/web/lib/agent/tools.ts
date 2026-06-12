@@ -9,6 +9,7 @@ import {
 } from '@/lib/fs';
 import { searchFiles } from '@/lib/core/search';
 import { hybridSearch } from '@/lib/core/hybrid-search';
+import { assertNotProtected } from '@/lib/core';
 import { readSkillContentByName } from '@/lib/pi-integration/skills';
 import { readSettings } from '@/lib/settings';
 import { a2aTools } from '@/lib/a2a/a2a-tools';
@@ -21,7 +22,6 @@ import {
   createMindosAgentPermissionPolicy,
   getMindosKbToolNameSet,
   MINDOS_CHAT_KB_TOOL_NAMES,
-  MINDOS_ORGANIZE_KB_TOOL_NAMES,
   MINDOS_WRITE_TOOL_NAMES,
   type MindosAgentPermissionPolicy,
 } from './permission-policy';
@@ -114,7 +114,17 @@ function safeReadContent(filePath: string): string {
 }
 
 function writeLock<T>(operation: string, filePath: string, fn: () => Promise<T> | T): Promise<T> {
+  assertWritablePath(filePath);
   return withAgentFileWriteLock({ operation, filePath }, fn);
+}
+
+function assertWritablePath(filePath: string | undefined): void {
+  if (typeof filePath !== 'string' || !filePath.trim()) return;
+  assertNotProtected(filePath, 'modified by AI agent');
+}
+
+function assertWritablePaths(filePaths: Array<string | undefined>): void {
+  for (const filePath of filePaths) assertWritablePath(filePath);
 }
 
 type FileChangedAction = 'created' | 'updated' | 'deleted' | 'renamed' | 'unknown';
@@ -261,20 +271,12 @@ const LoadSkillParams = Type.Object({
 // Write-operation tool names — used by beforeToolCall for write-protection
 export const WRITE_TOOLS = new Set<string>(MINDOS_WRITE_TOOL_NAMES);
 
-/** Tool names sufficient for the "organize uploaded files" task. */
-export const ORGANIZE_TOOL_NAMES = new Set<string>(MINDOS_ORGANIZE_KB_TOOL_NAMES);
-
-/** Lean tool set for organize mode — skips MCP discovery, history, backlinks, etc. */
-export function getOrganizeTools(): MindosAgentTool[] {
-  return getToolsForMindosAgentPolicy(createMindosAgentPermissionPolicy('organize'));
-}
-
 /**
- * Read-only tool set for Chat mode.
+ * Chat tool set.
  *
  * Allows searching and reading the knowledge base + web access,
  * but blocks all write operations. Extensible: add tool names here
- * to grant more read-only capabilities to Chat mode.
+ * to grant more chat capabilities.
  */
 export const CHAT_TOOL_NAMES = new Set<string>(MINDOS_CHAT_KB_TOOL_NAMES);
 
@@ -478,6 +480,7 @@ export const knowledgeBaseTools: MindosAgentTool[] = [
     description: 'Create multiple new files in a single operation. Highly recommended when scaffolding new features or projects.',
     parameters: BatchCreateFileParams,
     execute: safeExecute(async (_id, params: Static<typeof BatchCreateFileParams>) => {
+      assertWritablePaths(params.files.map((file) => file.path));
       return withAgentFileWriteLocks(
         params.files.map((file) => ({ operation: 'batch_create_files', filePath: file.path })),
         () => {
@@ -618,6 +621,9 @@ export const knowledgeBaseTools: MindosAgentTool[] = [
     parameters: RenameParams,
     execute: safeExecute(async (_id, params: Static<typeof RenameParams>) => {
       return writeLock('rename_file', params.path, () => {
+        const normalizedPath = params.path.replace(/\\/g, '/');
+        const currentDir = path.posix.dirname(normalizedPath);
+        assertWritablePath(currentDir === '.' ? params.new_name : `${currentDir}/${params.new_name}`);
         const newPath = renameFile(params.path, params.new_name);
         appendFileChangedEvent({
           path: newPath,
@@ -635,6 +641,7 @@ export const knowledgeBaseTools: MindosAgentTool[] = [
     description: 'Move a file to a new location. Also returns any files that had backlinks affected by the move.',
     parameters: MoveParams,
     execute: safeExecute(async (_id, params: Static<typeof MoveParams>) => {
+      assertWritablePaths([params.from_path, params.to_path]);
       return withAgentFileWriteLocks([
         { operation: 'move_file', filePath: params.from_path },
         { operation: 'move_file', filePath: params.to_path },

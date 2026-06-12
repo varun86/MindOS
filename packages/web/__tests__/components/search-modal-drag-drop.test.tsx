@@ -208,8 +208,7 @@ describe('SearchModal Drag-Drop Integration', () => {
         resultButton.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
       });
 
-      // On desktop (md+), drag hint should be visible
-      // The component renders: "⬆ Drag" for selected items on md+
+      // On desktop (md+), an icon-only drag affordance should be available.
       expect(resultButton).toBeTruthy();
     });
 

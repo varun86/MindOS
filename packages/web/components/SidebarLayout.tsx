@@ -67,7 +67,7 @@ function AgentsPanelLoading() {
         <span className="text-sm font-medium text-foreground">{p.title}</span>
       </div>
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        {p.acpLoading}
+        {p.loading}
       </div>
     </div>
   );

@@ -15,7 +15,6 @@ export function defineMindosAgent(descriptor: MindosAgentDescriptor): MindosAgen
 export {
   AGENT_SYSTEM_PROMPT,
   CHAT_SYSTEM_PROMPT,
-  ORGANIZE_SYSTEM_PROMPT,
 } from './prompts.js';
 
 export {

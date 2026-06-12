@@ -7,8 +7,7 @@ export function resolveAskCompatMode(input: {
   cachedMode?: string;
 }): 'non-streaming' | undefined {
   if (input.cachedMode === 'non-streaming') return 'non-streaming';
-  if (input.askMode === 'organize' && input.provider === 'openai' && Boolean(input.baseUrl)) {
-    return 'non-streaming';
-  }
+  // Chat/agent modes should try streaming first. Providers that genuinely
+  // reject stream+tools are caught by the after-stream fallback and cached.
   return undefined;
 }

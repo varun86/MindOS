@@ -2,7 +2,7 @@ import type { MindosAskMode } from '@geminilight/mindos/session';
 import type { AgentRunPermissionMode } from '@/lib/agent/run-ledger';
 
 export type MindosHarnessPermissionMode = 'readonly' | 'agent';
-export type MindosKbWriteScope = 'none' | 'organize' | 'all';
+export type MindosKbWriteScope = 'none' | 'all';
 
 export type MindosExtensionScope =
   | 'kb'
@@ -65,19 +65,6 @@ export const MINDOS_CHAT_KB_TOOL_NAMES = [
   'get_backlinks',
 ] as const;
 
-export const MINDOS_ORGANIZE_KB_TOOL_NAMES = [
-  'list_files',
-  'read_file',
-  'search',
-  'load_skill',
-  'create_file',
-  'batch_create_files',
-  'write_file',
-  'append_to_file',
-  'insert_after_heading',
-  'update_section',
-] as const;
-
 const SAFE_EXTENSION_SCOPES = [
   'kb',
   'ask-user-question',
@@ -96,7 +83,7 @@ const AGENT_EXTENSION_SCOPES = [
 
 function normalizePolicyMode(mode: unknown): MindosAskMode {
   if (mode === 'readonly') return 'chat';
-  if (mode === 'chat' || mode === 'organize' || mode === 'agent') return mode;
+  if (mode === 'chat') return 'chat';
   return 'agent';
 }
 
@@ -123,7 +110,7 @@ export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPer
   if (normalized === 'chat') {
     return {
       mode: 'chat',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       runtimePermissionMode: 'readonly',
       acpPermissionMode: 'readonly',
       toolScope: {
@@ -141,34 +128,6 @@ export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPer
         userExtensions: false,
       },
       kbToolNames: [...MINDOS_CHAT_KB_TOOL_NAMES],
-      writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-      extensionScopes: [...SAFE_EXTENSION_SCOPES],
-    };
-  }
-
-  if (normalized === 'organize') {
-    return {
-      mode: 'organize',
-      permissionMode: 'organize',
-      // External harnesses currently support only readonly/agent. Keep organize
-      // bounded to MindOS-owned KB tools until a runtime-specific allowlist exists.
-      runtimePermissionMode: 'readonly',
-      acpPermissionMode: 'readonly',
-      toolScope: {
-        kbRead: true,
-        kbWrite: 'organize',
-        web: true,
-        askUserQuestion: true,
-        terminal: false,
-        mcp: false,
-        subagents: false,
-        acpDelegation: false,
-        a2aDelegation: false,
-        im: false,
-        schedule: false,
-        userExtensions: false,
-      },
-      kbToolNames: [...MINDOS_ORGANIZE_KB_TOOL_NAMES],
       writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
       extensionScopes: [...SAFE_EXTENSION_SCOPES],
     };
@@ -195,7 +154,10 @@ export function createMindosAgentPermissionPolicyFromContext(
   }
   const record = context as Record<string, unknown>;
   return createMindosAgentPermissionPolicy(
-    record.permissionMode ?? record.mode ?? record.askMode ?? fallbackMode,
+    record.permissionMode
+      ?? record.mode
+      ?? record.askMode
+      ?? fallbackMode,
   );
 }
 
@@ -210,4 +172,3 @@ export function hasMindosExtensionScope(
 ): boolean {
   return policy.extensionScopes.includes(scope);
 }
-

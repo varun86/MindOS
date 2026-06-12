@@ -17,7 +17,6 @@
 import type { Message, MessagePart, ToolCallPart, TextPart, ReasoningPart, RuntimeStatusPart, AskUserQuestion, AskUserQuestionAnswer } from '@/lib/types';
 import { parseMindosSseLine } from '@geminilight/mindos/session';
 import { redactSensitiveObject, redactSensitiveText } from './redaction';
-import { queueFilesChanged, flushFilesChanged } from './files-changed-emitter';
 
 /** Tools that modify files — trigger files-changed notification on completion */
 const FILE_MUTATING_TOOLS = new Set([
@@ -44,40 +43,13 @@ export interface AgentRunContextMetadata {
 export interface ConsumeUIMessageStreamOptions {
   onRuntimeBinding?: (binding: RuntimeBindingMetadata) => void;
   onAgentRunContext?: (context: AgentRunContextMetadata) => void;
-  /**
-   * Minimum interval between onUpdate emissions (leading emit + trailing
-   * flush). Terminal state (completion/error/abort) always flushes
-   * immediately. Pass 0 to emit per read batch (fine-grained consumers).
-   * Default 50ms.
-   */
-  emitCoalesceMs?: number;
 }
 
-/**
- * Extract the file paths a mutating tool touched from its input args.
- * Returns undefined when no recognizable path input exists — the
- * files-changed event then degrades to "unknown, assume anything changed".
- */
-function collectMutatedPaths(input: unknown): string[] | undefined {
-  if (!isRecord(input)) return undefined;
-  const paths: string[] = [];
-  const add = (value: unknown) => {
-    if (typeof value === 'string' && value.trim()) paths.push(value);
-  };
-  add(input.path);
-  add(input.from_path);
-  add(input.to_path);
-  if (Array.isArray(input.files)) {
-    for (const file of input.files) {
-      if (isRecord(file)) add(file.path);
-    }
+/** Notify the app that files were changed by the AI agent */
+function notifyFilesChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('mindos:files-changed'));
   }
-  // rename_file: the new path is the old directory + new_name.
-  if (typeof input.new_name === 'string' && input.new_name.trim() && typeof input.path === 'string' && input.path.trim()) {
-    const slash = input.path.lastIndexOf('/');
-    add((slash >= 0 ? input.path.slice(0, slash + 1) : '') + input.new_name);
-  }
-  return paths.length > 0 ? paths : undefined;
 }
 
 function parseSseLineAsRecord(line: string): Record<string, unknown> | null {
@@ -127,6 +99,16 @@ function normalizeRuntime(value: unknown): ToolCallPart['runtime'] | undefined {
     : undefined;
 }
 
+function isRoutineNativeRuntimeStatus(message: string, runtime?: RuntimeStatusPart['runtime']): boolean {
+  if (runtime !== 'codex' && runtime !== 'claude') return false;
+  const normalized = message.trim();
+  return /^Starting (Claude Code|Codex) locally\.$/.test(normalized)
+    || /^Resuming (Claude Code|Codex) locally\.$/.test(normalized)
+    || /^(Claude Code|Codex) is connected and working in this chat\.$/.test(normalized)
+    || normalized === 'Claude Code is compacting context.'
+    || normalized === 'Claude Code is contacting Claude.';
+}
+
 function normalizeRuntimePermissionIntent(value: unknown): 'allow' | 'deny' | 'cancel' | undefined {
   return value === 'allow' || value === 'deny' || value === 'cancel' ? value : undefined;
 }
@@ -173,62 +155,42 @@ export async function consumeUIMessageStream(
 
   const startedAt = Date.now();
 
-  /**
-   * Structural sharing: cache the immutable clone of each mutable part and
-   * reuse it across emissions until the part is mutated again (touch()).
-   * Unchanged parts keep object identity so memoized children skip re-render.
-   */
-  const cloneCache = new Map<MessagePart, MessagePart>();
-
-  /** Mark a mutable part as changed — its next snapshot gets a fresh clone. */
-  function touch(part: MessagePart): void {
-    cloneCache.delete(part);
-  }
-
-  function clonePart(p: MessagePart): MessagePart {
-    if (p.type === 'text') return { type: 'text' as const, text: p.text };
-    if (p.type === 'reasoning') return { type: 'reasoning' as const, text: p.text };
-    if (p.type === 'image') return { ...p };
-    if (p.type === 'runtime-status') return { ...p };
-    if (p.type === 'agent-run-timeline') {
-      return {
-        ...p,
-        runs: p.runs.map(run => ({
-          ...run,
-          ...(run.metadata ? { metadata: { ...run.metadata } } : {}),
-        })),
-      };
-    }
-    // ToolCallPart — shallow copy safe (primitive fields, input is replaced not mutated)
-    return {
-      ...p,
-      ...(p.userQuestion ? {
-        userQuestion: {
-          ...p.userQuestion,
-          questions: p.userQuestion.questions.map(q => ({
-            ...q,
-            options: q.options.map(o => ({ ...o })),
-          })),
-          ...(p.userQuestion.answers ? { answers: p.userQuestion.answers.map(a => ({ ...a, selected: a.selected ? [...a.selected] : undefined })) } : {}),
-        },
-      } : {}),
-      ...(p.runtimePermission ? {
-        runtimePermission: {
-          ...p.runtimePermission,
-          options: p.runtimePermission.options.map(option => ({ ...option })),
-        },
-      } : {}),
-    };
-  }
-
   /** Build an immutable Message snapshot from current parts */
   function buildMessage(): Message {
     const clonedParts: MessagePart[] = parts.map(p => {
-      const cached = cloneCache.get(p);
-      if (cached) return cached;
-      const clone = clonePart(p);
-      cloneCache.set(p, clone);
-      return clone;
+      if (p.type === 'text') return { type: 'text' as const, text: p.text };
+      if (p.type === 'reasoning') return { type: 'reasoning' as const, text: p.text };
+      if (p.type === 'image') return { ...p };
+      if (p.type === 'runtime-status') return { ...p };
+      if (p.type === 'agent-run-timeline') {
+        return {
+          ...p,
+          runs: p.runs.map(run => ({
+            ...run,
+            ...(run.metadata ? { metadata: { ...run.metadata } } : {}),
+          })),
+        };
+      }
+      // ToolCallPart — shallow copy safe (primitive fields, input is replaced not mutated)
+      return {
+        ...p,
+        ...(p.userQuestion ? {
+          userQuestion: {
+            ...p.userQuestion,
+            questions: p.userQuestion.questions.map(q => ({
+              ...q,
+              options: q.options.map(o => ({ ...o })),
+            })),
+            ...(p.userQuestion.answers ? { answers: p.userQuestion.answers.map(a => ({ ...a, selected: a.selected ? [...a.selected] : undefined })) } : {}),
+          },
+        } : {}),
+        ...(p.runtimePermission ? {
+          runtimePermission: {
+            ...p.runtimePermission,
+            options: p.runtimePermission.options.map(option => ({ ...option })),
+          },
+        } : {}),
+      };
     });
     const textContent = clonedParts
       .filter((p): p is TextPart => p.type === 'text')
@@ -240,50 +202,6 @@ export async function consumeUIMessageStream(
       parts: clonedParts,
       timestamp: startedAt,
     };
-  }
-
-  // ---------------------------------------------------------------------------
-  // Emit coalescing: streaming runs can deliver hundreds of chunks per second;
-  // emitting per read batch made rendering O(L²). Leading emit + trailing
-  // flush within emitCoalesceMs; terminal state always flushes immediately.
-  const emitCoalesceMs = options.emitCoalesceMs ?? 50;
-  let lastEmitAt = Number.NEGATIVE_INFINITY;
-  let trailingTimer: ReturnType<typeof setTimeout> | null = null;
-  let pendingEmit = false;
-  let runEnded = false;
-
-  function emitNow(): void {
-    pendingEmit = false;
-    lastEmitAt = Date.now();
-    onUpdate(buildMessage());
-  }
-
-  function scheduleEmit(): void {
-    if (emitCoalesceMs <= 0) {
-      emitNow();
-      return;
-    }
-    if (trailingTimer === null && Date.now() - lastEmitAt >= emitCoalesceMs) {
-      emitNow(); // leading edge — first chunk renders without delay
-      return;
-    }
-    pendingEmit = true;
-    if (trailingTimer === null) {
-      trailingTimer = setTimeout(() => {
-        trailingTimer = null;
-        if (!runEnded && pendingEmit) emitNow();
-      }, emitCoalesceMs);
-    }
-  }
-
-  /** Terminal flush — completion/error/abort must never be delayed. */
-  function flushEmit(): void {
-    runEnded = true;
-    if (trailingTimer !== null) {
-      clearTimeout(trailingTimer);
-      trailingTimer = null;
-    }
-    if (pendingEmit) emitNow();
   }
 
   /** Get or create the last text part with given ID */
@@ -321,7 +239,6 @@ export async function consumeUIMessageStream(
     const last = parts[parts.length - 1];
     if (last?.type === 'runtime-status' && last.runtime === runtime) {
       last.message = safeMessage;
-      touch(last);
       return;
     }
     parts.push({
@@ -350,16 +267,6 @@ export async function consumeUIMessageStream(
               }))
           : [],
       }));
-  }
-
-  // Cancelling the reader is the only way to interrupt a pending read();
-  // the aborted check at the top of the loop can't fire while the stream is
-  // quiet, which left aborted runs awaiting a read that never resolves.
-  const cancelOnAbort = () => { void reader.cancel().catch(() => {}); };
-  if (signal?.aborted) {
-    cancelOnAbort();
-  } else {
-    signal?.addEventListener('abort', cancelOnAbort, { once: true });
   }
 
   try {
@@ -400,7 +307,6 @@ export async function consumeUIMessageStream(
             // Regular text from assistant
             const part = findOrCreateTextPart('text');
             part.text += (eventRecord.delta as string) ?? '';
-            touch(part);
             changed = true;
             break;
           }
@@ -413,7 +319,6 @@ export async function consumeUIMessageStream(
               currentTextId = null;
             }
             currentReasoningPart.text += (eventRecord.delta as string) ?? '';
-            touch(currentReasoningPart);
             changed = true;
             break;
           }
@@ -441,7 +346,6 @@ export async function consumeUIMessageStream(
               }
             }
             tc.state = 'running';
-            touch(tc);
             changed = true;
             break;
           }
@@ -455,7 +359,6 @@ export async function consumeUIMessageStream(
             tc.runtime = normalizeRuntime(eventRecord.runtime) ?? tc.runtime;
             tc.output = `${tc.output ?? ''}${typeof eventRecord.delta === 'string' ? redactSensitiveText(eventRecord.delta) : ''}`;
             if (tc.state === 'pending') tc.state = 'running';
-            touch(tc);
             changed = true;
             break;
           }
@@ -484,12 +387,10 @@ export async function consumeUIMessageStream(
               tc.userQuestion.status = 'cancelled';
               tc.userQuestion.reason = output || 'tool_error';
             }
-            touch(tc);
             changed = true;
-            // Notify when a file-modifying tool completes successfully —
-            // batched into one mindos:files-changed event per run.
+            // Notify when a file-modifying tool completes successfully
             if (!eventRecord.isError && FILE_MUTATING_TOOLS.has(tc.toolName)) {
-              queueFilesChanged(collectMutatedPaths(tc.input));
+              notifyFilesChanged();
             }
             break;
           }
@@ -524,7 +425,6 @@ export async function consumeUIMessageStream(
               ...(typeof eventRecord.reason === 'string' ? { reason: redactSensitiveText(eventRecord.reason) } : {}),
             };
             tc.state = 'running';
-            touch(tc);
             changed = true;
             break;
           }
@@ -550,7 +450,6 @@ export async function consumeUIMessageStream(
                 ? `Permission decision forwarded: ${decision}`
                 : 'Permission decision forwarded.';
             }
-            touch(tc);
             changed = true;
             break;
           }
@@ -567,7 +466,6 @@ export async function consumeUIMessageStream(
               status: 'waiting',
             };
             tc.state = 'running';
-            touch(tc);
             changed = true;
             break;
           }
@@ -581,7 +479,6 @@ export async function consumeUIMessageStream(
               tc.userQuestion.answers = normalizeUserQuestionAnswers(eventRecord.answers);
             }
             tc.state = 'done';
-            touch(tc);
             changed = true;
             break;
           }
@@ -598,7 +495,6 @@ export async function consumeUIMessageStream(
             tc.output = typeof eventRecord.reason === 'string' && eventRecord.reason
               ? redactSensitiveText(eventRecord.reason)
               : 'Question cancelled.';
-            touch(tc);
             changed = true;
             break;
           }
@@ -626,7 +522,11 @@ export async function consumeUIMessageStream(
             if (eventRecord.visible !== true || typeof eventRecord.message !== 'string' || !eventRecord.message.trim()) {
               break;
             }
-            upsertRuntimeStatus(eventRecord.message.trim(), normalizeRuntime(eventRecord.runtime));
+            const runtime = normalizeRuntime(eventRecord.runtime);
+            if (isRoutineNativeRuntimeStatus(eventRecord.message, runtime)) {
+              break;
+            }
+            upsertRuntimeStatus(eventRecord.message.trim(), runtime);
             changed = true;
             break;
           }
@@ -655,24 +555,14 @@ export async function consumeUIMessageStream(
         }
       }
 
-      // Emit at most once per coalescing window, not per SSE line/batch
+      // Emit once per reader batch, not per SSE line
       if (changed) {
-        scheduleEmit();
+        onUpdate(buildMessage());
       }
       if (done) break;
     }
   } finally {
-    signal?.removeEventListener('abort', cancelOnAbort);
-    if (signal?.aborted) {
-      // Release the underlying connection; safe if already cancelled/closed.
-      try { await reader.cancel(); } catch { /* stream already settled */ }
-    }
     reader.releaseLock();
-    // Terminal state (completion, error, abort) must never be delayed:
-    // flush any pending coalesced snapshot and the batched files-changed
-    // notification before the caller observes the run as finished.
-    flushEmit();
-    flushFilesChanged();
   }
 
   // Finalize any tool calls still in running/pending state
@@ -682,7 +572,6 @@ export async function consumeUIMessageStream(
     if (tc.state === 'running' || tc.state === 'pending') {
       tc.state = 'error';
       tc.output = tc.output ?? 'Stream ended before tool completed';
-      touch(tc);
       finalized = true;
     }
   }

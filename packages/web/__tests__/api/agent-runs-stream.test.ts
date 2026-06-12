@@ -100,7 +100,7 @@ describe('/api/agent-runs/stream', () => {
       rootRunId: root.id,
       parentRunId: root.id,
       chatSessionId: 'chat-stream',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review',
     });
     startAgentRun({

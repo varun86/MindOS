@@ -10,7 +10,6 @@ import FileTree, { setShowHiddenFiles, useShowHiddenFiles } from './FileTree';
 import SyncStatusBar from './SyncStatusBar';
 import PanelHeader from './panels/PanelHeader';
 import { useResizeDrag } from '@/hooks/useResizeDrag';
-import { useFilesChanged } from '@/hooks/useFilesChanged';
 import { useLocale } from '@/lib/stores/locale-store';
 import { listTrashAction } from '@/lib/actions';
 import { DEFAULT_LEFT_PANEL_WIDTH, LEFT_PANEL } from '@/lib/config/panel-sizes';
@@ -56,20 +55,6 @@ const MAX_PANEL_WIDTH_ABS = LEFT_PANEL.MAX_ABS;
 const MIND_SYSTEM_COLLAPSED_KEY = 'mindos.sidebar.mindSystemCollapsed';
 const MIND_SYSTEM_SLOT_LIST_ID = 'mind-system-sidebar-slots';
 
-/**
- * `mindos:files-changed` relevance for the trash badge: the count only moves
- * when content files are deleted/restored. Content paths may be deletions, so
- * they stay relevant; explicit `.trash` paths are relevant; everything else
- * under dot-directories (`.mindos/` change-log, agent state, …) is pure
- * metadata churn and can never move a file to trash → skip the refetch.
- */
-function isTrashRelevant(paths: string[]): boolean {
-  return paths.some((p) => {
-    const normalized = p.replace(/^\/+/, '');
-    return normalized === '.trash' || normalized.startsWith('.trash/') || !normalized.startsWith('.');
-  });
-}
-
 interface PanelProps {
   activePanel: PanelId | null;
   fileTree: FileNode[];
@@ -108,7 +93,7 @@ export default function Panel({
   children,
 }: PanelProps) {
   const open = activePanel !== null;
-  const defaultWidth = activePanel ? DEFAULT_PANEL_WIDTH[activePanel] : 280;
+  const defaultWidth = activePanel ? DEFAULT_PANEL_WIDTH[activePanel] : LEFT_PANEL.DEFAULT;
   const width = maximized ? undefined : (panelWidth ?? defaultWidth);
 
   const { t } = useLocale();
@@ -182,13 +167,12 @@ export default function Panel({
 
   const [inboxCount, setInboxCount] = useState(0);
 
-  const fetchTrash = useCallback(() => {
-    listTrashAction().then(items => setTrashCount(items.length)).catch(() => {});
-  }, []);
-
   useEffect(() => {
     if (activePanel !== 'files') return;
 
+    const fetchTrash = () => {
+      listTrashAction().then(items => setTrashCount(items.length)).catch(() => {});
+    };
     const fetchInbox = () => {
       fetchInboxFiles(t.inbox.loadFailed)
         .then(files => setInboxCount(files.length))
@@ -196,17 +180,13 @@ export default function Panel({
     };
     fetchTrash();
     fetchInbox();
+    window.addEventListener('mindos:files-changed', fetchTrash);
     window.addEventListener('mindos:inbox-updated', fetchInbox);
     return () => {
+      window.removeEventListener('mindos:files-changed', fetchTrash);
       window.removeEventListener('mindos:inbox-updated', fetchInbox);
     };
-  }, [activePanel, t.inbox.loadFailed, fetchTrash]);
-
-  // Debounced + path-filtered per the mindos:files-changed listener contract.
-  useFilesChanged(fetchTrash, {
-    enabled: activePanel === 'files',
-    isRelevant: isTrashRelevant,
-  });
+  }, [activePanel, t.inbox.loadFailed]);
 
   // Double-click hint: show only until user has used it once.
   // Initialize false to match SSR; hydrate from localStorage in useEffect.
@@ -240,16 +220,7 @@ export default function Panel({
     }, 450);
   }, [router]);
 
-  // Disable the width transition while dragging (same pattern as
-  // RightAskPanel): otherwise every mousemove animates 200ms behind the cursor.
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleResizeEnd = useCallback((w: number) => {
-    setIsDragging(false);
-    (onWidthCommit ?? noop)(w);
-  }, [onWidthCommit]);
-
-  const rawMouseDown = useResizeDrag({
+  const handleMouseDown = useResizeDrag({
     width: panelWidth ?? defaultWidth,
     minWidth: MIN_PANEL_WIDTH,
     maxWidth: MAX_PANEL_WIDTH_ABS,
@@ -257,21 +228,15 @@ export default function Panel({
     direction: 'right',
     disabled: maximized,
     onResize: onWidthChange ?? noop,
-    onResizeEnd: handleResizeEnd,
+    onResizeEnd: onWidthCommit ?? noop,
   });
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (maximized) return;
-    setIsDragging(true);
-    rawMouseDown(e);
-  }, [maximized, rawMouseDown]);
 
   return (
     <aside
       className={`
         hidden md:flex fixed top-[var(--app-titlebar-h)] h-[calc(100vh-var(--app-titlebar-h))] z-30
         flex-col bg-card border-r border-border
-        ${isDragging ? '' : 'transition-[transform,left,width] duration-200 ease-out'}
+        transition-[transform,left,width] duration-200 ease-out
         ${open ? 'translate-x-0' : '-translate-x-full pointer-events-none'}
       `}
       style={{ width: maximized ? `calc(100vw - ${railWidth}px)` : `${width}px`, left: `${railWidth}px` }}

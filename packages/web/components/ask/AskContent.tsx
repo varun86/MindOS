@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, FileText, ImageIcon } from 'lucide-react';
+import { Send, StopCircle, X, Plus, FileText, ImageIcon } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskMode, Message } from '@/lib/types';
 import ModeCapsule, { getPersistedMode } from '@/components/ask/ModeCapsule';
@@ -18,7 +18,6 @@ import SlashCommandPopover from '@/components/ask/SlashCommandPopover';
 import SessionHistoryPanel from '@/components/ask/SessionHistoryPanel';
 import AskHeader from '@/components/ask/AskHeader';
 import FileChip from '@/components/ask/FileChip';
-import AskComposerInput from '@/components/ask/AskComposerInput';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
 import type { ProviderId } from '@/lib/agent/providers';
 import { useAskChat } from '@/hooks/useAskChat';
@@ -43,8 +42,11 @@ import type { AcpAgentSelection } from '@/hooks/useAskModal';
 import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import type { CodexThreadListResponse, CodexThreadSummary, RuntimeSessionBinding } from '@/lib/types';
 
-/** Stable empty array — a fresh [] literal per render would bust MessageList's memo */
-const EMPTY_SUGGESTIONS: ReadonlyArray<{ label: string; prompt: string }> = [];
+/** Textarea auto-grows with content up to this many visible lines, then scrolls */
+const TEXTAREA_MAX_VISIBLE_LINES = 8;
+
+/** Per-element cached metrics to avoid getComputedStyle on every keystroke */
+const _metricsCache = new WeakMap<HTMLTextAreaElement, { maxH: number }>();
 
 function runtimeStatusLabel(status: AgentRuntimeDescriptor['status']): string {
   if (status === 'signed-out') return 'signed out';
@@ -99,6 +101,31 @@ function codexThreadUpdatedAt(thread: CodexThreadSummary): number | string | und
   return thread.updatedAt ?? thread.createdAt;
 }
 
+/** Auto-size textarea height to fit content, capped at maxVisibleLines */
+function syncTextareaToContent(el: HTMLTextAreaElement, maxVisibleLines: number): void {
+  let cached = _metricsCache.get(el);
+  if (!cached) {
+    const style = getComputedStyle(el);
+    const parsedLh = parseFloat(style.lineHeight);
+    const parsedFs = parseFloat(style.fontSize);
+    const fontSize = Number.isFinite(parsedFs) ? parsedFs : 14;
+    const lineHeight = Number.isFinite(parsedLh) ? parsedLh : fontSize * 1.375;
+    const pad =
+      (Number.isFinite(parseFloat(style.paddingTop)) ? parseFloat(style.paddingTop) : 0) +
+      (Number.isFinite(parseFloat(style.paddingBottom)) ? parseFloat(style.paddingBottom) : 0);
+    const maxH = lineHeight * maxVisibleLines + pad;
+    if (!Number.isFinite(maxH) || maxH <= 0) return;
+    cached = { maxH };
+    _metricsCache.set(el, cached);
+  }
+  const { maxH } = cached;
+  el.style.height = 'auto';
+  const contentH = el.scrollHeight;
+  const next = Math.min(contentH, maxH);
+  el.style.height = `${next}px`;
+  el.style.overflowY = contentH > maxH ? 'auto' : 'hidden';
+}
+
 interface AskContentProps {
   /** Controls visibility — 'open' for modal, 'active' for panel */
   visible: boolean;
@@ -137,15 +164,8 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Composer input text lives in AskComposerInput (local state) so keystrokes
-  // do not re-render this whole component. inputValueRef is the backing store
-  // (read path); setComposerValue is the write path.
-  const inputValueRef = useRef('');
-  const composerSetterRef = useRef<((value: string) => void) | null>(null);
-  const setComposerValue = useCallback((value: string) => {
-    inputValueRef.current = value;
-    composerSetterRef.current?.(value);
-  }, []);
+  const [input, setInput] = useState('');
+  const inputValueRef = useRef(input);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const attachedFilesRef = useRef(attachedFiles);
   const [showHistory, setShowHistory] = useState(false);
@@ -332,6 +352,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const mentionRef = useRef(mention);
   const slashRef = useRef(slash);
   useLayoutEffect(() => {
+    inputValueRef.current = input;
     attachedFilesRef.current = attachedFiles;
     selectedSkillRef.current = selectedSkill;
     selectedAgentRuntimeRef.current = selectedAgentRuntime;
@@ -340,7 +361,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     imageUploadRef.current = imageUploadRuntime;
     mentionRef.current = mention;
     slashRef.current = slash;
-  }, [attachedFiles, imageUploadRuntime, mention, selectedAgentRuntime, selectedSkill, session, slash, uploadRuntime]);
+  }, [attachedFiles, imageUploadRuntime, input, mention, selectedAgentRuntime, selectedSkill, session, slash, uploadRuntime]);
 
   useEffect(() => {
     if (!visible || !showHistory) return;
@@ -355,7 +376,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   }, [loadCodexThreads, selectedAgentRuntime?.kind, showHistory, visible]);
 
   const resetInputState = useCallback(() => {
-    setComposerValue('');
+    setInput('');
     setSelectedSkill(null);
     setAttachedFiles(currentFile ? [currentFile] : []);
     uploadRef.current.clearAttachments();
@@ -363,7 +384,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
 
 
   const handleRestoreInput = useCallback((userMessage: Message) => {
-    setComposerValue(userMessage.content);
+    setInput(userMessage.content);
     if (userMessage.images && userMessage.images.length > 0) {
       imageUploadRef.current.clearImages();
     }
@@ -413,7 +434,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const handleStop = chat.stop;
 
   const clearTransientComposerState = useCallback(() => {
-    setComposerValue('');
+    setInput('');
     setAttachedFiles(currentFile ? [currentFile] : []);
     uploadRef.current.clearAttachments();
     imageUploadRef.current.clearImages();
@@ -529,7 +550,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     const handler = (e: Event) => {
       const text = (e as CustomEvent).detail?.text;
       if (typeof text === 'string') {
-        setComposerValue(text);
+        setInput(text);
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     };
@@ -561,7 +582,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
       } else {
         void session.initSessions(preferredRuntime ?? undefined);
       }
-      setComposerValue(initialMessage || '');
+      setInput(initialMessage || '');
       chat.firstMessageFired.current = false;
       setAttachedFiles(currentFile ? [currentFile] : []);
       clearAttachments();
@@ -645,16 +666,35 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   }, [variant, visible, onClose, maximized, onMaximize]);
 
   const formRef = useRef<HTMLFormElement>(null);
-  // When set to true, AskComposerInput auto-submits on its next render after
-  // the input value updates (textarea sizing also lives there now).
+  // When set to true, auto-submit on next render after input state update
   const pendingAutoSubmitRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!visible) return;
+    const el = inputRef.current;
+    if (!el || !(el instanceof HTMLTextAreaElement)) return;
+    syncTextareaToContent(el, TEXTAREA_MAX_VISIBLE_LINES);
+    // Auto-submit after resend pre-fills input
+    if (pendingAutoSubmitRef.current && input.trim()) {
+      pendingAutoSubmitRef.current = false;
+      formRef.current?.requestSubmit();
+    }
+  }, [input, isLoading, visible]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const handler = () => _metricsCache.delete(el);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
 
   const handleInputChange = useCallback((val: string, cursorPos?: number) => {
-    // Local input state already updated inside AskComposerInput.
+    setInput(val);
     const pos = cursorPos ?? val.length;
     if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
     if (slashTimerRef.current) clearTimeout(slashTimerRef.current);
@@ -684,7 +724,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     const before = val.slice(0, cursorPos);
     const atIdx = before.lastIndexOf('@');
     const newVal = val.slice(0, atIdx) + val.slice(cursorPos);
-    setComposerValue(newVal);
+    setInput(newVal);
     mentionRef.current.resetMention();
     if (!attachedFilesRef.current.includes(filePath)) {
       setAttachedFiles(prev => [...prev, filePath]);
@@ -702,7 +742,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     const before = val.slice(0, cursorPos);
     const slashIdx = before.lastIndexOf('/');
     const newVal = val.slice(0, slashIdx) + val.slice(cursorPos);
-    setComposerValue(newVal);
+    setInput(newVal);
     setSelectedSkill(item);
     slashRef.current.resetSlash();
     setTimeout(() => {
@@ -848,7 +888,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     const targetSession = session.sessions.find((item) => item.id === id) ?? null;
     sessionRef.current.loadSession(id);
     setShowHistory(false);
-    setComposerValue('');
+    setInput('');
     setAttachedFiles(currentFile ? [currentFile] : []);
     uploadRef.current.clearAttachments();
     imageUploadRef.current.clearImages();
@@ -1015,7 +1055,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     if (!msg || msg.role !== 'user') return;
     // Truncate: keep messages up to (not including) the edited message
     currentSession.setMessages(currentSession.messages.slice(0, index));
-    setComposerValue(msg.content);
+    setInput(msg.content);
     setTimeout(() => inputRef.current?.focus(), 50);
   }, []);
 
@@ -1026,7 +1066,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     if (!msg || msg.role !== 'user') return;
     // Truncate: keep messages up to (not including) the user message
     currentSession.setMessages(currentSession.messages.slice(0, index));
-    setComposerValue(msg.content);
+    setInput(msg.content);
     pendingAutoSubmitRef.current = true;
   }, []);
 
@@ -1103,7 +1143,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
             emptyPrompt={t.ask.emptyPrompt}
             emptyHint={t.ask.emptyHint}
             suggestions={t.ask.suggestions}
-            onSuggestionClick={setComposerValue}
+            onSuggestionClick={setInput}
             onEditMessage={handleEditMessage}
             onResendMessage={handleResendMessage}
             labels={messageLabels}
@@ -1116,8 +1156,8 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
             loadingPhase={loadingPhase}
             emptyPrompt={t.ask.emptyPrompt}
             emptyHint={t.ask.emptyHint}
-            suggestions={maximized && session.messages.length === 0 ? t.ask.suggestions : EMPTY_SUGGESTIONS}
-            onSuggestionClick={setComposerValue}
+            suggestions={maximized && session.messages.length === 0 ? t.ask.suggestions : []}
+            onSuggestionClick={setInput}
             onEditMessage={handleEditMessage}
             onResendMessage={handleResendMessage}
             labels={messageLabels}
@@ -1218,7 +1258,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
             {mounted && showAttachMenu && attachMenuPos && createPortal(
               <div
                 ref={attachMenuRef}
-                className="fixed z-[60] pointer-events-auto py-1 rounded-xl border border-border/60 bg-card shadow-lg min-w-[150px] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
+                className="fixed z-app-popover pointer-events-auto py-1 rounded-xl border border-border/60 bg-card shadow-lg min-w-[150px] animate-in fade-in-0 slide-in-from-bottom-2 duration-150"
                 style={{
                   top: `${attachMenuPos.top}px`,
                   left: `${attachMenuPos.left}px`,
@@ -1271,27 +1311,29 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
               }}
             />
 
-            <AskComposerInput
-              visible={visible}
-              isHome={isHome}
-              isLoading={isLoading}
-              reconnecting={loadingPhase === 'reconnecting'}
-              placeholder={t.ask.placeholder}
-              sendTitle={hasLoadingAttachments ? (t.ask.uploadsProcessing ?? 'Wait for uploaded files to finish processing before sending.') : runtimeCheckingMessage || runtimeUnavailableMessage || t.ask.send}
-              stopTitle={loadingPhase === 'reconnecting' ? t.ask.cancelReconnect : t.ask.stopTitle}
-              sendDisabledExternal={hasLoadingAttachments || selectedRuntimeChecking || !!selectedRuntimeUnavailable}
-              allowEmptySend={images.length > 0}
-              iconSize={inputIconSize}
-              inputRef={inputRef}
-              formRef={formRef}
-              valueRef={inputValueRef}
-              setterRef={composerSetterRef}
-              pendingAutoSubmitRef={pendingAutoSubmitRef}
-              onValueChange={handleInputChange}
+            <textarea
+              ref={(el) => {
+                inputRef.current = el;
+              }}
+              value={input}
+              onChange={e => handleInputChange(e.target.value, e.target.selectionStart ?? undefined)}
               onKeyDown={handleInputKeyDown}
               onPaste={handlePaste}
-              onStop={handleStop}
+              placeholder={t.ask.placeholder}
+              rows={1}
+              suppressHydrationWarning
+              className={cn('min-w-0 flex-1 resize-none overflow-y-hidden bg-transparent py-2 leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none focus-visible:ring-0', isHome ? 'text-xs' : 'text-sm')}
             />
+
+            {isLoading ? (
+              <button type="button" onClick={handleStop} className="hit-target-box p-2 transition-colors shrink-0 text-foreground [--hit-target-bg:var(--muted)] [--hit-target-hover-bg:color-mix(in_srgb,var(--muted)_80%,transparent)] [--hit-target-radius:var(--radius-xl)]" title={loadingPhase === 'reconnecting' ? t.ask.cancelReconnect : t.ask.stopTitle}>
+                {loadingPhase === 'reconnecting' ? <X size={inputIconSize} /> : <StopCircle size={inputIconSize} />}
+              </button>
+            ) : (
+              <button type="submit" title={hasLoadingAttachments ? (t.ask.uploadsProcessing ?? 'Wait for uploaded files to finish processing before sending.') : runtimeCheckingMessage || runtimeUnavailableMessage || t.ask.send} disabled={hasLoadingAttachments || selectedRuntimeChecking || !!selectedRuntimeUnavailable || (!input.trim() && images.length === 0)} className="hit-target-box p-2 disabled:opacity-20 disabled:scale-95 disabled:cursor-not-allowed transition-all duration-150 shrink-0 text-[var(--amber-foreground)] active:scale-95 [--hit-target-bg:var(--amber)] [--hit-target-hover-bg:var(--amber)] [--hit-target-radius:var(--radius-xl)] [--hit-target-shadow:0_1px_2px_0_color-mix(in_srgb,var(--amber)_15%,transparent)] [--hit-target-hover-shadow:0_4px_6px_-1px_color-mix(in_srgb,var(--amber)_20%,transparent)]">
+                <Send size={14} />
+              </button>
+            )}
           </form>
 
           {/* Mode + provider selector row + keyboard hint */}

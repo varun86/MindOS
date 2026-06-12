@@ -111,7 +111,7 @@ describe('MindOS server contract: product operations', () => {
           source: 'mindos',
           status: 'available',
           permissionRequired: 'readonly',
-          availableInModes: ['chat', 'organize', 'agent'],
+          availableInModes: ['chat', 'agent'],
           metadata: {
             toolName: 'read_file',
             execute: () => 'must not leak',
@@ -140,8 +140,8 @@ describe('MindOS server contract: product operations', () => {
       id: 'kb:read',
       kind: 'kb-tool',
       source: 'mindos',
-      permissionRequired: 'readonly',
-      availableInModes: ['chat', 'organize', 'agent'],
+      permissionRequired: 'chat',
+      availableInModes: ['chat', 'agent'],
       metadata: {
         toolName: 'read_file',
         apiKey: '[redacted]',
@@ -207,8 +207,7 @@ describe('MindOS server contract: product operations', () => {
       status: 200,
       body: { ok: true },
     });
-    // Per-session storage: each session lives in its own file under sessions/.
-    expect(JSON.parse(readFileSync(join(root, 'sessions', `${Buffer.from('s1').toString('base64url')}.json`), 'utf-8'))).toEqual(session);
+    expect(JSON.parse(readFileSync(storePath, 'utf-8'))).toEqual([session]);
     expect(handleAskSessionsGet({ storePath }).body).toEqual([session]);
     expect(handleAskSessionsDelete({ id: 's1' }, { storePath })).toMatchObject({
       status: 200,

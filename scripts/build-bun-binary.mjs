@@ -49,7 +49,9 @@ export function buildBunBinary(options) {
   mkdirSync(buildDir, { recursive: true });
   mkdirSync(dirname(outFile), { recursive: true });
 
-  createRuntimeArchive(runtimeRoot, archivePath);
+  createRuntimeArchive(runtimeRoot, archivePath, {
+    excludeStandalone: existsSync(resolve(runtimeRoot, STATIC_WEB_INDEX)),
+  });
   writeFileSync(entryPath, createEntrySource({
     productName: pkg.name,
     version: pkg.version,
@@ -70,7 +72,7 @@ export function buildBunBinary(options) {
   return { outFile, archivePath };
 }
 
-function createRuntimeArchive(runtimeRoot, archivePath) {
+function createRuntimeArchive(runtimeRoot, archivePath, options = {}) {
   const args = [
     '--exclude',
     './.mindos-binary-build',
@@ -79,6 +81,9 @@ function createRuntimeArchive(runtimeRoot, archivePath) {
     '--exclude',
     './bin/mindos.exe',
   ];
+  if (options.excludeStandalone) {
+    args.push('--exclude', './_standalone');
+  }
   args.push('-czf', archivePath, '.');
 
   const result = spawnSync('tar', args, {

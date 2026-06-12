@@ -1,5 +1,4 @@
 import type { MindOSSSEvent } from '../session/index.js';
-import { redactSensitiveText } from '../session/index.js';
 import {
   createClaudeCodeCliClient,
   createClaudeCodeCliStdioTransport,
@@ -188,9 +187,7 @@ function errorFromRuntimeFailure(
 ): Error {
   const reason = signal?.reason;
   if (signal?.aborted && isTimeoutError(reason)) return reason;
-  // Transport failures can echo stderr/env contents; redact before the
-  // message reaches SSE events or persisted run ledgers.
-  const rawMessage = redactSensitiveText(error instanceof Error ? error.message : String(error));
+  const rawMessage = error instanceof Error ? error.message : String(error);
   const compactMessage = compactRuntimeFailureMessage(rawMessage, {
     runtime,
     fallback: `${runtime === 'claude' ? 'Claude Code' : 'Codex'} native runtime error.`,

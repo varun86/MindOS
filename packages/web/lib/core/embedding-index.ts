@@ -12,40 +12,22 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import crypto from 'crypto';
 import { collectAllFiles } from './tree';
 import { readFile } from './fs-ops';
 import { getEmbeddings, getEmbedding, getEmbeddingConfig } from './embedding-provider';
 
 const MAX_CONTENT_LENGTH = 8_000; // Truncate long files (embedding context window)
 
-/** Content hash used for embedding dedup — cheap and collision-safe enough. */
-function contentHash(text: string): string {
-  return crypto.createHash('sha1').update(text).digest('hex');
-}
-
 export interface EmbeddingSearchResult {
   path: string;
   similarity: number; // 0..1 cosine similarity
 }
 
-export interface EmbeddingIndexOptions {
-  /** Directory for the persisted index file (default: ~/.mindos). */
-  persistDir?: string;
-}
-
 export class EmbeddingIndex {
   /** filePath → Float32Array (embedding vector) */
   private vectors = new Map<string, Float32Array>();
-  /** filePath → sha1 of the embedded text — skip re-embedding unchanged content. */
-  private fileHashes = new Map<string, string>();
   private dimensions = 0;
   private builtForRoot: string | null = null;
-  private readonly persistDir: string | null;
-
-  constructor(opts: EmbeddingIndexOptions = {}) {
-    this.persistDir = opts.persistDir ?? null;
-  }
 
   /** Whether a full build or load has been done for this root. */
   private _ready = false;
@@ -65,9 +47,7 @@ export class EmbeddingIndex {
   // ── Build ────────────────────────────────────────────────────────
 
   /**
-   * Full rebuild with content-hash dedup: only files whose content changed
-   * since the last build (or that are new) are re-embedded; vectors of
-   * deleted files are dropped. Runs async — returns immediately.
+   * Full rebuild: embed all files. Runs async — returns immediately.
    * Callers should check isReady() before calling search().
    */
   async rebuild(mindRoot: string): Promise<void> {
@@ -79,8 +59,8 @@ export class EmbeddingIndex {
       if (!config) { this._building = false; return; }
 
       const allFiles = collectAllFiles(mindRoot);
-      /** filePath → embeddable text for every md/csv file currently on disk. */
-      const current = new Map<string, { text: string; hash: string }>();
+      const texts: string[] = [];
+      const paths: string[] = [];
 
       for (const filePath of allFiles) {
         // Skip non-text files for embedding
@@ -92,42 +72,30 @@ export class EmbeddingIndex {
 
         // Prepend file path as context
         const text = `${filePath}\n${content}`.slice(0, MAX_CONTENT_LENGTH);
-        current.set(filePath, { text, hash: contentHash(text) });
+        texts.push(text);
+        paths.push(filePath);
       }
 
-      // Drop vectors/hashes of files that no longer exist.
-      for (const filePath of [...this.vectors.keys()]) {
-        if (!current.has(filePath)) {
-          this.vectors.delete(filePath);
-          this.fileHashes.delete(filePath);
-        }
+      if (texts.length === 0) {
+        this._building = false;
+        this._ready = true;
+        this.builtForRoot = mindRoot;
+        return;
       }
 
-      // Embed only new or changed files.
-      const toEmbedPaths: string[] = [];
-      const toEmbedTexts: string[] = [];
-      for (const [filePath, { text, hash }] of current) {
-        if (this.vectors.has(filePath) && this.fileHashes.get(filePath) === hash) continue;
-        toEmbedPaths.push(filePath);
-        toEmbedTexts.push(text);
+      // Batch embed all documents
+      const vectors = await getEmbeddings(texts);
+
+      if (vectors.length !== texts.length) {
+        console.error(`[embedding-index] Expected ${texts.length} vectors, got ${vectors.length}`);
+        this._building = false;
+        return;
       }
 
-      if (toEmbedPaths.length > 0) {
-        const vectors = await getEmbeddings(toEmbedTexts);
-
-        if (vectors.length !== toEmbedTexts.length) {
-          console.error(`[embedding-index] Expected ${toEmbedTexts.length} vectors, got ${vectors.length}`);
-          this._building = false;
-          return;
-        }
-
-        if (vectors.length > 0 && this.dimensions === 0) {
-          this.dimensions = vectors[0].length;
-        }
-        for (let i = 0; i < toEmbedPaths.length; i++) {
-          this.vectors.set(toEmbedPaths[i], vectors[i]);
-          this.fileHashes.set(toEmbedPaths[i], current.get(toEmbedPaths[i])!.hash);
-        }
+      this.vectors.clear();
+      this.dimensions = vectors[0].length;
+      for (let i = 0; i < paths.length; i++) {
+        this.vectors.set(paths[i], vectors[i]);
       }
 
       this.builtForRoot = mindRoot;
@@ -144,7 +112,7 @@ export class EmbeddingIndex {
 
   // ── Incremental updates ──────────────────────────────────────────
 
-  /** Add or update a single file's embedding (skips unchanged content). */
+  /** Add or update a single file's embedding. */
   async updateFile(mindRoot: string, filePath: string): Promise<void> {
     if (!this._ready) return;
     const ext = path.extname(filePath).toLowerCase();
@@ -154,22 +122,16 @@ export class EmbeddingIndex {
     try { content = readFile(mindRoot, filePath); } catch { return; }
 
     const text = `${filePath}\n${content}`.slice(0, MAX_CONTENT_LENGTH);
-    const hash = contentHash(text);
-    // Content unchanged → keep the existing vector (no embedding call).
-    if (this.vectors.has(filePath) && this.fileHashes.get(filePath) === hash) return;
-
     const vector = await getEmbedding(text);
     if (vector) {
       this.vectors.set(filePath, vector);
-      this.fileHashes.set(filePath, hash);
       if (this.dimensions === 0) this.dimensions = vector.length;
     }
   }
 
-  /** Remove a file from the index (vector and hash, so a re-add embeds again). */
+  /** Remove a file from the index. */
   removeFile(filePath: string): void {
     this.vectors.delete(filePath);
-    this.fileHashes.delete(filePath);
   }
 
   // ── Search ───────────────────────────────────────────────────────
@@ -220,8 +182,7 @@ export class EmbeddingIndex {
   // ── Persistence ──────────────────────────────────────────────────
 
   private get persistPath(): string {
-    const dir = this.persistDir ?? path.join(os.homedir(), '.mindos');
-    return path.join(dir, 'embedding-index.json');
+    return path.join(os.homedir(), '.mindos', 'embedding-index.json');
   }
 
   /** Serialize to disk. */
@@ -235,7 +196,6 @@ export class EmbeddingIndex {
       docCount: this.vectors.size,
       timestamp: Date.now(),
       vectors: {},
-      hashes: Object.fromEntries(this.fileHashes),
     };
 
     for (const [filePath, vec] of this.vectors) {
@@ -277,13 +237,9 @@ export class EmbeddingIndex {
       }
 
       this.vectors.clear();
-      this.fileHashes.clear();
       this.dimensions = data.dimensions;
       for (const [filePath, arr] of Object.entries(data.vectors)) {
         this.vectors.set(filePath, new Float32Array(arr));
-      }
-      for (const [filePath, hash] of Object.entries(data.hashes ?? {})) {
-        this.fileHashes.set(filePath, hash);
       }
       this.builtForRoot = data.builtForRoot;
       this._ready = true;
@@ -297,7 +253,6 @@ export class EmbeddingIndex {
   /** Clear all state. */
   invalidate(): void {
     this.vectors.clear();
-    this.fileHashes.clear();
     this.dimensions = 0;
     this.builtForRoot = null;
     this._ready = false;
@@ -342,6 +297,4 @@ interface PersistedEmbeddingIndex {
   docCount: number;
   timestamp: number;
   vectors: Record<string, number[]>;
-  /** sha1 per file for embedding dedup (absent in pre-dedup persisted files). */
-  hashes?: Record<string, string>;
 }

@@ -58,15 +58,13 @@ const nodeBin = process.execPath;
 function waitHttpOk(pathname, timeoutMs, validate = () => true) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
-    // `/` responds with a server-side 307 to the default echo route; follow
-    // same-origin redirects (bounded) so the check validates the real page.
-    const tick = (currentPath = pathname, redirectsLeft = 5) => {
+    const tick = () => {
       if (Date.now() > deadline) {
         reject(new Error(`Timeout waiting for http://127.0.0.1:${port}${pathname}`));
         return;
       }
       const req = http.get(
-        `http://127.0.0.1:${port}${currentPath}`,
+        `http://127.0.0.1:${port}${pathname}`,
         { timeout: 2000 },
         (res) => {
           let body = '';
@@ -78,24 +76,16 @@ function waitHttpOk(pathname, timeoutMs, validate = () => true) {
               resolve();
               return;
             }
-            const location = res.headers.location;
-            if (
-              res.statusCode >= 300 && res.statusCode < 400 &&
-              redirectsLeft > 0 && location && location.startsWith('/')
-            ) {
-              tick(location, redirectsLeft - 1);
-              return;
-            }
-            setTimeout(() => tick(pathname), 300);
+            setTimeout(tick, 300);
           });
         }
       );
       req.on('error', () => {
-        setTimeout(() => tick(pathname), 300);
+        setTimeout(tick, 300);
       });
       req.on('timeout', () => {
         req.destroy();
-        setTimeout(() => tick(pathname), 300);
+        setTimeout(tick, 300);
       });
     };
     tick();

@@ -8,7 +8,6 @@ import Link from 'next/link';
 import { useLocale } from '@/lib/stores/locale-store';
 import { openAskModal } from '@/hooks/useAskModal';
 import { walkthroughSteps } from './walkthrough/steps';
-import { subscribeFilesChanged } from '@/lib/files-changed';
 import type { GuideState } from '@/lib/settings';
 
 export default function GuideCard() {
@@ -75,9 +74,9 @@ export default function GuideCard() {
 
   useEffect(() => {
     if (!guideState || guideState.step1Done) return;
-    // Any created/changed file marks the import step done; coalesced so a
-    // bulk import only PATCHes the guide state once.
-    return subscribeFilesChanged(() => patchGuide({ step1Done: true }));
+    const handler = () => patchGuide({ step1Done: true });
+    window.addEventListener('mindos:files-changed', handler);
+    return () => window.removeEventListener('mindos:files-changed', handler);
   }, [guideState, guideState?.step1Done, patchGuide]);
 
   // ── Step 2: AI verify ──

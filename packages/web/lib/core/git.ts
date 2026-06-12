@@ -1,6 +1,5 @@
 import { execFileSync } from 'child_process';
 import { resolveExistingSafe } from './security';
-import { sanitizedGitEnv } from '../git-env';
 import type { GitLogEntry } from './types';
 
 /**
@@ -8,7 +7,7 @@ import type { GitLogEntry } from './types';
  */
 export function isGitRepo(mindRoot: string): boolean {
   try {
-    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: mindRoot, stdio: 'pipe', env: sanitizedGitEnv() });
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: mindRoot, stdio: 'pipe' });
     return true;
   } catch { return false; }
 }
@@ -21,7 +20,7 @@ export function gitLog(mindRoot: string, filePath: string, limit: number): GitLo
   const output = execFileSync(
     'git',
     ['log', '--follow', '--format=%H%x00%aI%x00%s%x00%an', '-n', String(limit), '--', resolved],
-    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: sanitizedGitEnv() }
+    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   ).trim();
   if (!output) return [];
   return output.split('\n').map(line => {
@@ -38,18 +37,18 @@ export function gitShowFile(mindRoot: string, filePath: string, commitHash: stri
   const relFromGitRoot = execFileSync(
     'git',
     ['ls-files', '--full-name', resolved],
-    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: sanitizedGitEnv() }
+    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   ).trim();
   if (!relFromGitRoot) {
     return execFileSync(
       'git',
       ['show', `${commitHash}:${filePath}`],
-      { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: sanitizedGitEnv() }
+      { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
     );
   }
   return execFileSync(
     'git',
     ['show', `${commitHash}:${relFromGitRoot}`],
-    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], env: sanitizedGitEnv() }
+    { cwd: mindRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
 }

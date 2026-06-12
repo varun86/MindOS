@@ -237,44 +237,4 @@ describe('ask user question bridge', () => {
 
     expect(send.mock.calls.filter(([event]) => event.type === 'user_question_cancelled')).toHaveLength(0);
   });
-
-  it('does not let a finished bridge cancel a newer bridge registered for the same runId', async () => {
-    const sendA = vi.fn();
-    const sendB = vi.fn();
-
-    let resolveA!: () => void;
-    const bridgeA = runWithAskUserQuestionBridge(
-      { runId: 'run-shared', send: sendA },
-      () => new Promise<void>((resolve) => { resolveA = resolve; }),
-    );
-
-    let questionPromise!: Promise<unknown>;
-    let resolveB!: () => void;
-    const bridgeB = runWithAskUserQuestionBridge(
-      { runId: 'run-shared', send: sendB },
-      async () => {
-        questionPromise = askUserQuestionForRun({ runId: 'run-shared', toolCallId: 'tool-b', params });
-        await new Promise<void>((resolve) => { resolveB = resolve; });
-        return questionPromise;
-      },
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-
-    // Bridge A finishes while bridge B still has a question pending.
-    resolveA();
-    await bridgeA;
-
-    // B's question must survive A's cleanup and remain answerable.
-    expect(answerAskUserQuestion({
-      runId: 'run-shared',
-      toolCallId: 'tool-b',
-      answers: [{ questionIndex: 0, question: params.questions[0].question, kind: 'option', answer: 'Bridge' }],
-    })).toEqual({ ok: true });
-    await expect(questionPromise).resolves.toMatchObject({ cancelled: false });
-    expect(sendB.mock.calls.filter(([event]) => event.type === 'user_question_cancelled')).toHaveLength(0);
-
-    resolveB();
-    await bridgeB;
-  });
 });

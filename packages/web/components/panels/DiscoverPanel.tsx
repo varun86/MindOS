@@ -9,7 +9,6 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { useCases } from '@/components/explore/use-cases.generated';
 import { openAskModal } from '@/hooks/useAskModal';
 import { getPluginRenderers, isRendererEnabled, setRendererEnabled, loadDisabledState } from '@/lib/renderers/registry';
-import { fetchAllFilePaths } from '@/lib/client-cache';
 import { Toggle } from '../settings/Primitives';
 
 interface DiscoverPanelProps {
@@ -80,8 +79,8 @@ export default function DiscoverPanel({ active, maximized, onMaximize }: Discove
     fetchedRef.current = true;
     const entryPaths = getPluginRenderers().map(r => r.entryPath).filter((ep): ep is string => !!ep);
     if (entryPaths.length === 0) return;
-    // Shared client cache — deduped with other /api/files consumers
-    fetchAllFilePaths()
+    fetch('/api/files')
+      .then(r => r.ok ? r.json() : [])
       .then((allPaths: string[]) => {
         const pathSet = new Set(allPaths);
         setExistingFiles(new Set(entryPaths.filter(ep => pathSet.has(ep))));

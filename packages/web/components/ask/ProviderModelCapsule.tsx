@@ -10,6 +10,7 @@ import {
   isProviderId,
 } from '@/lib/agent/providers';
 import { type Provider, isProviderEntryId, findProvider } from '@/lib/custom-endpoints';
+import { LAYOUT_Z } from '@/lib/config/layout-layers';
 
 const STORAGE_KEY = 'mindos-provider-model';
 
@@ -174,7 +175,7 @@ export default function ProviderModelCapsule({
       position: 'fixed',
       left: Math.min(rect.left, window.innerWidth - 270),
       ...(goUp ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
-      zIndex: 60,
+      zIndex: LAYOUT_Z.POPOVER,
     });
   }, []);
 
@@ -308,7 +309,7 @@ export default function ProviderModelCapsule({
       position: 'fixed',
       left: actualLeft,
       top,
-      zIndex: 51,
+      zIndex: LAYOUT_Z.POPOVER_FLYOUT,
       pointerEvents: 'auto',
     });
   }, []);

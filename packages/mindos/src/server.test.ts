@@ -535,7 +535,7 @@ Write a concise signal brief.
         preferredAgent: 'mindos-agent',
         skills: ['mindos', 'mindos'],
         mcp: ['arxiv'],
-        permissionMode: 'readonly',
+        permissionMode: 'chat',
         schedule: { mode: 'daily' },
         surface: ['agents'],
         outputPolicy: { mode: 'draft' },

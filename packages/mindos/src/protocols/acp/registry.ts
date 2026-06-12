@@ -17,6 +17,7 @@ import { AGENT_DESCRIPTORS, getDescriptorDisplayName, getDescriptorDescription, 
 const REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — registry updates very rarely
 const FETCH_TIMEOUT_MS = 3_000;
+const FAILED_REFRESH_BACKOFF_MS = 5 * 60 * 1000;
 
 /* ── Built-in Registry (from AGENT_DESCRIPTORS) ────────────────────────── */
 
@@ -47,21 +48,30 @@ function getBuiltinAgents(): AcpRegistryEntry[] {
 /* ── Cache ─────────────────────────────────────────────────────────────── */
 
 let cachedRegistry: AcpRegistry | null = null;
+let refreshInFlight: Promise<AcpRegistry | null> | null = null;
+let lastFailedRefreshAt = 0;
+let cacheGeneration = 0;
 
 /* ── Public API ────────────────────────────────────────────────────────── */
 
 /**
  * Fetch the ACP registry from the CDN and merge with built-in entries.
- * Caches for 7 days. Falls back to built-in registry if CDN is unreachable.
+ * Returns the best local answer immediately, then refreshes CDN data in the
+ * background. This keeps UI surfaces from waiting on the public registry when
+ * the CDN is slow or unreachable.
  */
 export async function fetchAcpRegistry(): Promise<AcpRegistry> {
   // Return cached if still valid
-  if (cachedRegistry && Date.now() - new Date(cachedRegistry.fetchedAt).getTime() < CACHE_TTL_MS) {
+  if (cachedRegistry && isRegistryFresh(cachedRegistry)) {
     return cachedRegistry;
   }
 
-  const builtin = getBuiltinAgents();
+  const fallback = cachedRegistry ?? makeRegistry(getBuiltinAgents(), 'builtin');
+  refreshRegistryInBackground();
+  return fallback;
+}
 
+async function refreshRegistryFromCdn(generation: number): Promise<AcpRegistry | null> {
   try {
     const res = await fetch(REGISTRY_URL, {
       headers: { 'Accept': 'application/json' },
@@ -69,7 +79,8 @@ export async function fetchAcpRegistry(): Promise<AcpRegistry> {
     });
 
     if (!res.ok) {
-      return cachedRegistry ?? makeRegistry(builtin, 'builtin');
+      if (generation === cacheGeneration) lastFailedRefreshAt = Date.now();
+      return null;
     }
 
     const data = await res.json();
@@ -78,19 +89,46 @@ export async function fetchAcpRegistry(): Promise<AcpRegistry> {
     const cdnAgents: AcpRegistryEntry[] = parseRegistryEntries(data);
 
     // Merge: CDN entries take precedence, built-in entries fill gaps
-    const merged = mergeRegistries(builtin, cdnAgents);
+    const merged = mergeRegistries(getBuiltinAgents(), cdnAgents);
+
+    if (generation !== cacheGeneration) return null;
 
     cachedRegistry = {
       version: data.version ?? '1',
       agents: merged,
       fetchedAt: new Date().toISOString(),
     };
+    lastFailedRefreshAt = 0;
 
     return cachedRegistry;
   } catch {
-    // CDN unreachable — use built-in as baseline
-    return cachedRegistry ?? makeRegistry(builtin, 'builtin');
+    if (generation === cacheGeneration) lastFailedRefreshAt = Date.now();
+    return null;
   }
+}
+
+function refreshRegistryInBackground(): void {
+  if (refreshInFlight) return;
+  if (lastFailedRefreshAt && Date.now() - lastFailedRefreshAt < FAILED_REFRESH_BACKOFF_MS) return;
+
+  const generation = cacheGeneration;
+  refreshInFlight = refreshRegistryFromCdn(generation)
+    .finally(() => {
+      if (generation === cacheGeneration) refreshInFlight = null;
+    });
+}
+
+function isRegistryFresh(registry: AcpRegistry): boolean {
+  return Date.now() - new Date(registry.fetchedAt).getTime() < CACHE_TTL_MS;
+}
+
+function findEntry(agents: AcpRegistryEntry[], id: string): AcpRegistryEntry | null {
+  const canonical = resolveAlias(id);
+  return agents.find(a => a.id === id || a.id === canonical) ?? null;
+}
+
+async function waitForActiveRefresh(): Promise<AcpRegistry | null> {
+  return refreshInFlight ? await refreshInFlight : null;
 }
 
 /**
@@ -144,9 +182,20 @@ export async function getAcpAgents(): Promise<AcpRegistryEntry[]> {
  * Find a specific ACP agent by ID (supports alias resolution).
  */
 export async function findAcpAgent(id: string): Promise<AcpRegistryEntry | null> {
-  const agents = await getAcpAgents();
-  const canonical = resolveAlias(id);
-  return agents.find(a => a.id === id || a.id === canonical) ?? null;
+  if (cachedRegistry && isRegistryFresh(cachedRegistry)) {
+    const cachedMatch = findEntry(cachedRegistry.agents, id);
+    if (cachedMatch) return cachedMatch;
+  }
+
+  const builtinMatch = findEntry(getBuiltinAgents(), id);
+  if (builtinMatch) return builtinMatch;
+
+  const registry = await fetchAcpRegistry();
+  const cachedMatch = findEntry(registry.agents, id);
+  if (cachedMatch) return cachedMatch;
+
+  const refreshed = await waitForActiveRefresh();
+  return refreshed ? findEntry(refreshed.agents, id) : null;
 }
 
 /**
@@ -154,6 +203,9 @@ export async function findAcpAgent(id: string): Promise<AcpRegistryEntry | null>
  */
 export function clearRegistryCache(): void {
   cachedRegistry = null;
+  refreshInFlight = null;
+  lastFailedRefreshAt = 0;
+  cacheGeneration += 1;
 }
 
 /* ── Internal ──────────────────────────────────────────────────────────── */

@@ -24,7 +24,7 @@ describe('/api/agent-runs', () => {
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review this',
     });
     completeAgentRun(subagentRun.id, { outputSummary: 'Looks good.' });
@@ -62,7 +62,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'claude',
       displayName: 'Claude Code',
       chatSessionId: 'chat-b',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Use Claude',
     });
 
@@ -97,7 +97,7 @@ describe('/api/agent-runs', () => {
       rootRunId: root.id,
       parentRunId: root.id,
       chatSessionId: 'chat-root',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review',
     });
     startAgentRun({

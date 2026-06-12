@@ -30,7 +30,7 @@ export type MindosAskStreamRequest = {
   attachedFiles?: string[];
   uploadedFiles?: Array<{ name: string; content: string }>;
   maxSteps?: number;
-  mode?: 'chat' | 'agent' | 'organize';
+  mode?: 'chat' | 'agent';
   selectedRuntime?: MindosSelectedRuntime | null;
   runtimeBinding?: MindosRuntimeSessionBinding | null;
   selectedAcpAgent?: { id: string; name: string } | null;
@@ -74,10 +74,9 @@ function parseAskStreamRequest(body: unknown):
   }
 
   const mode = record.mode;
-  if (mode !== undefined && mode !== 'chat' && mode !== 'agent' && mode !== 'organize') {
-    return { ok: false, status: 400, body: { error: 'mode must be chat, agent, or organize' } };
+  if (mode !== undefined && mode !== 'chat' && mode !== 'agent') {
+    return { ok: false, status: 400, body: { error: 'mode must be chat or agent' } };
   }
-
   const selectedRuntime = normalizeSelectedRuntime(record);
   const runtimeBinding = normalizeRuntimeSessionBinding(record.runtimeBinding);
 

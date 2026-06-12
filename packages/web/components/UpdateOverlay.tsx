@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { fetchMindosHealth } from '@/lib/mindos-health';
+import { LAYOUT_Z } from '@/lib/config/layout-layers';
 
 const UPDATE_STATE_KEY = 'mindos_update_in_progress';
 const POLL_INTERVAL = 3_000;
@@ -85,7 +86,7 @@ export default function UpdateOverlay() {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 99999,
+        zIndex: LAYOUT_Z.CRITICAL_OVERLAY,
         background: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(8px)',
         display: 'flex',

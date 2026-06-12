@@ -103,11 +103,6 @@ export class SearchIndex {
   private totalChars = 0;
   /** Reverse mapping: filePath → Set<token> for efficient removeFile. */
   private fileTokens = new Map<string, Set<string>>();
-  /** filePath → truncated content. Lets queries score/snippet without disk IO.
-   *  Not persisted — lazily refilled from disk after load()/worker restore. */
-  private contents = new Map<string, string>();
-  /** filePath → lowercased truncated content, derived lazily from `contents`. */
-  private lowerContents = new Map<string, string>();
 
   /**
    * Async rebuild using worker_threads (non-blocking).
@@ -170,8 +165,6 @@ export class SearchIndex {
     this.fileCount = data.fileCount;
     this.totalChars = data.totalChars;
     this.docLengths = new Map(Object.entries(data.docLengths).map(([k, v]) => [k, v as number]));
-    this.contents = new Map();
-    this.lowerContents = new Map();
 
     const inverted = new Map<string, Set<string>>();
     const fileTokensMap = new Map<string, Set<string>>();
@@ -188,24 +181,13 @@ export class SearchIndex {
     this.fileTokens = fileTokensMap;
   }
 
-  /**
-   * Full rebuild: read all files and build inverted index.
-   *
-   * @param opts.pdfTimeBudgetMs Optional time budget (from rebuild start) for
-   *   inline PDF extraction. PDFs encountered after the budget elapses are
-   *   indexed by path only (placeholder content) and returned in
-   *   `deferredPdfs` so the caller can finish them asynchronously via
-   *   `updateFile`. Omit for an unbounded build (worker / prewarm paths).
-   */
-  rebuild(mindRoot: string, opts: { pdfTimeBudgetMs?: number } = {}): { deferredPdfs: string[] } {
+  /** Full rebuild: read all files and build inverted index. */
+  rebuild(mindRoot: string): void {
     const stop = telemetry.startTimer('search.index.rebuild');
-    const pdfDeadline = opts.pdfTimeBudgetMs === undefined ? null : Date.now() + opts.pdfTimeBudgetMs;
     const allFiles = collectAllFiles(mindRoot);
     const inverted = new Map<string, Set<string>>();
     const docLengths = new Map<string, number>();
     const fileTokensMap = new Map<string, Set<string>>();
-    const contents = new Map<string, string>();
-    const deferredPdfs: string[] = [];
     let totalChars = 0;
     let tokenCount = 0;
 
@@ -214,19 +196,13 @@ export class SearchIndex {
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.pdf') {
-        if (pdfDeadline !== null && Date.now() >= pdfDeadline) {
-          // Budget exhausted — index path tokens now, extract text later.
-          deferredPdfs.push(filePath);
-          content = '';
-        } else {
-          // PDF: extract text from binary via pdfjs-dist child process
-          try {
-            const resolved = resolveExistingSafe(mindRoot, filePath);
-            content = extractPdfText(resolved);
-            if (!content) continue;
-          } catch {
-            continue;
-          }
+        // PDF: extract text from binary via pdfjs-dist child process
+        try {
+          const resolved = resolveExistingSafe(mindRoot, filePath);
+          content = extractPdfText(resolved);
+          if (!content) continue;
+        } catch {
+          continue;
         }
       } else {
         try {
@@ -243,7 +219,6 @@ export class SearchIndex {
       if (content.length > MAX_CONTENT_LENGTH) {
         content = content.slice(0, MAX_CONTENT_LENGTH);
       }
-      contents.set(filePath, content);
 
       // Also index the file path itself
       const allText = filePath + '\n' + content;
@@ -267,10 +242,7 @@ export class SearchIndex {
     this.docLengths = docLengths;
     this.totalChars = totalChars;
     this.fileTokens = fileTokensMap;
-    this.contents = contents;
-    this.lowerContents = new Map();
-    stop({ fileCount: allFiles.length, tokenCount, deferredPdfCount: deferredPdfs.length });
-    return { deferredPdfs };
+    stop({ fileCount: allFiles.length, tokenCount });
   }
 
   /** Clear the index. Next search will trigger a lazy rebuild. */
@@ -281,8 +253,6 @@ export class SearchIndex {
     this.docLengths.clear();
     this.totalChars = 0;
     this.fileTokens.clear();
-    this.contents.clear();
-    this.lowerContents.clear();
   }
 
   // ── Incremental updates ──────────────────────────────────────────────
@@ -294,11 +264,8 @@ export class SearchIndex {
   removeFile(filePath: string): void {
     if (!this.invertedIndex) return;
 
-    // Unknown path → no-op (must not corrupt fileCount / totalChars).
-    const tokens = this.fileTokens.get(filePath);
-    if (tokens === undefined && !this.docLengths.has(filePath)) return;
-
     // Use reverse mapping for O(tokens-in-file) instead of O(all-tokens)
+    const tokens = this.fileTokens.get(filePath);
     if (tokens) {
       for (const token of tokens) {
         this.invertedIndex.get(token)?.delete(filePath);
@@ -310,28 +277,7 @@ export class SearchIndex {
     const oldLen = this.docLengths.get(filePath) ?? 0;
     this.totalChars -= oldLen;
     this.docLengths.delete(filePath);
-    this.contents.delete(filePath);
-    this.lowerContents.delete(filePath);
     this.fileCount = Math.max(0, this.fileCount - 1);
-  }
-
-  /**
-   * Remove a file — or a whole directory subtree — from the index.
-   * Matches the exact path plus any path under `relPath + '/'` (no
-   * name-prefix false positives like `Projects-extra/` for `Projects`).
-   * Returns the removed file paths.
-   */
-  removePath(relPath: string): string[] {
-    if (!this.invertedIndex) return [];
-    const prefix = relPath.endsWith('/') ? relPath : relPath + '/';
-    const removed: string[] = [];
-    for (const filePath of [...this.docLengths.keys()]) {
-      if (filePath === relPath || filePath.startsWith(prefix)) {
-        this.removeFile(filePath);
-        removed.push(filePath);
-      }
-    }
-    return removed;
   }
 
   /**
@@ -362,8 +308,6 @@ export class SearchIndex {
     if (content.length > MAX_CONTENT_LENGTH) {
       content = content.slice(0, MAX_CONTENT_LENGTH);
     }
-    this.contents.set(filePath, content);
-    this.lowerContents.delete(filePath);
     const allText = filePath + '\n' + content;
     const tokens = tokenize(allText);
     this.fileTokens.set(filePath, tokens);
@@ -417,48 +361,6 @@ export class SearchIndex {
   getDocFrequency(token: string): number {
     if (!this.invertedIndex) return 0;
     return this.invertedIndex.get(token)?.size ?? 0;
-  }
-
-  /** All indexed file paths (relative to the built root). */
-  getAllFiles(): string[] {
-    return [...this.docLengths.keys()];
-  }
-
-  /**
-   * Truncated content of an indexed file, served from memory.
-   * After `load()` (contents are not persisted) the content is lazily
-   * re-read from disk once and cached. Returns null for unknown files
-   * or unreadable content.
-   */
-  getContent(mindRoot: string, filePath: string): string | null {
-    if (!this.invertedIndex) return null;
-    const cached = this.contents.get(filePath);
-    if (cached !== undefined) return cached;
-    if (!this.docLengths.has(filePath)) return null;
-
-    let content: string;
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.pdf') {
-      try {
-        content = extractPdfText(resolveExistingSafe(mindRoot, filePath));
-      } catch { return null; }
-    } else {
-      try { content = readFile(mindRoot, filePath); } catch { return null; }
-    }
-    if (content.length > MAX_CONTENT_LENGTH) content = content.slice(0, MAX_CONTENT_LENGTH);
-    this.contents.set(filePath, content);
-    return content;
-  }
-
-  /** Lowercased counterpart of `getContent`, derived lazily and cached. */
-  getLowerContent(mindRoot: string, filePath: string): string | null {
-    const cached = this.lowerContents.get(filePath);
-    if (cached !== undefined) return cached;
-    const content = this.getContent(mindRoot, filePath);
-    if (content === null) return null;
-    const lower = content.toLowerCase();
-    this.lowerContents.set(filePath, lower);
-    return lower;
   }
 
   /**

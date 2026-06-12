@@ -32,7 +32,6 @@ import { useInboxOrganize } from '@/components/inbox/InboxOrganizeContext';
 import { CAPTURE_ACCEPT } from '@/lib/capture-formats';
 import { SourceIcon, getInboxSourceLabel } from '@/components/inbox/SourceIcon';
 import { archiveInboxFiles, fetchInboxFiles, type InboxFileSourceInfo } from '@/lib/inbox-client';
-import { isAnyPathUnder, subscribeFilesChanged } from '@/lib/files-changed';
 
 interface InboxFile {
   name: string;
@@ -172,18 +171,13 @@ export function InboxSection({ isOrganizing: externalOrganizing = false }: Inbox
 
     const onOrganizeDone = () => { setOrganizing(false); debouncedRefresh(); };
 
-    // Coalesced files-changed subscription: skip the refetch entirely when the
-    // event declares paths and none of them touch the Inbox directory.
-    const unsubscribeFilesChanged = subscribeFilesChanged(
-      () => debouncedRefresh(),
-      { isRelevant: (paths) => isAnyPathUnder(paths, 'Inbox') },
-    );
+    window.addEventListener('mindos:files-changed', debouncedRefresh);
     window.addEventListener('mindos:inbox-updated', debouncedRefresh);
     window.addEventListener('mindos:organize-done', onOrganizeDone);
     window.addEventListener('mindos:organize-history-update', refreshHistory);
     return () => {
       clearTimeout(refreshTimerRef.current);
-      unsubscribeFilesChanged();
+      window.removeEventListener('mindos:files-changed', debouncedRefresh);
       window.removeEventListener('mindos:inbox-updated', debouncedRefresh);
       window.removeEventListener('mindos:organize-done', onOrganizeDone);
       window.removeEventListener('mindos:organize-history-update', refreshHistory);

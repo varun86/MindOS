@@ -1,7 +1,6 @@
-import { redirect } from 'next/navigation';
+import ClientRedirect from '@/components/ClientRedirect';
 import { defaultEchoPath } from '@/lib/echo-segments';
 
-/** `/echo` server-redirects to the default segment (no client hard-reload). */
 export default function EchoIndexPage() {
-  redirect(defaultEchoPath());
+  return <ClientRedirect href={defaultEchoPath()} label="Redirecting to Echo..." />;
 }

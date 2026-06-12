@@ -2,7 +2,6 @@ import {
   AuthStorage,
   convertToLlm,
   createAgentSession,
-  createBashToolDefinition,
   DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
@@ -30,7 +29,7 @@ export type MindosPiCodingAgentRuntimeHostServices = Pick<
 >;
 
 export type MindosPiCodingAgentRuntimeOptions =
-  Omit<MindosPiAgentRuntimeOptions, 'services' | 'bashTool'> & {
+  Omit<MindosPiAgentRuntimeOptions, 'services'> & {
     hostServices: MindosPiCodingAgentRuntimeHostServices;
   };
 
@@ -55,8 +54,6 @@ export async function createMindosPiCodingAgentRuntime(
 ) {
   return createMindosPiAgentRuntime({
     ...options,
-    // ToolDefinition shape (not AgentTool) — it goes into SDK customTools.
-    bashTool: createBashToolDefinition(options.projectRoot),
     services: createMindosPiCodingAgentRuntimeServices(options.hostServices),
   });
 }

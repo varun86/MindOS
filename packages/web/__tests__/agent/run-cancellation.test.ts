@@ -50,7 +50,7 @@ describe('agent run cancellation bridge', () => {
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'chat',
       inputSummary: 'Review this.',
     });
     registerAgentRunCancelHandler(run.id, handler);

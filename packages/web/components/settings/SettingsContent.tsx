@@ -16,6 +16,7 @@ import { UpdateTab } from './UpdateTab';
 import { UninstallTab } from './UninstallTab';
 import { restoreAiSettingsFromEnvironment } from './ai-env-restore';
 import { saveSettingsDocument } from './settings-save';
+import { SETTINGS_SIDEBAR } from '@/lib/config/panel-sizes';
 
 interface SettingsContentProps {
   visible: boolean;
@@ -470,7 +471,10 @@ export default function SettingsContent({ visible, initialTab, variant, onClose 
       </div>
 
       {/* Desktop sidebar — vertical tabs */}
-      <div className="hidden md:flex w-[232px] shrink-0 border-r border-border/60 bg-card/35 flex-col">
+      <div
+        className="hidden md:flex shrink-0 border-r border-border/60 bg-card/35 flex-col"
+        style={{ width: SETTINGS_SIDEBAR.WIDTH }}
+      >
         <div className={`${desktopHeaderClass} gap-3 px-4`}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
             <Settings size={15} />

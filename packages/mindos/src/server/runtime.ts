@@ -278,7 +278,7 @@ function walkMindRoot(
   }
 }
 
-export function collectFileStatsFromMindRoot(mindRoot: string): Array<{ path: string; mtime: number }> {
+function collectFileStatsFromMindRoot(mindRoot: string): Array<{ path: string; mtime: number }> {
   const root = resolve(mindRoot);
   if (!existsSync(root)) return [];
   const files: Array<{ path: string; mtime: number }> = [];

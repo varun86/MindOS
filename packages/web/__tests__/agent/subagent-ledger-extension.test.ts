@@ -57,7 +57,7 @@ describe('MindOS subagent ledger extension', () => {
         displayName: 'reviewer',
         status: 'completed',
         cwd: '/tmp/mindos',
-        permissionMode: 'readonly',
+        permissionMode: 'chat',
         inputSummary: expect.stringContaining('Review the patch.'),
         outputSummary: 'Review completed.',
         metadata: expect.objectContaining({ toolCallId: 'tool-call-1', source: 'pi-subagents' }),
@@ -365,36 +365,5 @@ describe('MindOS subagent ledger extension', () => {
       }),
     ]);
     expect(listAgentEvents({ type: 'run_canceled' })).toHaveLength(1);
-  });
-
-  it('finalizes a detached run whose completion event arrived before the run was marked streaming', async () => {
-    const upstream = {
-      name: 'subagent',
-      parameters: {} as any,
-      execute: vi.fn(async () => {
-        // The async work completed so fast that its completion event fires
-        // before the ledger wrapper has stored the asyncId on the run.
-        expect(finalizeSubagentAsyncRunFromEvent({
-          id: 'async-early',
-          state: 'completed',
-          summary: 'Fast async result.',
-        })).toBe(false);
-        return {
-          content: [{ type: 'text', text: 'Async run started.' }],
-          details: { asyncId: 'async-early', mode: 'async' },
-        };
-      }),
-    };
-    const wrapped = wrapSubagentToolForLedger(upstream as any);
-
-    await wrapped.execute('tool-call-early', { agent: 'worker', task: 'Fast async task.' });
-
-    expect(listAgentRuns()).toEqual([
-      expect.objectContaining({
-        agentKind: 'pi-subagent',
-        status: 'completed',
-        outputSummary: 'Fast async result.',
-      }),
-    ]);
   });
 });

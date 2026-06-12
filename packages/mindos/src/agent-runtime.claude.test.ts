@@ -551,7 +551,6 @@ describe('agent runtime adapters: Claude Code', () => {
       '--verbose',
       '--permission-mode',
       'default',
-      '--',
       'Fallback.',
     ]);
     expect(result).toEqual({ externalSessionId: 'claude-cli-fallback' });
@@ -633,7 +632,6 @@ describe('agent runtime adapters: Claude Code', () => {
       '--verbose',
       '--permission-mode',
       'default',
-      '--',
       'Review this.',
     ]);
     expect(result).toEqual({ externalSessionId: 'claude-session-1' });
@@ -669,7 +667,6 @@ describe('agent runtime adapters: Claude Code', () => {
       '--verbose',
       '--permission-mode',
       'dontAsk',
-      '--',
       'Read only.',
     ]);
   });
