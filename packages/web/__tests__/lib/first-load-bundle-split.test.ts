@@ -131,12 +131,18 @@ describe('first-load bundle split contracts', () => {
     expect(src).toContain("import('./EchoInsightMarkdown')");
   });
 
-  it('startup pages use server redirects instead of client reload redirects', () => {
-    for (const page of ['app/page.tsx', 'app/echo/page.tsx']) {
-      const src = read(page);
-      expect(src, `${page} must redirect on the server`).toContain("from 'next/navigation'");
-      expect(src, `${page} must not hard-reload via ClientRedirect`).not.toContain('ClientRedirect');
-      expect(src).toContain('defaultEchoPath');
-    }
+  it('entry redirect pages use server redirects instead of client reload redirects', () => {
+    // `/` is a real content page (home), not a redirect: its setup gate lives
+    // in the proxy (fast 307) with a ClientRedirect fallback, because mixing
+    // redirect() with rendered JSX regresses App Router hook order (see
+    // tests/web-page-runtime-boundary-contract.test.ts). Only /echo remains a
+    // pure redirect entry.
+    const echo = read('app/echo/page.tsx');
+    expect(echo, 'app/echo/page.tsx must redirect on the server').toContain("from 'next/navigation'");
+    expect(echo, 'app/echo/page.tsx must not hard-reload via ClientRedirect').not.toContain('ClientRedirect');
+    expect(echo).toContain('defaultEchoPath');
+
+    const home = read('app/page.tsx');
+    expect(home, 'home must render content, not bounce to echo').not.toContain('defaultEchoPath');
   });
 });

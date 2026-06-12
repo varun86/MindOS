@@ -31,13 +31,13 @@ describe('proxy entry redirects (/ and /echo)', () => {
     else process.env.AUTH_TOKEN = originalToken;
   });
 
-  it('redirects / to the default echo page with a real 307 (no streamed shell)', async () => {
+  it('serves / as the home page (no redirect) when setup is complete', async () => {
     const res = await proxy(makeRequest('/'));
-    expect(res.status).toBe(307);
-    expect(new URL(res.headers.get('location') ?? '', 'http://localhost').pathname).toBe(defaultEchoPath());
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
   });
 
-  it('redirects /echo to the default echo segment', async () => {
+  it('redirects /echo to the default echo segment with a real 307 (no streamed shell)', async () => {
     const res = await proxy(makeRequest('/echo'));
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get('location') ?? '', 'http://localhost').pathname).toBe(defaultEchoPath());
@@ -46,6 +46,13 @@ describe('proxy entry redirects (/ and /echo)', () => {
   it('redirects / to /setup while setup is pending', async () => {
     vi.mocked(readSetupPending).mockReturnValue(true);
     const res = await proxy(makeRequest('/'));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location') ?? '', 'http://localhost').pathname).toBe('/setup');
+  });
+
+  it('redirects /echo to /setup while setup is pending', async () => {
+    vi.mocked(readSetupPending).mockReturnValue(true);
+    const res = await proxy(makeRequest('/echo'));
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get('location') ?? '', 'http://localhost').pathname).toBe('/setup');
   });
@@ -61,11 +68,10 @@ describe('proxy entry redirects (/ and /echo)', () => {
     expect(readSetupPending).not.toHaveBeenCalled();
   });
 
-  it('still protects the redirect target behind the login wall', async () => {
+  it('still protects the home page behind the login wall', async () => {
     process.env.WEB_PASSWORD = 'pw';
     const res = await proxy(makeRequest('/'));
-    // Entry redirect fires first; the unauthenticated /echo/* request then
-    // bounces to /login on its own hop.
     expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location') ?? '', 'http://localhost').pathname).toBe('/login');
   });
 });

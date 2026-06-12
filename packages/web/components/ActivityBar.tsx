@@ -353,18 +353,6 @@ export default function ActivityBar({
             onClick={(event) => handleRouteRailClick(event, 'files', onSpacesClick)}
             walkthroughId="files-panel"
           />
-          {labsEcho && (
-            <RailButton
-              icon={<Radio size={18} />}
-              label={t.sidebar.echo}
-              active={activeDestination === 'echo'}
-              current={isContentRouteForPanel(pathname, 'echo')}
-              expanded={expanded}
-              href={ROUTE_PANEL_HREF.echo}
-              onClick={(event) => handleRouteRailClick(event, 'echo', onEchoClick)}
-              walkthroughId="echo-panel"
-            />
-          )}
           <RailButton
             icon={<Search size={18} />}
             label={t.sidebar.searchTitle}
@@ -383,6 +371,18 @@ export default function ActivityBar({
             onClick={(event) => handleRouteRailClick(event, 'agents', onAgentsClick)}
             walkthroughId="agents-panel"
           />
+          {labsEcho && (
+            <RailButton
+              icon={<Radio size={18} />}
+              label={t.sidebar.echo}
+              active={activeDestination === 'echo'}
+              current={isContentRouteForPanel(pathname, 'echo')}
+              expanded={expanded}
+              href={ROUTE_PANEL_HREF.echo}
+              onClick={(event) => handleRouteRailClick(event, 'echo', onEchoClick)}
+              walkthroughId="echo-panel"
+            />
+          )}
           {labsWorkflows && (
             <RailButton
               icon={<Zap size={18} />}

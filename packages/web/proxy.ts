@@ -69,14 +69,20 @@ export async function proxy(req: NextRequest) {
   }
 
   // --- Entry redirects (/ and /echo) ---
-  // Redirecting here yields a true 307: the page-level redirect() fallback in
-  // app/page.tsx still works, but the root loading.tsx Suspense boundary turns
-  // it into a streamed 200 + meta-refresh shell (~480KB of throwaway HTML).
-  // The proxy runs on the Node.js runtime in Next 16, so the fs read inside
-  // readSetupPending() is allowed.
+  // Redirecting here yields a true 307 before rendering starts: a page-level
+  // redirect() under the root loading.tsx Suspense boundary would stream a
+  // 200 + meta-refresh shell (~480KB of throwaway HTML) instead. `/` renders
+  // the home page itself and only redirects while setup is pending; `/echo`
+  // always forwards to the default segment. The proxy runs on the Node.js
+  // runtime in Next 16, so the fs read inside readSetupPending() is allowed.
   if (pathname === '/' || pathname === '/echo') {
-    const target = readSetupPending() ? '/setup' : defaultEchoPath();
-    return NextResponse.redirect(new URL(target, req.url), 307);
+    if (readSetupPending()) {
+      return NextResponse.redirect(new URL('/setup', req.url), 307);
+    }
+    if (pathname === '/echo') {
+      return NextResponse.redirect(new URL(defaultEchoPath(), req.url), 307);
+    }
+    // `/` falls through to render the home page (behind the login wall below).
   }
 
   // --- Web UI protection (WEB_PASSWORD) ---

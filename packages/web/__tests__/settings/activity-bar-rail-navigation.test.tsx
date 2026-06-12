@@ -812,4 +812,40 @@ describe('ActivityBar rail navigation', () => {
       root.unmount();
     });
   });
+
+  it('places the Echo rail entry below Agents when the labs flag is on', async () => {
+    localStorage.setItem('mindos:labs-echo', '1');
+
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const order = Array.from(host.querySelectorAll('[data-walkthrough]'))
+      .map((el) => el.getAttribute('data-walkthrough'));
+    const agentsIndex = order.indexOf('agents-panel');
+    const echoIndex = order.indexOf('echo-panel');
+    expect(agentsIndex).toBeGreaterThan(-1);
+    expect(echoIndex).toBeGreaterThan(agentsIndex);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
 });
