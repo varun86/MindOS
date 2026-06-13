@@ -748,6 +748,70 @@ describe('AskContent ACP session binding', () => {
     });
   });
 
+  it('sends native Codex runtime options from the composer capsule', async () => {
+    localStorage.setItem('mindos-native-runtime-options', JSON.stringify({
+      permissionMode: 'workspace-write',
+      modelOverride: 'gpt-5.1-codex',
+      reasoningEffort: 'xhigh',
+    }));
+    mockNativeRuntimeDescriptors = [{
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+      binaryPath: '/usr/local/bin/codex',
+      status: 'available',
+      capabilities: {},
+    }];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<AskContent visible variant="panel" initialMessage="summarize this repo" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const selectButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Select Codex') as HTMLButtonElement;
+    await act(async () => {
+      selectButton.click();
+    });
+
+    expect(host.querySelector('button[title="Codex permission mode"]')?.textContent).toContain('Workspace');
+    expect(host.querySelector('button[title="Codex model and effort"]')?.textContent).toContain('gpt-5.1-codex');
+    expect(host.querySelector('button[title="Codex model and effort"]')?.textContent).toContain('XHigh');
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.selectedAcpAgent).toBeNull();
+    expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
+    expect(requestBody.mode).toBe('agent');
+    expect(requestBody.runtimeOptions).toEqual({
+      permissionMode: 'workspace-write',
+      modelOverride: 'gpt-5.1-codex',
+      reasoningEffort: 'xhigh',
+    });
+    expect(requestBody).not.toHaveProperty('providerOverride');
+    expect(requestBody).not.toHaveProperty('modelOverride');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('preselects a native runtime from an opener and submits it without legacy ACP routing', async () => {
     mockActiveSession = emptySession;
     mockNativeRuntimeDescriptors = [{

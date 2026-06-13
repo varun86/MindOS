@@ -197,6 +197,11 @@ describe('/api/ask native runtime routing', () => {
       },
       providerOverride: 'anthropic',
       modelOverride: 'claude-test',
+      runtimeOptions: {
+        permissionMode: 'readonly',
+        modelOverride: 'gpt-5.1-codex',
+        reasoningEffort: 'xhigh',
+      },
       mode: 'agent',
       chatSessionId: 'chat-native-1',
     }));
@@ -211,7 +216,9 @@ describe('/api/ask native runtime routing', () => {
       binaryPath: '/usr/local/bin/codex',
       externalSessionId: 'thr_existing',
     });
-    expect(capturedNativeOptions?.permissionMode).toBe('agent');
+    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.1-codex');
+    expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
     expect(capturedNativeOptions?.prompt).toContain('MindOS Turn Context');
     expect(capturedNativeOptions?.prompt).toContain('Use the attached context');
     expect(capturedNativeOptions?.prompt).toContain('current.md');
@@ -230,11 +237,14 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Codex',
         status: 'completed',
         chatSessionId: 'chat-native-1',
-        permissionMode: 'agent',
+        permissionMode: 'readonly',
         outputSummary: 'native ok',
         metadata: expect.objectContaining({
           runtimeKind: 'codex',
           externalSessionId: 'thr_123',
+          runtimePermissionMode: 'readonly',
+          modelOverride: 'gpt-5.1-codex',
+          reasoningEffort: 'xhigh',
         }),
       }),
     ]);

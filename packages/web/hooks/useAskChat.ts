@@ -1,8 +1,20 @@
 'use client';
 
 import { useRef, useCallback, useLayoutEffect } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, AskMode, LocalAttachment, RuntimeSessionBinding } from '@/lib/types';
+import type {
+  AgentIdentity,
+  AgentRuntimeIdentity,
+  Message,
+  ImagePart,
+  AskMode,
+  LocalAttachment,
+  RuntimeOptionsState,
+  RuntimePermissionMode,
+  RuntimeReasoningEffort,
+  RuntimeSessionBinding,
+} from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
+import { normalizeRuntimePermissionForKind } from '@/lib/agent/native-runtime-options';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { annotateMessageWithAgentRuntime, compactAgentRuntimeIdentity, getMatchingRuntimeSessionBinding, isRuntimeSessionBindingResumable } from '@/lib/ask-agent';
 import { isRetryableError, retryDelay, sleep } from '@/lib/agent/reconnect';
@@ -30,6 +42,18 @@ type AskRequestRuntime = AgentRuntimeIdentity & {
   externalSessionId?: string;
 };
 
+type AskRequestRuntimeOptions = {
+  permissionMode: RuntimePermissionMode;
+  modelOverride?: string;
+  reasoningEffort?: RuntimeReasoningEffort;
+};
+
+const DEFAULT_RUNTIME_OPTIONS: RuntimeOptionsState = {
+  permissionMode: 'agent',
+  modelOverride: null,
+  reasoningEffort: null,
+};
+
 function runtimeForAskRequest(runtime: AskRequestRuntime | null | undefined): AskRequestRuntime | null {
   if (!runtime) return null;
   return {
@@ -38,6 +62,28 @@ function runtimeForAskRequest(runtime: AskRequestRuntime | null | undefined): As
     kind: runtime.kind,
     ...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
     ...(runtime.externalSessionId ? { externalSessionId: runtime.externalSessionId } : {}),
+  };
+}
+
+function isNativeAskRuntime(runtime: AgentRuntimeIdentity | null | undefined): runtime is AgentRuntimeIdentity & { kind: 'codex' | 'claude' } {
+  return runtime?.kind === 'codex' || runtime?.kind === 'claude';
+}
+
+function askModeForRuntimePermission(permissionMode: RuntimePermissionMode): AskMode {
+  return permissionMode === 'readonly' ? 'chat' : 'agent';
+}
+
+function runtimeOptionsForAskRequest(
+  runtime: AgentRuntimeIdentity | null | undefined,
+  options: RuntimeOptionsState,
+): AskRequestRuntimeOptions | undefined {
+  if (!isNativeAskRuntime(runtime)) return undefined;
+  const model = options.modelOverride?.trim();
+  const permissionMode = normalizeRuntimePermissionForKind(runtime.kind, options.permissionMode);
+  return {
+    permissionMode,
+    ...(model ? { modelOverride: model } : {}),
+    ...(runtime.kind === 'codex' && options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
   };
 }
 
@@ -78,6 +124,7 @@ interface UseAskChatOpts {
   chatMode: AskMode;
   providerOverride: ProviderId | `p_${string}` | null;
   modelOverride: string | null;
+  runtimeOptions?: RuntimeOptionsState;
   activeSessionId: string | null;
   onFirstMessage?: () => void;
   refs: AskChatRefs;
@@ -91,6 +138,7 @@ export function useAskChat({
   chatMode,
   providerOverride,
   modelOverride,
+  runtimeOptions = DEFAULT_RUNTIME_OPTIONS,
   activeSessionId,
   onFirstMessage,
   refs,
@@ -187,6 +235,10 @@ export function useAskChat({
         }
       : selectedRuntimeBase;
     const selectedRuntime = runtimeForAskRequest(selectedRuntimeWithBinding);
+    const selectedRuntimeOptions = runtimeOptionsForAskRequest(selectedRuntimeBase, runtimeOptions);
+    const requestMode = selectedRuntimeOptions
+      ? askModeForRuntimePermission(selectedRuntimeOptions.permissionMode)
+      : chatMode;
     const runtimeForMessage = selectedRuntimeBase ?? null;
     const pendingImages = img.images.length > 0 ? [...img.images] : undefined;
     // Only store explicitly user-chosen files (filter out auto-included currentFile)
@@ -268,8 +320,9 @@ export function useAskChat({
       selectedAcpAgent: acpAgent,
       selectedRuntime,
       runtimeBinding: matchingRuntimeBinding ?? null,
-      mode: chatMode,
+      mode: requestMode,
       chatSessionId: sessionId,
+      ...(selectedRuntimeOptions ? { runtimeOptions: selectedRuntimeOptions } : {}),
       providerOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : providerOverride ?? undefined,
       modelOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : modelOverride ?? undefined,
     });
@@ -416,7 +469,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, chatMode, providerOverride, modelOverride, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState]);
+  }, [currentFile, chatMode, providerOverride, modelOverride, runtimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState]);
 
   return {
     isLoading,

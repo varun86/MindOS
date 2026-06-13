@@ -7,7 +7,11 @@ import { randomUUID } from 'crypto';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
-import type { AgentRuntimeIdentity, AskModeApi, RuntimeSessionBinding } from '@/lib/types';
+import type {
+  AgentRuntimeIdentity,
+  AskModeApi,
+  RuntimeSessionBinding,
+} from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
@@ -61,6 +65,10 @@ import {
   runWithRuntimePermissionBridge,
 } from '@geminilight/mindos/agent/runtime-permission-bridge';
 import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
+import {
+  normalizeNativeRuntimeOptions,
+  type NativeRuntimeRequestOptions,
+} from '@/lib/agent/native-runtime-options';
 import {
   createClaudePermissionPromptConfig,
   resolveRuntimePermissionBaseUrl,
@@ -400,6 +408,8 @@ export async function POST(req: NextRequest) {
     providerOverride?: string;
     /** Per-request model override from the inline model picker */
     modelOverride?: string;
+    /** Per-request native runtime options from the Chat Panel runtime capsule */
+    runtimeOptions?: unknown;
     /** MindOS Chat Panel session id for run ledger correlation. */
     chatSessionId?: string;
   };
@@ -419,6 +429,9 @@ export async function POST(req: NextRequest) {
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
   const askMode: AskModeApi = normalizeMindosAskMode(body.mode);
   const permissionPolicy = createMindosAgentPermissionPolicy(askMode);
+  const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions, selectedNativeRuntime);
+  const nativeRuntimePermissionMode = nativeRuntimeOptions.permissionMode ?? permissionPolicy.runtimePermissionMode;
+  const nativeRuntimeLedgerPermissionMode = nativeRuntimePermissionMode === 'readonly' ? 'readonly' : 'agent';
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
     ? body.chatSessionId.trim()
     : undefined;
@@ -502,11 +515,14 @@ export async function POST(req: NextRequest) {
           runtimeId: nativeRuntime.id,
           displayName: nativeRuntime.name,
           cwd: mindRoot,
-          permissionMode: permissionPolicy.runtimePermissionMode,
+          permissionMode: nativeRuntimeLedgerPermissionMode,
           inputSummary: externalPrompt,
           metadata: {
             runtimeKind: nativeRuntime.kind,
             source: 'selected-native-runtime',
+            runtimePermissionMode: nativeRuntimePermissionMode,
+            ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
+            ...(nativeRuntimeOptions.reasoningEffort ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort } : {}),
           },
         });
         const sendWithLedger = (event: MindOSSSEvent) => {
@@ -531,7 +547,9 @@ export async function POST(req: NextRequest) {
               runtime: nativeRuntime,
               cwd: mindRoot,
               prompt: externalPrompt,
-              permissionMode: permissionPolicy.runtimePermissionMode,
+              permissionMode: nativeRuntimePermissionMode,
+              ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
+              ...(nativeRuntimeOptions.reasoningEffort ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort } : {}),
               timeoutMs: resolveMindosAgentTimeoutMs(process.env.MINDOS_AGENT_TIMEOUT_MS),
               ...(nativeRuntimeEnv ? { runtimeEnv: nativeRuntimeEnv } : {}),
               signal: req.signal,

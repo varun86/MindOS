@@ -820,6 +820,171 @@ describe('agent runtime adapters: Codex app-server', () => {
     ]);
   });
 
+  it('passes model and reasoning effort when starting a new Codex thread and turn', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Summarize this repo.',
+      modelOverride: 'gpt-5.1-codex',
+      reasoningEffort: 'xhigh',
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'thread/start',
+      id: 2,
+      params: {
+        cwd: '/tmp/mind',
+        model: 'gpt-5.1-codex',
+        config: { model_reasoning_effort: 'xhigh' },
+      },
+    });
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: 'Summarize this repo.' }],
+        model: 'gpt-5.1-codex',
+        effort: 'xhigh',
+      },
+    });
+  });
+
+  it('passes Codex readonly sandbox and approval overrides with v2 sandbox policy shape', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Read only.',
+      permissionMode: 'readonly',
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'thread/start',
+      id: 2,
+      params: {
+        cwd: '/tmp/mind',
+        approvalPolicy: 'never',
+        sandbox: 'read-only',
+        config: {
+          approval_policy: 'never',
+          sandbox_mode: 'read-only',
+        },
+      },
+    });
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: 'Read only.' }],
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'readOnly', networkAccess: true },
+      },
+    });
+  });
+
+  it('passes Codex workspace-write sandbox and approval overrides with writable roots', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Edit files.',
+      permissionMode: 'workspace-write',
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'thread/start',
+      id: 2,
+      params: {
+        cwd: '/tmp/mind',
+        approvalPolicy: 'on-request',
+        sandbox: 'workspace-write',
+        config: {
+          approval_policy: 'on-request',
+          sandbox_mode: 'workspace-write',
+          sandbox_workspace_write: {
+            writable_roots: ['/tmp/mind'],
+            network_access: true,
+            exclude_tmpdir_env_var: false,
+            exclude_slash_tmp: false,
+          },
+        },
+      },
+    });
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: 'Edit files.' }],
+        approvalPolicy: 'on-request',
+        sandboxPolicy: {
+          type: 'workspaceWrite',
+          writableRoots: ['/tmp/mind'],
+          networkAccess: true,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+      },
+    });
+  });
+
+  it('passes Codex sandbox and approval overrides for full-access mode', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Ship it.',
+      permissionMode: 'danger-full-access',
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'thread/start',
+      id: 2,
+      params: {
+        cwd: '/tmp/mind',
+        approvalPolicy: 'never',
+        sandbox: 'danger-full-access',
+        config: {
+          approval_policy: 'never',
+          sandbox_mode: 'danger-full-access',
+        },
+      },
+    });
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: 'Ship it.' }],
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'dangerFullAccess' },
+      },
+    });
+  });
+
   it('resumes an existing Codex thread when the runtime carries an external session id', async () => {
     const transport = createFakeCodexTransport();
     await runMindosAgentRuntimeAskSession({
@@ -835,7 +1000,7 @@ describe('agent runtime adapters: Codex app-server', () => {
     expect(transport.sent).toContainEqual({
       method: 'thread/resume',
       id: 2,
-      params: { threadId: 'thr-existing' },
+      params: { threadId: 'thr-existing', cwd: '/tmp/mind' },
     });
     expect(transport.sent).not.toContainEqual({
       method: 'thread/start',
@@ -1048,6 +1213,69 @@ describe('agent runtime adapters: Codex app-server', () => {
       result: { decision: 'accept' },
     });
     expect(events).toContainEqual({ type: 'text_delta', delta: 'Deleted.' });
+  });
+
+  it('denies Codex app-server approval requests in readonly mode without prompting', async () => {
+    const queue = new AsyncQueue<CodexAppServerMessage>();
+    const sent: unknown[] = [];
+    const requestRuntimePermission = vi.fn();
+    const transport: CodexAppServerTransport & { sent: unknown[] } = {
+      sent,
+      send(message) {
+        sent.push(message);
+        const record = message as { id?: number; method?: string };
+        if (record.method === 'initialize') {
+          queue.push({ id: record.id!, result: { userAgent: 'codex-test' } });
+        }
+        if (record.method === 'thread/start') {
+          queue.push({ id: record.id!, result: { thread: { id: 'thr-new' } } });
+        }
+        if (record.method === 'turn/start') {
+          queue.push({ id: record.id!, result: { turn: { id: 'turn-1' } } });
+          queue.push({
+            id: 99,
+            method: 'item/commandExecution/requestApproval',
+            params: {
+              itemId: 'cmd-1',
+              command: 'mindos file delete "Profile.md"',
+              reason: 'Delete a note',
+            },
+          });
+          queue.push({ method: 'turn/completed', params: { turn: { id: 'turn-1' }, status: 'completed' } });
+        }
+      },
+      read() {
+        return queue;
+      },
+      close() {
+        queue.close();
+      },
+    };
+
+    const events: MindOSSSEvent[] = [];
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Delete it.',
+      permissionMode: 'readonly',
+      send: (event) => events.push(event),
+      services: {
+        createCodexClient: ({ handleServerRequest }) => createCodexAppServerClient(transport, { handleServerRequest }),
+        requestRuntimePermission,
+      },
+    });
+
+    expect(requestRuntimePermission).not.toHaveBeenCalled();
+    expect(transport.sent).toContainEqual({
+      id: 99,
+      result: { decision: 'decline' },
+    });
+    expect(events).toContainEqual({
+      type: 'status',
+      visible: true,
+      runtime: 'codex',
+      message: 'Read mode blocked a Codex permission request.',
+    });
   });
 
   it('answers Codex app-server user input requests through the question service', async () => {

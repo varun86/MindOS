@@ -231,6 +231,25 @@ export type AskMode = 'chat' | 'agent';
 /** All Ask modes including internal ones sent to the API */
 export type AskModeApi = AskMode | 'organize';
 
+export type RuntimePermissionMode =
+  | 'agent'
+  | 'readonly'
+  | 'workspace-write'
+  | 'danger-full-access';
+export type RuntimeReasoningEffort =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | (string & {});
+
+export interface RuntimeOptionsState {
+  permissionMode: RuntimePermissionMode;
+  modelOverride: string | null;
+  reasoningEffort: RuntimeReasoningEffort | null;
+}
+
 export interface ChatSession {
   id: string;
   title?: string;

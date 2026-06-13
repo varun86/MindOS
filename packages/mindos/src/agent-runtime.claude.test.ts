@@ -209,6 +209,7 @@ describe('agent runtime adapters: Claude Code', () => {
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Review this.',
+      modelOverride: 'sonnet',
       runtimeEnv: { PATH: '/usr/bin', CLAUDE_CODE_OAUTH_TOKEN: 'runtime-token' } as NodeJS.ProcessEnv,
       send: (event) => events.push(event),
       services: {
@@ -222,6 +223,7 @@ describe('agent runtime adapters: Claude Code', () => {
         cwd: '/tmp/mind',
         outputFormat: 'stream-json',
         permissionMode: 'default',
+        model: 'sonnet',
         pathToClaudeCodeExecutable: '/usr/local/bin/claude',
         env: {
           PATH: '/usr/bin',
@@ -656,6 +658,7 @@ describe('agent runtime adapters: Claude Code', () => {
       cwd: '/tmp/mind',
       prompt: 'Read only.',
       permissionMode: 'readonly',
+      modelOverride: 'opus',
       send: () => {},
       services: {
         createClaudeClient: () => createClaudeCodeCliClient(transport),
@@ -667,6 +670,8 @@ describe('agent runtime adapters: Claude Code', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--model',
+      'opus',
       '--permission-mode',
       'dontAsk',
       '--',

@@ -26,6 +26,7 @@ export type ClaudeCodeCliClient = {
     prompt: string;
     cwd: string;
     sessionId?: string;
+    model?: string;
     permissionMode?: ClaudeCodeCliPermissionMode;
     permissionPrompt?: ClaudeCodeCliPermissionPrompt;
     signal?: AbortSignal;
@@ -155,6 +156,7 @@ export function createClaudeCodeCliStdioTransport(options: {
 function buildClaudeCodeCliArgs(input: {
   prompt: string;
   sessionId?: string;
+  model?: string;
   permissionMode?: ClaudeCodeCliPermissionMode;
   permissionPrompt?: ClaudeCodeCliPermissionPrompt;
 }): string[] {
@@ -163,6 +165,7 @@ function buildClaudeCodeCliArgs(input: {
     '--output-format',
     'stream-json',
     '--verbose',
+    ...(input.model ? ['--model', input.model] : []),
     '--permission-mode',
     input.permissionMode ?? 'default',
     ...(input.sessionId ? ['--resume', input.sessionId] : []),
