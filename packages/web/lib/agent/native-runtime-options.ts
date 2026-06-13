@@ -22,7 +22,15 @@ export function normalizeRuntimePermissionForKind(
   mode: RuntimePermissionMode,
 ): RuntimePermissionMode {
   if (kind === 'codex') return mode === 'agent' ? 'workspace-write' : mode;
-  return mode === 'readonly' ? 'readonly' : 'agent';
+  return mode;
+}
+
+export function normalizeRuntimeReasoningEffortForKind(
+  kind: 'codex' | 'claude',
+  effort: RuntimeReasoningEffort | null | undefined,
+): RuntimeReasoningEffort | undefined {
+  if (!effort) return undefined;
+  return kind === 'codex' && effort === 'max' ? undefined : effort;
 }
 
 export function normalizeNativeRuntimeOptions(
@@ -38,13 +46,14 @@ export function normalizeNativeRuntimeOptions(
   const modelOverride = typeof record.modelOverride === 'string' && record.modelOverride.trim()
     ? record.modelOverride.trim().slice(0, 160)
     : undefined;
-  const reasoningEffort = runtime.kind === 'codex' && typeof record.reasoningEffort === 'string' && record.reasoningEffort.trim()
+  const reasoningEffort = typeof record.reasoningEffort === 'string' && record.reasoningEffort.trim()
     ? (record.reasoningEffort.trim().slice(0, 64) as RuntimeReasoningEffort)
     : undefined;
+  const normalizedReasoningEffort = normalizeRuntimeReasoningEffortForKind(runtime.kind, reasoningEffort);
   return {
     ...(permissionMode ? { permissionMode } : {}),
     ...(modelOverride ? { modelOverride } : {}),
-    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
   };
 }
 

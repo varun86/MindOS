@@ -812,6 +812,62 @@ describe('AskContent ACP session binding', () => {
     });
   });
 
+  it('does not send Claude-only max effort when switching the native capsule back to Codex', async () => {
+    localStorage.setItem('mindos-native-runtime-options', JSON.stringify({
+      permissionMode: 'workspace-write',
+      modelOverride: 'gpt-5.1-codex',
+      reasoningEffort: 'max',
+    }));
+    mockNativeRuntimeDescriptors = [{
+      id: 'codex',
+      name: 'Codex',
+      kind: 'codex',
+      binaryPath: '/usr/local/bin/codex',
+      status: 'available',
+      capabilities: {},
+    }];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<AskContent visible variant="panel" initialMessage="summarize this repo" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const selectButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Select Codex') as HTMLButtonElement;
+    await act(async () => {
+      selectButton.click();
+    });
+
+    expect(host.querySelector('button[title="Codex model and effort"]')?.textContent).toContain('Auto');
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.runtimeOptions).toEqual({
+      permissionMode: 'workspace-write',
+      modelOverride: 'gpt-5.1-codex',
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('preselects a native runtime from an opener and submits it without legacy ACP routing', async () => {
     mockActiveSession = emptySession;
     mockNativeRuntimeDescriptors = [{
@@ -910,6 +966,11 @@ describe('AskContent ACP session binding', () => {
 
   it('sends a native Claude Code runtime selection without legacy ACP routing', async () => {
     mockPersistedProviderModel = { provider: 'anthropic', model: 'claude-test' };
+    localStorage.setItem('mindos-native-runtime-options', JSON.stringify({
+      permissionMode: 'danger-full-access',
+      modelOverride: 'opus',
+      reasoningEffort: 'max',
+    }));
     mockNativeRuntimeDescriptors = [{
       id: 'claude',
       name: 'Claude Code',
@@ -934,6 +995,10 @@ describe('AskContent ACP session binding', () => {
       selectButton.click();
     });
 
+    expect(host.querySelector('button[title="Claude Code permission mode"]')?.textContent).toContain('Full');
+    expect(host.querySelector('button[title="Claude Code model and effort"]')?.textContent).toContain('opus');
+    expect(host.querySelector('button[title="Claude Code model and effort"]')?.textContent).toContain('Max');
+
     const form = host.querySelector('form') as HTMLFormElement;
     await act(async () => {
       if (typeof form.requestSubmit === 'function') {
@@ -949,6 +1014,12 @@ describe('AskContent ACP session binding', () => {
     const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'claude', name: 'Claude Code', kind: 'claude' });
+    expect(requestBody.mode).toBe('agent');
+    expect(requestBody.runtimeOptions).toEqual({
+      permissionMode: 'danger-full-access',
+      modelOverride: 'opus',
+      reasoningEffort: 'max',
+    });
     expect(requestBody).not.toHaveProperty('providerOverride');
     expect(requestBody).not.toHaveProperty('modelOverride');
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude' });

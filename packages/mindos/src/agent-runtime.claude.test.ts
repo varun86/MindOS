@@ -6,6 +6,7 @@ import {
   vi
 } from 'vitest';
 import {
+  buildClaudeCodeRuntimeOverrides,
   createClaudeCodeCliClient,
   createClaudeCodeCliStdioTransport,
   createCodexAppServerClient,
@@ -134,6 +135,30 @@ afterEach(() => {
 });
 
 describe('agent runtime adapters: Claude Code', () => {
+  it('maps MindOS runtime options to Claude Code runtime overrides', () => {
+    expect(buildClaudeCodeRuntimeOverrides({ permissionMode: 'readonly' })).toEqual({
+      permissionMode: 'dontAsk',
+    });
+    expect(buildClaudeCodeRuntimeOverrides({ permissionMode: 'agent' })).toEqual({
+      permissionMode: 'default',
+    });
+    expect(buildClaudeCodeRuntimeOverrides({ permissionMode: 'workspace-write' })).toEqual({
+      permissionMode: 'acceptEdits',
+    });
+    expect(buildClaudeCodeRuntimeOverrides({ permissionMode: 'danger-full-access' })).toEqual({
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+    });
+    expect(buildClaudeCodeRuntimeOverrides({ reasoningEffort: 'minimal' })).toEqual({
+      permissionMode: 'default',
+      effort: 'low',
+    });
+    expect(buildClaudeCodeRuntimeOverrides({ reasoningEffort: 'max' })).toEqual({
+      permissionMode: 'default',
+      effort: 'max',
+    });
+  });
+
   it('cancels a pending Codex user input request when app-server resolves it first', async () => {
     const queue = new AsyncQueue<CodexAppServerMessage>();
     const sent: unknown[] = [];
@@ -197,7 +222,7 @@ describe('agent runtime adapters: Claude Code', () => {
     });
   });
 
-  it('uses Claude Agent SDK bridge with a detected local CLI path and returns the session binding', async () => {
+  it('uses Claude Agent SDK bridge with runtime options and returns the session binding', async () => {
     const events: MindOSSSEvent[] = [];
     const sdk = createFakeClaudeSdk([
       { type: 'system', subtype: 'init', session_id: 'claude-sdk-session', cwd: '/tmp/mind' },
@@ -209,7 +234,9 @@ describe('agent runtime adapters: Claude Code', () => {
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Review this.',
+      permissionMode: 'workspace-write',
       modelOverride: 'sonnet',
+      reasoningEffort: 'max',
       runtimeEnv: { PATH: '/usr/bin', CLAUDE_CODE_OAUTH_TOKEN: 'runtime-token' } as NodeJS.ProcessEnv,
       send: (event) => events.push(event),
       services: {
@@ -222,8 +249,9 @@ describe('agent runtime adapters: Claude Code', () => {
       options: {
         cwd: '/tmp/mind',
         outputFormat: 'stream-json',
-        permissionMode: 'default',
+        permissionMode: 'acceptEdits',
         model: 'sonnet',
+        effort: 'max',
         pathToClaudeCodeExecutable: '/usr/local/bin/claude',
         env: {
           PATH: '/usr/bin',
@@ -676,6 +704,41 @@ describe('agent runtime adapters: Claude Code', () => {
       'dontAsk',
       '--',
       'Read only.',
+    ]);
+  });
+
+  it('passes Claude Code effort and full-access permission to the CLI adapter', async () => {
+    const transport = createFakeClaudeTransport([
+      JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-session-full-access' }),
+    ]);
+
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
+      cwd: '/tmp/mind',
+      prompt: 'Use the full sandbox.',
+      permissionMode: 'danger-full-access',
+      modelOverride: 'opus',
+      reasoningEffort: 'xhigh',
+      send: () => {},
+      services: {
+        createClaudeClient: () => createClaudeCodeCliClient(transport),
+      },
+    });
+
+    expect(transport.argv).toEqual([
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--model',
+      'opus',
+      '--effort',
+      'xhigh',
+      '--dangerously-skip-permissions',
+      '--permission-mode',
+      'bypassPermissions',
+      '--',
+      'Use the full sandbox.',
     ]);
   });
 

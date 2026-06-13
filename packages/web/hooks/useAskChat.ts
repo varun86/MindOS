@@ -14,7 +14,10 @@ import type {
   RuntimeSessionBinding,
 } from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
-import { normalizeRuntimePermissionForKind } from '@/lib/agent/native-runtime-options';
+import {
+  normalizeRuntimePermissionForKind,
+  normalizeRuntimeReasoningEffortForKind,
+} from '@/lib/agent/native-runtime-options';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { annotateMessageWithAgentRuntime, compactAgentRuntimeIdentity, getMatchingRuntimeSessionBinding, isRuntimeSessionBindingResumable } from '@/lib/ask-agent';
 import { isRetryableError, retryDelay, sleep } from '@/lib/agent/reconnect';
@@ -80,10 +83,11 @@ function runtimeOptionsForAskRequest(
   if (!isNativeAskRuntime(runtime)) return undefined;
   const model = options.modelOverride?.trim();
   const permissionMode = normalizeRuntimePermissionForKind(runtime.kind, options.permissionMode);
+  const reasoningEffort = normalizeRuntimeReasoningEffortForKind(runtime.kind, options.reasoningEffort);
   return {
     permissionMode,
     ...(model ? { modelOverride: model } : {}),
-    ...(runtime.kind === 'codex' && options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   };
 }
 

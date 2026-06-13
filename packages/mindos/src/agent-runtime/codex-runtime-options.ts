@@ -10,6 +10,7 @@ export type MindosRuntimeReasoningEffort =
   | 'medium'
   | 'high'
   | 'xhigh'
+  | 'max'
   | (string & {});
 
 export type CodexApprovalPolicy =

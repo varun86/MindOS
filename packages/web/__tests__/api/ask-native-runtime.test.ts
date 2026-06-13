@@ -253,6 +253,32 @@ describe('/api/ask native runtime routing', () => {
     expect(text).toContain(`"rootRunId":"${nativeRuns[0]?.id}"`);
   }, 15_000);
 
+  it('drops Claude-only max effort from Codex native runtime requests', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Codex with stale effort' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      runtimeOptions: {
+        permissionMode: 'workspace-write',
+        modelOverride: 'gpt-5.1-codex',
+        reasoningEffort: 'max',
+      },
+      mode: 'agent',
+    }));
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedNativeOptions?.runtime.kind).toBe('codex');
+    expect(capturedNativeOptions?.permissionMode).toBe('workspace-write');
+    expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.1-codex');
+    expect(capturedNativeOptions?.reasoningEffort).toBeUndefined();
+  });
+
   it('keeps native runtime assistant text and routine connection statuses out of the visible activity timeline', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
@@ -324,6 +350,37 @@ describe('/api/ask native runtime routing', () => {
 
     expect(capturedNativeOptions?.runtime.kind).toBe('claude');
     expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+  });
+
+  it('preserves Claude native runtime model, permission, and effort options', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Claude Code with explicit runtime options' }],
+      selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
+      runtimeOptions: {
+        permissionMode: 'danger-full-access',
+        modelOverride: 'opus',
+        reasoningEffort: 'max',
+      },
+      mode: 'agent',
+    }));
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedNativeOptions?.runtime).toEqual({
+      id: 'claude',
+      name: 'Claude Code',
+      kind: 'claude',
+      binaryPath: '/usr/local/bin/claude',
+    });
+    expect(capturedNativeOptions?.permissionMode).toBe('danger-full-access');
+    expect(capturedNativeOptions?.modelOverride).toBe('opus');
+    expect(capturedNativeOptions?.reasoningEffort).toBe('max');
   });
 
   it('uses the server-detected native runtime path instead of trusting the request body', async () => {

@@ -242,6 +242,7 @@ export type RuntimeReasoningEffort =
   | 'medium'
   | 'high'
   | 'xhigh'
+  | 'max'
   | (string & {});
 
 export interface RuntimeOptionsState {

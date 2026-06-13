@@ -4,9 +4,9 @@ import {
   createClaudeCodeCliClient,
   createClaudeCodeCliStdioTransport,
   type ClaudeCodeCliClient,
-  type ClaudeCodeCliPermissionMode,
   type ClaudeCodeCliPermissionPrompt,
 } from './claude-code-cli.js';
+import { buildClaudeCodeRuntimeOverrides } from './claude-runtime-options.js';
 import {
   createClaudeCodeSdkClient,
   isClaudeCodeSdkNativeBinaryError,
@@ -398,11 +398,15 @@ async function runClaudeTurnWithClient(
       signal: options.signal,
     })
     : undefined;
+  const runtimeOverrides = buildClaudeCodeRuntimeOverrides({
+    permissionMode: options.permissionMode,
+    reasoningEffort: options.reasoningEffort,
+  });
   const turnEvents = resolvedClient.client.startTurn({
     prompt: options.prompt,
     cwd: options.cwd,
     ...(sessionId ? { sessionId } : {}),
-    permissionMode: claudeCliPermissionModeForMindosMode(options.permissionMode),
+    ...runtimeOverrides,
     ...(options.modelOverride ? { model: options.modelOverride } : {}),
     ...(permissionPrompt ? { permissionPrompt } : {}),
     signal: options.signal,
@@ -428,12 +432,6 @@ async function runClaudeTurnWithClient(
 function shouldFallbackFromClaudeSdkTurnError(error: Error, signal?: AbortSignal): boolean {
   if (signal?.aborted) return false;
   return isClaudeCodeSdkNativeBinaryError(error);
-}
-
-function claudeCliPermissionModeForMindosMode(
-  mode: MindosAgentRuntimeAskOptions['permissionMode'],
-): ClaudeCodeCliPermissionMode {
-  return mode === 'readonly' ? 'dontAsk' : 'default';
 }
 
 async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {

@@ -1,5 +1,6 @@
 export * from './child-process.js';
 export * from './claude-code-cli.js';
+export * from './claude-runtime-options.js';
 export * from './claude-code-sdk.js';
 export * from './codex-env.js';
 export * from './codex-runtime-options.js';

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Cpu, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { normalizeRuntimeReasoningEffortForKind } from '@/lib/agent/native-runtime-options';
 import type {
   RuntimeOptionsState,
   RuntimePermissionMode,
@@ -24,23 +25,39 @@ const DEFAULT_RUNTIME_OPTIONS: RuntimeOptionsState = {
   reasoningEffort: null,
 };
 
-const CLAUDE_PERMISSION_OPTIONS: Array<{ value: RuntimePermissionMode; label: string; short: string }> = [
-  { value: 'readonly', label: 'Read-only', short: 'Read' },
-  { value: 'agent', label: 'Agent', short: 'Agent' },
+type PermissionOption = {
+  value: RuntimePermissionMode;
+  label: string;
+  short: string;
+  description: string;
+};
+
+const CLAUDE_PERMISSION_OPTIONS: PermissionOption[] = [
+  { value: 'readonly', label: 'Read-only', short: 'Read', description: 'No approval prompts for writes or commands.' },
+  { value: 'agent', label: 'Agent', short: 'Agent', description: 'Use Claude Code default approvals.' },
+  { value: 'workspace-write', label: 'Workspace write', short: 'Workspace', description: 'Accept edits while keeping broader actions gated.' },
+  { value: 'danger-full-access', label: 'Full access', short: 'Full', description: 'Bypass Claude Code permission checks for trusted sandboxes.' },
 ];
 
-const CODEX_PERMISSION_OPTIONS: Array<{ value: RuntimePermissionMode; label: string; short: string }> = [
-  { value: 'readonly', label: 'Read-only', short: 'Read' },
-  { value: 'workspace-write', label: 'Workspace write', short: 'Workspace' },
-  { value: 'danger-full-access', label: 'Full access', short: 'Full' },
+const CODEX_PERMISSION_OPTIONS: PermissionOption[] = [
+  { value: 'readonly', label: 'Read-only', short: 'Read', description: 'Run without write approval prompts.' },
+  { value: 'workspace-write', label: 'Workspace write', short: 'Workspace', description: 'Allow this workspace with on-request approvals.' },
+  { value: 'danger-full-access', label: 'Full access', short: 'Full', description: 'Remove sandboxing for trusted local runs.' },
 ];
 
-const EFFORT_OPTIONS: Array<{ value: RuntimeReasoningEffort | null; label: string; short: string }> = [
+type EffortOption = { value: RuntimeReasoningEffort | null; label: string; short: string };
+
+const CODEX_EFFORT_OPTIONS: EffortOption[] = [
   { value: null, label: 'Auto', short: 'Auto' },
   { value: 'low', label: 'Low', short: 'Low' },
   { value: 'medium', label: 'Medium', short: 'Med' },
   { value: 'high', label: 'High', short: 'High' },
   { value: 'xhigh', label: 'XHigh', short: 'XHigh' },
+];
+
+const CLAUDE_EFFORT_OPTIONS: EffortOption[] = [
+  ...CODEX_EFFORT_OPTIONS,
+  { value: 'max', label: 'Max', short: 'Max' },
 ];
 
 type OpenPanel = 'permission' | 'model' | null;
@@ -117,7 +134,7 @@ function permissionModeForRuntime(
   mode: RuntimePermissionMode,
 ): RuntimePermissionMode {
   if (kind === 'codex') return mode === 'agent' ? 'workspace-write' : mode;
-  return mode === 'readonly' ? 'readonly' : 'agent';
+  return mode;
 }
 
 function permissionLabel(kind: RuntimeOptionsCapsuleProps['runtimeKind'], mode: RuntimePermissionMode): string {
@@ -125,9 +142,13 @@ function permissionLabel(kind: RuntimeOptionsCapsuleProps['runtimeKind'], mode: 
   return permissionOptions(kind).find((option) => option.value === effective)?.short ?? 'Agent';
 }
 
-function effortLabel(effort: RuntimeReasoningEffort | null): string {
+function effortOptions(kind: RuntimeOptionsCapsuleProps['runtimeKind']) {
+  return kind === 'claude' ? CLAUDE_EFFORT_OPTIONS : CODEX_EFFORT_OPTIONS;
+}
+
+function effortLabel(kind: RuntimeOptionsCapsuleProps['runtimeKind'], effort: RuntimeReasoningEffort | null): string {
   if (!effort) return 'Auto';
-  return EFFORT_OPTIONS.find((option) => option.value === effort)?.short
+  return effortOptions(kind).find((option) => option.value === effort)?.short
     ?? (effort.length > 8 ? `${effort.slice(0, 7)}...` : effort);
 }
 
@@ -159,22 +180,23 @@ export default function RuntimeOptionsCapsule({
   const modelRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
-  const canSetEffort = runtimeKind === 'codex';
   const runtimeName = runtimeLabel(runtimeKind);
   const effectivePermissionMode = permissionModeForRuntime(runtimeKind, value.permissionMode);
+  const effectiveReasoningEffort = normalizeRuntimeReasoningEffortForKind(runtimeKind, value.reasoningEffort) ?? null;
   const visiblePermissionOptions = permissionOptions(runtimeKind);
+  const visibleEffortOptions = effortOptions(runtimeKind);
 
   const modelSummary = useMemo(() => {
     const model = compactModelLabel(value.modelOverride);
-    return canSetEffort ? `${model} / ${effortLabel(value.reasoningEffort)}` : model;
-  }, [canSetEffort, value.modelOverride, value.reasoningEffort]);
+    return `${model} / ${effortLabel(runtimeKind, effectiveReasoningEffort)}`;
+  }, [runtimeKind, value.modelOverride, effectiveReasoningEffort]);
 
   const reposition = useCallback((panel: OpenPanel = openPanel) => {
     if (!panel) return;
     const trigger = panel === 'permission' ? permissionRef.current : modelRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
-    const estimatedH = panel === 'permission' ? (runtimeKind === 'codex' ? 140 : 120) : runtimeKind === 'codex' ? 230 : 112;
+    const estimatedH = panel === 'permission' ? (runtimeKind === 'codex' ? 140 : 172) : runtimeKind === 'codex' ? 230 : 268;
     const spaceAbove = rect.top;
     const spaceBelow = window.innerHeight - rect.bottom;
     const direction: 'up' | 'down' = spaceAbove > spaceBelow && spaceAbove > estimatedH ? 'up' : 'down';
@@ -260,6 +282,8 @@ export default function RuntimeOptionsCapsule({
             type="button"
             role="option"
             aria-selected={selected}
+            aria-label={`${option.label}. ${option.description}`}
+            title={option.description}
             onClick={() => {
               update({ permissionMode: option.value });
               setOpenPanel(null);
@@ -307,33 +331,31 @@ export default function RuntimeOptionsCapsule({
         />
       </label>
 
-      {canSetEffort && (
-        <div className="mt-2">
-          <div className="px-1 pb-1 text-2xs font-medium uppercase text-muted-foreground/70">Effort</div>
-          <div className="grid grid-cols-3 gap-1">
-            {EFFORT_OPTIONS.map((option) => {
-              const selected = value.reasoningEffort === option.value;
-              return (
-                <button
-                  key={option.value ?? 'auto'}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => update({ reasoningEffort: option.value })}
-                  className={cn(
-                    'inline-flex h-8 min-w-0 items-center justify-center rounded-md border px-1.5 text-xs transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    selected
-                      ? 'border-[var(--amber)] bg-[var(--amber)]/10 text-foreground'
-                      : 'border-border/60 text-muted-foreground hover:bg-muted/55 hover:text-foreground',
-                  )}
-                >
-                  <span className="truncate">{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+      <div className="mt-2">
+        <div className="px-1 pb-1 text-2xs font-medium uppercase text-muted-foreground/70">Effort</div>
+        <div className="grid grid-cols-3 gap-1">
+          {visibleEffortOptions.map((option) => {
+            const selected = effectiveReasoningEffort === option.value;
+            return (
+              <button
+                key={option.value ?? 'auto'}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => update({ reasoningEffort: option.value })}
+                className={cn(
+                  'inline-flex h-8 min-w-0 items-center justify-center rounded-md border px-1.5 text-xs transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  selected
+                    ? 'border-[var(--amber)] bg-[var(--amber)]/10 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:bg-muted/55 hover:text-foreground',
+                )}
+              >
+                <span className="truncate">{option.label}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   ) : null;
 
@@ -360,7 +382,7 @@ export default function RuntimeOptionsCapsule({
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={openPanel === 'model'}
-        title={canSetEffort ? `${runtimeName} model and effort` : `${runtimeName} model`}
+        title={`${runtimeName} model and effort`}
         onClick={() => open('model')}
         className={cn(buttonClass, 'max-w-[210px]')}
       >
