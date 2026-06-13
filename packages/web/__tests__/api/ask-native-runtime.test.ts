@@ -288,8 +288,8 @@ describe('/api/ask native runtime routing', () => {
     const retryEvent = events.find((event) => event.message === 'Claude Code HTTP 429; retrying (1/10).');
     expect(retryEvent).toEqual(expect.objectContaining({
       type: 'runtime_status',
-      visibility: 'debug',
     }));
+    expect(retryEvent).not.toHaveProperty('visibility');
     const toolEvent = events.find((event) => event.type === 'tool_started');
     expect(toolEvent).toEqual(expect.objectContaining({
       category: 'tool',

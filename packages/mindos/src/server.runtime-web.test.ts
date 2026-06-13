@@ -248,6 +248,95 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     });
   });
 
+  it('describes runtime registry categories and harness capabilities without changing legacy capability fields', async () => {
+    const res = await handleAgentRuntimesGet(new URLSearchParams(), {
+      now: () => Date.parse('2026-06-09T00:00:00.000Z'),
+      readSettings: () => ({ acpAgents: {} }),
+      checkNativeRuntimeHealth: async ({ runtime }) => runtime === 'claude'
+        ? {
+            status: 'available',
+            runtimeBridge: {
+              kind: 'claude-cli',
+              label: 'CLI fallback active',
+              fallback: true,
+            },
+          }
+        : { status: 'available' },
+      resolveRuntimeCommand: async (command) => {
+        if (command === 'codex') return '/usr/local/bin/codex';
+        if (command === 'claude') return '/usr/local/bin/claude';
+        return null;
+      },
+      detectLocalAcpAgents: async () => ({
+        installed: [
+          { id: 'gemini', name: 'Gemini CLI', binaryPath: '/usr/local/bin/gemini' },
+        ],
+        notInstalled: [],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const runtimes = 'runtimes' in res.body ? res.body.runtimes : [];
+    expect(runtimes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'mindos',
+        kind: 'mindos',
+        category: 'mindos',
+        runtimeId: 'mindos',
+        capabilities: expect.objectContaining({ supportsModelList: true }),
+        harnessCapabilities: expect.objectContaining({
+          session: 'local-id',
+          permissions: 'mindos-only',
+          tools: expect.arrayContaining(['file', 'skills']),
+        }),
+      }),
+      expect.objectContaining({
+        id: 'codex',
+        kind: 'codex',
+        category: 'native',
+        runtimeId: 'codex',
+        adapter: 'codex-app-server',
+        capabilities: expect.objectContaining({
+          supportsFork: true,
+          supportsArchive: true,
+          supportsApprovals: true,
+        }),
+        harnessCapabilities: expect.objectContaining({
+          session: 'native-thread',
+          permissions: 'runtime-bridged',
+          eventStream: expect.arrayContaining(['thread-turn-item', 'permissions']),
+        }),
+      }),
+      expect.objectContaining({
+        id: 'claude',
+        kind: 'claude',
+        category: 'native',
+        runtimeId: 'claude',
+        adapter: 'claude-cli',
+        runtimeBridge: expect.objectContaining({ kind: 'claude-cli' }),
+        harnessCapabilities: expect.objectContaining({
+          session: 'local-id',
+          permissions: 'runtime-bridged',
+        }),
+      }),
+      expect.objectContaining({
+        id: 'gemini',
+        kind: 'acp',
+        category: 'acp',
+        runtimeId: 'gemini',
+        adapter: 'acp',
+        capabilities: expect.objectContaining({
+          supportsToolEvents: true,
+          supportsModelList: false,
+        }),
+        harnessCapabilities: expect.objectContaining({
+          session: 'none',
+          permissions: 'none',
+        }),
+      }),
+    ]));
+  });
+
   it('keeps native runtime detection out of ACP installed payload lists', async () => {
     const res = await handleAgentRuntimesGet(new URLSearchParams(), {
       now: () => Date.parse('2026-06-09T00:00:00.000Z'),

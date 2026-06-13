@@ -158,17 +158,29 @@ Write a ranked reading queue.
 
   it('rejects creating built-in Assistants through the custom Assistant API', async () => {
     const { POST } = await import('../../app/api/assistants/route');
-    const res = await POST(new Request('http://localhost/api/assistants', {
+    const dailySignal = await POST(new Request('http://localhost/api/assistants', {
       method: 'POST',
       body: JSON.stringify({
         id: 'daily-signal',
         name: 'Daily Signal Override',
       }),
     }));
-    const body = await res.json();
+    const dailyBody = await dailySignal.json();
 
-    expect(res.status, JSON.stringify(body)).toBe(409);
-    expect(body.error).toContain('Built-in assistants');
+    expect(dailySignal.status, JSON.stringify(dailyBody)).toBe(409);
+    expect(dailyBody.error).toContain('Built-in assistants');
+
+    const dreaming = await POST(new Request('http://localhost/api/assistants', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'dreaming',
+        name: 'Dreaming Override',
+      }),
+    }));
+    const dreamingBody = await dreaming.json();
+
+    expect(dreaming.status, JSON.stringify(dreamingBody)).toBe(409);
+    expect(dreamingBody.error).toContain('Built-in assistants');
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it('rejects deletion for built-in Assistants and deletes custom Assistants', async () => {
@@ -195,6 +207,11 @@ Write a ranked reading queue.
       body: JSON.stringify({ id: 'daily-signal' }),
     }));
     expect(builtin.status).toBe(403);
+    const dreaming = await DELETE(new Request('http://localhost/api/assistants', {
+      method: 'DELETE',
+      body: JSON.stringify({ id: 'dreaming' }),
+    }));
+    expect(dreaming.status).toBe(403);
 
     const custom = await DELETE(new Request('http://localhost/api/assistants', {
       method: 'DELETE',

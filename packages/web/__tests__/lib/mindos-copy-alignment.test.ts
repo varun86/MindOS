@@ -65,7 +65,7 @@ describe('MindOS copy alignment', () => {
 
     expect(navigationZh.sidebar.capture).toBe('收集箱');
     expect(knowledgeZh.inbox.title).toBe('收集箱');
-    expect(knowledgeZh.inbox.capturePageTitle).toBe('新增收集');
+    expect(knowledgeZh.inbox.capturePageTitle).toBe('收集箱');
     expect(knowledgeZh.inbox.composerTitle).toBe('加入收集箱');
     expect(knowledgeZh.inbox.captureButton).toBe('保存到收集箱');
     expect(knowledgeZh.inbox.organizeToMindAction).toBe('整理到 Mind');

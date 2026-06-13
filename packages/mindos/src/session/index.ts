@@ -61,8 +61,11 @@ export type MindOSSSEvent =
       toolCallId: string;
       toolName: string;
       input: unknown;
-      options: Array<{ id: string; label: string; description?: string; intent?: 'allow' | 'deny' | 'cancel' }>;
+      options: Array<{ id: string; label: string; description?: string; intent?: 'allow' | 'deny' | 'cancel'; scope?: 'once' | 'session' | 'always' | 'turn' }>;
       reason?: string;
+      action?: string;
+      resource?: string;
+      risk?: { level: 'low' | 'medium' | 'high'; summary: string; reasons?: string[] };
     }
   | {
       type: 'runtime_permission_resolved';
@@ -72,6 +75,9 @@ export type MindOSSSEvent =
       toolCallId: string;
       decision: string;
       cancelled?: boolean;
+      decisionLabel?: string;
+      decisionIntent?: 'allow' | 'deny' | 'cancel';
+      decisionScope?: 'once' | 'session' | 'always' | 'turn';
     }
   | { type: 'user_question_start'; runId: string; toolCallId: string; questions: unknown }
   | { type: 'user_question_answered'; runId: string; toolCallId: string; answers?: unknown }

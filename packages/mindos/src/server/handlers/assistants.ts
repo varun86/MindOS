@@ -18,6 +18,7 @@ const SAFE_ASSISTANT_ID = /^[a-z0-9][a-z0-9-]*$/;
 const MAX_PROMPT_BYTES = 256 * 1024;
 const BUILTIN_ASSISTANT_IDS = new Set([
   'inbox-organizer',
+  'dreaming',
   'daily-signal',
   'decision-synthesizer',
   'rule-keeper',

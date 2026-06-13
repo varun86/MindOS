@@ -111,13 +111,13 @@ function MessageIntentCards({ content, onSelect, onClose, ask }: {
           className="flex flex-col items-center gap-1 p-2.5 border border-[var(--amber)]/30 rounded-lg hover:border-[var(--amber)]/60 hover:shadow-sm active:scale-[0.98] transition-all">
           <FolderInput size={16} className="text-[var(--amber)]" />
           <span className="text-2xs font-medium text-foreground">{ask?.saveDirectly ?? 'Save directly'}</span>
-          <span className="text-[10px] text-muted-foreground text-center leading-tight">{ask?.saveDirectlyDesc ?? 'Save as-is'}</span>
+          <span className="whitespace-nowrap text-[10px] text-muted-foreground text-center leading-tight">{ask?.saveDirectlyDesc ?? 'Save as-is'}</span>
         </button>
         <button type="button" onClick={() => onSelect('digest')}
           className="flex flex-col items-center gap-1 p-2.5 border border-border rounded-lg hover:border-[var(--amber)]/50 hover:shadow-sm active:scale-[0.98] transition-all">
           <Sparkles size={16} className="text-[var(--amber)]" />
           <span className="text-2xs font-medium text-foreground">{ask?.organizeToNote ?? 'Organize to note'}</span>
-          <span className="text-[10px] text-muted-foreground text-center leading-tight">{ask?.organizeToNoteDesc ?? 'AI organizes'}</span>
+          <span className="whitespace-nowrap text-[10px] text-muted-foreground text-center leading-tight">{ask?.organizeToNoteDesc ?? 'Extract key points'}</span>
         </button>
       </div>
     </div>
@@ -362,13 +362,13 @@ function IntentCards({ messages, onSelect, onClose, ask }: {
           className="flex flex-col items-center gap-1 p-2.5 border border-[var(--amber)]/30 rounded-lg hover:border-[var(--amber)]/60 hover:shadow-sm active:scale-[0.98] transition-all">
           <FolderInput size={16} className="text-[var(--amber)]" />
           <span className="text-2xs font-medium text-foreground">{ask?.saveDirectly ?? 'Save directly'}</span>
-          <span className="text-[10px] text-muted-foreground text-center leading-tight">{ask?.saveDirectlyDesc ?? 'Save as-is'}</span>
+          <span className="whitespace-nowrap text-[10px] text-muted-foreground text-center leading-tight">{ask?.saveDirectlyDesc ?? 'Save as-is'}</span>
         </button>
         <button type="button" onClick={() => onSelect('digest')}
           className="flex flex-col items-center gap-1 p-2.5 border border-border rounded-lg hover:border-[var(--amber)]/50 hover:shadow-sm active:scale-[0.98] transition-all">
           <Sparkles size={16} className="text-[var(--amber)]" />
           <span className="text-2xs font-medium text-foreground">{ask?.organizeToNote ?? 'Organize to note'}</span>
-          <span className="text-[10px] text-muted-foreground text-center leading-tight">{ask?.organizeToNoteDesc ?? 'AI extracts insights'}</span>
+          <span className="whitespace-nowrap text-[10px] text-muted-foreground text-center leading-tight">{ask?.organizeToNoteDesc ?? 'Extract key points'}</span>
         </button>
       </div>
     </div>

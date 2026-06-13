@@ -110,7 +110,10 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response;
 }
 
-function mockAssistantsFetch(payload = localAssistantsPayload, options?: { failAssistants?: boolean }) {
+function mockAssistantsFetch(
+  payload: { root: string; assistants: Array<Record<string, unknown>> } = localAssistantsPayload,
+  options?: { failAssistants?: boolean },
+) {
   const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const href = typeof url === 'string' ? url : url.toString();
     if (href === '/api/assistants' && init?.method === 'DELETE') {
@@ -127,6 +130,21 @@ function mockAssistantsFetch(payload = localAssistantsPayload, options?: { failA
       return new Response('data: {"type":"text_delta","delta":"Run summary"}\n\ndata: [DONE]\n\n', {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
+    if (href === '/api/assistant-runs' && init?.method === 'POST') {
+      return jsonResponse({
+        ok: true,
+        assistantId: 'dreaming',
+        run: {
+          scope: 'all',
+          proposals: [{ id: 'repair-missing-link' }],
+          lint: { healthScore: 91 },
+        },
+        artifacts: {
+          reportMarkdown: '.mindos/dreaming/dreaming-report.md',
+          pendingJson: '.mindos/dreaming/pending.json',
+        },
       });
     }
     throw new Error(`Unexpected fetch: ${href}`);
@@ -392,6 +410,78 @@ Write an updated morning brief.
       body: JSON.stringify({ id: 'research-scout' }),
     }));
     expect(host.textContent).not.toContain('Research Scout');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('runs Dreaming through the dedicated AssistantRun endpoint', async () => {
+    const fetchMock = mockAssistantsFetch({
+      ...localAssistantsPayload,
+      assistants: [
+        {
+          id: 'dreaming',
+          name: 'Dreaming',
+          description: 'Review knowledge-base health.',
+          schemaVersion: 1,
+          preferredAgent: 'mindos-agent',
+          skills: ['mindos'],
+          mcp: [],
+          source: 'builtin',
+          deletable: false,
+          paths: {
+            root: '.mindos/assistants/dreaming',
+            prompt: '.mindos/assistants/dreaming/prompt.md',
+            profile: '.mindos/assistants/dreaming/profile.json',
+          },
+          promptPath: '.mindos/assistants/dreaming/prompt.md',
+          profilePath: '.mindos/assistants/dreaming/profile.json',
+          promptReady: true,
+          profileReady: true,
+          promptTitle: 'Dreaming',
+          promptPreview: 'Review the local knowledge base for maintenance signals.',
+          prompt: {
+            exists: true,
+            content: `# Dreaming
+
+## Role
+
+Review the local knowledge base for maintenance signals.
+`,
+          },
+          health: {
+            state: 'ready',
+            issues: [],
+          },
+        },
+        ...localAssistantsPayload.assistants,
+      ],
+    });
+    const { host, root } = await renderSection();
+
+    await act(async () => {
+      host.querySelector('button[data-assistant-library-row="dreaming"]')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushEffects();
+    });
+
+    await act(async () => {
+      host.querySelector('button[data-assistant-run="dreaming"]')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushEffects();
+    });
+
+    const assistantRunCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/assistant-runs' && init?.method === 'POST');
+    expect(assistantRunCall).toBeTruthy();
+    expect(JSON.parse(assistantRunCall![1]!.body as string)).toEqual({
+      assistantId: 'dreaming',
+      trigger: 'manual',
+    });
+    expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/ask' && init?.method === 'POST')).toBe(false);
+    expect(host.textContent).toContain('Dreaming completed for all.');
+    expect(host.textContent).toContain('1 review proposal(s) generated, health 91/100.');
+    expect(host.textContent).toContain('.mindos/dreaming/dreaming-report.md');
 
     await act(async () => {
       root.unmount();

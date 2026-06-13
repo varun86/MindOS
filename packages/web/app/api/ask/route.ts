@@ -47,6 +47,7 @@ import {
   type AgentRuntimesServices,
 } from '@geminilight/mindos/server';
 import {
+  appendSseEventToAgentRun,
   buildMindosAskSystemPrompt,
   type MindosAskInitializationContext,
 } from '@geminilight/mindos/agent';
@@ -66,9 +67,7 @@ import {
 } from '@/lib/agent/claude-permission-prompt';
 import {
   completeAgentRun,
-  appendAgentRunEvent,
   failAgentRun,
-  getAgentRun,
   startAgentRun,
   updateAgentRun,
   type AgentRunRecord,
@@ -101,16 +100,6 @@ function sendAgentRunContext(
   } as unknown as MindOSSSEvent);
 }
 
-function safeAuditString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
 function compactStringEnv(env: Record<string, string | undefined> | undefined): Record<string, string> | undefined {
   if (!env) return undefined;
   const compact: Record<string, string> = {};
@@ -129,179 +118,6 @@ function omitEnvKeys(
     if (!(key in reserved)) next[key] = value;
   }
   return next;
-}
-
-function isNativeRuntimeRun(runId: string): boolean {
-  return getAgentRun(runId)?.agentKind === 'native-runtime';
-}
-
-function isNativeRuntimeStatus(event: Extract<MindOSSSEvent, { type: 'status' }>): boolean {
-  return event.runtime === 'codex' || event.runtime === 'claude';
-}
-
-function appendSseEventToAgentRun(runId: string, event: MindOSSSEvent): void {
-  if (event.type === 'text_delta') {
-    if (!event.delta.trim()) return;
-    if (isNativeRuntimeRun(runId)) return;
-    appendAgentRunEvent(runId, {
-      type: 'text',
-      category: 'text',
-      message: event.delta,
-      data: { kind: 'text', text: event.delta, channel: 'assistant' },
-      visibility: 'debug',
-    });
-    return;
-  }
-  if (event.type === 'thinking_delta') {
-    if (!event.delta.trim()) return;
-    if (isNativeRuntimeRun(runId)) return;
-    appendAgentRunEvent(runId, {
-      type: 'text',
-      category: 'text',
-      message: event.delta,
-      data: { kind: 'text', text: event.delta, channel: 'reasoning' },
-      visibility: 'debug',
-    });
-    return;
-  }
-  if (event.type === 'tool_start') {
-    appendAgentRunEvent(runId, {
-      type: 'tool_started',
-      category: 'tool',
-      message: event.toolName,
-      toolCallId: event.toolCallId,
-      toolName: event.toolName,
-      ...(event.runtime ? { runtime: event.runtime } : {}),
-      data: {
-        kind: 'tool',
-        name: event.toolName,
-        status: 'started',
-        inputSummary: safeAuditString(event.args),
-      },
-    });
-    return;
-  }
-  if (event.type === 'tool_delta') {
-    appendAgentRunEvent(runId, {
-      type: 'tool_updated',
-      category: 'tool',
-      message: event.delta,
-      toolCallId: event.toolCallId,
-      ...(event.toolName ? { toolName: event.toolName } : {}),
-      ...(event.runtime ? { runtime: event.runtime } : {}),
-      data: {
-        kind: 'tool',
-        name: event.toolName ?? 'tool',
-        status: 'running',
-        outputSummary: event.delta,
-      },
-      visibility: 'debug',
-    });
-    return;
-  }
-  if (event.type === 'tool_end') {
-    appendAgentRunEvent(runId, {
-      type: 'tool_completed',
-      category: 'tool',
-      message: event.output,
-      toolCallId: event.toolCallId,
-      ...(event.toolName ? { toolName: event.toolName } : {}),
-      ...(event.runtime ? { runtime: event.runtime } : {}),
-      data: {
-        kind: 'tool',
-        name: event.toolName ?? 'tool',
-        status: event.isError ? 'failed' : 'completed',
-        ...(event.isError ? { error: event.output } : { outputSummary: event.output }),
-      },
-    });
-    return;
-  }
-  if (event.type === 'runtime_permission_request') {
-    appendAgentRunEvent(runId, {
-      type: 'permission_requested',
-      category: 'permission',
-      message: event.reason ?? event.toolName,
-      toolCallId: event.toolCallId,
-      toolName: event.toolName,
-      runtime: event.runtime,
-      data: {
-        kind: 'permission',
-        action: event.toolName,
-        status: 'requested',
-        ...(event.reason ? { prompt: event.reason } : {}),
-      },
-    });
-    return;
-  }
-  if (event.type === 'runtime_permission_resolved') {
-    appendAgentRunEvent(runId, {
-      type: 'permission_resolved',
-      category: 'permission',
-      message: event.decision,
-      toolCallId: event.toolCallId,
-      runtime: event.runtime,
-      data: {
-        kind: 'permission',
-        action: event.toolCallId,
-        status: event.cancelled ? 'denied' : event.decision === 'deny' ? 'denied' : 'approved',
-      },
-    });
-    return;
-  }
-  if (event.type === 'user_question_start') {
-    appendAgentRunEvent(runId, {
-      type: 'user_question_started',
-      category: 'question',
-      message: 'User question requested',
-      toolCallId: event.toolCallId,
-      data: {
-        kind: 'question',
-        status: 'requested',
-        prompt: safeAuditString(event.questions),
-      },
-    });
-    return;
-  }
-  if (event.type === 'user_question_answered' || event.type === 'user_question_cancelled') {
-    appendAgentRunEvent(runId, {
-      type: 'user_question_resolved',
-      category: 'question',
-      message: event.type === 'user_question_cancelled' ? event.reason : 'User answered',
-      toolCallId: event.toolCallId,
-      data: {
-        kind: 'question',
-        status: event.type === 'user_question_cancelled' ? 'cancelled' : 'answered',
-        summary: event.type === 'user_question_cancelled' ? event.reason : safeAuditString(event.answers ?? []),
-      },
-    });
-    return;
-  }
-  if (event.type === 'status') {
-    appendAgentRunEvent(runId, {
-      type: 'runtime_status',
-      category: 'status',
-      message: event.message,
-      ...(event.runtime ? { runtime: event.runtime } : {}),
-      data: {
-        kind: 'status',
-        nextStatus: 'running',
-        summary: event.message,
-      },
-      ...(isNativeRuntimeStatus(event) ? { visibility: 'debug' as const } : {}),
-    });
-    return;
-  }
-  if (event.type === 'error') {
-    appendAgentRunEvent(runId, {
-      type: 'error',
-      category: 'error',
-      message: event.message,
-      data: {
-        kind: 'error',
-        message: event.message,
-      },
-    });
-  }
 }
 
 // generateSkillsXml is in lib/agent/skills-xml.ts (not inline: Next.js route export constraints)

@@ -39,6 +39,7 @@ export * from './permission-policy.js';
 export * from './global-state.js';
 export * from './redaction.js';
 export * from './run-ledger.js';
+export * from './run-timeline-events.js';
 export * from './run-cancellation.js';
 export * from './runtime-permission-bridge.js';
 export * from './user-question-bridge.js';

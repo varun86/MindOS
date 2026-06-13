@@ -61,6 +61,13 @@ export type MindosRuntimePermissionOption = {
   label: string;
   description?: string;
   intent?: 'allow' | 'deny' | 'cancel';
+  scope?: 'once' | 'session' | 'always' | 'turn';
+};
+
+export type MindosRuntimePermissionRisk = {
+  level: 'low' | 'medium' | 'high';
+  summary: string;
+  reasons?: string[];
 };
 
 export type MindosRuntimePermissionRequest = {
@@ -70,11 +77,17 @@ export type MindosRuntimePermissionRequest = {
   input: unknown;
   options: MindosRuntimePermissionOption[];
   reason?: string;
+  action?: string;
+  resource?: string;
+  risk?: MindosRuntimePermissionRisk;
 };
 
 export type MindosRuntimePermissionResult = {
   decision: string;
   cancelled?: boolean;
+  decisionLabel?: string;
+  decisionIntent?: 'allow' | 'deny' | 'cancel';
+  decisionScope?: 'once' | 'session' | 'always' | 'turn';
 };
 
 export type MindosRuntimeUserQuestionOption = {
@@ -774,11 +787,19 @@ function buildCodexPermissionRequest(request: CodexAppServerServerRequest): Mind
   const command = getString(params, 'command')
     ?? getString(params, 'cmd')
     ?? getString(params, 'shellCommand');
+  const filePath = getString(params, 'path')
+    ?? getString(params, 'filePath')
+    ?? getString(params, 'targetPath');
   const toolName = request.method === 'item/fileChange/requestApproval'
     ? 'file_change_approval'
     : command
       ? 'Bash'
       : 'approval_request';
+  const action = request.method === 'item/fileChange/requestApproval'
+    ? 'file-change'
+    : command
+      ? 'command'
+      : 'tool-call';
 
   return {
     runtime: 'codex',
@@ -789,6 +810,8 @@ function buildCodexPermissionRequest(request: CodexAppServerServerRequest): Mind
       ...params,
     },
     options: getCodexPermissionOptions(params, request.method),
+    action,
+    ...(command || filePath ? { resource: command ?? filePath } : {}),
     ...(getString(params, 'reason') ?? getString(params, 'message') ? {
       reason: getString(params, 'reason') ?? getString(params, 'message'),
     } : {}),
@@ -887,6 +910,8 @@ function decisionOption(id: string): MindosRuntimePermissionOption {
     label: labels[id] ?? id,
     ...(descriptions[id] ? { description: descriptions[id] } : {}),
     intent: id === 'accept' || id === 'acceptForSession' ? 'allow' : id === 'decline' || id === 'deny' ? 'deny' : 'cancel',
+    ...(id === 'accept' ? { scope: 'once' as const } : {}),
+    ...(id === 'acceptForSession' ? { scope: 'session' as const } : {}),
   };
 }
 

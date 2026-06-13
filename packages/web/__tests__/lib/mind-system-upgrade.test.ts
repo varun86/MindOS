@@ -9,6 +9,7 @@ import { ensureDefaultMindSystemUpgrade } from '@/lib/mind-system-upgrade';
 const DEFAULT_DIRS = ['MIND_DAO', 'MIND_FA', 'MIND_SHU', 'MIND_QI'] as const;
 const DEFAULT_ASSISTANT_PROMPTS = [
   '.mindos/assistants/inbox-organizer/prompt.md',
+  '.mindos/assistants/dreaming/prompt.md',
   '.mindos/assistants/daily-signal/prompt.md',
   '.mindos/assistants/decision-synthesizer/prompt.md',
   '.mindos/assistants/rule-keeper/prompt.md',
@@ -17,6 +18,9 @@ const DEFAULT_ASSISTANT_PROMPTS = [
   '.mindos/assistants/checklist-builder/prompt.md',
   '.mindos/assistants/tool-inventory/prompt.md',
   '.mindos/assistants/resource-auditor/prompt.md',
+] as const;
+const DEFAULT_ASSISTANT_PROFILES = [
+  '.mindos/assistants/dreaming/profile.json',
 ] as const;
 
 describe('default mind-system upgrade', () => {
@@ -39,6 +43,15 @@ describe('default mind-system upgrade', () => {
         expect(prompt).toContain('assistantId:');
         expect(prompt).toContain('## Role');
       }
+      const dreamingProfile = JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/dreaming/profile.json'), 'utf-8'));
+      expect(dreamingProfile).toEqual({
+        name: 'Dreaming',
+        description: 'Reviews knowledge-base health and writes review-first Dreaming artifacts.',
+        schemaVersion: 1,
+        preferredAgent: 'mindos-agent',
+        skills: ['mindos'],
+        mcp: [],
+      });
 
       const config = JSON.parse(fs.readFileSync(path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH), 'utf-8'));
       expect(config.enabled).toBe(true);
@@ -70,6 +83,17 @@ describe('default mind-system upgrade', () => {
         '# Custom Inbox Organizer Prompt\n',
         'utf-8',
       );
+      fs.mkdirSync(path.join(mindRoot, '.mindos', 'assistants', 'dreaming'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'prompt.md'),
+        '# Custom Dreaming Prompt\n',
+        'utf-8',
+      );
+      fs.writeFileSync(
+        path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'profile.json'),
+        '{"name":"Custom Dreaming"}\n',
+        'utf-8',
+      );
 
       ensureDefaultMindSystemUpgrade(mindRoot);
       const result = ensureDefaultMindSystemUpgrade(mindRoot);
@@ -84,6 +108,10 @@ describe('default mind-system upgrade', () => {
         .toBe('# Custom Daily Signal Prompt\n');
       expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/inbox-organizer/prompt.md'), 'utf-8'))
         .toBe('# Custom Inbox Organizer Prompt\n');
+      expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/dreaming/prompt.md'), 'utf-8'))
+        .toBe('# Custom Dreaming Prompt\n');
+      expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/dreaming/profile.json'), 'utf-8'))
+        .toBe('{"name":"Custom Dreaming"}\n');
       expect(fs.readFileSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'), 'utf-8'))
         .toContain('assistantId: decision-synthesizer');
     } finally {
@@ -123,9 +151,14 @@ describe('default mind-system upgrade', () => {
 
       expect(result.state).toBe('partial');
       expect(result.createdPaths).toEqual([...DEFAULT_DIRS]);
-      expect(result.skippedPaths.map(item => item.path).sort()).toEqual([...DEFAULT_ASSISTANT_PROMPTS].sort());
+      expect(result.skippedPaths.map(item => item.path).sort()).toEqual([
+        ...DEFAULT_ASSISTANT_PROMPTS,
+        ...DEFAULT_ASSISTANT_PROFILES,
+      ].sort());
       expect(result.skippedPaths.every(item => item.reason === 'unsafe_path')).toBe(true);
       expect(fs.existsSync(path.join(outside, 'inbox-organizer', 'prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'dreaming', 'prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'dreaming', 'profile.json'))).toBe(false);
       expect(fs.existsSync(path.join(outside, 'daily-signal', 'prompt.md'))).toBe(false);
       expect(fs.existsSync(path.join(outside, 'resource-auditor', 'prompt.md'))).toBe(false);
     } finally {
@@ -182,6 +215,14 @@ describe('default mind-system upgrade', () => {
       const inboxPrompt = path.join(mindRoot, '.mindos', 'assistants', 'inbox-organizer', 'prompt.md');
       expect(fs.existsSync(inboxPrompt)).toBe(true);
       expect(fs.readFileSync(inboxPrompt, 'utf-8')).toContain('assistantId: inbox-organizer');
+      const dreamingPrompt = path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'prompt.md');
+      const dreamingProfile = path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'profile.json');
+      expect(fs.existsSync(dreamingPrompt)).toBe(true);
+      expect(fs.readFileSync(dreamingPrompt, 'utf-8')).toContain('assistantId: dreaming');
+      expect(JSON.parse(fs.readFileSync(dreamingProfile, 'utf-8'))).toMatchObject({
+        name: 'Dreaming',
+        schemaVersion: 1,
+      });
       expect(listMindSystemSlots(mindRoot)).toEqual([]);
     } finally {
       cleanupMindRoot(mindRoot);

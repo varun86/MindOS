@@ -124,8 +124,24 @@ export type AgentEventData =
       kind: 'permission';
       action: string;
       status: 'requested' | 'approved' | 'denied' | 'expired' | 'skipped';
+      requestId?: string;
       resource?: string;
       prompt?: string;
+      decision?: string;
+      decisionLabel?: string;
+      decisionIntent?: 'allow' | 'deny' | 'cancel';
+      decisionScope?: 'once' | 'session' | 'always' | 'turn';
+      options?: Array<{
+        id: string;
+        label: string;
+        intent?: 'allow' | 'deny' | 'cancel';
+        scope?: 'once' | 'session' | 'always' | 'turn';
+      }>;
+      risk?: {
+        level: 'low' | 'medium' | 'high';
+        summary: string;
+        reasons?: string[];
+      };
     }
   | {
       kind: 'question';

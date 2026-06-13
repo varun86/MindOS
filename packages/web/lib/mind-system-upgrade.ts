@@ -11,6 +11,12 @@ import {
   INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH,
 } from './inbox-assistant';
 import {
+  DREAMING_ASSISTANT_DEFAULT_PROFILE,
+  DREAMING_ASSISTANT_ID,
+  DREAMING_ASSISTANT_PROFILE_PATH,
+  DREAMING_ASSISTANT_PROMPT_PATH,
+} from './dreaming-assistant';
+import {
   INSTRUCTION_BY_MIND_SYSTEM_SLOT,
   README_BY_MIND_SYSTEM_SLOT,
 } from './mind-system-scaffold';
@@ -27,10 +33,16 @@ export interface MindSystemUpgradeResult {
   skippedPaths: MindSystemUpgradeSkippedPath[];
 }
 
-const CORE_BUILTIN_ASSISTANT_PROMPTS = [
+const CORE_BUILTIN_ASSISTANTS = [
   {
     assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
     promptPath: INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH,
+  },
+  {
+    assistantId: DREAMING_ASSISTANT_ID,
+    promptPath: DREAMING_ASSISTANT_PROMPT_PATH,
+    profilePath: DREAMING_ASSISTANT_PROFILE_PATH,
+    profile: DREAMING_ASSISTANT_DEFAULT_PROFILE,
   },
 ] as const;
 
@@ -40,13 +52,22 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
   const existingPaths: string[] = [];
   const skippedPaths: MindSystemUpgradeSkippedPath[] = [];
 
-  for (const assistant of CORE_BUILTIN_ASSISTANT_PROMPTS) {
+  for (const assistant of CORE_BUILTIN_ASSISTANTS) {
     const promptResult = ensureAssistantPromptFile(mindRoot, assistant.assistantId, assistant.promptPath);
     if (promptResult !== 'ready') {
       skippedPaths.push({
         path: assistant.promptPath,
         reason: promptResult,
       });
+    }
+    if ('profilePath' in assistant) {
+      const profileResult = ensureAssistantProfileFile(mindRoot, assistant.profilePath, assistant.profile);
+      if (profileResult !== 'ready') {
+        skippedPaths.push({
+          path: assistant.profilePath,
+          reason: profileResult,
+        });
+      }
     }
   }
 
@@ -85,6 +106,32 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
     existingPaths,
     skippedPaths,
   };
+}
+
+function ensureAssistantProfileFile(
+  mindRoot: string,
+  profilePath: string | undefined,
+  profile: Record<string, unknown> | undefined,
+): 'ready' | MindSystemUpgradeSkippedPath['reason'] {
+  if (!profilePath || !profile) return 'unsafe_path';
+
+  let resolvedProfilePath: string;
+  try {
+    resolvedProfilePath = resolveExistingSafe(mindRoot, profilePath);
+  } catch {
+    return 'unsafe_path';
+  }
+
+  try {
+    if (fs.existsSync(resolvedProfilePath)) {
+      return fs.statSync(resolvedProfilePath).isFile() ? 'ready' : 'file_conflict';
+    }
+    fs.mkdirSync(path.dirname(resolvedProfilePath), { recursive: true });
+    fs.writeFileSync(resolvedProfilePath, `${JSON.stringify(profile, null, 2)}\n`, 'utf-8');
+    return 'ready';
+  } catch {
+    return 'write_failed';
+  }
 }
 
 function ensureAssistantPromptFile(

@@ -38,6 +38,12 @@ describe('runtime permission bridge', () => {
         runtime: 'claude',
         toolCallId: 'toolu-1',
         toolName: 'Bash',
+        action: 'command',
+        resource: 'mindos file delete "Profile.md"',
+        risk: expect.objectContaining({
+          level: 'high',
+          summary: 'Deletes or removes local files.',
+        }),
       }));
       const requestEvent = send.mock.calls.find(([event]) => event.type === 'runtime_permission_request')?.[0];
       expect(requestEvent?.requestId).toBeTruthy();
@@ -51,12 +57,19 @@ describe('runtime permission bridge', () => {
       return requestPromise;
     });
 
-    await expect(promise).resolves.toEqual({ decision: 'accept', cancelled: false });
+    await expect(promise).resolves.toEqual({
+      decision: 'accept',
+      cancelled: false,
+      decisionLabel: 'Allow once',
+      decisionIntent: 'allow',
+    });
     expect(getPendingRuntimePermissionCount()).toBe(0);
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'runtime_permission_resolved',
       decision: 'accept',
       cancelled: false,
+      decisionLabel: 'Allow once',
+      decisionIntent: 'allow',
     }));
   });
 
@@ -67,7 +80,7 @@ describe('runtime permission bridge', () => {
       toolName: 'Bash',
       input: {},
       options: [],
-    })).resolves.toEqual({ decision: 'cancel', cancelled: true });
+    })).resolves.toMatchObject({ decision: 'cancel', cancelled: true });
   });
 
   it('cancels unresolved permission requests when the Chat Panel run finishes', async () => {
@@ -87,7 +100,7 @@ describe('runtime permission bridge', () => {
     });
 
     await expect(runPromise).resolves.toBe('finished');
-    await expect(requestPromise).resolves.toEqual({ decision: 'cancel', cancelled: true });
+    await expect(requestPromise).resolves.toMatchObject({ decision: 'cancel', cancelled: true });
     expect(getPendingRuntimePermissionCount()).toBe(0);
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'runtime_permission_resolved',
@@ -112,7 +125,7 @@ describe('runtime permission bridge', () => {
       return requestPromise;
     });
 
-    await expect(promise).resolves.toEqual({ decision: 'cancel', cancelled: true });
+    await expect(promise).resolves.toMatchObject({ decision: 'cancel', cancelled: true });
     expect(getPendingRuntimePermissionCount()).toBe(0);
     expect(send.mock.calls.filter(([event]) => event.type === 'runtime_permission_resolved')).toHaveLength(1);
   });
@@ -133,7 +146,7 @@ describe('runtime permission bridge', () => {
     expect(getPendingRuntimePermissionCount()).toBe(1);
     vi.advanceTimersByTime(5);
 
-    await expect(promise).resolves.toEqual({ decision: 'cancel', cancelled: true });
+    await expect(promise).resolves.toMatchObject({ decision: 'cancel', cancelled: true });
     expect(getPendingRuntimePermissionCount()).toBe(0);
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'runtime_permission_resolved',
@@ -188,7 +201,96 @@ describe('runtime permission bridge', () => {
       return requestPromise;
     });
 
-    await expect(promise).resolves.toEqual({ decision: 'decline', cancelled: false });
+    await expect(promise).resolves.toEqual({
+      decision: 'decline',
+      cancelled: false,
+      decisionLabel: 'Deny',
+      decisionIntent: 'deny',
+    });
     expect(getPendingRuntimePermissionCount()).toBe(0);
+  });
+
+  it('keeps selected option scope in the resolved event and runtime result', async () => {
+    const send = vi.fn();
+    const promise = runWithRuntimePermissionBridge({ runId: 'run-session-allow', send }, async () => {
+      const requestPromise = requestRuntimePermissionForRun('run-session-allow', {
+        runtime: 'codex',
+        toolCallId: 'toolu-session',
+        toolName: 'Bash',
+        input: { command: 'npm test' },
+        options: [
+          { id: 'accept', label: 'Allow once', intent: 'allow', scope: 'once' },
+          { id: 'acceptForSession', label: 'Allow this session', intent: 'allow', scope: 'session' },
+          { id: 'decline', label: 'Deny', intent: 'deny' },
+        ],
+      });
+      const requestEvent = send.mock.calls.find(([event]) => event.type === 'runtime_permission_request')?.[0];
+      expect(resolveRuntimePermission({
+        runId: 'run-session-allow',
+        requestId: requestEvent.requestId,
+        decision: 'acceptForSession',
+      })).toEqual({ ok: true });
+      return requestPromise;
+    });
+
+    await expect(promise).resolves.toEqual({
+      decision: 'acceptForSession',
+      cancelled: false,
+      decisionLabel: 'Allow this session',
+      decisionIntent: 'allow',
+      decisionScope: 'session',
+    });
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'runtime_permission_resolved',
+      decision: 'acceptForSession',
+      decisionLabel: 'Allow this session',
+      decisionIntent: 'allow',
+      decisionScope: 'session',
+    }));
+  });
+
+  it('honors explicit file action and risk summaries from runtime adapters', async () => {
+    const send = vi.fn();
+    const promise = runWithRuntimePermissionBridge({ runId: 'run-explicit-risk', send }, async () => {
+      const requestPromise = requestRuntimePermissionForRun('run-explicit-risk', {
+        runtime: 'codex',
+        toolCallId: 'file-change-1',
+        toolName: 'file_change_approval',
+        input: { path: 'README.md' },
+        action: 'file-change',
+        resource: 'README.md',
+        risk: {
+          level: 'medium',
+          summary: 'Updates a tracked file.',
+          reasons: ['file write'],
+        },
+        options: [
+          { id: 'accept', label: 'Allow once', intent: 'allow' },
+          { id: 'decline', label: 'Deny', intent: 'deny' },
+        ],
+      });
+      const requestEvent = send.mock.calls.find(([event]) => event.type === 'runtime_permission_request')?.[0];
+      expect(requestEvent).toMatchObject({
+        action: 'file-change',
+        resource: 'README.md',
+        risk: {
+          level: 'medium',
+          summary: 'Updates a tracked file.',
+          reasons: ['file write'],
+        },
+      });
+      expect(resolveRuntimePermission({
+        runId: 'run-explicit-risk',
+        requestId: requestEvent.requestId,
+        decision: 'decline',
+      })).toEqual({ ok: true });
+      return requestPromise;
+    });
+
+    await expect(promise).resolves.toMatchObject({
+      decision: 'decline',
+      cancelled: false,
+      decisionIntent: 'deny',
+    });
   });
 });

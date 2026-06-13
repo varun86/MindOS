@@ -42,6 +42,13 @@ export interface RuntimePermissionOption {
   label: string;
   description?: string;
   intent?: 'allow' | 'deny' | 'cancel';
+  scope?: 'once' | 'session' | 'always' | 'turn';
+}
+
+export interface RuntimePermissionRisk {
+  level: 'low' | 'medium' | 'high';
+  summary: string;
+  reasons?: string[];
 }
 
 export interface RuntimePermissionState {
@@ -51,7 +58,13 @@ export interface RuntimePermissionState {
   status: 'waiting' | 'approved' | 'denied' | 'cancelled';
   options: RuntimePermissionOption[];
   decision?: string;
+  decisionLabel?: string;
+  decisionIntent?: 'allow' | 'deny' | 'cancel';
+  decisionScope?: 'once' | 'session' | 'always' | 'turn';
   reason?: string;
+  action?: string;
+  resource?: string;
+  risk?: RuntimePermissionRisk;
 }
 
 export interface AskUserQuestionOption {

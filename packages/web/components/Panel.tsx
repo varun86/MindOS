@@ -281,7 +281,7 @@ export default function Panel({
       {/* Files panel — always mounted to preserve tree expand/collapse state */}
       <div className={`flex flex-col h-full ${activePanel === 'files' ? '' : 'hidden'}`}>
         <PanelHeader title={t.sidebar.files}>
-          <div className="flex items-center gap-0.5">
+          <div className="files-panel-header-actions flex shrink-0 items-center justify-end gap-0.5">
             {/* New (File / Space) */}
             <div className="relative">
               <button
@@ -348,40 +348,42 @@ export default function Panel({
             >
               <RefreshCw size={13} className={refreshingTree ? 'motion-safe:animate-spin' : undefined} />
             </button>
-            {/* Separator: create actions | view actions */}
-            <div className="w-px h-3.5 bg-border mx-0.5" />
-            {/* Collapse Level */}
-            <button
-              onClick={() => setMaxOpenDepth(prev => {
-                const current = prev ?? treeMaxDepth;
-                return Math.max(-1, current - 1);
-              })}
-              onDoubleClick={() => { setMaxOpenDepth(-1); markDblHintSeen(); }}
-              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
-              aria-label={t.sidebar.collapseLevel}
-              title={dblHintSeen ? t.sidebar.collapseLevel : (t.sidebar.collapseLevelHint ?? t.sidebar.collapseLevel)}
-            >
-              <ChevronsDownUp size={13} />
-            </button>
-            {/* Expand Level */}
-            <button
-              onClick={() => setMaxOpenDepth(prev => {
-                const current = prev ?? 0;
-                const next = current + 1;
-                if (next > treeMaxDepth) return null;
-                return next;
-              })}
-              onDoubleClick={() => { setMaxOpenDepth(null); markDblHintSeen(); }}
-              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
-              aria-label={t.sidebar.expandLevel}
-              title={dblHintSeen ? t.sidebar.expandLevel : (t.sidebar.expandLevelHint ?? t.sidebar.expandLevel)}
-            >
-              <ChevronsUpDown size={13} />
-            </button>
+            <div className="files-panel-header-depth-actions flex items-center gap-0.5">
+              {/* Separator: create actions | view actions */}
+              <div className="w-px h-3.5 bg-border mx-0.5" />
+              {/* Collapse Level */}
+              <button
+                onClick={() => setMaxOpenDepth(prev => {
+                  const current = prev ?? treeMaxDepth;
+                  return Math.max(-1, current - 1);
+                })}
+                onDoubleClick={() => { setMaxOpenDepth(-1); markDblHintSeen(); }}
+                className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+                aria-label={t.sidebar.collapseLevel}
+                title={dblHintSeen ? t.sidebar.collapseLevel : (t.sidebar.collapseLevelHint ?? t.sidebar.collapseLevel)}
+              >
+                <ChevronsDownUp size={13} />
+              </button>
+              {/* Expand Level */}
+              <button
+                onClick={() => setMaxOpenDepth(prev => {
+                  const current = prev ?? 0;
+                  const next = current + 1;
+                  if (next > treeMaxDepth) return null;
+                  return next;
+                })}
+                onDoubleClick={() => { setMaxOpenDepth(null); markDblHintSeen(); }}
+                className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+                aria-label={t.sidebar.expandLevel}
+                title={dblHintSeen ? t.sidebar.expandLevel : (t.sidebar.expandLevelHint ?? t.sidebar.expandLevel)}
+              >
+                <ChevronsUpDown size={13} />
+              </button>
+            </div>
             {/* Separator */}
             <div className="w-px h-3.5 bg-border mx-0.5" />
             {/* More */}
-            <div className="relative">
+            <div className="files-panel-header-more-action relative">
               <button
                 ref={moreBtnRef}
                 type="button"

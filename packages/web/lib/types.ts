@@ -113,9 +113,21 @@ export interface AgentRuntimeCapabilities {
 export type AgentRuntimeAdapter =
   | 'mindos'
   | 'codex-app-server'
+  | 'codex-sdk'
   | 'claude-cli'
   | 'claude-sdk'
   | 'acp';
+
+export type AgentRuntimeCategory = 'mindos' | 'native' | 'acp' | 'cloud';
+
+export interface AgentRuntimeHarnessCapabilities {
+  session: 'none' | 'local-id' | 'native-thread' | 'cloud-task';
+  eventStream: Array<'text' | 'tool-events' | 'thread-turn-item' | 'runtime-status' | 'permissions' | 'user-input'>;
+  workspace: 'local-cwd' | 'local-worktree' | 'container' | 'cloud-vm';
+  permissions: 'none' | 'mindos-only' | 'runtime-bridged';
+  tools: Array<'shell' | 'file' | 'git' | 'browser' | 'mcp' | 'plugins' | 'skills'>;
+  output: Array<'text' | 'diff' | 'checkpoint' | 'artifact' | 'branch' | 'pr'>;
+}
 
 export type AgentRuntimeOwner = 'mindos' | 'external';
 
@@ -127,6 +139,8 @@ export interface AgentRuntimeBridge {
 }
 
 export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
+  category?: AgentRuntimeCategory;
+  runtimeId?: string;
   adapter: AgentRuntimeAdapter;
   modelOwner: AgentRuntimeOwner;
   authOwner: AgentRuntimeOwner;
@@ -134,6 +148,7 @@ export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
   sessionOwner: AgentRuntimeOwner;
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
+  harnessCapabilities?: AgentRuntimeHarnessCapabilities;
   runtimeBridge?: AgentRuntimeBridge;
   description?: string;
   sourceAgentId?: string;

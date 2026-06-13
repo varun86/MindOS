@@ -1,7 +1,6 @@
 import {
   detectLocalAcpAgents as defaultDetectLocalAcpAgents,
   resolveCommandPath,
-  type AcpAgentOverride,
 } from '../../protocols/acp/index.js';
 import {
   readCodexConfigText,
@@ -13,571 +12,61 @@ import {
 } from '../../agent-runtime/claude-code-sdk.js';
 import {
   compactRuntimeFailureMessage,
-  compactRuntimeDiagnosticHints,
-  summarizeRuntimeFailure,
 } from '../../agent-runtime/runtime-errors.js';
-import type { AgentRuntimeEnvironmentSettings } from '../../agent-runtime/runtime-env.js';
+import {
+  NATIVE_HEALTH_TIMEOUT_MS,
+  RUNTIME_DETECTION_TIMEOUT_MS,
+  applyNativeRuntimeHealth,
+  buildAcpScopedPayload,
+  buildAgentRuntimesPayload,
+  nativeRuntimeDefinitions,
+  type AgentRuntimeDescriptor,
+  type AgentRuntimePayload,
+  type AgentRuntimesPayload,
+  type AgentRuntimesServices,
+  type DetectedRuntimeAgent,
+  type MissingRuntimeAgent,
+  type NativeRuntimeHealthInput,
+  type NativeRuntimeHealthResult,
+  type NativeRuntimeId,
+} from '../../agent-runtime/registry.js';
+import {
+  classifyRuntimeFailure,
+  isClaudeAgent,
+  isCodexAgent,
+  isNativeRuntimeId,
+  normalizeInstalled,
+  normalizeMissing,
+} from '../../agent-runtime/detection.js';
+import {
+  nativeDescriptor,
+} from '../../agent-runtime/descriptors.js';
 import { spawn } from 'node:child_process';
 import { errorResponse, json, privateCacheHeaders, type MindosServerResponse } from '../response.js';
 
-export type AgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
-export type AgentRuntimeStatus = 'available' | 'missing' | 'signed-out' | 'error';
-
-export type AgentRuntimeCapabilities = {
-  ownsModelSelection: boolean;
-  supportsResume: boolean;
-  supportsFreshSession: boolean;
-  supportsListSessions: boolean;
-  supportsAttachExisting: boolean;
-  supportsFork: boolean;
-  supportsArchive: boolean;
-  supportsInterrupt: boolean;
-  supportsModelList: boolean;
-  supportsApprovals: boolean;
-  supportsUserInput: boolean;
-  supportsToolEvents: boolean;
-  supportsRuntimeStatus: boolean;
-  supportsDiffs: boolean;
-  supportsCheckpoints: boolean;
-  supportsBackgroundRuns: boolean;
-  supportsMcpConfig: boolean;
+export {
+  buildAgentRuntimesPayload,
 };
 
-export type AgentRuntimeAdapter =
-  | 'mindos'
-  | 'codex-app-server'
-  | 'claude-cli'
-  | 'claude-sdk'
-  | 'acp';
-
-export type AgentRuntimeOwner = 'mindos' | 'external';
-
-export type AgentRuntimeBridge = {
-  kind: 'codex-app-server' | 'claude-sdk' | 'claude-cli';
-  label: string;
-  fallback?: boolean;
-  reason?: string;
-};
-
-export type AgentRuntimeDescriptor = {
-  id: string;
-  name: string;
-  kind: AgentRuntimeKind;
-  adapter: AgentRuntimeAdapter;
-  modelOwner: AgentRuntimeOwner;
-  authOwner: AgentRuntimeOwner;
-  permissionOwner: AgentRuntimeOwner;
-  sessionOwner: AgentRuntimeOwner;
-  status: AgentRuntimeStatus;
-  capabilities: AgentRuntimeCapabilities;
-  runtimeBridge?: AgentRuntimeBridge;
-  description?: string;
-  sourceAgentId?: string;
-  canonicalAgentId?: string;
-  mcpAgentKey?: string;
-  aliases?: string[];
-  binaryPath?: string;
-  resolvedCommand?: {
-    cmd: string;
-    args: string[];
-    source: 'user-override' | 'descriptor' | 'registry';
-  };
-  installCmd?: string;
-  packageName?: string;
-  availability?: {
-    checkedAt: string;
-    sources: Array<'acp-detect' | 'acp-registry' | 'mcp-agents' | 'native-health' | 'settings'>;
-    reason?: string;
-    diagnosticHints?: string[];
-    stale?: boolean;
-  };
-};
-
-export type DetectedRuntimeAgent = {
-  id: string;
-  name: string;
-  binaryPath: string;
-  resolvedCommand?: RuntimeResolvedCommand;
-  status?: Exclude<AgentRuntimeStatus, 'missing'>;
-  reason?: string;
-  diagnosticHints?: string[];
-  runtimeBridge?: AgentRuntimeBridge;
-};
-
-export type MissingRuntimeAgent = {
-  id: string;
-  name: string;
-  installCmd: string;
-  packageName?: string;
-  status?: Extract<AgentRuntimeStatus, 'missing' | 'error'>;
-  reason?: string;
-  diagnosticHints?: string[];
-};
-
-export type AgentRuntimesPayload = {
-  runtimes: AgentRuntimeDescriptor[];
-  installed: DetectedRuntimeAgent[];
-  notInstalled: MissingRuntimeAgent[];
-};
-
-export type AgentRuntimePayload = {
-  runtime: AgentRuntimeDescriptor;
-};
-
-export type AgentRuntimesSettings = {
-  acpAgents?: Record<string, AcpAgentOverride>;
-  agentRuntimeEnv?: AgentRuntimeEnvironmentSettings;
-};
-
-export type NativeRuntimeHealthResult = {
-  status: Exclude<AgentRuntimeStatus, 'missing'>;
-  reason?: string;
-  diagnosticHints?: string[];
-  runtimeBridge?: AgentRuntimeBridge;
-};
-
-export type NativeRuntimeHealthInput = {
-  runtime: 'codex' | 'claude';
-  agent: DetectedRuntimeAgent;
-  timeoutMs?: number;
-};
-
-export type AgentRuntimesServices = {
-  readSettings?(): AgentRuntimesSettings;
-  detectLocalAcpAgents?(options?: { overrides?: Record<string, AcpAgentOverride> }): Promise<{
-    installed: unknown[];
-    notInstalled: unknown[];
-  }>;
-  checkNativeRuntimeHealth?(input: NativeRuntimeHealthInput): Promise<NativeRuntimeHealthResult>;
-  resolveRuntimeCommand?(command: string): Promise<string | null>;
-  now?(): number;
-};
-
-type RuntimeResolvedCommand = NonNullable<AgentRuntimeDescriptor['resolvedCommand']>;
-type NativeRuntimeId = 'codex' | 'claude';
-
-const mindosCapabilities: AgentRuntimeCapabilities = {
-  ownsModelSelection: true,
-  supportsResume: true,
-  supportsFreshSession: true,
-  supportsListSessions: true,
-  supportsAttachExisting: false,
-  supportsFork: false,
-  supportsArchive: false,
-  supportsInterrupt: true,
-  supportsModelList: true,
-  supportsApprovals: false,
-  supportsUserInput: true,
-  supportsToolEvents: true,
-  supportsRuntimeStatus: true,
-  supportsDiffs: false,
-  supportsCheckpoints: false,
-  supportsBackgroundRuns: false,
-  supportsMcpConfig: true,
-};
-
-const nativeBaseCapabilities: AgentRuntimeCapabilities = {
-  ownsModelSelection: true,
-  supportsResume: true,
-  supportsFreshSession: true,
-  supportsListSessions: false,
-  supportsAttachExisting: false,
-  supportsFork: false,
-  supportsArchive: false,
-  supportsInterrupt: true,
-  supportsModelList: false,
-  supportsApprovals: true,
-  supportsUserInput: true,
-  supportsToolEvents: true,
-  supportsRuntimeStatus: true,
-  supportsDiffs: false,
-  supportsCheckpoints: false,
-  supportsBackgroundRuns: false,
-  supportsMcpConfig: true,
-};
-
-const codexCapabilities: AgentRuntimeCapabilities = {
-  ...nativeBaseCapabilities,
-  supportsListSessions: true,
-  supportsAttachExisting: true,
-  supportsFork: true,
-  supportsArchive: true,
-};
-
-const claudeCapabilities: AgentRuntimeCapabilities = {
-  ...nativeBaseCapabilities,
-};
-
-const acpCapabilities: AgentRuntimeCapabilities = {
-  ownsModelSelection: true,
-  supportsResume: false,
-  supportsFreshSession: false,
-  supportsListSessions: false,
-  supportsAttachExisting: false,
-  supportsFork: false,
-  supportsArchive: false,
-  supportsInterrupt: true,
-  supportsModelList: false,
-  supportsApprovals: false,
-  supportsUserInput: false,
-  supportsToolEvents: true,
-  supportsRuntimeStatus: false,
-  supportsDiffs: false,
-  supportsCheckpoints: false,
-  supportsBackgroundRuns: false,
-  supportsMcpConfig: false,
-};
-
-const RUNTIME_DETECTION_TIMEOUT_MS = 5000;
-const NATIVE_HEALTH_TIMEOUT_MS = 20000;
-const nativeRuntimeDefinitions: Array<{
-  id: 'codex-acp' | 'claude';
-  name: string;
-  runtime: 'codex' | 'claude';
-  command: string;
-  installCmd: string;
-}> = [
-  { id: 'codex-acp', name: 'Codex', runtime: 'codex', command: 'codex', installCmd: 'npm install -g @openai/codex' },
-  { id: 'claude', name: 'Claude Code', runtime: 'claude', command: 'claude', installCmd: 'npm install -g @anthropic-ai/claude-code' },
-];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function classifyRuntimeFailure(message: string, runtime?: NativeRuntimeId): NativeRuntimeHealthResult {
-  const normalized = message.trim() || 'Runtime failed to start.';
-  const summary = summarizeRuntimeFailure(normalized, { runtime });
-  if (/\b(login|log in|signin|sign in|auth|authentication|unauthori[sz]ed|credential|api key|token)\b/i.test(normalized)) {
-    return {
-      status: 'signed-out',
-      reason: summary.reason,
-      ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
-    };
-  }
-  if (/missing environment variable/i.test(normalized)) {
-    return {
-      status: 'signed-out',
-      reason: summary.reason,
-      ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
-    };
-  }
-  return {
-    status: 'error',
-    reason: summary.reason,
-    ...(summary.diagnosticHints ? { diagnosticHints: summary.diagnosticHints } : {}),
-  };
-}
-
-function isResolvedCommandSource(value: unknown): value is RuntimeResolvedCommand['source'] {
-  return value === 'user-override' || value === 'descriptor' || value === 'registry';
-}
-
-function isInstalledRuntimeStatus(value: unknown): value is Exclude<AgentRuntimeStatus, 'missing'> {
-  return value === 'available' || value === 'signed-out' || value === 'error';
-}
-
-function isMissingRuntimeStatus(value: unknown): value is Extract<AgentRuntimeStatus, 'missing' | 'error'> {
-  return value === 'missing' || value === 'error';
-}
-
-function normalizeResolvedCommand(value: unknown): RuntimeResolvedCommand | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.cmd !== 'string' || !Array.isArray(value.args) || !value.args.every((arg) => typeof arg === 'string')) return null;
-  if (!isResolvedCommandSource(value.source)) return null;
-  return {
-    cmd: value.cmd,
-    args: value.args,
-    source: value.source,
-  };
-}
-
-function normalizeDiagnosticHints(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const hints = value
-    .filter((hint): hint is string => typeof hint === 'string' && hint.trim().length > 0)
-    .map((hint) => hint.trim());
-  return hints.length > 0 ? Array.from(new Set(hints)) : undefined;
-}
-
-function isRuntimeBridgeKind(value: unknown): value is AgentRuntimeBridge['kind'] {
-  return value === 'codex-app-server' || value === 'claude-sdk' || value === 'claude-cli';
-}
-
-function normalizeRuntimeBridge(value: unknown): AgentRuntimeBridge | undefined {
-  if (!isRecord(value)) return undefined;
-  if (!isRuntimeBridgeKind(value.kind) || typeof value.label !== 'string' || !value.label.trim()) return undefined;
-  return {
-    kind: value.kind,
-    label: value.label.trim(),
-    ...(typeof value.fallback === 'boolean' ? { fallback: value.fallback } : {}),
-    ...(typeof value.reason === 'string' && value.reason.trim()
-      ? { reason: compactRuntimeFailureMessage(value.reason, { runtime: value.kind === 'claude-cli' || value.kind === 'claude-sdk' ? 'claude' : 'codex' }) }
-      : {}),
-  };
-}
-
-function normalizeInstalled(value: unknown): DetectedRuntimeAgent | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.binaryPath !== 'string') return null;
-  const resolved = normalizeResolvedCommand(value.resolvedCommand);
-  const diagnosticHints = normalizeDiagnosticHints(value.diagnosticHints);
-  const runtimeBridge = normalizeRuntimeBridge(value.runtimeBridge);
-  return {
-    id: value.id,
-    name: value.name,
-    binaryPath: value.binaryPath,
-    ...(resolved ? { resolvedCommand: resolved } : {}),
-    ...(isInstalledRuntimeStatus(value.status) ? { status: value.status } : {}),
-    ...(typeof value.reason === 'string' && value.reason.trim() ? { reason: value.reason } : {}),
-    ...(diagnosticHints ? { diagnosticHints } : {}),
-    ...(runtimeBridge ? { runtimeBridge } : {}),
-  };
-}
-
-function normalizeMissing(value: unknown): MissingRuntimeAgent | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.installCmd !== 'string') return null;
-  const diagnosticHints = normalizeDiagnosticHints(value.diagnosticHints);
-  return {
-    id: value.id,
-    name: value.name,
-    installCmd: value.installCmd,
-    ...(typeof value.packageName === 'string' ? { packageName: value.packageName } : {}),
-    ...(isMissingRuntimeStatus(value.status) ? { status: value.status } : {}),
-    ...(typeof value.reason === 'string' && value.reason.trim() ? { reason: value.reason } : {}),
-    ...(diagnosticHints ? { diagnosticHints } : {}),
-  };
-}
-
-function isCodexAgent(agent: Pick<DetectedRuntimeAgent | MissingRuntimeAgent, 'id' | 'name'>): boolean {
-  const name = agent.name.toLowerCase();
-  return agent.id === 'codex' || agent.id === 'codex-acp' || name === 'codex' || name.includes('codex');
-}
-
-function isClaudeAgent(agent: Pick<DetectedRuntimeAgent | MissingRuntimeAgent, 'id' | 'name'>): boolean {
-  const name = agent.name.toLowerCase();
-  return agent.id === 'claude' || agent.id === 'claude-code' || name.includes('claude');
-}
-
-function nativeDescriptor(input: {
-  id: 'codex' | 'claude';
-  name: string;
-  checkedAt: string;
-  source?: DetectedRuntimeAgent;
-  missing?: MissingRuntimeAgent;
-}): AgentRuntimeDescriptor {
-  const status = input.source ? input.source.status ?? 'available' : input.missing?.status ?? 'missing';
-  const runtimeBridge = input.source?.runtimeBridge;
-  const rawReason = input.source?.reason ?? input.missing?.reason;
-  const reasonSummary = rawReason ? summarizeRuntimeFailure(rawReason, { runtime: input.id }) : null;
-  const reason = reasonSummary?.reason;
-  const sourceDiagnosticHints = compactRuntimeDiagnosticHints(
-    input.source?.diagnosticHints ?? input.missing?.diagnosticHints,
-    { runtime: input.id },
-  ).filter((hint) => hint !== reason);
-  const diagnosticHints = Array.from(new Set([
-    ...sourceDiagnosticHints,
-    ...(reasonSummary?.diagnosticHints ?? []),
-    ...nativeRuntimeDiagnosticHints({
-      id: input.id,
-      name: input.name,
-      status,
-      reason,
-      binaryPath: input.source?.binaryPath,
-      installCmd: input.missing?.installCmd,
-    }),
-  ]));
-
-  return {
-    id: input.id,
-    name: input.name,
-    kind: input.id,
-    adapter: input.id === 'codex' ? 'codex-app-server' : runtimeBridge?.kind === 'claude-cli' ? 'claude-cli' : 'claude-sdk',
-    modelOwner: 'external',
-    authOwner: 'external',
-    permissionOwner: 'external',
-    sessionOwner: 'external',
-    status,
-    capabilities: input.id === 'codex' ? codexCapabilities : claudeCapabilities,
-    ...(runtimeBridge ? { runtimeBridge } : {}),
-    description: input.id === 'codex'
-      ? 'Local Codex app-server runtime. Model, approval, and thread behavior are owned by Codex.'
-      : 'Local Claude Code runtime. Model, permission, and session behavior are owned by Claude Code.',
-    aliases: input.id === 'codex' ? ['codex-acp'] : ['claude-code', 'claude'],
-    ...(input.id === 'codex' ? { mcpAgentKey: 'codex' } : { mcpAgentKey: 'claude-code' }),
-    ...(input.source ? {
-      sourceAgentId: input.source.id,
-      canonicalAgentId: input.source.id,
-      binaryPath: input.source.binaryPath,
-      ...(input.source.resolvedCommand ? { resolvedCommand: input.source.resolvedCommand } : {}),
-    } : {}),
-    ...(!input.source && input.missing ? {
-      sourceAgentId: input.missing.id,
-      canonicalAgentId: input.missing.id,
-      installCmd: input.missing.installCmd,
-      ...(input.missing.packageName ? { packageName: input.missing.packageName } : {}),
-    } : {}),
-    availability: {
-      checkedAt: input.checkedAt,
-      sources: ['native-health'],
-      ...(reason
-        ? { reason }
-        : !input.source
-          ? { reason: `${input.name} executable was not detected.` }
-          : {}),
-      ...(diagnosticHints.length > 0 ? { diagnosticHints } : {}),
-    },
-  };
-}
-
-function nativeRuntimeDiagnosticHints(input: {
-  id: 'codex' | 'claude';
-  name: string;
-  status: AgentRuntimeStatus;
-  reason?: string;
-  binaryPath?: string;
-  installCmd?: string;
-}): string[] {
-  if (input.status === 'available') return [];
-  const command = input.id === 'codex' ? 'codex' : 'claude';
-  const hints: string[] = [];
-
-  if (input.status === 'missing') {
-    hints.push(`MindOS checked command "${command}" on the server PATH.`);
-    hints.push(input.installCmd
-      ? `Install it or add it to the PATH used to start MindOS: ${input.installCmd}`
-      : `Install ${input.name} or add it to the PATH used to start MindOS.`);
-    return hints;
-  }
-
-  if (input.binaryPath) {
-    hints.push(`MindOS detected ${input.name} at ${input.binaryPath}.`);
-  }
-
-  if (input.status === 'signed-out') {
-    hints.push(input.id === 'codex'
-      ? 'Run "codex login status" from the same environment that starts MindOS.'
-      : 'Run Claude Code once from the same environment that starts MindOS.');
-  } else {
-    hints.push(input.id === 'codex'
-      ? 'Run "codex app-server --help" from the MindOS server environment.'
-      : 'Run "claude --version" from the MindOS server environment.');
-  }
-
-  if (input.reason && /(environment variable|cannot see|env)/i.test(input.reason)) {
-    hints.push('Restart MindOS after exporting the required environment variable so the server process inherits it.');
-  }
-
-  return hints;
-}
-
-export function buildAgentRuntimesPayload(input: {
-  installed: unknown[];
-  notInstalled: unknown[];
-  checkedAt: string;
-}): AgentRuntimesPayload {
-  const installed = input.installed.map(normalizeInstalled).filter((agent): agent is DetectedRuntimeAgent => !!agent);
-  const notInstalled = input.notInstalled.map(normalizeMissing).filter((agent): agent is MissingRuntimeAgent => !!agent);
-  const codexInstalled = installed.find(isCodexAgent);
-  const claudeInstalled = installed.find(isClaudeAgent);
-  const codexMissing = notInstalled.find(isCodexAgent);
-  const claudeMissing = notInstalled.find(isClaudeAgent);
-
-  const runtimes: AgentRuntimeDescriptor[] = [
-    {
-      id: 'mindos',
-      name: 'MindOS',
-      kind: 'mindos',
-      adapter: 'mindos',
-      modelOwner: 'mindos',
-      authOwner: 'mindos',
-      permissionOwner: 'mindos',
-      sessionOwner: 'mindos',
-      status: 'available',
-      capabilities: mindosCapabilities,
-      description: 'MindOS internal agent using the selected provider and model.',
-      availability: { checkedAt: input.checkedAt, sources: ['settings'] },
-    },
-    nativeDescriptor({
-      id: 'codex',
-      name: 'Codex',
-      checkedAt: input.checkedAt,
-      ...(codexInstalled ? { source: codexInstalled } : {}),
-      ...(codexMissing ? { missing: codexMissing } : {}),
-    }),
-    nativeDescriptor({
-      id: 'claude',
-      name: 'Claude Code',
-      checkedAt: input.checkedAt,
-      ...(claudeInstalled ? { source: claudeInstalled } : {}),
-      ...(claudeMissing ? { missing: claudeMissing } : {}),
-    }),
-    ...installed
-      .filter((agent) => !isCodexAgent(agent) && !isClaudeAgent(agent))
-      .map((agent): AgentRuntimeDescriptor => ({
-        id: agent.id,
-        name: agent.name,
-        kind: 'acp',
-        adapter: 'acp',
-        modelOwner: 'external',
-        authOwner: 'external',
-        permissionOwner: 'external',
-        sessionOwner: 'external',
-        status: agent.status ?? 'available',
-        capabilities: acpCapabilities,
-        description: 'ACP agent selected as the Chat Panel runtime.',
-        sourceAgentId: agent.id,
-        canonicalAgentId: agent.id,
-        binaryPath: agent.binaryPath,
-        ...(agent.resolvedCommand ? { resolvedCommand: agent.resolvedCommand } : {}),
-        availability: {
-          checkedAt: input.checkedAt,
-          sources: agent.status && agent.status !== 'available' ? ['acp-detect', 'native-health'] : ['acp-detect'],
-          ...(agent.reason ? { reason: agent.reason } : {}),
-        },
-      })),
-  ];
-
-  return { runtimes, installed, notInstalled };
-}
-
-function buildAcpScopedPayload(input: {
-  installed: unknown[];
-  notInstalled: unknown[];
-  checkedAt: string;
-}): AgentRuntimesPayload {
-  const installed = input.installed
-    .map(normalizeInstalled)
-    .filter((agent): agent is DetectedRuntimeAgent => !!agent && !isCodexAgent(agent) && !isClaudeAgent(agent));
-  const notInstalled = input.notInstalled
-    .map(normalizeMissing)
-    .filter((agent): agent is MissingRuntimeAgent => !!agent && !isCodexAgent(agent) && !isClaudeAgent(agent));
-  const runtimes = installed.map((agent): AgentRuntimeDescriptor => ({
-    id: agent.id,
-    name: agent.name,
-    kind: 'acp',
-    adapter: 'acp',
-    modelOwner: 'external',
-    authOwner: 'external',
-    permissionOwner: 'external',
-    sessionOwner: 'external',
-    status: agent.status ?? 'available',
-    capabilities: acpCapabilities,
-    description: 'ACP agent selected as the Chat Panel runtime.',
-    sourceAgentId: agent.id,
-    canonicalAgentId: agent.id,
-    binaryPath: agent.binaryPath,
-    ...(agent.resolvedCommand ? { resolvedCommand: agent.resolvedCommand } : {}),
-    availability: {
-      checkedAt: input.checkedAt,
-      sources: agent.status && agent.status !== 'available' ? ['acp-detect', 'native-health'] : ['acp-detect'],
-      ...(agent.reason ? { reason: agent.reason } : {}),
-    },
-  }));
-
-  return { runtimes, installed, notInstalled };
-}
+export type {
+  AgentRuntimeAdapter,
+  AgentRuntimeBridge,
+  AgentRuntimeCapabilities,
+  AgentRuntimeCategory,
+  AgentRuntimeDescriptor,
+  AgentRuntimeHarnessCapabilities,
+  AgentRuntimeKind,
+  AgentRuntimeOwner,
+  AgentRuntimePayload,
+  AgentRuntimeStatus,
+  AgentRuntimesPayload,
+  AgentRuntimesServices,
+  AgentRuntimesSettings,
+  DetectedRuntimeAgent,
+  MissingRuntimeAgent,
+  NativeRuntimeHealthInput,
+  NativeRuntimeHealthResult,
+} from '../../agent-runtime/registry.js';
 
 async function checkProcessVersion(
   command: string,
@@ -774,42 +263,6 @@ export async function checkClaudeRuntimeHealth(input: {
   }
 }
 
-async function applyNativeRuntimeHealth(
-  installed: unknown[],
-  services: AgentRuntimesServices,
-): Promise<unknown[]> {
-  const checkNativeRuntimeHealth = services.checkNativeRuntimeHealth ?? defaultCheckNativeRuntimeHealth;
-  const normalized = installed.map((agent) => ({ raw: agent, detected: normalizeInstalled(agent) }));
-  const enriched = await Promise.all(normalized.map(async ({ raw, detected }) => {
-    if (!detected) return raw;
-    const runtime = isCodexAgent(detected) ? 'codex' : isClaudeAgent(detected) ? 'claude' : null;
-    if (!runtime) return raw;
-    if (detected.status) return raw;
-    try {
-      const health = await checkNativeRuntimeHealth({
-        runtime,
-        agent: detected,
-        timeoutMs: NATIVE_HEALTH_TIMEOUT_MS,
-      });
-      return {
-        ...(isRecord(raw) ? raw : detected),
-        status: health.status,
-        ...(health.reason ? { reason: health.reason } : {}),
-        ...(health.diagnosticHints ? { diagnosticHints: health.diagnosticHints } : {}),
-        ...(health.runtimeBridge ? { runtimeBridge: health.runtimeBridge } : {}),
-      };
-    } catch (error) {
-      const result = classifyRuntimeFailure(error instanceof Error ? error.message : String(error), runtime);
-      return {
-        ...(isRecord(raw) ? raw : detected),
-        status: result.status,
-        ...(result.reason ? { reason: result.reason } : {}),
-      };
-    }
-  }));
-  return enriched;
-}
-
 async function detectNativeRuntimeDefinition(
   candidate: typeof nativeRuntimeDefinitions[number],
   services: AgentRuntimesServices,
@@ -932,10 +385,6 @@ async function detectNativeRuntimes(
   };
 }
 
-function isNativeRuntimeId(value: string | null): value is NativeRuntimeId {
-  return value === 'codex' || value === 'claude';
-}
-
 async function detectSingleNativeRuntime(
   runtime: NativeRuntimeId,
   services: AgentRuntimesServices,
@@ -1026,7 +475,11 @@ export async function handleAgentRuntimesGet(
       const normalized = normalizeMissing(agent);
       return !normalized || (!isCodexAgent(normalized) && !isClaudeAgent(normalized));
     });
-    const installed = await applyNativeRuntimeHealth([...nativeDetection.installed, ...acpRuntimeInstalled], services);
+    const installed = await applyNativeRuntimeHealth(
+      [...nativeDetection.installed, ...acpRuntimeInstalled],
+      services,
+      defaultCheckNativeRuntimeHealth,
+    );
     const payload = buildAgentRuntimesPayload({
       installed,
       notInstalled: [...nativeDetection.notInstalled, ...acpRuntimeNotInstalled],

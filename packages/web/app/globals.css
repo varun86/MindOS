@@ -161,6 +161,17 @@ body {
   letter-spacing: 0.03em;
 }
 
+/* Side panel headers own their responsive action priority.
+   The files panel keeps More visible and drops depth controls first when narrow. */
+.panel-header {
+  container-type: inline-size;
+}
+@container (max-width: 272px) {
+  .files-panel-header-depth-actions {
+    display: none;
+  }
+}
+
 /* Content width — controlled by Settings > Appearance */
 :root {
   --content-width: 80%;

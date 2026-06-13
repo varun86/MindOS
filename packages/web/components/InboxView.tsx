@@ -1124,6 +1124,7 @@ function InboxPageHeader({
   onUpload: () => void;
 }) {
   const isCaptureView = activeView === 'capture';
+  const showHeaderUpload = activeView === 'queue' || activeView === 'shelved';
 
   return (
     <header
@@ -1155,7 +1156,7 @@ function InboxPageHeader({
         )}
       </div>
 
-      {!isCaptureView && (
+      {showHeaderUpload && (
         <button
           type="button"
           onClick={onUpload}
@@ -1683,23 +1684,6 @@ function InboxShelvedSection({
 
   return (
     <section className="overflow-hidden rounded-xl border border-border/60 bg-card/40 shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Archive size={15} className="text-[var(--amber)]" />
-            <h3 className="text-sm font-semibold text-foreground">{t.inbox.shelvedTitle}</h3>
-            {hasFiles && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                {t.inbox.fileCount(files.length)}
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
-            {t.inbox.shelvedDesc}
-          </p>
-        </div>
-      </div>
-
       {inboxError ? (
         <div className="px-4 py-10 text-center">
           <p className="text-sm font-medium text-foreground/70">{t.inbox.loadFailed}</p>

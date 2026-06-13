@@ -497,7 +497,8 @@ describe('InboxView product shape', () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    expect(host.textContent).toContain('Shelved items');
+    expect(host.textContent).not.toContain('Captured items you decided to keep out of the active queue for now.');
+    expect(host.textContent).not.toContain('Shelved items');
     expect(host.textContent).toContain('wechat-capture');
     expect(host.textContent).not.toContain('agent-memory-notes');
 
@@ -768,6 +769,7 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('Recent organization records and undo history.');
     expect(host.textContent).toContain('Organization records');
     expect(host.textContent).toContain('No completed runs yet');
+    expect(host.querySelector('[data-inbox-page-upload]')).toBeNull();
     expect(host.textContent).not.toContain('Import History');
     expect(host.textContent).not.toContain('AI organize results will appear here');
 

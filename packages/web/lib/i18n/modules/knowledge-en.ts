@@ -207,7 +207,7 @@ Read the assistant prompt at ${promptPath} first, then read this space's INSTRUC
     reviewPageTitle: 'Review queue',
     reviewPageSubtitle: '',
     shelvedPageTitle: 'Shelved',
-    shelvedPageSubtitle: 'Captured items you decided to keep out of the active queue for now.',
+    shelvedPageSubtitle: '',
     donePageTitle: 'Done',
     donePageSubtitle: 'Recent organization records and undo history.',
     viewCapture: 'New capture',

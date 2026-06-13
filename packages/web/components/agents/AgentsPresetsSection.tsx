@@ -458,19 +458,9 @@ export default function AgentsPresetsSection({
     setRunningAssistantId(assistant.id);
     setRunResult(null);
     try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'chat',
-          messages: [{
-            role: 'user',
-            content: buildAssistantRunPrompt(assistant),
-          }],
-        }),
-      });
-      if (!res.ok) throw new Error(`Assistant run failed (${res.status})`);
-      const output = await readAskTextResponse(res);
+      const output = assistant.id === 'dreaming'
+        ? await runDedicatedAssistant(assistant)
+        : await runPromptAssistant(assistant);
       setRunResult({ assistantId: assistant.id, output });
       toast.success(copy.runCompleted ?? 'Assistant run completed');
     } catch (runError) {
@@ -1917,6 +1907,7 @@ function toAssistantView(assistant: MindosAssistantLibraryItem): AssistantView {
 function isBuiltinAssistantId(assistantId: string): boolean {
   return new Set([
     'inbox-organizer',
+    'dreaming',
     'daily-signal',
     'decision-synthesizer',
     'rule-keeper',
@@ -2041,6 +2032,70 @@ function titleizeAssistantId(value: string): string {
     .filter(Boolean)
     .map(part => `${part.slice(0, 1).toLocaleUpperCase()}${part.slice(1)}`)
     .join(' ') || 'Assistant';
+}
+
+async function runPromptAssistant(assistant: AssistantView): Promise<string> {
+  const res = await fetch('/api/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'chat',
+      messages: [{
+        role: 'user',
+        content: buildAssistantRunPrompt(assistant),
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Assistant run failed (${res.status})`);
+  return readAskTextResponse(res);
+}
+
+async function runDedicatedAssistant(assistant: AssistantView): Promise<string> {
+  const res = await fetch('/api/assistant-runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      assistantId: assistant.id,
+      trigger: 'manual',
+    }),
+  });
+  const payload = await res.json().catch(() => null) as {
+    ok?: boolean;
+    error?: { message?: unknown };
+    run?: {
+      scope?: unknown;
+      proposals?: unknown[];
+      lint?: { healthScore?: unknown };
+    };
+    artifacts?: {
+      reportMarkdown?: unknown;
+      pendingJson?: unknown;
+    };
+  } | null;
+  if (!res.ok || payload?.ok !== true) {
+    const message = typeof payload?.error?.message === 'string'
+      ? payload.error.message
+      : `Assistant run failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  const proposalCount = Array.isArray(payload.run?.proposals) ? payload.run.proposals.length : 0;
+  const healthScore = typeof payload.run?.lint?.healthScore === 'number'
+    ? payload.run.lint.healthScore
+    : null;
+  const scope = typeof payload.run?.scope === 'string' ? payload.run.scope : 'all';
+  const reportPath = typeof payload.artifacts?.reportMarkdown === 'string'
+    ? payload.artifacts.reportMarkdown
+    : '.mindos/dreaming/dreaming-report.md';
+  const pendingPath = typeof payload.artifacts?.pendingJson === 'string'
+    ? payload.artifacts.pendingJson
+    : '.mindos/dreaming/pending.json';
+  return [
+    `Dreaming completed for ${scope}.`,
+    `${proposalCount} review proposal(s) generated${healthScore === null ? '' : `, health ${healthScore}/100`}.`,
+    `Report: ${reportPath}`,
+    `Pending review: ${pendingPath}`,
+  ].join('\n');
 }
 
 function buildAssistantRunPrompt(assistant: AssistantView): string {

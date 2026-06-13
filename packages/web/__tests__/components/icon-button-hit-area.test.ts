@@ -60,6 +60,22 @@ describe('icon button hit areas', () => {
     expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
   });
 
+  it('keeps the files panel more button visible before depth controls on narrow headers', () => {
+    const source = readSource('components/Panel.tsx');
+    const headerSource = readSource('components/panels/PanelHeader.tsx');
+    const css = readSource('app/globals.css');
+
+    expect(headerSource).toContain('panel-header');
+    expect(css).toContain('.panel-header');
+    expect(css).toContain('container-type: inline-size;');
+    expect(source).toContain('files-panel-header-actions');
+    expect(source).toContain('files-panel-header-depth-actions');
+    expect(source).toContain('files-panel-header-more-action');
+    expect(css).toContain('@container (max-width: 272px)');
+    expect(css).toContain('.files-panel-header-depth-actions');
+    expect(css).toContain('display: none;');
+  });
+
   it('keeps built-in Mind System sidebar controls on rectangular hit targets', () => {
     const source = readSource('components/Panel.tsx');
 

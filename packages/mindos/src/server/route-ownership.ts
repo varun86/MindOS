@@ -73,6 +73,7 @@ export const MINDOS_WEB_API_ROUTE_OWNERSHIP: MindosWebApiRouteOwnership[] = [
   migrated('/api/agent-activity'),
   host('/api/agent-runs', 'Agent run timeline state is currently stored in the Web host ledger and should stay classified until Product Server owns run persistence.', 'medium'),
   host('/api/agent-runs/stream', 'Agent run timeline streaming subscribes to the Web host in-process ledger and must stay host-owned until Product Server owns run persistence and event fanout.', 'medium'),
+  host('/api/assistant-runs', 'Assistant run execution currently resolves Web-owned runners and writes the Web host agent run ledger; Product Server owns the profile registry only until Runtime Context and Schedule persistence are promoted.', 'medium'),
   migrated('/api/assistants', 'medium'),
   migrated('/api/agent-runtimes', 'medium'),
   migrated('/api/agent-runtimes/codex/threads', 'medium'),

@@ -33,6 +33,11 @@ describe('/api/ask/runtime-permission/request', () => {
           type: 'runtime_permission_request',
           runId: 'run-api',
           toolCallId: 'toolu-api',
+          action: 'command',
+          risk: expect.objectContaining({
+            level: 'high',
+            summary: 'Deletes or removes local files.',
+          }),
         }));
       });
       const event = send.mock.calls.find(([item]) => item.type === 'runtime_permission_request')?.[0];
@@ -46,7 +51,12 @@ describe('/api/ask/runtime-permission/request', () => {
       return response.json();
     });
 
-    expect(result).toEqual({ decision: 'accept', cancelled: false });
+    expect(result).toMatchObject({
+      decision: 'accept',
+      cancelled: false,
+      decisionLabel: 'Allow once',
+      decisionIntent: 'allow',
+    });
   });
 
   it('returns a cancelled decision when the run is not active', async () => {

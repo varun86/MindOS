@@ -30,6 +30,7 @@ import type {
   Message,
   MessagePart,
   ReasoningPart,
+  RuntimePermissionRisk,
   RuntimeStatusPart,
   TextPart,
   ToolCallPart,
@@ -161,6 +162,24 @@ function normalizeRuntime(value: unknown): ToolCallPart['runtime'] | undefined {
 
 function normalizeRuntimePermissionIntent(value: unknown): 'allow' | 'deny' | 'cancel' | undefined {
   return value === 'allow' || value === 'deny' || value === 'cancel' ? value : undefined;
+}
+
+function normalizeRuntimePermissionScope(value: unknown): 'once' | 'session' | 'always' | 'turn' | undefined {
+  return value === 'once' || value === 'session' || value === 'always' || value === 'turn' ? value : undefined;
+}
+
+function normalizeRuntimePermissionRisk(value: unknown): RuntimePermissionRisk | undefined {
+  if (!isRecord(value)) return undefined;
+  const level = value.level === 'low' || value.level === 'medium' || value.level === 'high' ? value.level : undefined;
+  const summary = typeof value.summary === 'string' ? redactSensitiveText(value.summary) : undefined;
+  if (!level || !summary) return undefined;
+  return {
+    level,
+    summary,
+    ...(Array.isArray(value.reasons)
+      ? { reasons: value.reasons.filter((reason): reason is string => typeof reason === 'string').map(redactSensitiveText) }
+      : {}),
+  };
 }
 
 function shortToolName(toolName: string): string {
@@ -552,10 +571,14 @@ export async function consumeUIMessageStream(
                       label: typeof option.label === 'string' ? redactSensitiveText(option.label) : '',
                       ...(typeof option.description === 'string' ? { description: redactSensitiveText(option.description) } : {}),
                       ...(normalizeRuntimePermissionIntent(option.intent) ? { intent: normalizeRuntimePermissionIntent(option.intent) } : {}),
+                      ...(normalizeRuntimePermissionScope(option.scope) ? { scope: normalizeRuntimePermissionScope(option.scope) } : {}),
                     }))
                     .filter(option => option.id && option.label)
                 : [],
               ...(typeof eventRecord.reason === 'string' ? { reason: redactSensitiveText(eventRecord.reason) } : {}),
+              ...(typeof eventRecord.action === 'string' ? { action: redactSensitiveText(eventRecord.action) } : {}),
+              ...(typeof eventRecord.resource === 'string' ? { resource: redactSensitiveText(eventRecord.resource) } : {}),
+              ...(normalizeRuntimePermissionRisk(eventRecord.risk) ? { risk: normalizeRuntimePermissionRisk(eventRecord.risk) } : {}),
             };
             tc.state = 'running';
             touch(tc);
@@ -572,9 +595,14 @@ export async function consumeUIMessageStream(
             const denied = decision === 'decline' || decision === 'deny' || decision === 'denied';
             if (tc.runtimePermission) {
               tc.runtimePermission.decision = decision;
+              if (typeof eventRecord.decisionLabel === 'string') tc.runtimePermission.decisionLabel = redactSensitiveText(eventRecord.decisionLabel);
+              const decisionIntent = normalizeRuntimePermissionIntent(eventRecord.decisionIntent);
+              if (decisionIntent) tc.runtimePermission.decisionIntent = decisionIntent;
+              const decisionScope = normalizeRuntimePermissionScope(eventRecord.decisionScope);
+              if (decisionScope) tc.runtimePermission.decisionScope = decisionScope;
               tc.runtimePermission.status = eventRecord.cancelled === true
                 ? 'cancelled'
-                : denied
+                : decisionIntent === 'deny' || denied
                   ? 'denied'
                   : 'approved';
             }
