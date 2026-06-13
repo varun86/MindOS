@@ -206,6 +206,33 @@ describe('SearchPanel Drag-Drop Tests', () => {
     expect(csvButton.draggable).toBe(true);
   });
 
+  it('should use icon-only drag affordances instead of visible Drag text', async () => {
+    const { default: SearchPanel } = await import('@/components/panels/SearchPanel');
+
+    await act(async () => {
+      root.render(
+        <SearchPanel
+          active={true}
+          onNavigate={() => {}}
+        />
+      );
+    });
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
+    await act(async () => {
+      setInputValue(input, 'test');
+    });
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 400));
+    });
+
+    const resultButton = host.querySelector('[data-testid="result-item-0"] button') as HTMLButtonElement;
+    expect(resultButton).toBeTruthy();
+    expect(resultButton.querySelector('[aria-label="to chat"]')).toBeTruthy();
+    expect(host.textContent).not.toContain('Drag');
+  });
+
   it('should handle drag events without throwing', async () => {
     const { default: SearchPanel } = await import('@/components/panels/SearchPanel');
     

@@ -215,6 +215,7 @@ describe('SearchModal Drag-Drop Integration', () => {
       expect(resultButton).toBeTruthy();
       expect(resultButton.textContent).not.toContain(['⬆', 'Drag'].join(' '));
       expect(resultButton.querySelector('[aria-label="to chat"]')).toBeTruthy();
+      expect(host.textContent).not.toContain('Drag');
     });
 
     it('should support keyboard navigation and drag', async () => {

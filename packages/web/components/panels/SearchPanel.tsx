@@ -384,7 +384,15 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
           <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↑↓</kbd> {t.search.navigate}</span>
           <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↵</kbd> {t.search.open}</span>
           <span className="text-muted-foreground/40 mx-0.5">•</span>
-          <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">Drag</kbd> {t.search.dragToChat}</span>
+          <span className="inline-flex items-center gap-1">
+            <span
+              className="inline-flex h-5 w-5 items-center justify-center rounded bg-muted/40 text-muted-foreground/70"
+              aria-hidden="true"
+            >
+              <GripVertical size={12} />
+            </span>
+            {t.search.dragToChat}
+          </span>
         </div>
       )}
     </>
