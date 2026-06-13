@@ -9,7 +9,7 @@ export function ChannelTestSend({ platformId, im, recipientExample, onSent }: {
   onSent: () => void;
 }) {
   const [recipient, setRecipient] = useState('');
-  const [message, setMessage] = useState('Hello from MindOS');
+  const [message, setMessage] = useState(im.messagePlaceholder ?? 'Hello from MindOS');
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const canSend = Boolean(recipient.trim() && message.trim());

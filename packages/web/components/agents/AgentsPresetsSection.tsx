@@ -111,9 +111,6 @@ type PresetsCopy = {
   emptyHint?: string;
   readyLabel?: string;
   needsPromptLabel?: string;
-  promptReadyLabel?: string;
-  profileReadyLabel?: string;
-  localFileLabel?: string;
   localOwnerLabel?: string;
   promptMissingHint?: string;
   saveProfile?: string;
@@ -130,8 +127,6 @@ type PresetsCopy = {
   boundaryTitle?: string;
   noResources?: string;
   notDefinedYet?: string;
-  fileReadyLabel?: string;
-  fileMissingLabel?: string;
   systemModelDefault?: string;
   profileInvalidJson?: string;
   profileUnreadable?: string;
@@ -572,7 +567,7 @@ export default function AgentsPresetsSection({
               <AssistantStateCard
                 icon={<FolderLock size={18} />}
                 title={copy.emptyTitle ?? 'No local assistants found'}
-                body={copy.emptyHint ?? 'Create .mindos/assistants/<assistant-id>/prompt.md to add one.'}
+                body={copy.emptyHint ?? 'Create an Assistant profile to add one.'}
               />
             </div>
           ) : (
@@ -860,14 +855,14 @@ function AssistantDirectory({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold text-foreground">{copy.presetRail}</p>
-            <p className="mt-0.5 truncate text-2xs text-muted-foreground/60">{copy.localRoot ?? '.mindos/assistants'}</p>
+            <p className="mt-0.5 truncate text-2xs text-muted-foreground/60">{copy.localRoot ?? 'Local Assistant Library'}</p>
           </div>
           <span className="rounded-md bg-background/80 px-2 py-1 font-mono text-2xs text-muted-foreground tabular-nums">
             {filteredCount}/{counts.total}
           </span>
         </div>
         <p className="mt-2 text-2xs leading-relaxed text-muted-foreground/60">
-          {copy.localRootHint ?? 'Loaded from the local hidden assistant folder.'}
+          {copy.localRootHint ?? 'Local Assistant profiles are ready to inspect and edit.'}
         </p>
         <p className="sr-only">{copy.libraryHint}</p>
       </div>
@@ -885,12 +880,12 @@ function AssistantDirectory({
         ) : counts.total === 0 ? (
           <LibraryEmpty
             title={copy.emptyTitle ?? 'No local assistants found'}
-            hint={copy.emptyHint ?? 'Create .mindos/assistants/<assistant-id>/prompt.md to add one.'}
+            hint={copy.emptyHint ?? 'Create an Assistant profile to add one.'}
           />
         ) : filteredCount === 0 ? (
           <LibraryEmpty
             title={copy.noMatchesTitle ?? 'No matching assistants'}
-            hint={query ? copy.noMatchesHint ?? 'Try a different name, ID, skill, or MCP filter.' : copy.emptyHint ?? 'Create .mindos/assistants/<assistant-id>/prompt.md to add one.'}
+            hint={query ? copy.noMatchesHint ?? 'Try a different name, ID, skill, or MCP filter.' : copy.emptyHint ?? 'Create an Assistant profile to add one.'}
           />
         ) : (
           <div>
@@ -1030,9 +1025,6 @@ function AssistantUnifiedDetail({
     { id: 'profile', label: copy.profileSection ?? DEFAULT_PROFILE_SECTION, icon: <UserRound size={13} /> },
     { id: 'resources', label: copy.resourcesSection, icon: <Wrench size={13} /> },
   ];
-  const promptState = assistant.promptReady ? copy.fileReadyLabel ?? 'ready' : copy.fileMissingLabel ?? 'missing';
-  const profileState = assistant.profileReady ? copy.fileReadyLabel ?? 'ready' : copy.fileMissingLabel ?? 'missing';
-  const fileState = `${copy.promptSection} ${promptState} · ${copy.profileSection ?? DEFAULT_PROFILE_SECTION} ${profileState}`;
   const resources = `${assistant.skills.length} ${copy.skillsTitle} · ${assistant.mcp.length} ${copy.mcpTitle ?? 'MCP'}`;
   const description = assistant.sections.role || assistant.description || assistant.promptPreview || (copy.promptMissingHint ?? 'Create a prompt to describe how this assistant should work.');
 
@@ -1066,10 +1058,6 @@ function AssistantUnifiedDetail({
                 <code className="rounded-md border border-border/45 bg-background/70 px-1.5 py-1 font-mono text-[11px] text-muted-foreground">
                   {assistant.id}
                 </code>
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted/35 px-1.5 py-1">
-                  <FolderLock size={11} />
-                  {copy.localRoot ?? '.mindos/assistants'}
-                </span>
                 {!assistant.deletable ? (
                   <span className="inline-flex items-center gap-1 rounded-md bg-muted/35 px-1.5 py-1">
                     <ShieldCheck size={11} />
@@ -1104,7 +1092,7 @@ function AssistantUnifiedDetail({
           </div>
         </div>
 
-        <div className="mt-5 grid overflow-hidden rounded-lg border border-border/45 bg-border/35 sm:grid-cols-3">
+        <div className="mt-5 grid overflow-hidden rounded-lg border border-border/45 bg-border/35 sm:grid-cols-2">
           <DetailMetaItem
             icon={<Route size={13} />}
             label={copy.preferredAgentLabel ?? 'Preferred agent'}
@@ -1114,12 +1102,6 @@ function AssistantUnifiedDetail({
             icon={<Wrench size={13} />}
             label={copy.resourcesSection}
             value={resources}
-          />
-          <DetailMetaItem
-            icon={<FileText size={13} />}
-            label={copy.localFileLabel ?? 'Local files'}
-            value={fileState}
-            tone={assistant.promptReady && assistant.profileReady ? 'ready' : 'warn'}
           />
         </div>
       </div>
@@ -1219,7 +1201,7 @@ function UnifiedOverviewPane({
   copy: PresetsCopy;
 }) {
   const role = assistant.sections.role || assistant.promptPreview || (assistant.promptReady ? '' : copy.promptMissingHint ?? 'Create a prompt to describe how this assistant should work.');
-  const promptPreview = assistant.promptContent ? makePreview(stripLeadingFrontmatter(assistant.promptContent), 520) : copy.promptMissingHint ?? 'This assistant does not have a prompt.md yet.';
+  const promptPreview = assistant.promptContent ? makePreview(stripLeadingFrontmatter(assistant.promptContent), 520) : copy.promptMissingHint ?? 'Write instructions to describe how this assistant should work.';
   const emptyText = copy.notDefinedYet ?? 'Not defined yet.';
   return (
     <div className="space-y-5">
@@ -1253,7 +1235,6 @@ function UnifiedOverviewPane({
           <InspectorFact label={copy.nameLabel ?? 'Name'} value={assistant.name} />
           <InspectorFact label="ID" value={assistant.id} mono />
           <InspectorFact label={copy.preferredAgentLabel ?? 'Preferred agent'} value={assistant.preferredAgent ?? copy.systemModelDefault ?? 'mindos-agent'} />
-          <InspectorFact label={copy.localFileLabel ?? 'Local files'} value={assistant.paths.root} mono />
         </dl>
       </section>
 
@@ -1542,17 +1523,13 @@ function PromptInspectorPanel({
             <span className="rounded-md bg-[var(--amber)]/10 px-2 py-0.5 text-2xs font-medium text-[var(--amber-text)]">
               {copy.unsavedDraft}
             </span>
-          ) : assistant.promptReady ? (
-            <span className="rounded-md bg-success/10 px-2 py-0.5 text-2xs font-medium text-success">
-              {copy.promptReadyLabel ?? 'Prompt ready'}
-            </span>
           ) : null}
         </div>
         <p className="mt-2 text-2xs leading-relaxed text-muted-foreground/60">{copy.promptHint}</p>
       </div>
       {!assistant.promptReady && !value ? (
         <div className="border-b border-border/45 bg-[var(--amber)]/[0.04] px-3 py-2 text-xs text-[var(--amber-text)]">
-          {copy.promptMissingHint ?? 'This assistant does not have a prompt.md yet. Write one here and save it to create the file.'}
+          {copy.promptMissingHint ?? 'Write instructions to describe how this assistant should work, then save to activate it.'}
         </div>
       ) : null}
       <textarea
@@ -1694,25 +1671,6 @@ function ResourceInspectorPanel({ assistant, copy }: { assistant: AssistantView;
       </section>
       <InspectorResourceList icon={<Sparkles size={13} />} title={copy.skillsTitle} items={assistant.skills} emptyText={copy.notDefinedYet ?? 'Not defined yet.'} />
       <InspectorResourceList icon={<Database size={13} />} title={copy.mcpTitle ?? 'MCP'} items={assistant.mcp} emptyText={copy.notDefinedYet ?? 'Not defined yet.'} />
-      <section className="rounded-lg border border-border/55 bg-background/60 p-3">
-        <PanelLabel icon={<FileText size={13} />} label={copy.localFileLabel ?? 'Local files'} />
-        <div className="mt-3 space-y-2">
-          <FilePathLine
-            label={copy.promptTitle}
-            value={assistant.promptPath}
-            ready={assistant.promptReady}
-            readyLabel={copy.fileReadyLabel ?? 'ready'}
-            missingLabel={copy.fileMissingLabel ?? 'missing'}
-          />
-          <FilePathLine
-            label={copy.profileSection ?? DEFAULT_PROFILE_SECTION}
-            value={assistant.profilePath}
-            ready={assistant.profileReady}
-            readyLabel={copy.fileReadyLabel ?? 'ready'}
-            missingLabel={copy.fileMissingLabel ?? 'missing'}
-          />
-        </div>
-      </section>
     </div>
   );
 }
@@ -1749,32 +1707,6 @@ function InspectorFact({ label, value, mono = false }: { label: string; value: s
     <div className="grid grid-cols-[86px_minmax(0,1fr)] gap-2">
       <dt className="text-muted-foreground/60">{label}</dt>
       <dd className={`min-w-0 truncate text-foreground/85 ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</dd>
-    </div>
-  );
-}
-
-function FilePathLine({
-  label,
-  value,
-  ready,
-  readyLabel = 'ready',
-  missingLabel = 'missing',
-}: {
-  label: string;
-  value: string;
-  ready: boolean;
-  readyLabel?: string;
-  missingLabel?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border/45 bg-muted/20 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">{label}</span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${ready ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-          {ready ? readyLabel : missingLabel}
-        </span>
-      </div>
-      <code className="mt-1 block break-all font-mono text-[11px] text-muted-foreground/75">{value}</code>
     </div>
   );
 }

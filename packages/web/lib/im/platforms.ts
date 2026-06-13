@@ -3,8 +3,10 @@
 export interface PlatformField {
   key: string;
   label: string;
+  labelZh?: string;
   placeholder: string;
   hint?: string;
+  hintZh?: string;
   optional?: boolean;
 }
 
@@ -44,6 +46,7 @@ export interface PlatformDef {
   iconFile?: string;
   fields: PlatformField[];
   guide?: string;
+  guideZh?: string;
   guideUrl?: string;
   editHint?: string;
   purpose?: string;
@@ -123,13 +126,14 @@ export const PLATFORMS: PlatformDef[] = [
   },
   {
     id: 'feishu', name: 'Feishu', icon: '🐦', iconFile: 'feishu.svg',
-    guide: '1. open.feishu.cn → Create App\n2. Credentials page → copy App ID & Secret\n3. Enable Bot capability + add permissions',
+    guide: '1. Open the Feishu developer console and create an app\n2. Enable Bot capability and install it to your workspace\n3. Paste App ID and App Secret here',
+    guideZh: '1. 打开飞书开放平台并创建应用\n2. 启用机器人能力，并把应用安装到工作区\n3. 在这里填入 App ID 和 App Secret',
     guideUrl: 'https://open.feishu.cn/',
     editHint: 'Need to update credentials? Edit and save below — MindOS will reconnect automatically.',
-    purpose: 'Receive MindOS results in Feishu, or let users message the bot directly when conversations are enabled.',
-    purposeZh: '通过飞书接收 MindOS 的结果；开启对话后，也可以让用户直接在飞书里给机器人发消息。',
-    useCases: ['Agent completion alerts', 'Error notifications', 'Test messages', 'Direct bot conversations in Feishu'],
-    useCasesZh: ['Agent 完成提醒', '错误通知', '测试消息', '在飞书里直接与机器人对话'],
+    purpose: 'Connect MindOS to Feishu so you can message the bot directly and receive agent updates in the same place.',
+    purposeZh: '把 MindOS 接到飞书：可以直接和机器人对话，也能在同一处收到 Agent 更新。',
+    useCases: ['Talk with MindOS in Feishu', 'Receive agent completion updates', 'Send a sample message to verify setup'],
+    useCasesZh: ['在飞书里和 MindOS 对话', 'Agent 完成后收到更新', '发送示例消息验证可用'],
     recipientExample: 'e.g. ou_xxx, oc_xxx, or a work email',
     recipientExampleZh: '例如 ou_xxx、oc_xxx，或企业邮箱',
     setupMethods: [
@@ -156,22 +160,10 @@ export const PLATFORMS: PlatformDef[] = [
         descriptionZh: '保存 App ID 和 App Secret 后，MindOS 可以打开飞书 OAuth，避免手动复制用户 ID。',
         availability: 'after_credentials',
       },
-      {
-        id: 'device-create-app',
-        kind: 'official_console',
-        title: 'QR one-click app creation',
-        titleZh: '扫码一键创建应用',
-        description: 'Feishu/Lark documents a device authorization flow for creating apps. MindOS should adopt it next, but it is not wired into this local flow yet.',
-        descriptionZh: '飞书/Lark 文档提供了设备授权创建应用流程。MindOS 后续应接入，但当前本地流程还未打通。',
-        actionLabel: 'View docs',
-        actionLabelZh: '查看文档',
-        href: 'https://open.feishu.cn/document/mcp_open_tools/integrating-agents-with-feishu/scan-to-create-an-app-in-one-click-nodejs',
-        availability: 'planned',
-      },
     ],
     fields: [
-      { key: 'app_id', label: 'App ID', placeholder: 'CLI_XXXXXXXXXXXXXXXXX', hint: 'From Credentials page on open.feishu.cn' },
-      { key: 'app_secret', label: 'App Secret', placeholder: 'XXXXXXXXXXXXXXXXXXXXXXXX', hint: 'Keep this secret — do not share' },
+      { key: 'app_id', label: 'App ID', placeholder: 'CLI_XXXXXXXXXXXXXXXXX', hint: 'From the Credentials page on open.feishu.cn', hintZh: '来自飞书开放平台的「凭证与基础信息」页面' },
+      { key: 'app_secret', label: 'App Secret', placeholder: 'XXXXXXXXXXXXXXXXXXXXXXXX', hint: 'Keep this secret private', hintZh: '请妥善保管，不要分享给他人' },
     ],
   },
   {

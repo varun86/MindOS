@@ -10,6 +10,7 @@ import {
   isNeutralContentRoute,
   recoverStaleCapturePanel,
   recoverStaleRoutePanel,
+  ROUTE_PANEL_HREF,
 } from '@/lib/navigation-panel';
 
 describe('navigation panel route recovery', () => {
@@ -23,6 +24,14 @@ describe('navigation panel route recovery', () => {
     expect(getContentRoutePanel('/agents/codex')).toBe('agents');
     expect(getContentRoutePanel('/explore')).toBe('discover');
     expect(getContentRoutePanel('/echo/about-you')).toBe('echo');
+  });
+
+  it('keeps route panel hrefs aligned with real entry routes', () => {
+    expect(ROUTE_PANEL_HREF.files).toBe('/wiki');
+    expect(ROUTE_PANEL_HREF.capture).toBe('/capture');
+    expect(ROUTE_PANEL_HREF.echo).toBe('/echo/imprint');
+    expect(ROUTE_PANEL_HREF.agents).toBe('/agents');
+    expect(ROUTE_PANEL_HREF.discover).toBe('/explore');
   });
 
   it('does not treat route name prefixes as panel routes', () => {

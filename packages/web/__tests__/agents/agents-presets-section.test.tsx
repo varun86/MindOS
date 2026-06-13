@@ -235,6 +235,39 @@ describe('AgentsPresetsSection', () => {
     });
   });
 
+  it('keeps local prompt and profile file paths out of the visible Assistant details', async () => {
+    mockAssistantsFetch();
+    const { host, root } = await renderSection();
+
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/profile.json');
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal');
+    expect(host.textContent).not.toContain('.mindos/assistants');
+    expect(host.textContent).not.toContain('Local files');
+
+    await act(async () => {
+      clickButton(host, 'Prompt');
+      await flushEffects();
+    });
+
+    expect(host.textContent).not.toContain('Prompt ready');
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
+
+    await act(async () => {
+      clickButton(host, 'Resources');
+      await flushEffects();
+    });
+
+    expect(host.textContent).toContain('signal-curation');
+    expect(host.textContent).toContain('arxiv');
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
+    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/profile.json');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('saves prompt edits to the selected local prompt file', async () => {
     const fetchMock = mockAssistantsFetch();
     const { host, root } = await renderSection();
@@ -495,7 +528,8 @@ Review the local knowledge base for maintenance signals.
 
     expect(onLibraryCountChange).toHaveBeenCalledWith(0);
     expect(host.textContent).toContain('No local assistants found');
-    expect(host.textContent).toContain('.mindos/assistants/<assistant-id>/prompt.md');
+    expect(host.textContent).toContain('Create an Assistant profile to add one.');
+    expect(host.textContent).not.toContain('.mindos/assistants');
 
     await act(async () => {
       root.unmount();

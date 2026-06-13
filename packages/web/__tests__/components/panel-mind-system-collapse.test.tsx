@@ -42,6 +42,15 @@ const mindSystemSlots: MindSystemSlot[] = [
     enabled: true,
   },
   {
+    key: 'shu',
+    systemId: 'MIND_SHU',
+    label: '术',
+    path: 'MIND_SHU',
+    role: 'methods',
+    order: 30,
+    enabled: true,
+  },
+  {
     key: 'qi',
     systemId: 'MIND_QI',
     label: '器',
@@ -70,6 +79,15 @@ const mindSystemFileTree: FileNode[] = [
     isSpace: true,
     children: [
       { type: 'file', name: 'INSTRUCTION.md', path: 'MIND_FA/INSTRUCTION.md', extension: '.md' },
+    ],
+  },
+  {
+    type: 'directory',
+    name: 'MIND_SHU',
+    path: 'MIND_SHU',
+    isSpace: true,
+    children: [
+      { type: 'file', name: 'INSTRUCTION.md', path: 'MIND_SHU/INSTRUCTION.md', extension: '.md' },
     ],
   },
   {
@@ -210,6 +228,7 @@ describe('Panel Mind System collapse', () => {
     expect(host.textContent).toContain('Projects');
     expect(host.textContent).not.toContain('MIND_DAO');
     expect(host.textContent).not.toContain('MIND_FA');
+    expect(host.textContent).not.toContain('MIND_SHU');
     expect(host.textContent).not.toContain('MIND_QI');
   });
 
@@ -220,6 +239,7 @@ describe('Panel Mind System collapse', () => {
 
     expect(host.textContent).toContain('MIND_DAO');
     expect(host.textContent).toContain('MIND_FA');
+    expect(host.textContent).toContain('MIND_SHU');
     expect(host.textContent).toContain('MIND_QI');
     expect(host.textContent).toContain('Projects');
   });

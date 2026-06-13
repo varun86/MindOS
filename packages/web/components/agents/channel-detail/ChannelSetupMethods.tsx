@@ -8,7 +8,7 @@ export function ChannelSetupMethods({ platform, im, locale }: {
   im: Record<string, any>;
   locale: string;
 }) {
-  const methods = platform.setupMethods ?? [];
+  const methods = (platform.setupMethods ?? []).filter(method => method.availability !== 'planned');
   if (methods.length === 0) return null;
 
   return (

@@ -296,6 +296,7 @@ describe('Agents content dashboard', () => {
     expect(html).toContain(a.presets.localRoot);
     expect(html).toContain(a.presets.localRootHint);
     expect(html).toContain(a.presets.loading);
+    expect(html).not.toContain('.mindos/assistants');
     expect(html).not.toContain('Inbox Organizer');
     expect(html).not.toContain('Open Inbox review');
     expect(html).not.toContain('/capture#queue');

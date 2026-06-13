@@ -845,9 +845,6 @@ export default function InboxView() {
                                 <FileText size={10} />
                               </span>
                               {t.inbox.stageNoteAction}
-                              <span className="rounded bg-muted/55 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/65">
-                                {t.inbox.stageNoteShortcut}
-                              </span>
                             </button>
                           </div>
                         </div>

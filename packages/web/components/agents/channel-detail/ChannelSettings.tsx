@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Loader2, Trash2, AlertTriangle, ChevronDown } from 'lucide-react';
 import type { PlatformDef } from '@/lib/im/platforms';
+import { useLocale } from '@/lib/stores/locale-store';
 import { ActionResult } from './shared';
 
 export function ChannelSettings({ platform, im, onSaved, onDisconnected }: {
@@ -9,6 +10,7 @@ export function ChannelSettings({ platform, im, onSaved, onDisconnected }: {
   onSaved: () => void;
   onDisconnected: () => void;
 }) {
+  const { locale } = useLocale();
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,31 +73,37 @@ export function ChannelSettings({ platform, im, onSaved, onDisconnected }: {
           <p className="text-xs text-muted-foreground leading-relaxed mb-3">{im.savedValuesHint}</p>
 
           <div className="space-y-3">
-            {platform.fields.map(field => (
-              <div key={field.key}>
-                <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                  {field.label}
-                </label>
-                <div className="relative">
-                  <input
-                    type={showSecrets ? 'text' : 'password'}
-                    placeholder={field.placeholder}
-                    value={formValues[field.key] ?? ''}
-                    onChange={e => setFormValues(prev => ({ ...prev, [field.key]: e.target.value }))}
-                    className="h-10 w-full px-3 pr-10 text-sm font-mono bg-background border border-border rounded-md focus:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors"
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecrets(prev => !prev)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-label={showSecrets ? im.hideSecret : im.showSecret}
-                  >
-                    {showSecrets ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
+            {platform.fields.map(field => {
+              const fieldLabel = locale === 'zh' ? (field.labelZh ?? field.label) : field.label;
+              const fieldHint = locale === 'zh' ? (field.hintZh ?? field.hint) : field.hint;
+
+              return (
+                <div key={field.key}>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+                    {fieldLabel}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showSecrets ? 'text' : 'password'}
+                      placeholder={field.placeholder}
+                      value={formValues[field.key] ?? ''}
+                      onChange={e => setFormValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                      className="h-10 w-full px-3 pr-10 text-sm font-mono bg-background border border-border rounded-md focus:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecrets(prev => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      aria-label={showSecrets ? im.hideSecret : im.showSecret}
+                    >
+                      {showSecrets ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {fieldHint && <p className="text-xs text-muted-foreground mt-1">{fieldHint}</p>}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div className="flex items-center gap-3">
               <button
                 type="button"

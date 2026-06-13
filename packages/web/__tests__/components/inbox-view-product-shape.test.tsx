@@ -94,7 +94,7 @@ describe('InboxView product shape', () => {
     expect(host.querySelector('textarea')?.getAttribute('aria-label')).toContain('Add a link, note, file');
     expect(host.textContent).toContain('Attach');
     expect(host.textContent).toContain('Stage as note');
-    expect(host.textContent).toContain('⌘/Ctrl Enter');
+    expect(host.textContent).not.toContain('⌘/Ctrl Enter');
     expect(host.textContent).toContain('Save to Inbox');
     expect(host.textContent).toContain('Organize to Mind');
     const stageButton = host.querySelector('[data-stage-note-action]');
