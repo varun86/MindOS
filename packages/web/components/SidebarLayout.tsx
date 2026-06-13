@@ -66,8 +66,19 @@ function AgentsPanelLoading() {
       <div className="h-[46px] shrink-0 border-b border-border px-4 flex items-center">
         <span className="text-sm font-medium text-foreground">{p.title}</span>
       </div>
-      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        {p.acpLoading}
+      <div className="flex-1 px-3 py-3" aria-busy="true" aria-label={p.title}>
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-3 rounded-sm px-1 py-2.5 motion-safe:animate-pulse"
+              aria-hidden="true"
+            >
+              <div className="h-7 w-7 shrink-0 rounded-md bg-muted/70" />
+              <div className="h-3.5 flex-1 rounded bg-muted/60" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

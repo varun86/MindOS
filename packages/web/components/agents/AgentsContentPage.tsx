@@ -216,7 +216,6 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
             enabledSkillCount={enabledSkillCount}
             mcpRunning={!!mcp.status?.running}
             mcpEnabled={mcpEnabled}
-            mcpPort={mcp.status?.port ?? null}
             presetCount={assistantCount}
           />
         </header>
@@ -434,7 +433,6 @@ function AgentsPageNav({
   enabledSkillCount,
   mcpRunning,
   mcpEnabled,
-  mcpPort,
   presetCount,
 }: {
   tab: AgentsDashboardTab;
@@ -443,7 +441,6 @@ function AgentsPageNav({
   enabledSkillCount: number;
   mcpRunning: boolean;
   mcpEnabled: boolean;
-  mcpPort: number | null;
   presetCount: number;
 }) {
   const navHints = copy.navHints ?? DEFAULT_AGENT_NAV_HINTS;
@@ -488,7 +485,7 @@ function AgentsPageNav({
       label: copy.navCapabilities ?? copy.navSkills,
       hint: navHints.capabilities ?? navHints.skills,
       icon: <Server size={14} />,
-      badge: mcpRunning && mcpPort ? `MCP :${mcpPort}` : `${enabledSkillCount}`,
+      badge: `${enabledSkillCount}`,
       tone: mcpEnabled && !mcpRunning ? 'warn' : mcpRunning || enabledSkillCount > 0 ? 'ok' : 'neutral',
     },
     {

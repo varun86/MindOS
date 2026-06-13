@@ -131,10 +131,7 @@ describe('i18n agents content IA', () => {
 
   const overviewKeys = [
     'systemModelTitle',
-    'systemFlowTitle',
-    'systemReadinessTitle',
-    'systemReadinessMeta',
-    'systemSignalsTitle',
+    'toolsUnit',
     'profilesUnit',
     'runtimeEndpointsUnit',
     'entryPointsUnit',
@@ -144,8 +141,11 @@ describe('i18n agents content IA', () => {
     'channelsLabel',
     'runsLabel',
     'nextActionsTitle',
+    'actionDetectedTitle',
+    'actionConfigureAssistantTitle',
+    'actionReviewRunsTitle',
     'actionOpen',
-    'viewAllSignals',
+    'recentActivity',
   ] as const;
 
   const presetKeys = [

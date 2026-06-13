@@ -140,7 +140,7 @@ describe('WikiHomeContent Mind System cards', () => {
     }
   });
 
-  it('shows assistant summaries without a hidden primary run action', async () => {
+  it('shows a compact assistant count without expanding assistant details', async () => {
     await act(async () => {
       root = createRoot(host);
       root.render(
@@ -164,17 +164,19 @@ describe('WikiHomeContent Mind System cards', () => {
     });
 
     const daoCard = host.querySelector<HTMLElement>('[data-mind-system-card="dao"]');
+    const assistantSummary = host.querySelector<HTMLElement>('[data-mind-system-card-assistant-summary="dao"]');
 
-    expect(daoCard?.textContent).toContain('Daily signal curator');
-    expect(daoCard?.textContent).toContain('2 assistants');
-    expect(daoCard?.textContent).toContain('Decision synthesizer');
-    expect(daoCard?.textContent).toContain('2 drafts');
-    expect(host.querySelector('[data-mind-system-home-assistant-icon="daily-signal"]')?.textContent).toBe('D');
-    expect(host.querySelector('[data-mind-system-home-assistant-icon="decision-synthesizer"]')?.textContent).toBe('D');
+    expect(assistantSummary?.textContent).toContain('Assistants');
+    expect(assistantSummary?.textContent).toContain('2');
+    expect(daoCard?.textContent).not.toContain('Daily signal curator');
+    expect(daoCard?.textContent).not.toContain('Decision synthesizer');
+    expect(daoCard?.textContent).not.toContain('2 drafts');
+    expect(daoCard?.textContent).not.toContain('Instruction ready');
+    expect(host.querySelector('[data-mind-system-home-assistant-icon="daily-signal"]')).toBeNull();
     expect(host.querySelector('[data-mind-system-run-once="dao"]')).toBeNull();
   });
 
-  it('shows missing instruction state when a space has no INSTRUCTION.md', async () => {
+  it('keeps instruction readiness out of homepage cards', async () => {
     await act(async () => {
       root = createRoot(host);
       root.render(
@@ -199,7 +201,7 @@ describe('WikiHomeContent Mind System cards', () => {
 
     const daoCard = host.querySelector<HTMLElement>('[data-mind-system-card="dao"]');
 
-    expect(daoCard?.textContent).toContain('Instruction missing');
+    expect(daoCard?.textContent).not.toContain('Instruction missing');
     expect(daoCard?.textContent).not.toContain('Instruction ready');
   });
 });

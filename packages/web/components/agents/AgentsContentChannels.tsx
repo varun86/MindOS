@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, CheckCircle2, Circle, RefreshCw, AlertCircle, MessageSquare } from 'lucide-react';
+import { Loader2, CheckCircle2, RefreshCw, AlertCircle, MessageSquare } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
+import { getPlatformDisplaySubtitle } from '@/lib/im/display';
 import { PLATFORMS, type PlatformStatus } from '@/lib/im/platforms';
 import AgentsContentChannelDetail from './AgentsContentChannelDetail';
 import { AgentSectionHeading } from './AgentsPrimitives';
@@ -27,7 +28,7 @@ export default function AgentsContentChannels() {
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
 function ChannelsOverview() {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const im = t.panels.im;
 
   const cached = getCachedStatuses();
@@ -122,24 +123,28 @@ function ChannelsOverview() {
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {PLATFORMS.map((platform) => {
-          const { id, name } = platform;
-          const status = getStatus(id);
+          const status = getStatus(platform.id);
           const isConnected = status?.connected ?? false;
+          const subtitle = getPlatformDisplaySubtitle({
+            platform,
+            status,
+            locale,
+            connectedFallback: im.statusConnected,
+            disconnectedFallback: im.notConfigured,
+          });
 
           return (
             <Link
-              key={id}
-              href={`/agents?tab=channels&platform=${id}`}
-              className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm hover:border-[var(--amber)]/50 hover:bg-card/80 hover:shadow transition-all"
+              key={platform.id}
+              href={`/agents?tab=channels&platform=${platform.id}`}
+              className="grid min-h-[76px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm transition-all hover:border-[var(--amber)]/50 hover:bg-card/80 hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChannelIcon platform={platform} size="md" />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">{name}</div>
-                {isConnected && status?.botName ? (
-                  <div className="text-xs text-muted-foreground font-mono truncate">{status.botName}</div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">{isConnected ? im.statusConnected : im.notConfigured}</div>
-                )}
+                <div className="text-sm font-medium text-foreground">{platform.name}</div>
+                <div className={`truncate text-xs ${isConnected ? 'text-success' : 'text-muted-foreground'}`}>
+                  {subtitle}
+                </div>
                 {isConnected && status?.capabilities && status.capabilities.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     {status.capabilities.slice(0, 3).map(cap => (
@@ -148,11 +153,21 @@ function ChannelsOverview() {
                   </div>
                 )}
               </div>
-              {isConnected ? (
-                <CheckCircle2 size={18} className="text-success shrink-0" />
-              ) : (
-                <Circle size={18} className="text-border shrink-0" />
-              )}
+              <span
+                className={`
+                  inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium leading-5
+                  ${isConnected
+                    ? 'border-[var(--success)]/25 bg-[var(--success)]/10 text-success'
+                    : 'border-border bg-background text-muted-foreground'
+                  }
+                `}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-success' : 'bg-muted-foreground/35'}`}
+                  aria-hidden
+                />
+                {isConnected ? im.statusConnected : im.notConfigured}
+              </span>
             </Link>
           );
         })}

@@ -36,7 +36,7 @@ export const knowledgeZh = {
     newNote: '新建笔记',
     mindTagline: '本地 Markdown 上的个人 Mind 工作台。',
     builtInSpacesTitle: 'Mind 系统',
-    builtInSpacesDesc: 'MindOS 将内置语义模块映射到你的本地目录。可见目录仍由用户拥有，模块账本保存在 .mindos。',
+    builtInSpacesDesc: '用四个内置空间整理你的知识。',
     builtInSpacesReview: '复盘闭环',
     mindAssistant: {
       label: '助手',

@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, Circle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
+import { getPlatformDisplaySubtitle } from '@/lib/im/display';
 import { PLATFORMS, type PlatformStatus } from '@/lib/im/platforms';
 import { ChannelIcon } from '@/components/agents/ChannelIcon';
 
-/** Simple sidebar nav list for IM channels — icon + name + status dot. */
 export default function IMChannelsView() {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const im = t.panels.im;
   const searchParams = useSearchParams();
   const activePlatform = searchParams.get('platform');
@@ -39,24 +39,31 @@ export default function IMChannelsView() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-8">
-        <Loader2 size={16} className="animate-spin text-muted-foreground" />
+      <div className="px-3 py-4">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          <span>{im.title}</span>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-2 py-8 px-3">
-        <AlertCircle size={16} className="text-muted-foreground" />
-        <p className="text-2xs text-muted-foreground">{im.fetchError}</p>
-        <button
-          type="button"
-          onClick={() => { setLoading(true); fetchStatuses(); }}
-          className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <RefreshCw size={11} /> {im.retry}
-        </button>
+      <div className="px-3 py-3">
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+            <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground">{im.fetchError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setLoading(true); fetchStatuses(); }}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-0 text-xs font-medium text-foreground transition-colors hover:text-[var(--amber)]"
+          >
+            <RefreshCw size={12} /> {im.retry}
+          </button>
+        </div>
       </div>
     );
   }
@@ -65,48 +72,72 @@ export default function IMChannelsView() {
   const getStatus = (id: string) => statuses.find(s => s.platform === id);
 
   return (
-    <div className="flex flex-col py-1">
-      {/* Section header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 mb-0.5">
-        <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">{im.title}</span>
-        {configuredCount > 0 && (
-          <span className="text-2xs text-muted-foreground/60">{configuredCount} {im.connected}</span>
-        )}
+    <div className="flex flex-col gap-2 px-2 py-2">
+      <div className="flex items-center justify-between gap-2 px-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{im.title}</span>
+        <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] leading-4 text-muted-foreground">
+          {configuredCount} {im.connected}
+        </span>
       </div>
 
-      {/* Platform list */}
-      <div className="flex flex-col">
+      <div className="flex flex-col gap-1">
         {PLATFORMS.map((platform) => {
-          const { id, name } = platform;
-          const status = getStatus(id);
+          const status = getStatus(platform.id);
           const isConnected = status?.connected ?? false;
-          const isActive = activePlatform === id;
+          const isActive = activePlatform === platform.id;
+          const subtitle = getPlatformDisplaySubtitle({
+            platform,
+            status,
+            locale,
+            connectedFallback: im.statusConnected,
+            disconnectedFallback: im.notConfigured,
+          });
 
           return (
             <Link
-              key={id}
-              href={`/agents?tab=channels&platform=${id}`}
+              key={platform.id}
+              href={`/agents?tab=channels&platform=${platform.id}`}
+              aria-current={isActive ? 'page' : undefined}
               className={`
-                relative flex items-center gap-2.5 px-3 py-2 text-left rounded-sm transition-colors
+                group relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors
                 ${isActive
-                  ? 'bg-[var(--amber-dim)]/40 pl-3.5'
-                  : 'hover:bg-muted/50'
+                  ? 'border-[var(--amber)]/40 bg-[var(--amber-dim)]/45 shadow-sm'
+                  : 'border-transparent hover:border-border hover:bg-muted/45'
                 }
               `}
             >
               {isActive && (
                 <span
-                  className="pointer-events-none absolute bottom-[22%] left-0 top-[22%] w-0.5 rounded-r-full bg-[var(--amber)]"
+                  className="pointer-events-none absolute bottom-2 left-0 top-2 w-0.5 rounded-r-full bg-[var(--amber)]"
                   aria-hidden
                 />
               )}
-              <ChannelIcon platform={platform} size="sm" />
-              <span className="text-sm flex-1 truncate text-foreground">{name}</span>
-              {isConnected ? (
-                <CheckCircle2 size={14} className="text-success shrink-0" />
-              ) : (
-                <Circle size={14} className="text-border shrink-0" />
-              )}
+              <ChannelIcon
+                platform={platform}
+                size="sm"
+                className={isActive ? 'border-[var(--amber)]/35 bg-background' : 'bg-background/80'}
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium leading-5 text-foreground">{platform.name}</span>
+                <span className={`block truncate text-[11px] leading-4 ${isConnected ? 'text-success' : 'text-muted-foreground'}`}>
+                  {subtitle}
+                </span>
+              </span>
+              <span
+                className={`
+                  inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-4
+                  ${isConnected
+                    ? 'border-[var(--success)]/25 bg-[var(--success)]/10 text-success'
+                    : 'border-border bg-background text-muted-foreground'
+                  }
+                `}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-success' : 'bg-muted-foreground/35'}`}
+                  aria-hidden
+                />
+                {isConnected ? im.statusConnected : im.notConfigured}
+              </span>
             </Link>
           );
         })}

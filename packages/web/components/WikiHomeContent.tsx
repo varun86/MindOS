@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Bot, Brain, CheckCircle2, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
+import { Bot, Brain, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
 import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils';
 import { InboxSection } from '@/components/home/InboxSection';
 import type { BuiltInMindSystemSpaceRecord, SpaceInfo } from '@/lib/space-records';
 import { Select } from '@/components/settings/Primitives';
-import { getMindSystemAssistantAvatar, resolveMindSystemAssistantCopies } from '@/lib/mind-system-assistant-copy';
 
 interface RecentFile {
   path: string;
@@ -298,7 +297,6 @@ function BuiltInMindSpacesSection({
   const pillars = spaces.map(space => ({
     ...space,
     data: t.home.mindPillars[space.slot.key],
-    assistantCopies: resolveMindSystemAssistantCopies(space.assistantSummary.assistants, t.home.mindAssistants[space.slot.key]),
   }));
 
   if (pillars.length === 0) return null;
@@ -311,15 +309,13 @@ function BuiltInMindSpacesSection({
       >
         {t.home.builtInSpacesTitle}
       </SectionTitle>
-      <div className="mb-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <div className="mb-3 max-w-2xl text-sm leading-normal text-muted-foreground" data-mind-system-home-desc>
         {t.home.builtInSpacesDesc}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
           const desc = pillar.data?.desc ?? pillar.slot.role;
-          const draftCount = pillar.assistantSummary?.draftCount ?? 0;
-          const instructionReady = pillar.assistantSummary?.instructionReady ?? false;
-          const assistantCount = pillar.assistantCopies.length;
+          const assistantCount = pillar.assistantSummary?.assistants.length ?? 0;
           return (
             <article
               key={pillar.slot.key}
@@ -344,48 +340,21 @@ function BuiltInMindSpacesSection({
                     <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/45">{pillar.slot.systemId}</span>
                   </span>
                 </span>
-                <span className="block min-h-9 text-xs leading-relaxed text-muted-foreground">{desc}</span>
-              </Link>
-              <span className="mt-3 block border-t border-border/40 pt-2.5">
-                <span className="flex items-start gap-2">
-                  <Bot size={13} className="mt-0.5 shrink-0 text-[var(--amber)]/70" aria-hidden="true" />
-                  <span className="min-w-0 flex-1">
-                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded bg-[var(--amber)]/10 px-1.5 py-px text-[10px] font-medium text-[var(--amber)]/80">
-                        {t.home.mindAssistant.label}
-                      </span>
-                      <span className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-                        {t.home.mindAssistant.assistantCount(assistantCount)}
-                      </span>
-                    </span>
-                    <span className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
-                      {pillar.assistantCopies.slice(0, 3).map((assistant) => {
-                        const avatar = getMindSystemAssistantAvatar(assistant.name, assistant.id);
-                        return (
-                          <span key={assistant.id} className="inline-flex min-w-0 items-center gap-1">
-                            <span
-                              data-mind-system-home-assistant-icon={assistant.id}
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[8px] font-semibold ${avatar.className}`}
-                              aria-hidden="true"
-                            >
-                              {avatar.text}
-                            </span>
-                            <span className="truncate text-[10px] text-muted-foreground/60">{assistant.name}</span>
-                          </span>
-                        );
-                      })}
-                    </span>
-                  </span>
+                <span
+                  className="block truncate text-xs leading-5 text-muted-foreground"
+                  title={desc}
+                  data-mind-system-card-desc={pillar.slot.key}
+                >
+                  {desc}
                 </span>
-                <span className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] text-muted-foreground/65">
-                  <span className={`inline-flex items-center gap-1 ${instructionReady ? 'text-[var(--success)]' : 'text-muted-foreground/60'}`}>
-                    <CheckCircle2 size={11} aria-hidden="true" />
-                    {instructionReady ? t.home.mindAssistant.instructionReady : t.home.mindAssistant.instructionMissing}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <FileText size={11} aria-hidden="true" />
-                    {t.home.mindAssistant.customDrafts(draftCount)}
-                  </span>
+              </Link>
+              <span className="mt-3 flex items-center gap-2 border-t border-border/40 pt-2.5" data-mind-system-card-assistant-summary={pillar.slot.key}>
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-[var(--amber)]/10 px-2 py-1 text-[10px] font-medium text-[var(--amber)]/80">
+                  <Bot size={11} className="shrink-0" aria-hidden="true" />
+                  <span className="truncate">{t.home.mindAssistant.spaceTitle}</span>
+                </span>
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {assistantCount}
                 </span>
               </span>
               <span className="mt-3 flex items-center justify-between border-t border-border/40 pt-2">

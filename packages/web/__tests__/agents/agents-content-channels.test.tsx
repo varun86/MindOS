@@ -1,0 +1,87 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import React, { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import AgentsContentChannels from '@/components/agents/AgentsContentChannels';
+import { clearChannelCache } from '@/components/agents/channel-detail/cache';
+import { messages } from '@/lib/i18n';
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock('next/link', () => ({
+  default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams('tab=channels'),
+}));
+
+vi.mock('@/lib/stores/locale-store', () => ({
+  useLocale: () => ({
+    locale: 'en',
+    setLocale: vi.fn(),
+    t: messages.en,
+  }),
+}));
+
+describe('AgentsContentChannels', () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    clearChannelCache();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        platforms: [
+          {
+            platform: 'feishu',
+            connected: true,
+            botName: 'MindOS Feishu Bot',
+            capabilities: ['text', 'markdown', 'threads'],
+          },
+          {
+            platform: 'telegram',
+            connected: false,
+            capabilities: [],
+          },
+        ],
+      }),
+    })) as typeof fetch;
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    globalThis.fetch = originalFetch;
+    clearChannelCache();
+    vi.clearAllMocks();
+  });
+
+  it('uses compact status pills and localized purpose copy in the platform overview', async () => {
+    await act(async () => {
+      root.render(<AgentsContentChannels />);
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/im/status');
+    expect(host.textContent).toContain('Platforms');
+    expect(host.textContent).toContain('1/ 8');
+
+    const links = Array.from(host.querySelectorAll<HTMLAnchorElement>('a'));
+    const feishuLink = links.find(link => link.getAttribute('href')?.includes('platform=feishu'));
+    expect(feishuLink).not.toBeNull();
+    expect(feishuLink?.className).toContain('grid-cols-[auto_minmax(0,1fr)_auto]');
+    expect(feishuLink?.textContent).toContain('MindOS Feishu Bot');
+    expect(feishuLink?.textContent).toContain('Connected');
+    expect(feishuLink?.textContent).toContain('markdown');
+
+    const telegramLink = links.find(link => link.getAttribute('href')?.includes('platform=telegram'));
+    expect(telegramLink).not.toBeNull();
+    expect(telegramLink?.textContent).toContain('Receive MindOS notifications');
+    expect(telegramLink?.textContent).toContain('Set up');
+  });
+});

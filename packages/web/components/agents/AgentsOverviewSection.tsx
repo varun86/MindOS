@@ -140,30 +140,8 @@ export default function AgentsOverviewSection({
         nodes={systemNodes}
       />
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
-        <div className="min-w-0">
-          <RecentActivityFeed />
-        </div>
-
-        <section
-          aria-labelledby="agents-next-actions-title"
-          className="min-w-0"
-        >
-          <div className="mb-5 flex items-start gap-3">
-            <AgentSectionHeading
-              id="agents-next-actions-title"
-              icon={<ListChecks size={13} aria-hidden="true" />}
-              title={copy.nextActionsTitle}
-            />
-          </div>
-
-          <div className="divide-y divide-border/45 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            {nextActions.map(action => (
-              <NextActionRow key={action.id} action={action} />
-            ))}
-          </div>
-        </section>
-      </div>
+      <RecentActivityFeed />
+      <NextActionsStrip copy={copy} actions={nextActions} />
     </div>
   );
 }
@@ -331,32 +309,55 @@ function getNodeHueClasses(hue: NodeHue) {
   }
 }
 
-function NextActionRow({
+function NextActionsStrip({
+  copy,
+  actions,
+}: {
+  copy: OverviewCopy;
+  actions: Array<{ id: string; title: string; hint: string; href: string; tone: StatusTone; label: string }>;
+}) {
+  if (actions.length === 0) return null;
+
+  return (
+    <section aria-labelledby="agents-next-actions-title" className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <AgentSectionHeading
+          id="agents-next-actions-title"
+          icon={<ListChecks size={13} aria-hidden="true" />}
+          title={copy.nextActionsTitle}
+          size="sm"
+          className="mr-1"
+        />
+        {actions.map(action => (
+          <NextActionPill key={action.id} action={action} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function NextActionPill({
   action,
 }: {
   action: { title: string; hint: string; href: string; tone: StatusTone; label: string };
 }) {
-  const dotClass =
+  const toneClass =
     action.tone === 'ok'
-      ? 'bg-[var(--success)]'
+      ? 'border-success/20 bg-success/10 text-success hover:border-success/35'
       : action.tone === 'warn'
-        ? 'bg-[var(--amber)]'
-        : 'bg-muted-foreground/45';
+        ? 'border-[var(--amber)]/25 bg-[var(--amber)]/10 text-[var(--amber-text)] hover:border-[var(--amber)]/40'
+        : 'border-border bg-card text-muted-foreground hover:border-[var(--amber)]/30 hover:text-foreground';
 
   return (
     <Link
       href={action.href}
-      className="group grid min-h-[58px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition-colors duration-150 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={action.hint}
+      aria-label={`${action.title}. ${action.hint}`}
+      className={`inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border px-2.5 text-2xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${toneClass}`}
     >
-      <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">{action.title}</span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{action.hint}</span>
-      </span>
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-xs font-medium text-muted-foreground transition-colors duration-150 group-hover:border-[var(--amber)]/35 group-hover:text-[var(--amber)] sm:w-auto sm:gap-1 sm:px-2">
-        <span className="hidden sm:inline">{action.label}</span>
-        <ArrowRight size={12} aria-hidden="true" />
-      </span>
+      <span className="truncate">{action.title}</span>
+      <ArrowRight size={11} className="shrink-0" aria-hidden="true" />
+      <span className="sr-only">{action.label}</span>
     </Link>
   );
 }

@@ -163,54 +163,48 @@ export default function AgentsPanel({
               </div>
             )}
           </div>
-        ) : mcp.loading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-muted-foreground" />
-          </div>
-        ) : mcp.agents.length === 0 && mcp.skills.length === 0 ? (
-          <div className="flex flex-col gap-2 py-4 px-0">
-            {hub}
-            <div className="mx-4 border-t border-border" />
-            <div className="mx-3 rounded-lg border border-border/40 bg-card/30 px-3 py-5 text-center">
-              <p className="text-xs text-muted-foreground/70 mb-1.5">{p.noAgents}</p>
-              <p className="text-2xs text-muted-foreground/40 mb-3">{p.skillsEmptyHint}</p>
-              <button
-                onClick={handleRefresh}
-                type="button"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <RefreshCw size={11} /> {p.retry}
-              </button>
-            </div>
-          </div>
         ) : (
           <div className="pb-3">
             {hub}
-
             <div className="mx-4 border-t border-border" />
-
             {isChannelsTab ? (
               <IMChannelsView />
+            ) : mcp.loading ? (
+              <div className="flex justify-center py-8" aria-busy="true">
+                <Loader2 size={16} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : mcp.agents.length === 0 && mcp.skills.length === 0 ? (
+              <div className="mx-3 rounded-lg border border-border/40 bg-card/30 px-3 py-5 text-center">
+                <p className="text-xs text-muted-foreground/70 mb-1.5">{p.noAgents}</p>
+                <p className="text-2xs text-muted-foreground/40 mb-3">{p.skillsEmptyHint}</p>
+                <button
+                  onClick={handleRefresh}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <RefreshCw size={11} /> {p.retry}
+                </button>
+              </div>
             ) : (
-            <div className="px-3 py-3 space-y-4">
-              <AgentsPanelAgentGroups
-                connected={connected}
-                detected={detected}
-                notFound={notFound}
-                selectedAgentKey={effectiveSelectedAgentKey}
-                listCopy={listCopy}
-                onInstallAgent={installAgentWithRefresh}
-                showNotDetected={showNotDetected}
-                setShowNotDetected={setShowNotDetected}
-                p={{
-                  rosterLabel: p.rosterLabel,
-                  sectionConnected: p.sectionConnected,
-                  sectionDetected: p.sectionDetected,
-                  sectionNotDetected: p.sectionNotDetected,
-                  showMore: localClientsCopy.showMore,
-                }}
-              />
-            </div>
+              <div className="px-3 py-3 space-y-4">
+                <AgentsPanelAgentGroups
+                  connected={connected}
+                  detected={detected}
+                  notFound={notFound}
+                  selectedAgentKey={effectiveSelectedAgentKey}
+                  listCopy={listCopy}
+                  onInstallAgent={installAgentWithRefresh}
+                  showNotDetected={showNotDetected}
+                  setShowNotDetected={setShowNotDetected}
+                  p={{
+                    rosterLabel: p.rosterLabel,
+                    sectionConnected: p.sectionConnected,
+                    sectionDetected: p.sectionDetected,
+                    sectionNotDetected: p.sectionNotDetected,
+                    showMore: localClientsCopy.showMore,
+                  }}
+                />
+              </div>
             )}
           </div>
         )}

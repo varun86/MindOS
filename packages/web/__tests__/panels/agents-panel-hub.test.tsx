@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import AgentsPanel from '@/components/panels/AgentsPanel';
 import { messages } from '@/lib/i18n';
@@ -23,40 +23,49 @@ const runtimeCapabilities = vi.hoisted(() => ({
   supportsMcpConfig: false,
 }));
 
+const routeState = vi.hoisted(() => ({
+  pathname: '/agents',
+  search: 'tab=agent',
+}));
+
+const mcpState = vi.hoisted(() => ({
+  status: {
+    running: true,
+    port: 8781,
+    toolCount: 3,
+    transport: 'stdio',
+    endpoint: 'http://127.0.0.1:8781/mcp',
+    authConfigured: true,
+    connectionMode: { cli: true, mcp: true },
+  },
+  agents: [
+    {
+      key: 'test-agent',
+      name: 'Test Agent',
+      present: true,
+      installed: true,
+      hasProjectScope: false,
+      hasGlobalScope: true,
+      preferredTransport: 'stdio' as const,
+      format: 'json' as const,
+      configKey: 'mcpServers',
+      globalPath: '/home/user/.config/claude.json',
+      transport: 'stdio',
+    },
+  ],
+  skills: [] as Array<unknown>,
+  loading: false,
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: () => {} }),
-  usePathname: () => '/agents',
-  useSearchParams: () => new URLSearchParams('tab=agent'),
+  usePathname: () => routeState.pathname,
+  useSearchParams: () => new URLSearchParams(routeState.search),
 }));
 
 vi.mock('@/lib/stores/mcp-store', () => ({
   useMcpData: () => ({
-    status: {
-      running: true,
-      port: 8781,
-      toolCount: 3,
-      transport: 'stdio',
-      endpoint: 'http://127.0.0.1:8781/mcp',
-      authConfigured: true,
-      connectionMode: { cli: true, mcp: true },
-    },
-    agents: [
-      {
-        key: 'test-agent',
-        name: 'Test Agent',
-        present: true,
-        installed: true,
-        hasProjectScope: false,
-        hasGlobalScope: true,
-        preferredTransport: 'stdio' as const,
-        format: 'json' as const,
-        configKey: 'mcpServers',
-        globalPath: '/home/user/.config/claude.json',
-        transport: 'stdio',
-      },
-    ],
-    skills: [],
-    loading: false,
+    ...mcpState,
     refresh: async () => {},
     toggleSkill: async () => true,
     installAgent: async () => true,
@@ -102,6 +111,28 @@ vi.mock('@/hooks/useNativeRuntimeDetection', () => ({
 }));
 
 describe('AgentsPanel hub layout', () => {
+  beforeEach(() => {
+    routeState.pathname = '/agents';
+    routeState.search = 'tab=agent';
+    mcpState.loading = false;
+    mcpState.agents = [
+      {
+        key: 'test-agent',
+        name: 'Test Agent',
+        present: true,
+        installed: true,
+        hasProjectScope: false,
+        hasGlobalScope: true,
+        preferredTransport: 'stdio',
+        format: 'json',
+        configKey: 'mcpServers',
+        globalPath: '/home/user/.config/claude.json',
+        transport: 'stdio',
+      },
+    ];
+    mcpState.skills = [];
+  });
+
   it('renders five hub nav rows and runtime endpoints in the Agent tab', () => {
     const html = renderToStaticMarkup(<AgentsPanel active maximized={false} />);
     const a = messages.en.panels.agents;
@@ -131,5 +162,21 @@ describe('AgentsPanel hub layout', () => {
     expect(html).toContain('Test Agent');
     expect(html).not.toContain(a.rosterLabel);
     expect(html).not.toContain('/help');
+  });
+
+  it('keeps the hub nav visible while MCP data is loading', () => {
+    routeState.search = 'tab=overview';
+    mcpState.loading = true;
+    mcpState.agents = [];
+    mcpState.skills = [];
+
+    const html = renderToStaticMarkup(<AgentsPanel active maximized={false} />);
+    const a = messages.en.panels.agents;
+
+    expect(html).toContain(a.navOverview);
+    expect(html).toContain(a.navAssistant);
+    expect(html).toContain(a.navAgent);
+    expect(html).toContain(a.navChannels);
+    expect(html.indexOf(a.navOverview)).toBeLessThan(html.indexOf('aria-busy="true"'));
   });
 });

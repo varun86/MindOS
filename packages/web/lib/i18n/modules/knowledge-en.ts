@@ -36,7 +36,7 @@ export const knowledgeEn = {
     newNote: 'New Notes',
     mindTagline: 'Local Markdown, organized as your personal Mind.',
     builtInSpacesTitle: 'Mind System',
-    builtInSpacesDesc: 'MindOS maps built-in semantic modules to your local folders. The visible folders stay user-owned Markdown; the module registry stays in .mindos.',
+    builtInSpacesDesc: 'Organize your knowledge with four built-in spaces.',
     builtInSpacesReview: 'Review loop',
     mindAssistant: {
       label: 'Assistant',

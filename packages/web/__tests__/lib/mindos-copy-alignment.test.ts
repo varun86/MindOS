@@ -51,6 +51,9 @@ describe('MindOS copy alignment', () => {
 
     expect(knowledgeEn.home.builtInSpacesTitle).toBe('Mind System');
     expect(knowledgeZh.home.builtInSpacesTitle).toBe('Mind 系统');
+    expect(knowledgeEn.home.builtInSpacesDesc).toBe('Organize your knowledge with four built-in spaces.');
+    expect(knowledgeZh.home.builtInSpacesDesc).toBe('用四个内置空间整理你的知识。');
+    expect(knowledgeZh.home.builtInSpacesDesc).not.toContain('.mindos');
     expect(Object.keys(knowledgeEn.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
     expect(Object.keys(knowledgeZh.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
   });

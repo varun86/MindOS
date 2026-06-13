@@ -201,6 +201,7 @@ describe('Agents content dashboard', () => {
     expect(html).toContain(a.navHints.agent);
     expect(html).toContain(capabilitiesHint);
     expect(html).toContain(channelsHint);
+    expect(html).not.toContain('MCP :8781');
     expect(html).toContain('href="/agents?tab=assistant"');
     expect(html).toContain('href="/agents?tab=agent"');
     expect(html).toContain('href="/agents?tab=capabilities"');
