@@ -4,12 +4,10 @@ import os from 'os';
 import path from 'path';
 
 /**
- * GET /api/skills/matrix — unified (skill × agent) read model plus the
- * one-time migration of legacy installedSkillAgents[] copy installs.
+ * GET /api/skills/matrix — unified (skill × agent) read model.
  */
 
 const mocks = vi.hoisted(() => ({
-  migrateInstalledSkillAgents: vi.fn(),
   readInstalledSkillAgents: vi.fn<() => Array<{ agent: string; skill: string; path: string }>>(() => []),
   clearInstalledSkillAgents: vi.fn(),
   listSkillLinkAgents: vi.fn<() => Array<{ key: string; name: string; mode: 'universal' | 'additional'; skillDir: string }>>(() => []),
@@ -18,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@geminilight/mindos/server', async () => {
   const actual = await import('../../../mindos/src/server');
-  return { ...actual, migrateInstalledSkillAgents: mocks.migrateInstalledSkillAgents };
+  return { ...actual };
 });
 
 vi.mock('@/lib/settings', () => ({
@@ -43,7 +41,6 @@ let projectRoot: string;
 let agentSkillDir: string;
 let origHome: string | undefined;
 let origProjectRoot: string | undefined;
-let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-matrix-test-'));
@@ -60,17 +57,14 @@ beforeEach(() => {
 
   mocks.settings.mindRoot = mindRoot;
   mocks.settings.disabledSkills = undefined;
-  mocks.migrateInstalledSkillAgents.mockReset().mockReturnValue({ converted: [], marked: [], skipped: [] });
   mocks.readInstalledSkillAgents.mockReset().mockReturnValue([]);
   mocks.clearInstalledSkillAgents.mockReset();
   mocks.listSkillLinkAgents.mockReset().mockReturnValue([
     { key: 'claude-code', name: 'Claude Code', mode: 'additional', skillDir: agentSkillDir },
   ]);
-  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
-  warnSpy.mockRestore();
   fs.rmSync(tempHome, { recursive: true, force: true });
   if (origHome === undefined) delete process.env.HOME;
   else process.env.HOME = origHome;
@@ -124,46 +118,16 @@ describe('GET /api/skills/matrix', () => {
     expect(body.cells['beta-skill'].mindos).toEqual({ enabled: false, status: 'disabled' });
   }, 15_000);
 
-  it('does not run the legacy migration when there are no installedSkillAgents records', async () => {
-    const { GET } = await importMatrixRoute();
-    const res = await GET();
-
-    expect(res.status).toBe(200);
-    expect(mocks.migrateInstalledSkillAgents).not.toHaveBeenCalled();
-    expect(mocks.clearInstalledSkillAgents).not.toHaveBeenCalled();
-  });
-
-  it('migrates legacy installedSkillAgents records and clears them afterwards', async () => {
-    const records = [{ agent: 'claude-code', skill: 'alpha-skill', path: path.join(agentSkillDir, 'alpha-skill', 'SKILL.md') }];
-    mocks.readInstalledSkillAgents.mockReturnValue(records);
+  it('does not touch the legacy installedSkillAgents ledger on read', async () => {
+    mocks.readInstalledSkillAgents.mockReturnValue([
+      { agent: 'claude-code', skill: 'alpha-skill', path: path.join(agentSkillDir, 'alpha-skill', 'SKILL.md') },
+    ]);
 
     const { GET } = await importMatrixRoute();
     const res = await GET();
 
     expect(res.status).toBe(200);
-    expect(mocks.migrateInstalledSkillAgents).toHaveBeenCalledTimes(1);
-    expect(mocks.migrateInstalledSkillAgents).toHaveBeenCalledWith(expect.objectContaining({
-      records,
-      skillRoots: expect.any(Array),
-      agents: [expect.objectContaining({ key: 'claude-code', skillDir: agentSkillDir })],
-    }));
-    expect(mocks.clearInstalledSkillAgents).toHaveBeenCalledTimes(1);
-  });
-
-  it('still returns the matrix when the legacy migration throws', async () => {
-    seedSkill(path.join(mindRoot, '.skills'), 'alpha-skill');
-    mocks.readInstalledSkillAgents.mockReturnValue([{ agent: 'claude-code', skill: 'alpha-skill', path: '/tmp/x' }]);
-    mocks.migrateInstalledSkillAgents.mockImplementation(() => { throw new Error('migration exploded'); });
-
-    const { GET } = await importMatrixRoute();
-    const res = await GET();
-    const body = await res.json();
-
-    expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.agents[0]).toMatchObject({ key: 'mindos', mode: 'self' });
-    expect(body.state['alpha-skill'].mindos).toBe(true);
-    // Records stay in place for the next attempt; only a warning is logged.
+    expect(mocks.readInstalledSkillAgents).not.toHaveBeenCalled();
     expect(mocks.clearInstalledSkillAgents).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalled();
   });
 });

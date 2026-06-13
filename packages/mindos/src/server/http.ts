@@ -84,7 +84,7 @@ import {
   resolveSkillLinkAgents,
   type MindosMcpAgentRegistryDef,
 } from './handlers/mcp-agents.js';
-import { migrateInstalledSkillAgents, type MindosSkillLinkAgent } from './handlers/skill-links.js';
+import { type MindosSkillLinkAgent } from './handlers/skill-links.js';
 import {
   handleMcpDirectToolsPost,
   handleMcpToolsGet,
@@ -630,7 +630,6 @@ async function handleRequest(
     }
     if (route === 'GET /api/skills/matrix') {
       const listLinkAgents = createHttpSkillLinkAgents(services);
-      migrateLegacySkillInstallRecords(services, listLinkAgents);
       const { disabledSkills, skillRoots } = services.listSkills();
       writeResponse(res, handleSkillMatrixGet({ disabledSkills, skillRoots, listLinkAgents }));
       return;
@@ -1137,31 +1136,6 @@ function createHttpSkillLinkAgents(services: MindosHttpServices): () => MindosSk
     agents: (services.mcpAgents ?? {}) as Record<string, MindosMcpAgentRegistryDef>,
     skillAgentRegistry: createDefaultSkillAgentRegistry(),
   });
-}
-
-/**
- * One-time migration of legacy `installedSkillAgents` copy installs into
- * symlinks (spec 4.6). Clears the legacy ledger on success; failures only
- * warn and never fail the matrix request.
- */
-function migrateLegacySkillInstallRecords(
-  services: MindosHttpServices,
-  listLinkAgents: () => MindosSkillLinkAgent[],
-): void {
-  try {
-    const settings = services.readSettings();
-    const records = Array.isArray(settings.installedSkillAgents) ? settings.installedSkillAgents : [];
-    if (records.length === 0) return;
-    migrateInstalledSkillAgents({
-      records,
-      skillRoots: services.listSkills().skillRoots,
-      agents: listLinkAgents(),
-      warn: (message) => console.warn(`[mindos] ${message}`),
-    });
-    services.writeSettings({ ...settings, installedSkillAgents: [] });
-  } catch (error) {
-    console.warn(`[mindos] legacy skill install migration failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 function optionsStaticRoot(services: MindosHttpServices, runtimeRoot?: string): string | undefined {

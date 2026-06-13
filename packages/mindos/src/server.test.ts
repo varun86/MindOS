@@ -1238,14 +1238,15 @@ Write a concise signal brief.
     }
   });
 
-  it('migrates legacy copy-install records and clears the ledger on first skill matrix read', async () => {
+  it('keeps legacy copy-install records untouched when the skill matrix is read', async () => {
     const home = mkdtempSync(join(tmpdir(), 'mindos-http-matrix-migrate-home-'));
     const root = mkdtempSync(join(tmpdir(), 'mindos-http-matrix-migrate-root-'));
     const configDir = join(home, '.mindos');
+    const installedSkillAgents = [{ agent: 'ghost-agent', skill: 'ghost-skill', path: join(home, 'ghost') }];
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'config.json'), JSON.stringify({
       mindRoot: root,
-      installedSkillAgents: [{ agent: 'ghost-agent', skill: 'ghost-skill', path: join(home, 'ghost') }],
+      installedSkillAgents,
     }), 'utf-8');
 
     const app = createMindosHttpServer({
@@ -1261,7 +1262,7 @@ Write a concise signal brief.
       const response = await fetch(`${base}/api/skills/matrix`);
       expect(response.status).toBe(200);
       const saved = JSON.parse(readFileSync(join(configDir, 'config.json'), 'utf-8'));
-      expect(saved.installedSkillAgents).toEqual([]);
+      expect(saved.installedSkillAgents).toEqual(installedSkillAgents);
       expect(saved.mindRoot).toBe(root);
     } finally {
       await new Promise<void>((resolve, reject) => app.server.close((error) => error ? reject(error) : resolve()));

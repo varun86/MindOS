@@ -780,7 +780,7 @@ describe('migration of legacy copy installs', () => {
     expect(realpathSync(legacyDir)).toBe(realpathSync(bodyDir));
   });
 
-  it('keeps a user-modified copy untouched, marks it managed, and warns', () => {
+  it('keeps a user-modified copy untouched, unmarked, and warns', () => {
     const { skillRoots, agent } = makeFixture();
     const legacyDir = join(agent.skillDir, 'demo');
     mkdirSync(legacyDir, { recursive: true });
@@ -794,10 +794,11 @@ describe('migration of legacy copy installs', () => {
       warn: (message) => warnings.push(message),
     });
 
-    expect(result.marked).toEqual([{ agent: 'claude-code', skill: 'demo' }]);
+    expect(result.marked).toEqual([]);
+    expect(result.skipped).toEqual([{ agent: 'claude-code', skill: 'demo', reason: 'copy differs from skill body' }]);
     expect(lstatSync(legacyDir).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(legacyDir, 'SKILL.md'), 'utf-8')).toBe('modified by the user');
-    expect(existsSync(join(legacyDir, MINDOS_MANAGED_MARKER))).toBe(true);
+    expect(existsSync(join(legacyDir, MINDOS_MANAGED_MARKER))).toBe(false);
     expect(warnings.length).toBe(1);
   });
 

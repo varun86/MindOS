@@ -509,8 +509,9 @@ function collectParkedOnlySkills(
 
 /**
  * Convert legacy `installedSkillAgents[]` copy installs into symlinks.
- * Content-identical copies are replaced with links; user-modified copies are
- * kept but marked as managed (with a warning). Never throws per record.
+ * Content-identical copies are replaced with links. User-modified copies are
+ * left untouched and reported as skipped; marking them as managed would make a
+ * later unlink eligible to delete user-owned files. Never throws per record.
  */
 export function migrateInstalledSkillAgents(options: {
   records: MindosSkillInstallRecord[];
@@ -562,11 +563,8 @@ export function migrateInstalledSkillAgents(options: {
         createSkillLink(sourceDir, linkPath, options.deps ?? {});
         result.converted.push(tag);
       } else {
-        // User modified the copy: keep it, but mark it as managed so the
-        // matrix and uninstall treat it consistently (spec 4.6 step 4).
-        writeFileSync(join(linkPath, MINDOS_MANAGED_MARKER), '', 'utf-8');
-        warn(`skill copy at ${linkPath} differs from its body; kept as-is and marked managed`);
-        result.marked.push(tag);
+        warn(`skill copy at ${linkPath} differs from its body; kept as user-owned and not migrated`);
+        result.skipped.push({ ...tag, reason: 'copy differs from skill body' });
       }
     } catch (error) {
       warn(`failed to migrate skill install ${record.agent}/${record.skill}: ${errorMessage(error)}`);
