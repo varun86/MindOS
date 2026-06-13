@@ -20,7 +20,7 @@ const PANEL_WIDTH = 300;
 
 /* ── Save Single Message Button (for message action bar) ── */
 
-export function SaveMessageButton({ text }: { text: string }) {
+export function SaveMessageButton({ text, variant = 'default' }: { text: string; variant?: 'default' | 'dock' }) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -34,11 +34,14 @@ export function SaveMessageButton({ text }: { text: string }) {
         ref={btnRef}
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors duration-75 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          open
-            ? 'border-[var(--amber)]/40 bg-[var(--amber)]/10 text-[var(--amber)]'
-            : 'border-border/60 bg-card text-muted-foreground hover:bg-[var(--amber)]/10 hover:text-[var(--amber)] shadow-sm'
-        }`}
+        className={variant === 'dock'
+          ? `hit-target-box inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors duration-75 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-bg:transparent] [--hit-target-hover-bg:color-mix(in_srgb,var(--amber)_10%,transparent)] [--hit-target-radius:var(--radius-sm)] ${open ? 'text-[var(--amber)]' : 'hover:text-[var(--amber)]'}`
+          : `inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors duration-75 touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              open
+                ? 'border-[var(--amber)]/40 bg-[var(--amber)]/10 text-[var(--amber)]'
+                : 'border-border/60 bg-card text-muted-foreground hover:bg-[var(--amber)]/10 hover:text-[var(--amber)] shadow-sm'
+            }`}
+        aria-label={t.ask?.saveToKB ?? 'Save to knowledge base'}
         title={t.ask?.saveToKB ?? 'Save to knowledge base'}
       >
         <FolderInput size={11} />

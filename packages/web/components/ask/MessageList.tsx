@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, memo, useState, useCallback, useMemo, type CSSProperties } from 'react';
+import { useRef, useEffect, memo, useState, useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Loader2, AlertCircle, Wrench, WifiOff, Zap, Copy, Check, ArrowDown, FolderInput, Search, PenLine, Lightbulb, FileText, Paperclip, Bot, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,7 +20,7 @@ const MESSAGE_ROW_STYLE: CSSProperties = {
   containIntrinsicSize: '0 96px',
 };
 
-function CopyMessageButton({ text, label }: { text: string; label?: string }) {
+function CopyMessageButton({ text, label, variant = 'default' }: { text: string; label?: string; variant?: 'default' | 'dock' }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
     copyToClipboard(text).then(ok => {
@@ -35,11 +35,22 @@ function CopyMessageButton({ text, label }: { text: string; label?: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-card border border-border/60 shadow-sm text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+      aria-label={label ?? 'Copy'}
+      className={variant === 'dock'
+        ? 'hit-target-box inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-bg:transparent] [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-sm)]'
+        : 'inline-flex h-7 w-7 items-center justify-center rounded-md bg-card border border-border/60 shadow-sm text-muted-foreground transition-colors duration-75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation'}
       title={label ?? 'Copy'}
     >
       {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
     </button>
+  );
+}
+
+function MessageActionDock({ children }: { children: ReactNode }) {
+  return (
+    <div className="absolute right-3 top-full z-10 -mt-2 flex items-center gap-0.5 rounded-lg border border-border/50 bg-background/95 p-0.5 shadow-sm backdrop-blur-sm opacity-100 transition-[opacity,transform] duration-100 pointer-events-auto md:pointer-events-none md:opacity-0 md:translate-y-0.5 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100 md:group-hover/message:translate-y-0 md:focus-within:pointer-events-auto md:focus-within:opacity-100 md:focus-within:translate-y-0">
+      {children}
+    </div>
   );
 }
 
@@ -69,7 +80,6 @@ const UserMessageContent = memo(function UserMessageContent({ content, skillName
           {images.map((img, idx) => (
             img.data ? (
               // Data URL previews are local session images; next/image cannot optimize them.
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={idx}
                 src={`data:${img.mimeType};base64,${img.data}`}
@@ -365,7 +375,7 @@ const MessageRow = memo(function MessageRow({
   );
 
   return (
-    <div style={MESSAGE_ROW_STYLE} className={`flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div style={MESSAGE_ROW_STYLE} className={`group/message flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {message.role === 'assistant' && shouldShowAssistantSideMark(message.agentKind) && (
         <div className="mt-0.5 shrink-0">
           <RuntimeMark runtime={message.agentKind ?? 'mindos'} label={message.agentName} />
@@ -376,7 +386,7 @@ const MessageRow = memo(function MessageRow({
           className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-lg text-sm leading-relaxed whitespace-pre-wrap bg-[var(--amber)] text-[var(--amber-foreground)] shadow-sm shadow-[var(--amber)]/10"
         >
           <UserMessageContent content={message.content} skillName={message.skillName} images={message.images} attachedFiles={message.attachedFiles} uploadedFileNames={message.uploadedFileNames} />
-          <div className="mt-2 flex justify-start">
+          <MessageActionDock>
             <UserMessageActions
               content={message.content}
               isLastUserMessage={index === lastUserMessageIndex}
@@ -389,7 +399,7 @@ const MessageRow = memo(function MessageRow({
                 regenerate: labels.regenerateMessage ?? 'Regenerate',
               }}
             />
-          </div>
+          </MessageActionDock>
         </div>
       ) : message.content.startsWith('__error__') ? (
         <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-bl-md border border-error/30 bg-error/10 text-sm shadow-sm">
@@ -409,12 +419,10 @@ const MessageRow = memo(function MessageRow({
                 <StepCounter parts={message.parts} />
               )}
               {!isStreamingLast && cleanedAssistantContent && (
-                <div className="mt-2 flex justify-end">
-                  <div className="flex items-center gap-1 opacity-100 transition-opacity duration-75 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-                    <SaveMessageButton text={message.content} />
-                    <CopyMessageButton text={cleanedAssistantContent} label={labels.copyMessage} />
-                  </div>
-                </div>
+                <MessageActionDock>
+                  <SaveMessageButton text={message.content} variant="dock" />
+                  <CopyMessageButton text={cleanedAssistantContent} label={labels.copyMessage} variant="dock" />
+                </MessageActionDock>
               )}
             </>
           ) : isStreamingLast ? (

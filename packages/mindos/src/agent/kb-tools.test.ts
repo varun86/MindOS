@@ -128,7 +128,7 @@ describe('createMindosKbToolkit', () => {
       'write_file', 'create_file', 'batch_create_files', 'append_to_file',
       'insert_after_heading', 'update_section', 'edit_lines', 'delete_file',
       'rename_file', 'move_file', 'get_backlinks', 'get_history',
-      'get_file_at_version', 'append_csv', 'lint', 'compile',
+      'get_file_at_version', 'append_csv', 'lint', 'dreaming', 'compile',
     ]);
   });
 
@@ -221,13 +221,15 @@ describe('createMindosKbToolkit', () => {
     });
   });
 
-  it('reports lint and compile as unavailable when the host omits those backends', async () => {
+  it('reports lint, dreaming, and compile as unavailable when the host omits those backends', async () => {
     const { host } = createFakeHost();
     const toolkit = createMindosKbToolkit(host);
     const lint = toolkit.knowledgeBaseTools.find((tool) => tool.name === 'lint');
+    const dreaming = toolkit.knowledgeBaseTools.find((tool) => tool.name === 'dreaming');
     const compile = toolkit.knowledgeBaseTools.find((tool) => tool.name === 'compile');
 
     await expect(callTool(lint, {})).resolves.toContain('lint tool is not available');
+    await expect(callTool(dreaming, {})).resolves.toContain('dreaming tool is not available');
     await expect(callTool(compile, { space: 'Research' })).resolves.toContain('compile tool is not available');
   });
 
@@ -250,6 +252,25 @@ describe('createMindosKbToolkit', () => {
     expect(output).toContain('Score: 80/100');
     expect(output).toContain('Orphan.md');
     expect(output).toContain('A.md:3 → [[Missing]]');
+  });
+
+  it('runs Dreaming through the host and returns its report', async () => {
+    const { host } = createFakeHost({
+      runDreaming: (_mindRoot, options) => ({
+        run: {
+          id: 'dream-1',
+          scope: options.space ?? 'all',
+          lint: { healthScore: 91, stats: { totalFiles: 7 } },
+          proposals: [{ type: 'review_stale_file', title: 'Review stale note' }],
+        },
+        report: `Dreaming scope=${options.space ?? 'all'} write=${options.writeArtifacts}`,
+      }),
+    });
+    const toolkit = createMindosKbToolkit(host);
+    const dreaming = toolkit.knowledgeBaseTools.find((tool) => tool.name === 'dreaming');
+
+    await expect(callTool(dreaming, { space: 'Projects', dryRun: true }))
+      .resolves.toBe('Dreaming scope=Projects write=false');
   });
 });
 

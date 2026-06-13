@@ -27,7 +27,7 @@ describe('MessageList runtime status rendering', () => {
     copyMessage: 'Copy',
   };
 
-  it('keeps completed message actions inside the bubble flow', () => {
+  it('keeps completed message actions in floating docks outside the bubble flow', () => {
     const messages: Message[] = [
       {
         role: 'user',
@@ -51,9 +51,11 @@ describe('MessageList runtime status rendering', () => {
       />,
     );
 
-    expect(html).toContain('mt-2 flex justify-start');
-    expect(html).toContain('mt-2 flex justify-end');
-    expect(html).not.toContain('absolute -bottom-3');
+    expect(html).toContain('group/message');
+    expect(html).toContain('absolute right-3 top-full');
+    expect(html).toContain('md:group-hover/message:opacity-100');
+    expect(html).not.toContain('mt-2 flex justify-start');
+    expect(html).not.toContain('mt-2 flex justify-end');
   });
 
   it('renders visible runtime status as a compact status card without assistant text', () => {

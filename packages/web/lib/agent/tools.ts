@@ -67,6 +67,17 @@ const host: MindosKbToolsHost = {
     const { runLint } = await import('@/lib/lint');
     return runLint(mindRoot, space);
   },
+  runDreaming: async (mindRoot, options) => {
+    const { runDreaming, formatDreamingReport } = await import('@/lib/dreaming');
+    const run = runDreaming(mindRoot, {
+      space: options.space,
+      writeArtifacts: options.writeArtifacts,
+    });
+    const artifactLine = run.artifacts
+      ? `\n\nArtifacts:\n- ${run.artifacts.reportMarkdown}\n- ${run.artifacts.pendingJson}`
+      : '\n\nDry run: no artifacts written.';
+    return { run, report: `${formatDreamingReport(run)}${artifactLine}` };
+  },
   compileSpaceOverview: async (space) => {
     const { compileSpaceOverview, isCompileError } = await import('@/lib/compile');
     const result = await compileSpaceOverview(space);
@@ -88,7 +99,7 @@ export function getToolsForMindosAgentPolicy(policy: MindosAgentPermissionPolicy
   return toolkit.getToolsForPolicy(policy);
 }
 
-/** Lean tool set for organize mode — skips MCP discovery, history, backlinks, etc. */
+/** Lean tool set for organize mode - skips MCP discovery, history, backlinks, etc. */
 export function getOrganizeTools(): MindosAgentTool[] {
   return toolkit.getOrganizeTools();
 }

@@ -313,10 +313,8 @@ export default function ActivityBar({
           type="button"
           onClick={() => {
             startTransition(() => {
-              if (isHome) {
-                onPanelChange(activePanel === 'files' ? null : 'files');
-              } else {
-                onPanelChange('files');
+              onPanelChange(null);
+              if (!isHome) {
                 router.push('/');
               }
             });

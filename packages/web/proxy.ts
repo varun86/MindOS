@@ -69,12 +69,10 @@ export async function proxy(req: NextRequest) {
   }
 
   // --- Entry redirects (/ and /echo) ---
-  // Redirecting here yields a true 307 before rendering starts: a page-level
-  // redirect() under the root loading.tsx Suspense boundary would stream a
-  // 200 + meta-refresh shell (~480KB of throwaway HTML) instead. `/` renders
-  // the home page itself and only redirects while setup is pending; `/echo`
-  // always forwards to the default segment. The proxy runs on the Node.js
-  // runtime in Next 16, so the fs read inside readSetupPending() is allowed.
+  // Redirecting /echo here yields a true 307 before rendering starts. `/`
+  // is the product Home page and only redirects while setup is pending.
+  // The proxy runs on the Node.js runtime in Next 16, so the fs read inside
+  // readSetupPending() is allowed.
   if (pathname === '/' || pathname === '/echo') {
     if (readSetupPending()) {
       return NextResponse.redirect(new URL('/setup', req.url), 307);

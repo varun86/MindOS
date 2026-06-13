@@ -673,6 +673,45 @@ server.registerTool("mindos_lint", {
   } catch (e) { _logOp("mindos_lint", { space }, "error", String(e)); return error(String(e)); }
 });
 
+// ── mindos_dreaming ─────────────────────────────────────────────────────────
+
+server.registerTool("mindos_dreaming", {
+  title: "Run Dreaming",
+  description: "Run a conservative background knowledge-maintenance pass. It captures local signals, groups them into maintenance themes, and writes review-first proposals under .mindos/dreaming without changing user notes.",
+  inputSchema: z.object({
+    space: z.string().optional().describe("Optional space name to scope the Dreaming run (e.g. 'Projects'). Omit for full KB scan."),
+    dryRun: z.boolean().optional().default(false).describe("When true, return proposals without writing .mindos/dreaming artifacts."),
+  }),
+}, async ({ space, dryRun }) => {
+  try {
+    const body: Record<string, unknown> = {};
+    if (space) body.space = space;
+    if (dryRun) body.dryRun = true;
+    const run = await _post("/api/dreaming", body) as Record<string, unknown>;
+    const lint = run.lint as Record<string, unknown>;
+    const stats = lint.stats as Record<string, number>;
+    const proposals = run.proposals as Array<Record<string, unknown>>;
+    const artifacts = run.artifacts as Record<string, string> | undefined;
+    const lines: string[] = [
+      `## Dreaming Run - ${run.id}`,
+      `Scope: ${run.scope} | Files: ${stats.totalFiles} | Health: ${lint.healthScore}/100`,
+      `Pending proposals: ${proposals.length}`,
+      '',
+    ];
+    for (const proposal of proposals.slice(0, 20)) {
+      lines.push(`- **${proposal.type}**: ${proposal.title}`);
+    }
+    if (proposals.length > 20) lines.push(`... and ${proposals.length - 20} more`);
+    if (artifacts) {
+      lines.push('', 'Artifacts:', `- ${artifacts.reportMarkdown}`, `- ${artifacts.pendingJson}`);
+    } else {
+      lines.push('', 'Dry run: no artifacts written.');
+    }
+    _logOp("mindos_dreaming", { space, dryRun }, "ok", `proposals=${proposals.length}`);
+    return ok(lines.join('\n'));
+  } catch (e) { _logOp("mindos_dreaming", { space, dryRun }, "error", String(e)); return error(String(e)); }
+});
+
 // ── mindos_compile ──────────────────────────────────────────────────────────
 
 server.registerTool("mindos_compile", {

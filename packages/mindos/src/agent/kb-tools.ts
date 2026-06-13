@@ -60,6 +60,24 @@ export type MindosKbCompileResult =
   | { ok: true; stats: { spaceName: string; fileCount: number } }
   | { ok: false; message: string };
 
+export interface MindosKbDreamingRunSummary {
+  id: string;
+  scope: string;
+  lint: { healthScore: number; stats: { totalFiles: number } };
+  proposals: Array<{ type: string; title: string }>;
+  artifacts?: { reportMarkdown: string; pendingJson: string };
+}
+
+export interface MindosKbDreamingOptions {
+  space?: string;
+  writeArtifacts: boolean;
+}
+
+export interface MindosKbDreamingResult {
+  run: MindosKbDreamingRunSummary;
+  report: string;
+}
+
 /** Synchronous knowledge-base file operations the host must provide. */
 export interface MindosKbFileHost {
   getMindRoot(): string;
@@ -87,6 +105,8 @@ export interface MindosKbToolsHost {
   readSkillContent(name: string): string | null | Promise<string | null>;
   /** Optional: KB health check backend. The lint tool reports unavailability without it. */
   runLint?(mindRoot: string, space?: string): MindosKbLintReport | Promise<MindosKbLintReport>;
+  /** Optional: conservative background maintenance pass. */
+  runDreaming?(mindRoot: string, options: MindosKbDreamingOptions): MindosKbDreamingResult | Promise<MindosKbDreamingResult>;
   /** Optional: AI Space-overview backend. The compile tool reports unavailability without it. */
   compileSpaceOverview?(space: string): MindosKbCompileResult | Promise<MindosKbCompileResult>;
   /** Optional: off-thread diff for large files. Resolve null on timeout/unavailable. */
@@ -266,6 +286,11 @@ const FileAtVersionParams = Type.Object({
 const CsvAppendParams = Type.Object({
   path: Type.String({ description: 'Relative path to .csv file' }),
   row: Type.Array(Type.String(), { description: 'Array of cell values for the new row' }),
+});
+
+const DreamingParams = Type.Object({
+  space: Type.Optional(Type.String({ description: 'Optional space name to scope the Dreaming run (e.g. "Projects"). Omit for full KB scan.' })),
+  dryRun: Type.Optional(Type.Boolean({ description: 'When true, return proposals without writing .mindos/dreaming artifacts.' })),
 });
 
 const LoadSkillParams = Type.Object({
@@ -803,6 +828,23 @@ export function buildMindosKnowledgeBaseTools(host: MindosKbToolsHost): MindosAg
         }
         if (report.healthScore === 100) lines.push('All clear — your knowledge base is in great shape!');
         return textResult(lines.join('\n'));
+      }),
+    },
+
+    {
+      name: 'dreaming',
+      label: 'Run Dreaming',
+      description: 'Run a conservative background knowledge-maintenance pass. It captures local signals, groups them into maintenance themes, and writes review-first proposals under .mindos/dreaming without changing user notes.',
+      parameters: DreamingParams,
+      execute: safeExecute(async (_id, params: Static<typeof DreamingParams>) => {
+        if (!host.runDreaming) {
+          return textResult('Error: the dreaming tool is not available in this host.');
+        }
+        const result = await host.runDreaming(files.getMindRoot(), {
+          space: params.space,
+          writeArtifacts: params.dryRun !== true,
+        });
+        return textResult(result.report);
       }),
     },
 

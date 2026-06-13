@@ -53,6 +53,7 @@ export const MINDOS_WRITE_TOOL_NAMES = [
   'rename_file',
   'move_file',
   'append_csv',
+  'dreaming',
 ] as const;
 
 export const MINDOS_CHAT_KB_TOOL_NAMES = [

@@ -167,11 +167,15 @@ describe('icon button hit areas', () => {
       expect(source).toContain('inline-flex h-7 w-7');
       expect(source).toContain('focus-visible:ring-2 focus-visible:ring-ring');
     }
-    expect(actionsSource).toContain('md:focus-within:opacity-100');
     expect(actionsSource).toContain('const btnBase = \'hit-target-box');
     expect(actionsSource).toContain('[--hit-target-hover-bg:var(--muted)]');
     expect(actionsSource).toContain('[--hit-target-hover-bg:color-mix(in_srgb,var(--amber)_10%,transparent)]');
+    expect(messageListSource).toContain('function MessageActionDock');
+    expect(messageListSource).toContain('absolute right-3 top-full');
+    expect(messageListSource).toContain('md:group-hover/message:opacity-100');
     expect(messageListSource).toContain('md:focus-within:opacity-100');
+    expect(messageListSource).not.toContain('mt-2 flex justify-start');
+    expect(messageListSource).not.toContain('mt-2 flex justify-end');
     expect(messageListSource).toContain('hit-target-box group/sug');
     expect(messageListSource).toContain('hover:bg-muted hover:text-foreground');
     expect(saveInsightSource).toContain('hit-target-box inline-flex h-7 w-7');

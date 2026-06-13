@@ -429,8 +429,8 @@ export default function ViewPageClient({
   return (
     <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
       {/* Top bar */}
-      <div className="sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center" style={{ background: 'var(--background)' }}>
-        <div className="w-full min-w-0 flex items-center justify-between gap-3 h-full">
+      <div className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center" style={{ background: 'var(--background)' }}>
+        <div className="view-header-row w-full min-w-0 flex items-center justify-between gap-3 h-full">
           <div className="min-w-0 flex-1 flex items-center gap-1.5">
             <button
               onClick={() => router.back()}
@@ -472,181 +472,185 @@ export default function ViewPageClient({
               <span className="text-xs text-error hidden sm:inline">{saveError}</span>
             )}
 
-            {/* Renderer toggle — only shown when a custom renderer exists (excludes graph-mode override and binary files) */}
-            {registryRenderer && !editing && !isDraft && !graphRenderer && !isBinaryFile && (
-              <button
-                onClick={handleToggleRaw}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                style={{
-                  background: effectiveUseRaw ? `${'var(--amber)'}22` : 'var(--muted)',
-                  color: effectiveUseRaw ? 'var(--amber)' : 'var(--muted-foreground)',
-                }}
-                title={effectiveUseRaw ? `Switch to ${registryRenderer?.name}` : 'View raw'}
-              >
-                {effectiveUseRaw ? <LayoutTemplate size={13} /> : <Code size={13} />}
-                <span className="hidden sm:inline">{effectiveUseRaw ? registryRenderer.name : 'Raw'}</span>
-              </button>
-            )}
+            <div className="view-header-actions-reserve hidden xl:block shrink-0" aria-hidden="true" />
 
-            {/* Markdown editing: mode switcher in header */}
-            {isMarkdown && !isDraft && (
-              <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
-                {([
-                  { id: 'wysiwyg' as const, icon: <Pencil size={11} />, label: 'Edit' },
-                  { id: 'source' as const, icon: <PanelLeft size={11} />, label: 'Source' },
-                  { id: 'preview' as const, icon: <Eye size={11} />, label: 'View' },
-                ] as const).map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      // Use startTransition to mark state updates as non-urgent
-                      startTransition(() => {
-                        const nextMode = m.id === 'wysiwyg' && splitMarkdownFrontmatter(editing ? editContent : savedContent).frontmatter !== null
-                          ? 'source'
-                          : m.id;
-                        setMdViewMode(nextMode);
-                        if (nextMode === 'preview') {
-                          // Sync latest edit content to savedContent before switching
-                          const clean = twemojiToNative(editContent);
-                          setSavedContent(clean);
-                          if (clean !== savedContent) {
-                            saveAction(clean).catch(() => {});
+            <div className="view-header-actions flex items-center gap-1.5 md:gap-2 shrink-0">
+              {/* Renderer toggle — only shown when a custom renderer exists (excludes graph-mode override and binary files) */}
+              {registryRenderer && !editing && !isDraft && !graphRenderer && !isBinaryFile && (
+                <button
+                  onClick={handleToggleRaw}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                  style={{
+                    background: effectiveUseRaw ? `${'var(--amber)'}22` : 'var(--muted)',
+                    color: effectiveUseRaw ? 'var(--amber)' : 'var(--muted-foreground)',
+                  }}
+                  title={effectiveUseRaw ? `Switch to ${registryRenderer?.name}` : 'View raw'}
+                >
+                  {effectiveUseRaw ? <LayoutTemplate size={13} /> : <Code size={13} />}
+                  <span className="hidden sm:inline">{effectiveUseRaw ? registryRenderer.name : 'Raw'}</span>
+                </button>
+              )}
+
+              {/* Markdown editing: mode switcher in header */}
+              {isMarkdown && !isDraft && (
+                <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
+                  {([
+                    { id: 'wysiwyg' as const, icon: <Pencil size={11} />, label: 'Edit' },
+                    { id: 'source' as const, icon: <PanelLeft size={11} />, label: 'Source' },
+                    { id: 'preview' as const, icon: <Eye size={11} />, label: 'View' },
+                  ] as const).map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        // Use startTransition to mark state updates as non-urgent
+                        startTransition(() => {
+                          const nextMode = m.id === 'wysiwyg' && splitMarkdownFrontmatter(editing ? editContent : savedContent).frontmatter !== null
+                            ? 'source'
+                            : m.id;
+                          setMdViewMode(nextMode);
+                          if (nextMode === 'preview') {
+                            // Sync latest edit content to savedContent before switching
+                            const clean = twemojiToNative(editContent);
+                            setSavedContent(clean);
+                            if (clean !== savedContent) {
+                              saveAction(clean).catch(() => {});
+                            }
+                            setEditing(false);
+                          } else if (!editing) {
+                            setEditContent(savedContent);
+                            setEditing(true);
                           }
-                          setEditing(false);
-                        } else if (!editing) {
-                          setEditContent(savedContent);
-                          setEditing(true);
-                        }
-                      });
-                    }}
-                    className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded px-2.5 text-[11px] font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation ${
-                      mdViewMode === m.id
-                        ? 'bg-card text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
-                    }`}
+                        });
+                      }}
+                      className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded px-2.5 text-[11px] font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation ${
+                        mdViewMode === m.id
+                          ? 'bg-card text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
+                      }`}
+                    >
+                      {m.icon}
+                      <span className="hidden md:inline">{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Editor theme picker — hidden for now, may move to Settings later */}
+
+              {/* Edit button — shown in view mode for non-markdown editable file types */}
+              {!editing && !showRenderer && !isDraft && !isBinaryFile && !isMarkdown && (
+                <button
+                  onClick={handleEdit}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--foreground)'; e.currentTarget.style.background = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted-foreground)'; e.currentTarget.style.background = 'var(--muted)'; }}
+                >
+                  <Edit3 size={13} />
+                  <span className="hidden sm:inline">Edit</span>
+                </button>
+              )}
+
+              {/* Non-markdown editing: original Cancel + Save buttons */}
+              {editing && !isMarkdown && (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isPending}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--muted)'; }}
                   >
-                    {m.icon}
-                    <span className="hidden md:inline">{m.label}</span>
+                    <X size={13} />
+                    <span className="hidden sm:inline">Cancel</span>
                   </button>
-                ))}
-              </div>
-            )}
-
-            {/* Editor theme picker — hidden for now, may move to Settings later */}
-
-            {/* Edit button — shown in view mode for non-markdown editable file types */}
-            {!editing && !showRenderer && !isDraft && !isBinaryFile && !isMarkdown && (
-              <button
-                onClick={handleEdit}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--foreground)'; e.currentTarget.style.background = 'var(--accent)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--muted-foreground)'; e.currentTarget.style.background = 'var(--muted)'; }}
-              >
-                <Edit3 size={13} />
-                <span className="hidden sm:inline">Edit</span>
-              </button>
-            )}
-
-            {/* Non-markdown editing: original Cancel + Save buttons */}
-            {editing && !isMarkdown && (
-              <>
-                <button
-                  onClick={handleCancel}
-                  disabled={isPending}
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--muted)'; }}
-                >
-                  <X size={13} />
-                  <span className="hidden sm:inline">Cancel</span>
-                </button>
-                <button
-                  onClick={isDraft && showSaveAs ? handleConfirmDraftSave : handleSave}
-                  disabled={isPending}
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
-                >
-                  {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span className="hidden sm:inline">Save</span>
-                </button>
-              </>
-            )}
-            {/* Draft markdown: keep Save/Cancel */}
-            {editing && isMarkdown && isDraft && (
-              <>
-                <button
-                  onClick={handleCancel}
-                  disabled={isPending}
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--muted)'; }}
-                >
-                  <X size={13} />
-                  <span className="hidden sm:inline">Cancel</span>
-                </button>
-                <button
-                  onClick={showSaveAs ? handleConfirmDraftSave : handleSave}
-                  disabled={isPending}
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
-                >
-                  {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span className="hidden sm:inline">Save</span>
-                </button>
-              </>
-            )}
-
-            {/* More menu (rename, copy path, delete) */}
-            {!isDraft && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => togglePin(filePath)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  title={pinned ? t.fileTree.removeFromFavorites : t.fileTree.pinToFavorites}
-                >
-                  <Star size={16} className={pinned ? 'fill-[var(--amber)] text-[var(--amber)]' : ''} />
-                </button>
-                <button
-                  ref={moreRef}
-                  type="button"
-                  onClick={() => setMoreOpen(v => !v)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
-                  title={t.view?.more ?? 'More'}
-                >
-                  <MoreHorizontal size={16} />
-                </button>
-                {moreOpen && (
-                  <div
-                    ref={moreMenuRef}
-                    className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-card shadow-lg py-1"
+                  <button
+                    onClick={isDraft && showSaveAs ? handleConfirmDraftSave : handleSave}
+                    disabled={isPending}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
                   >
-                    {extension === 'md' && !editing && !isDraft && isRendererEnabled('graph') && (
-                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={() => { setMoreOpen(false); handleToggleGraph(); }}>
-                        {effectiveGraphMode ? <FileText size={14} className="shrink-0" /> : <Share2 size={14} className="shrink-0" />}
-                        {effectiveGraphMode ? (t.view?.switchToDoc ?? 'Document view') : (t.view?.switchToGraph ?? 'Wiki Graph')}
+                    {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span className="hidden sm:inline">Save</span>
+                  </button>
+                </>
+              )}
+              {/* Draft markdown: keep Save/Cancel */}
+              {editing && isMarkdown && isDraft && (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isPending}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors duration-75 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--muted)'; }}
+                  >
+                    <X size={13} />
+                    <span className="hidden sm:inline">Cancel</span>
+                  </button>
+                  <button
+                    onClick={showSaveAs ? handleConfirmDraftSave : handleSave}
+                    disabled={isPending}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
+                  >
+                    {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span className="hidden sm:inline">Save</span>
+                  </button>
+                </>
+              )}
+
+              {/* More menu (rename, copy path, delete) */}
+              {!isDraft && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => togglePin(filePath)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    title={pinned ? t.fileTree.removeFromFavorites : t.fileTree.pinToFavorites}
+                  >
+                    <Star size={16} className={pinned ? 'fill-[var(--amber)] text-[var(--amber)]' : ''} />
+                  </button>
+                  <button
+                    ref={moreRef}
+                    type="button"
+                    onClick={() => setMoreOpen(v => !v)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-75 hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
+                    title={t.view?.more ?? 'More'}
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
+                  {moreOpen && (
+                    <div
+                      ref={moreMenuRef}
+                      className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-card shadow-lg py-1"
+                    >
+                      {extension === 'md' && !editing && !isDraft && isRendererEnabled('graph') && (
+                        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={() => { setMoreOpen(false); handleToggleGraph(); }}>
+                          {effectiveGraphMode ? <FileText size={14} className="shrink-0" /> : <Share2 size={14} className="shrink-0" />}
+                          {effectiveGraphMode ? (t.view?.switchToDoc ?? 'Document view') : (t.view?.switchToGraph ?? 'Wiki Graph')}
+                        </button>
+                      )}
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={() => { setMoreOpen(false); setExportOpen(true); }}>
+                        <Download size={14} className="shrink-0" /> {t.fileTree?.export ?? 'Export'}
                       </button>
-                    )}
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={() => { setMoreOpen(false); setExportOpen(true); }}>
-                      <Download size={14} className="shrink-0" /> {t.fileTree?.export ?? 'Export'}
-                    </button>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={handleCopyPath}>
-                      <Copy size={14} className="shrink-0" /> {t.view?.copyPath ?? t.fileTree?.copyPath ?? 'Copy Path'}
-                    </button>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={handleStartRename}>
-                      <Pencil size={14} className="shrink-0" /> {t.view?.rename ?? 'Rename'}
-                    </button>
-                    <div className="my-1 border-t border-border/50" />
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 transition-colors text-left" onClick={() => { setMoreOpen(false); setShowDeleteConfirm(true); }}>
-                      <Trash2 size={14} className="shrink-0" /> {t.view?.delete ?? 'Delete'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={handleCopyPath}>
+                        <Copy size={14} className="shrink-0" /> {t.view?.copyPath ?? t.fileTree?.copyPath ?? 'Copy Path'}
+                      </button>
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors text-left" onClick={handleStartRename}>
+                        <Pencil size={14} className="shrink-0" /> {t.view?.rename ?? 'Rename'}
+                      </button>
+                      <div className="my-1 border-t border-border/50" />
+                      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 transition-colors text-left" onClick={() => { setMoreOpen(false); setShowDeleteConfirm(true); }}>
+                        <Trash2 size={14} className="shrink-0" /> {t.view?.delete ?? 'Delete'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
