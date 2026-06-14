@@ -7,11 +7,7 @@ import { randomUUID } from 'crypto';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
-import type {
-  AgentRuntimeIdentity,
-  AskModeApi,
-  RuntimeSessionBinding,
-} from '@/lib/types';
+import type { AgentRuntimeIdentity, AskModeApi, RuntimeSessionBinding } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
@@ -66,10 +62,6 @@ import {
 } from '@geminilight/mindos/agent/runtime-permission-bridge';
 import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import {
-  normalizeNativeRuntimeOptions,
-  type NativeRuntimeRequestOptions,
-} from '@/lib/agent/native-runtime-options';
-import {
   createClaudePermissionPromptConfig,
   resolveRuntimePermissionBaseUrl,
 } from '@/lib/agent/claude-permission-prompt';
@@ -85,7 +77,10 @@ import {
   rememberAvailableNativeRuntimeDescriptor,
 } from '@/lib/agent/native-runtime-descriptor-cache';
 import { createMindosAgentPermissionPolicy } from '@geminilight/mindos/agent/permission-policy';
-import { runWithAgentRunContext } from '@geminilight/mindos/agent/agent-run-context';
+import {
+  runWithAgentRunContext,
+  setAgentRunContextForResource,
+} from '@geminilight/mindos/agent/agent-run-context';
 import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
 import { isAbortLikeError } from '@geminilight/mindos/agent/run-cancellation';
 
@@ -408,8 +403,6 @@ export async function POST(req: NextRequest) {
     providerOverride?: string;
     /** Per-request model override from the inline model picker */
     modelOverride?: string;
-    /** Per-request native runtime options from the Chat Panel runtime capsule */
-    runtimeOptions?: unknown;
     /** MindOS Chat Panel session id for run ledger correlation. */
     chatSessionId?: string;
   };
@@ -429,9 +422,6 @@ export async function POST(req: NextRequest) {
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
   const askMode: AskModeApi = normalizeMindosAskMode(body.mode);
   const permissionPolicy = createMindosAgentPermissionPolicy(askMode);
-  const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions, selectedNativeRuntime);
-  const nativeRuntimePermissionMode = nativeRuntimeOptions.permissionMode ?? permissionPolicy.runtimePermissionMode;
-  const nativeRuntimeLedgerPermissionMode = nativeRuntimePermissionMode === 'readonly' ? 'readonly' : 'agent';
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
     ? body.chatSessionId.trim()
     : undefined;
@@ -515,14 +505,11 @@ export async function POST(req: NextRequest) {
           runtimeId: nativeRuntime.id,
           displayName: nativeRuntime.name,
           cwd: mindRoot,
-          permissionMode: nativeRuntimeLedgerPermissionMode,
+          permissionMode: permissionPolicy.runtimePermissionMode,
           inputSummary: externalPrompt,
           metadata: {
             runtimeKind: nativeRuntime.kind,
             source: 'selected-native-runtime',
-            runtimePermissionMode: nativeRuntimePermissionMode,
-            ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
-            ...(nativeRuntimeOptions.reasoningEffort ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort } : {}),
           },
         });
         const sendWithLedger = (event: MindOSSSEvent) => {
@@ -547,9 +534,7 @@ export async function POST(req: NextRequest) {
               runtime: nativeRuntime,
               cwd: mindRoot,
               prompt: externalPrompt,
-              permissionMode: nativeRuntimePermissionMode,
-              ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
-              ...(nativeRuntimeOptions.reasoningEffort ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort } : {}),
+              permissionMode: permissionPolicy.runtimePermissionMode,
               timeoutMs: resolveMindosAgentTimeoutMs(process.env.MINDOS_AGENT_TIMEOUT_MS),
               ...(nativeRuntimeEnv ? { runtimeEnv: nativeRuntimeEnv } : {}),
               signal: req.signal,
@@ -849,6 +834,7 @@ export async function POST(req: NextRequest) {
     systemPrompt = runtime.systemPrompt;
     const {
       session,
+      agentRunContextResource,
       llmHistoryMessages,
       lastUserContent,
       lastUserImages,
@@ -878,75 +864,81 @@ export async function POST(req: NextRequest) {
         send(event);
       };
       try {
-        await runWithAgentRunContext({
+        const agentRunContext = {
           chatSessionId,
           rootRunId: mainRun.rootRunId ?? mainRun.id,
           parentRunId: mainRun.id,
-        }, async () => {
-          // ── Proxy compatibility check ──
-          // If this baseUrl is known to reject stream+tools, skip session.prompt() entirely
-          // and go straight to the non-streaming fallback path.
-          const compatCache = readBaseUrlCompat();
-          const effectiveBaseUrlKey = baseUrl || 'default';
-          const compatMode = resolveAskCompatMode({
-            askMode,
-            provider,
-            baseUrl,
-            cachedMode: compatCache[effectiveBaseUrlKey],
-          });
-          const proxyFallbackMessages = {
-            proxyCompatMode: t.proxyCompatMode,
-            proxyCompatDetecting: t.proxyCompatDetecting,
-            proxyCompatFailed: t.proxyCompatFailed,
-            proxyCompatAlsoFailed: t.proxyCompatAlsoFailed,
-          };
-          const runProxyFallback = () => runMindosNonStreamingFallback({
-            baseUrl: baseUrl ?? '',
-            apiKey,
-            model: modelName,
-            systemPrompt,
-            historyMessages: llmHistoryMessages,
-            userContent: typeof lastUserContent === 'string' ? lastUserContent : JSON.stringify(lastUserContent),
-            tools: requestTools,
-            send: sendWithLedger,
-            signal: req.signal,
-            maxSteps: stepLimit,
-          });
+        };
+        const restoreAgentRunResourceContext = setAgentRunContextForResource(agentRunContextResource, agentRunContext);
+        try {
+          await runWithAgentRunContext(agentRunContext, async () => {
+            // ── Proxy compatibility check ──
+            // If this baseUrl is known to reject stream+tools, skip session.prompt() entirely
+            // and go straight to the non-streaming fallback path.
+            const compatCache = readBaseUrlCompat();
+            const effectiveBaseUrlKey = baseUrl || 'default';
+            const compatMode = resolveAskCompatMode({
+              askMode,
+              provider,
+              baseUrl,
+              cachedMode: compatCache[effectiveBaseUrlKey],
+            });
+            const proxyFallbackMessages = {
+              proxyCompatMode: t.proxyCompatMode,
+              proxyCompatDetecting: t.proxyCompatDetecting,
+              proxyCompatFailed: t.proxyCompatFailed,
+              proxyCompatAlsoFailed: t.proxyCompatAlsoFailed,
+            };
+            const runProxyFallback = () => runMindosNonStreamingFallback({
+              baseUrl: baseUrl ?? '',
+              apiKey,
+              model: modelName,
+              systemPrompt,
+              historyMessages: llmHistoryMessages,
+              userContent: typeof lastUserContent === 'string' ? lastUserContent : JSON.stringify(lastUserContent),
+              tools: requestTools,
+              send: sendWithLedger,
+              signal: req.signal,
+              maxSteps: stepLimit,
+            });
 
-          const askRunId = randomUUID();
-          await runWithAskUserQuestionBridge({
-            runId: askRunId,
-            send: (event) => sendWithLedger(event as unknown as MindOSSSEvent),
-          }, () => runMindosPiAgentAskSession({
-            session: {
-              subscribe: (callback) => { session.subscribe(callback); },
-              prompt: async (prompt, options) => { await session.prompt(prompt, options as any); },
-              steer: (message) => session.steer(message),
-              abort: () => session.abort(),
-            },
-            prompt: lastUserContent,
-            promptOptions: lastUserImages ? { images: lastUserImages } : undefined,
-            stepLimit,
-            timeoutMs: resolveMindosAgentTimeoutMs(process.env.MINDOS_AGENT_TIMEOUT_MS),
-            signal: req.signal,
-            provider,
-            baseUrl,
-            effectiveBaseUrlKey,
-            compatMode,
-            send: sendWithLedger,
-            runFallback: runProxyFallback,
-            proxyMessages: proxyFallbackMessages,
-            onToolExecution: () => metrics.recordToolExecution(),
-            onTokens: (input, output) => metrics.recordTokens(input, output),
-            onStep: (step, maxSteps) => {
-              if (process.env.NODE_ENV === 'development') console.log(`[ask] Step ${step}/${maxSteps}`);
-            },
-            writeCompat: (key, mode) => {
-              writeBaseUrlCompat(key, mode);
-              console.log(`[ask] Proxy compat detected: ${key} → ${mode} (cached)`);
-            },
-          }));
-        });
+            const askRunId = randomUUID();
+            await runWithAskUserQuestionBridge({
+              runId: askRunId,
+              send: (event) => sendWithLedger(event as unknown as MindOSSSEvent),
+            }, () => runMindosPiAgentAskSession({
+              session: {
+                subscribe: (callback) => { session.subscribe(callback); },
+                prompt: async (prompt, options) => { await session.prompt(prompt, options as any); },
+                steer: (message) => session.steer(message),
+                abort: () => session.abort(),
+              },
+              prompt: lastUserContent,
+              promptOptions: lastUserImages ? { images: lastUserImages } : undefined,
+              stepLimit,
+              timeoutMs: resolveMindosAgentTimeoutMs(process.env.MINDOS_AGENT_TIMEOUT_MS),
+              signal: req.signal,
+              provider,
+              baseUrl,
+              effectiveBaseUrlKey,
+              compatMode,
+              send: sendWithLedger,
+              runFallback: runProxyFallback,
+              proxyMessages: proxyFallbackMessages,
+              onToolExecution: () => metrics.recordToolExecution(),
+              onTokens: (input, output) => metrics.recordTokens(input, output),
+              onStep: (step, maxSteps) => {
+                if (process.env.NODE_ENV === 'development') console.log(`[ask] Step ${step}/${maxSteps}`);
+              },
+              writeCompat: (key, mode) => {
+                writeBaseUrlCompat(key, mode);
+                console.log(`[ask] Proxy compat detected: ${key} → ${mode} (cached)`);
+              },
+            }));
+          });
+        } finally {
+          restoreAgentRunResourceContext();
+        }
         completeAgentRun(mainRun.id, { outputSummary });
       } catch (error) {
         failAgentRun(mainRun.id, {

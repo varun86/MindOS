@@ -23,7 +23,7 @@ export function ChannelIcon({
   if (platform.iconFile) {
     return (
       <span
-        className={`${classes.box} inline-flex shrink-0 items-center justify-center border border-border bg-background/80 ${className ?? ''}`}
+        className={`${classes.box} ${className ?? ''} inline-flex shrink-0 items-center justify-center border border-border bg-background/80`}
         title={platform.name}
       >
         <img

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Bot } from 'lucide-react';
 import { PanelNavRow } from '@/components/panels/PanelNavRow';
 
-function classNameFor(active: boolean): string {
+function htmlFor(active: boolean): string {
   const html = renderToStaticMarkup(
     <PanelNavRow
       icon={<Bot size={14} />}
@@ -12,19 +12,13 @@ function classNameFor(active: boolean): string {
       active={active}
     />,
   );
-  const match = html.match(/class="([^"]+)"/);
-  return match?.[1] ?? '';
+  return html;
 }
 
-function htmlFor(active: boolean): string {
-  return renderToStaticMarkup(
-    <PanelNavRow
-      icon={<Bot size={14} />}
-      title={active ? 'Active' : 'Inactive'}
-      href="/agents?tab=agent"
-      active={active}
-    />,
-  );
+function classNameFor(active: boolean): string {
+  const html = htmlFor(active);
+  const match = html.match(/class="([^"]+)"/);
+  return match?.[1] ?? '';
 }
 
 describe('PanelNavRow layout stability', () => {
@@ -40,14 +34,17 @@ describe('PanelNavRow layout stability', () => {
     expect(activeClassName).not.toContain('pr-4');
   });
 
-  it('uses a stable active background and icon tile instead of a left rail', () => {
+  it('uses the lightweight rectangular active state with a left amber rail', () => {
     const activeHtml = htmlFor(true);
-    const inactiveHtml = htmlFor(false);
+    const activeClassName = classNameFor(true);
 
-    expect(activeHtml).toContain('border-[var(--amber)]/35');
-    expect(activeHtml).toContain('bg-[var(--amber-dim)]/45');
-    expect(activeHtml).toContain('bg-[var(--amber)]/10');
-    expect(activeHtml).not.toContain('rounded-r-full');
-    expect(inactiveHtml).toContain('border-transparent');
+    expect(activeClassName).toContain('rounded-none');
+    expect(activeClassName).toContain('bg-[var(--amber-subtle)]');
+    expect(activeClassName).not.toContain('ring-2 ring-ring/50');
+    expect(activeClassName).not.toContain('border-border');
+    expect(activeClassName).not.toContain('shadow');
+    expect(activeClassName).not.toContain('bg-[var(--amber-dim)]');
+    expect(activeHtml).toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
+    expect(activeHtml).toContain('aria-current="page"');
   });
 });

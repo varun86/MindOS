@@ -75,7 +75,7 @@ export function useSettingsPort() {
     if (isValidUserPort(port)) checkPort(port);
   }, [checkPort, port]);
 
-  const applySuggestedPort = useCallback((suggestion: number) => {
+  const useSuggestedPort = useCallback((suggestion: number) => {
     setPort(suggestion);
     resetPortStatus();
     void checkPort(suggestion);
@@ -92,6 +92,6 @@ export function useSettingsPort() {
     portUnavailable,
     handlePortInputChange,
     handlePortInputBlur,
-    applySuggestedPort,
+    useSuggestedPort,
   };
 }

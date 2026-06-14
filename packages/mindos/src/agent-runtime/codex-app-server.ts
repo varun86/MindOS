@@ -99,21 +99,6 @@ export type CodexThreadListResult = {
   backwardsCursor: string | null;
 };
 
-export type CodexThreadStartInput = {
-  model?: string | null;
-  modelProvider?: string | null;
-  serviceTier?: string | null;
-  cwd?: string | null;
-  approvalPolicy?: unknown;
-  approvalsReviewer?: unknown;
-  sandbox?: unknown;
-  config?: Record<string, unknown> | null;
-};
-
-export type CodexThreadResumeInput = CodexThreadStartInput & {
-  threadId: string;
-};
-
 export type CodexThreadReadResult = {
   thread: CodexThread;
 };
@@ -124,7 +109,7 @@ export type CodexThreadForkInput = {
   modelProvider?: string | null;
   serviceTier?: string | null;
   cwd?: string | null;
-  approvalPolicy?: unknown;
+  approvalPolicy?: string | null;
   approvalsReviewer?: unknown;
   sandbox?: unknown;
   config?: Record<string, unknown> | null;
@@ -144,8 +129,8 @@ export type CodexAppServerRequestOptions = {
 
 export type CodexAppServerClient = {
   initialize(options?: CodexAppServerRequestOptions): Promise<void>;
-  startThread(input?: CodexThreadStartInput, options?: CodexAppServerRequestOptions): Promise<{ threadId: string }>;
-  resumeThread(input: CodexThreadResumeInput, options?: CodexAppServerRequestOptions): Promise<{ threadId: string }>;
+  startThread(input?: { model?: string; cwd?: string }, options?: CodexAppServerRequestOptions): Promise<{ threadId: string }>;
+  resumeThread(input: { threadId: string }, options?: CodexAppServerRequestOptions): Promise<{ threadId: string }>;
   listThreads(input?: CodexThreadListInput): Promise<CodexThreadListResult>;
   readThread(input: { threadId: string; includeTurns?: boolean }): Promise<CodexThreadReadResult>;
   forkThread(input: CodexThreadForkInput): Promise<CodexThreadForkResult>;
@@ -155,13 +140,6 @@ export type CodexAppServerClient = {
     threadId: string;
     input: CodexTurnInput;
     cwd?: string;
-    approvalPolicy?: unknown;
-    approvalsReviewer?: unknown;
-    sandboxPolicy?: unknown;
-    model?: string | null;
-    serviceTier?: string | null;
-    effort?: string | null;
-    summary?: string | null;
     signal?: AbortSignal;
   }): AsyncIterable<CodexAppServerNotification>;
   interruptTurn?(input: { threadId: string; turnId?: string }): Promise<void>;
@@ -340,29 +318,13 @@ export function createCodexAppServerClient(
     async startThread(input = {}, options = {}) {
       const params = pruneUndefined({
         model: input.model,
-        modelProvider: input.modelProvider,
-        serviceTier: input.serviceTier,
         cwd: input.cwd,
-        approvalPolicy: input.approvalPolicy,
-        approvalsReviewer: input.approvalsReviewer,
-        sandbox: input.sandbox,
-        config: input.config,
       });
       const result = await request('thread/start', params, options.signal);
       return { threadId: getThreadId(result, 'thread/start') };
     },
     async resumeThread(input, options = {}) {
-      const result = await request('thread/resume', pruneUndefined({
-        threadId: input.threadId,
-        model: input.model,
-        modelProvider: input.modelProvider,
-        serviceTier: input.serviceTier,
-        cwd: input.cwd,
-        approvalPolicy: input.approvalPolicy,
-        approvalsReviewer: input.approvalsReviewer,
-        sandbox: input.sandbox,
-        config: input.config,
-      }), options.signal);
+      const result = await request('thread/resume', { threadId: input.threadId }, options.signal);
       return { threadId: getThreadId(result, 'thread/resume') ?? input.threadId };
     },
     async listThreads(input = {}) {
@@ -396,13 +358,6 @@ export function createCodexAppServerClient(
         threadId: input.threadId,
         input: input.input,
         ...(input.cwd ? { cwd: input.cwd } : {}),
-        ...(input.approvalPolicy ? { approvalPolicy: input.approvalPolicy } : {}),
-        ...(input.approvalsReviewer ? { approvalsReviewer: input.approvalsReviewer } : {}),
-        ...(input.sandboxPolicy ? { sandboxPolicy: input.sandboxPolicy } : {}),
-        ...(input.model ? { model: input.model } : {}),
-        ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-        ...(input.effort ? { effort: input.effort } : {}),
-        ...(input.summary ? { summary: input.summary } : {}),
       };
       await request('turn/start', params, input.signal);
       for await (const notification of notifications) {

@@ -11,9 +11,11 @@ import { ECHO_SEGMENT_HREF, ECHO_SEGMENT_ORDER, type EchoSegment } from '@/lib/e
 
 interface EchoPanelProps {
   active: boolean;
+  maximized?: boolean;
+  onMaximize?: () => void;
 }
 
-export default function EchoPanel({ active }: EchoPanelProps) {
+export default function EchoPanel({ active, maximized, onMaximize }: EchoPanelProps) {
   const { t } = useLocale();
   const e = t.panels.echo;
   const pathname = usePathname() ?? '';
@@ -26,7 +28,7 @@ export default function EchoPanel({ active }: EchoPanelProps) {
 
   return (
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
-      <PanelHeader title={e.title} />
+      <PanelHeader title={e.title} maximized={maximized} onMaximize={onMaximize} />
       <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
         <div className="flex flex-col gap-0.5 py-1.5">
           {ECHO_SEGMENT_ORDER.map((segment) => {

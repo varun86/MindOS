@@ -142,14 +142,6 @@ export interface AgentRuntimeBridge {
   reason?: string;
 }
 
-export interface AgentRuntimeOptionsDescriptor {
-  permissionModes: RuntimePermissionMode[];
-  effortModes: Array<Exclude<RuntimeReasoningEffort, 'minimal'> | (string & {})>;
-  modelInput: 'freeform' | 'external';
-  defaultPermissionMode: RuntimePermissionMode;
-  defaultEffortMode: 'auto';
-}
-
 export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
   category?: AgentRuntimeCategory;
   runtimeId?: string;
@@ -161,7 +153,6 @@ export interface AgentRuntimeDescriptor extends AgentRuntimeIdentity {
   status: AgentRuntimeStatus;
   capabilities: AgentRuntimeCapabilities;
   harnessCapabilities?: AgentRuntimeHarnessCapabilities;
-  runtimeOptions?: AgentRuntimeOptionsDescriptor;
   runtimeBridge?: AgentRuntimeBridge;
   description?: string;
   sourceAgentId?: string;
@@ -243,26 +234,6 @@ export type AskMode = 'chat' | 'agent';
 
 /** All Ask modes including internal ones sent to the API */
 export type AskModeApi = AskMode | 'organize';
-
-export type RuntimePermissionMode =
-  | 'agent'
-  | 'readonly'
-  | 'workspace-write'
-  | 'danger-full-access';
-export type RuntimeReasoningEffort =
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
-  | (string & {});
-
-export interface RuntimeOptionsState {
-  permissionMode: RuntimePermissionMode;
-  modelOverride: string | null;
-  reasoningEffort: RuntimeReasoningEffort | null;
-}
 
 export interface ChatSession {
   id: string;

@@ -469,9 +469,9 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
       </PanelHeader>
 
       {/* Search input */}
-      <div className="px-3 py-2.5 border-b border-border shrink-0 overflow-hidden">
+      <div className="px-4 py-3 border-b border-border shrink-0 overflow-hidden">
         <div className="flex items-center gap-3 overflow-hidden">
-          <Search size={15} className="text-muted-foreground shrink-0 flex-none" />
+          <Search size={16} className="text-muted-foreground shrink-0 flex-none" />
           <input
             ref={inputRef}
             type="text"
@@ -480,7 +480,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
             onKeyDown={handleKeyDown}
             placeholder={t.search.placeholder}
             aria-label={t.search.placeholder}
-            className="flex-1 min-w-0 bg-transparent text-foreground text-sm font-medium placeholder:text-muted-foreground/55 outline-none"
+            className="flex-1 min-w-0 bg-transparent text-foreground text-base font-medium placeholder:text-muted-foreground/60 outline-none"
           />
           {loading && (
             <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-foreground rounded-full animate-spin shrink-0 flex-none" />
@@ -613,7 +613,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
                   onClick={() => navigate(result)}
                   onMouseEnter={() => setSelectedIndex(visiblePluginCommands.length + i)}
                   className={`
-                    group w-full px-3 py-2.5 flex items-start gap-3 text-left transition-colors duration-100
+                    w-full px-3 py-2.5 flex items-start gap-3 text-left transition-colors duration-100
                     border-b border-border/50
                     ${isSelected ? 'bg-[var(--amber-dim)] border-l-2 border-[var(--amber)]' : 'border-l-2 border-transparent'}
                     ${isDragging ? 'bg-muted/70' : isSelected ? '' : 'hover:bg-muted/60'}
@@ -654,15 +654,11 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
                     )}
                   </div>
 
-                  {/* Drag affordance */}
+                  {/* Drag hint */}
                   {isSelected && !isDragging && (
-                    <span
-                      className="hidden md:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
-                      title={t.search.dragToChat}
-                      aria-label={t.search.dragToChat}
-                    >
-                      <GripVertical size={13} aria-hidden="true" />
-                    </span>
+                    <div className="shrink-0 flex-none text-[10px] text-muted-foreground/50 font-mono pt-0.5">
+                      ⬆ Drag
+                    </div>
                   )}
                 </button>
               );
@@ -702,15 +698,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
           <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↑↓</kbd> {t.search.navigate}</span>
           <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↵</kbd> {t.search.open}</span>
           <span className="text-muted-foreground/40 mx-0.5">•</span>
-          <span className="inline-flex items-center gap-1">
-            <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded bg-muted/40 text-muted-foreground/70"
-              aria-hidden="true"
-            >
-              <GripVertical size={12} />
-            </span>
-            {t.search.dragToChat}
-          </span>
+          <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">Drag</kbd> {t.search.dragToChat}</span>
         </div>
       )}
 

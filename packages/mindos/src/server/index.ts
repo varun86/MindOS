@@ -390,10 +390,8 @@ export {
 
 export {
   handleTreeVersion,
-  handleTreeVersionRefresh,
   type TreeVersionHandlerServices,
   type TreeVersionPayload,
-  type TreeVersionRefreshHandlerServices,
 } from './handlers/tree-version.js';
 
 export {

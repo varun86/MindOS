@@ -16,13 +16,19 @@ export default function AskFab({ onToggle, askPanelOpen }: AskFabProps) {
   const pathname = usePathname();
   const label = `${t.ask?.fabLabel ?? 'Ask MindOS'} (⌘/)`;
 
-  // Hide on home page — it already has an inline chatbot
+  // Hide on full-page chat surfaces — they already own the composer.
   const isHome = pathname === '/' || pathname === '';
-  const hidden = askPanelOpen || isHome;
+  const isFullPageChat = pathname === '/chat' || pathname.startsWith('/chat/');
+  const hidden = askPanelOpen || isHome || isFullPageChat;
 
   return (
     <button
-      onClick={onToggle}
+      onClick={() => {
+        if (!hidden) onToggle();
+      }}
+      disabled={hidden}
+      tabIndex={hidden ? -1 : 0}
+      aria-hidden={hidden ? true : undefined}
       className={`
         hit-target-box
         group hidden md:flex

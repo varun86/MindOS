@@ -11,8 +11,7 @@
 import { spawn } from 'child_process';
 import http from 'http';
 import { createServer as createTcpServer } from 'net';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { materializeStandaloneAssets } from '../packages/desktop/scripts/prepare-mindos-bundle.mjs';
@@ -54,7 +53,6 @@ async function allocateFreePort() {
 }
 
 const port = await allocateFreePort();
-const tempHome = mkdtempSync(path.join(tmpdir(), 'mindos-standalone-home-'));
 const nodeBin = process.execPath;
 const localOrigin = `http://127.0.0.1:${port}`;
 const redirectStatusCodes = new Set([301, 302, 303, 307, 308]);
@@ -71,7 +69,6 @@ function resolveLocalRedirect(currentUrl, location) {
 function waitHttpOk(pathname, timeoutMs, validate = () => true, options = {}) {
   const maxRedirects = options.maxRedirects ?? 0;
   const deadline = Date.now() + timeoutMs;
-  let lastStatus = '';
   return new Promise((resolve, reject) => {
     const requestUrl = (url, redirectsRemaining) => {
       const req = http.get(url, { timeout: 2000 }, (res) => {
@@ -80,7 +77,6 @@ function waitHttpOk(pathname, timeoutMs, validate = () => true, options = {}) {
           body += c;
         });
         res.on('end', () => {
-          lastStatus = `last response ${res.statusCode ?? 'unknown'} ${body.slice(0, 180)}`;
           if (res.statusCode === 200 && validate(body)) {
             resolve();
             return;
@@ -118,7 +114,7 @@ function waitHttpOk(pathname, timeoutMs, validate = () => true, options = {}) {
 
     const tick = () => {
       if (Date.now() > deadline) {
-        reject(new Error(`Timeout waiting for ${localOrigin}${pathname}${lastStatus ? ` (${lastStatus})` : ''}`));
+        reject(new Error(`Timeout waiting for ${localOrigin}${pathname}`));
         return;
       }
       requestUrl(new URL(pathname, localOrigin), maxRedirects);
@@ -159,11 +155,6 @@ const child = spawn(nodeBin, [serverJs], {
     PORT: String(port),
     /** Next binds to machine hostname by default; Desktop health checks use 127.0.0.1 */
     HOSTNAME: '127.0.0.1',
-    // Isolate release smoke from the developer machine's persisted ~/.mindos auth config.
-    HOME: tempHome,
-    USERPROFILE: tempHome,
-    APPDATA: path.join(tempHome, 'AppData', 'Roaming'),
-    LOCALAPPDATA: path.join(tempHome, 'AppData', 'Local'),
     WEB_PASSWORD: '',
     WEB_SESSION_SECRET: '',
   },
@@ -201,7 +192,6 @@ async function main() {
   } finally {
     killChild();
     await new Promise((r) => setTimeout(r, 500));
-    rmSync(tempHome, { recursive: true, force: true });
   }
 }
 

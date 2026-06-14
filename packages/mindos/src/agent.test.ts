@@ -26,7 +26,14 @@ describe('MindOS agent product contract', () => {
     expect(AGENT_SYSTEM_PROMPT).toContain('Read Before Write');
     expect(AGENT_SYSTEM_PROMPT).toContain('Delegation / Subagents');
     expect(AGENT_SYSTEM_PROMPT).toContain('action: "list"');
+    expect(AGENT_SYSTEM_PROMPT).toContain('pass only `name` as the `agent` value');
+    expect(AGENT_SYSTEM_PROMPT).toContain('never include labels like `(builtin)`');
+    expect(AGENT_SYSTEM_PROMPT).toContain('not `action` values');
+    expect(AGENT_SYSTEM_PROMPT).toContain('omit `action` and pass `agent`, `tasks`, or `chain`');
     expect(AGENT_SYSTEM_PROMPT).toContain('separate from ACP runtimes, A2A agents');
+    expect(AGENT_SYSTEM_PROMPT).toContain('Default to `subagent` when the work is complex and separable');
+    expect(AGENT_SYSTEM_PROMPT).toContain('"parallel", "split", "拆开", "并行", "多个角度"');
+    expect(AGENT_SYSTEM_PROMPT).toContain('2+ independent files, perspectives, verification checks, or subtasks');
     expect(AGENT_SYSTEM_PROMPT).toContain('Structured Clarification');
     expect(AGENT_SYSTEM_PROMPT).toContain('ask_user_question');
     expect(CHAT_SYSTEM_PROMPT).toContain('Read-Only');

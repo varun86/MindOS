@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build MindOS package
+        run: pnpm --filter @geminilight/mindos run build
+
       - name: Run channel typecheck
         run: pnpm --filter @mindos/web run typecheck
 

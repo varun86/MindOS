@@ -38,18 +38,22 @@ export default function AgentsPanelAgentListRow({
   return (
     <div
       className={`
-        group flex items-center gap-0 rounded-lg border transition-[background-color,border-color,box-shadow] duration-150
+        group relative flex items-center gap-0 rounded-none transition-colors duration-150
         ${selected
-          ? 'border-[var(--amber)]/35 bg-[var(--amber-dim)]/45 shadow-sm'
-          : 'border-border/70 bg-card/50 hover:border-border hover:bg-muted/25'}
+          ? 'bg-[var(--amber-subtle)]'
+          : 'bg-transparent hover:bg-muted/35'}
       `}
     >
+      {selected && (
+        <span className="pointer-events-none absolute bottom-[20%] left-0 top-[20%] w-[3px] rounded-r-full bg-[var(--amber)]" aria-hidden="true" />
+      )}
       <Link
         href={detailHref}
-        className="flex flex-1 min-w-0 items-center gap-2.5 text-left rounded-lg pl-2.5 pr-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-current={selected ? 'page' : undefined}
+        className="flex flex-1 min-w-0 items-center gap-2.5 text-left rounded-none pl-2.5 pr-2 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <AgentAvatar name={agent.name} status={agentStatus} size="sm" />
-        <span className="text-sm font-medium text-foreground truncate leading-tight" title={agent.name}>{agent.name}</span>
+        <span className="text-sm font-medium text-foreground truncate leading-tight">{agent.name}</span>
         {isA2aReady && (
           <span title={a2aTooltip} className="shrink-0 text-muted-foreground/70">
             <Globe size={12} />

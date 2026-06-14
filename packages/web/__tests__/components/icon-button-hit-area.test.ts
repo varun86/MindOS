@@ -56,11 +56,11 @@ describe('icon button hit areas', () => {
     expect(filesPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
     expect(filesPanelSource).not.toContain('hover:bg-muted transition-colors text-left');
 
-    expect(agentsPanelSource).toContain('<PanelHeader title={p.title} />');
+    expect(agentsPanelSource).toContain('hit-target-box inline-flex h-8 w-8');
     expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
   });
 
-  it('keeps the files panel depth controls visible on narrow headers', () => {
+  it('keeps the files panel more button visible before depth controls on narrow headers', () => {
     const source = readSource('components/Panel.tsx');
     const headerSource = readSource('components/panels/PanelHeader.tsx');
     const css = readSource('app/globals.css');
@@ -71,16 +71,20 @@ describe('icon button hit areas', () => {
     expect(source).toContain('files-panel-header-actions');
     expect(source).toContain('files-panel-header-depth-actions');
     expect(source).toContain('files-panel-header-more-action');
-    expect(css).not.toContain('.files-panel-header-depth-actions');
+    expect(css).toContain('@container (max-width: 272px)');
+    expect(css).toContain('.files-panel-header-depth-actions');
+    expect(css).toContain('display: none;');
   });
 
   it('keeps built-in Mind System sidebar controls on rectangular hit targets', () => {
     const source = readSource('components/Panel.tsx');
 
-    expect(source).toContain('data-hit-active={collapsed ? undefined : \'true\'}');
-    expect(source).toContain('hit-target-box mb-1 flex w-full items-center gap-2');
+    expect(source).toContain('data-hit-active={expanded ? \'true\' : undefined}');
+    expect(source).toContain('hit-target-box relative mb-1 flex w-full items-center gap-2');
+    expect(source).not.toContain('hit-target-box relative mb-1 flex w-full items-center gap-2 border border-transparent');
+    expect(source).toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
     expect(source).toContain('data-mind-system-sidebar-open={item.key}');
-    expect(source).toContain('hit-target-box flex w-full min-w-0 items-center gap-2');
+    expect(source).toContain('hit-target-box relative flex w-full min-w-0 items-center gap-2');
   });
 
   it('keeps file tree row controls on stable hit targets', () => {
@@ -101,7 +105,7 @@ describe('icon button hit areas', () => {
 
     expect(source).toContain('hit-target-box relative flex items-center');
     expect(source).toContain('hit-target-box');
-    expect(source).toContain('[--hit-target-radius:9999px]');
+    expect(source).toContain('[--hit-target-radius:0px]');
     expect(source).toContain("'data-hit-active': active ? 'true' : undefined");
     expect(source).not.toContain("hover:bg-muted'");
     expect(source).not.toContain("bg-[var(--amber-dim)]'");
@@ -188,10 +192,6 @@ describe('icon button hit areas', () => {
     expect(messageListSource).toContain('absolute right-3 top-full');
     expect(messageListSource).toContain('md:group-hover/message:opacity-100');
     expect(messageListSource).toContain('md:focus-within:opacity-100');
-    expect(messageListSource).not.toContain('contentVisibility');
-    expect(messageListSource).not.toContain('containIntrinsicSize');
-    expect(messageListSource).not.toContain('style={MESSAGE_ROW_STYLE}');
-    expect(messageListSource).toContain('pt-5 pb-10 space-y-6');
     expect(messageListSource).not.toContain('mt-2 flex justify-start');
     expect(messageListSource).not.toContain('mt-2 flex justify-end');
     expect(messageListSource).toContain('hit-target-box group/sug');
@@ -199,14 +199,6 @@ describe('icon button hit areas', () => {
     expect(saveInsightSource).toContain('hit-target-box inline-flex h-7 w-7');
     expect(saveInsightSource).toContain('[--hit-target-hover-border:color-mix(in_srgb,var(--amber)_30%,transparent)]');
     expect(saveSource).toContain('hover:bg-[var(--amber)]/10 hover:text-[var(--amber)]');
-  });
-
-  it('keeps shared dialog controls above dialog content layers', () => {
-    const dialogSource = readSource('components/ui/dialog.tsx');
-
-    expect(dialogSource).toContain('z-app-modal overlay-backdrop');
-    expect(dialogSource).toContain('z-app-modal grid');
-    expect(dialogSource).toContain('className="absolute top-2 right-2 z-10"');
   });
 
   it('keeps floating utilities and modal buttons on rectangular hit targets', () => {

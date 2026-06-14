@@ -45,6 +45,13 @@ describe('MarkdownEditor frontmatter handling', () => {
     expect(host.querySelector('[data-testid="source-editor"]')).not.toBeNull();
   });
 
+  it('keeps malformed frontmatter-like notes in source mode', async () => {
+    await render('---\ntitle: [broken\n---\n\n# Body', 'wysiwyg');
+
+    expect(host.querySelector('[data-testid="wysiwyg-editor"]')).toBeNull();
+    expect(host.querySelector('[data-testid="source-editor"]')).not.toBeNull();
+  });
+
   it('keeps WYSIWYG available for markdown without leading frontmatter', async () => {
     await render('# Body\n\n---\n\nDivider', 'wysiwyg');
 

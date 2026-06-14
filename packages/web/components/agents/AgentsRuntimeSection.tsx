@@ -184,7 +184,6 @@ export default function AgentsRuntimeSection({
     errorByKind: native.errorByKind,
     copy,
   });
-  const nativeRefreshing = Object.values(native.loadingByKind).some(Boolean);
 
   const openRuntime = (endpoint: RuntimeEndpoint) => {
     if (endpoint.disabled) return;
@@ -194,25 +193,15 @@ export default function AgentsRuntimeSection({
   if (variant === 'panel') {
     return (
       <div className="px-3 py-3">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <AgentSectionHeading
-            as="h3"
-            size="sm"
-            icon={<Bot size={12} aria-hidden="true" />}
-            title={copy.panelTitle}
-            descriptionTooltip={copy.panelDescription}
-            titleClassName="text-[11px] uppercase tracking-wider text-muted-foreground/80"
-          />
-          <button
-            type="button"
-            onClick={native.refresh}
-            aria-label={copy.refresh}
-            title={copy.refresh}
-            className="hit-target-box inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
-          >
-            <RefreshCw size={12} className={nativeRefreshing ? 'animate-spin' : ''} aria-hidden="true" />
-          </button>
-        </div>
+        <AgentSectionHeading
+          as="h3"
+          size="sm"
+          icon={<Bot size={12} aria-hidden="true" />}
+          title={copy.panelTitle}
+          descriptionTooltip={copy.panelDescription}
+          titleClassName="text-[11px] uppercase tracking-wider text-muted-foreground/80"
+          className="mb-3"
+        />
         <div className="space-y-1.5">
           {endpoints.map((endpoint) => (
             endpoint.href ? (
@@ -238,6 +227,14 @@ export default function AgentsRuntimeSection({
             )
           ))}
         </div>
+        <button
+          type="button"
+          onClick={native.refresh}
+          className="mt-3 inline-flex min-h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-2xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <RefreshCw size={12} aria-hidden="true" />
+          {copy.refresh}
+        </button>
       </div>
     );
   }
@@ -254,11 +251,10 @@ export default function AgentsRuntimeSection({
           <button
             type="button"
             onClick={native.refresh}
-            aria-label={copy.refresh}
-            title={copy.refresh}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <RefreshCw size={13} aria-hidden="true" />
+            {copy.refresh}
           </button>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -290,10 +286,10 @@ function EndpointPanelText({
   return (
     <span className="min-w-0 flex-1">
       <span className="flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-medium text-foreground" title={endpoint.name}>{endpoint.name}</span>
+        <span className="truncate text-xs font-medium text-foreground">{endpoint.name}</span>
         <RuntimeStatusMark status={endpoint.status} label={statusLabel} />
       </span>
-      <span className="mt-1 block truncate text-2xs text-muted-foreground" title={endpoint.detail}>{endpoint.detail}</span>
+      <span className="mt-1 block truncate text-2xs text-muted-foreground">{endpoint.detail}</span>
     </span>
   );
 }
@@ -326,18 +322,18 @@ function EndpointCard({
         {runtimeIcon(endpoint.icon, 'h-10 w-10')}
         <span className="min-w-0">
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className="truncate text-sm font-semibold text-foreground" title={endpoint.name}>{endpoint.name}</span>
+            <span className="truncate text-sm font-semibold text-foreground">{endpoint.name}</span>
             {isPrimary ? (
               <span className="rounded border border-[var(--amber)]/25 bg-[var(--amber)]/10 px-1.5 py-0.5 text-2xs font-medium text-[var(--amber-text)]">
                 {copy.defaultTag}
               </span>
             ) : null}
           </span>
-          <span className="mt-2 block truncate text-xs leading-relaxed text-muted-foreground" title={endpoint.description}>{endpoint.description}</span>
+          <span className="mt-2 block line-clamp-2 text-xs leading-relaxed text-muted-foreground">{endpoint.description}</span>
         </span>
       </span>
       {showDetail ? (
-        <span className="mt-3 block truncate rounded-md border border-border/40 bg-background/45 px-2.5 py-1.5 text-2xs text-muted-foreground" title={endpoint.detail}>
+        <span className="mt-3 block truncate rounded-md border border-border/40 bg-background/45 px-2.5 py-1.5 text-2xs text-muted-foreground">
           {endpoint.detail}
         </span>
       ) : null}

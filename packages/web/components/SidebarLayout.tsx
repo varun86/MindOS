@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import { flushSync } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Settings, Menu, X, FolderInput } from 'lucide-react';
@@ -22,7 +23,6 @@ import { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
 import { useLocale } from '@/lib/stores/locale-store';
 import { telemetry } from '@/lib/telemetry';
-import { notifyFilesChanged } from '@/lib/files-changed';
 import dynamic from 'next/dynamic';
 
 const SearchModal = dynamic(() => import('./SearchModal'), { ssr: false });
@@ -49,8 +49,6 @@ import {
   getActiveLeftPanel,
   getContentRoutePanel,
   getEffectivePanelMaximized,
-  getHomeClickPanel,
-  getPendingHomePanel,
   getPendingRoutePanel,
   getRailActivePanel,
   getRailPanelClickDecision,
@@ -58,7 +56,6 @@ import {
   isNeutralContentRoute,
   recoverStaleRoutePanel,
   type PanelId,
-  type PendingHomeNav,
   type PendingRouteNav,
   type RoutePanelId,
 } from '@/lib/navigation-panel';
@@ -211,6 +208,10 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   const inboxOrganize = useInboxOrganizeController({ aiOrganize, labels: t.inbox });
   const router = useRouter();
   const pathname = usePathname();
+  const isFullPageChatRoute = pathname === '/chat' || pathname.startsWith('/chat/');
+  const effectiveAskPanelOpen = !isFullPageChatRoute && ap.askPanelOpen;
+  const effectiveDesktopAskPopupOpen = !isFullPageChatRoute && ap.desktopAskPopupOpen;
+  const effectiveMobileAskOpen = !isFullPageChatRoute && mobileAskOpen;
   const dirPaths = useMemo(() => {
     const stop = telemetry.startTimer('sidebar.collect_dir_paths');
     const paths = collectDirPaths(fileTree);
@@ -237,11 +238,11 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   // mismatch can't flip any derived state back and forth (the rail-click
   // flicker). Any pathname change invalidates the pending entry in-render.
   const [pendingNav, setPendingNav] = useState<PendingRouteNav | null>(null);
-  const [pendingHomeNav, setPendingHomeNav] = useState<PendingHomeNav | null>(null);
+  const [pendingHomePathname, setPendingHomePathname] = useState<string | null>(null);
   const pendingRoutePanel = getPendingRoutePanel(pathname, pendingNav);
-  const pendingHomePanel = getPendingHomePanel(pathname, pendingHomeNav);
-  const activeLeftPanel = pendingHomePanel ?? pendingRoutePanel ?? getActiveLeftPanel(pathname, lp.activePanel);
-  const railActivePanel = pendingHomePanel ?? pendingRoutePanel ?? getRailActivePanel(pathname, lp.activePanel);
+  const homeNavPending = pendingHomePathname === pathname;
+  const activeLeftPanel = homeNavPending || isFullPageChatRoute ? null : pendingRoutePanel ?? getActiveLeftPanel(pathname, lp.activePanel);
+  const railActivePanel = homeNavPending || isFullPageChatRoute ? null : pendingRoutePanel ?? getRailActivePanel(pathname, lp.activePanel);
   const agentDockOpen = agentDetailKey !== null && activeLeftPanel === 'agents';
   const panelOpen = activeLeftPanel !== null;
   const effectivePanelMaximized = getEffectivePanelMaximized(activeLeftPanel, lp.activePanel, lp.panelMaximized);
@@ -292,14 +293,14 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   useEffect(() => {
     setPendingNav((prev) => (prev && prev.fromPathname !== pathname ? null : prev));
   }, [pathname]);
+  useEffect(() => {
+    setPendingHomePathname((prev) => (prev && prev !== pathname ? null : prev));
+  }, [pathname]);
 
   useEffect(() => {
-    if (!pendingHomeNav || pendingHomeNav.fromPathname === pathname) return;
-    setPendingHomeNav(null);
-    if (pathname === '/' && pendingHomeNav.panel) {
-      lp.setActivePanel(pendingHomeNav.panel);
-    }
-  }, [pathname, pendingHomeNav, lp.setActivePanel]);
+    if (!isFullPageChatRoute) return;
+    if (mobileAskOpen) setMobileAskOpen(false);
+  }, [isFullPageChatRoute, mobileAskOpen]);
 
   // Auto-exit Ask panel maximize when navigating to a different page
   // or when left panel opens (content needs to be visible).
@@ -345,11 +346,11 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     });
   }, [activeLeftPanel]);
 
-  useEffect(() => { if (ap.askPanelOpen) setRightAskMounted(true); }, [ap.askPanelOpen]);
+  useEffect(() => { if (effectiveAskPanelOpen) setRightAskMounted(true); }, [effectiveAskPanelOpen]);
   useEffect(() => { if (agentDockOpen) setRightAgentDetailMounted(true); }, [agentDockOpen]);
   useEffect(() => { if (mobileSearchOpen) setMobileSearchMounted(true); }, [mobileSearchOpen]);
-  useEffect(() => { if (ap.desktopAskPopupOpen) setDesktopAskPopupMounted(true); }, [ap.desktopAskPopupOpen]);
-  useEffect(() => { if (mobileAskOpen) setMobileAskMounted(true); }, [mobileAskOpen]);
+  useEffect(() => { if (effectiveDesktopAskPopupOpen) setDesktopAskPopupMounted(true); }, [effectiveDesktopAskPopupOpen]);
+  useEffect(() => { if (effectiveMobileAskOpen) setMobileAskMounted(true); }, [effectiveMobileAskOpen]);
   useEffect(() => { if (settingsOpen) setSettingsMounted(true); }, [settingsOpen]);
   useEffect(() => { if (importModalOpen) setImportMounted(true); }, [importModalOpen]);
 
@@ -491,7 +492,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   const closeAgentDetailPanel = useCallback(() => setAgentDetailKey(null), []);
 
   // Refresh file tree when server-side tree version changes.
-  // Polls a lightweight version counter every 15s — only calls router.refresh()
+  // Polls a lightweight version counter every 5s — only calls router.refresh()
   // (which rebuilds the full tree) when the version actually changes.
   // A 2-second cooldown prevents rapid-fire refreshes during bulk file operations.
   useEffect(() => {
@@ -507,7 +508,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         router.refresh();
       });
       stopRefresh({ previousVersion, version, reason: 'tree_version_changed' });
-      notifyFilesChanged();
+      window.dispatchEvent(new Event('mindos:files-changed'));
     };
 
     const REFRESH_COOLDOWN_MS = 2000;
@@ -578,8 +579,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       if (e.key === 'Escape') {
         if (effectivePanelMaximized) { lp.handlePanelMaximize(); return; }
         if (agentDockOpen) { setAgentDetailKey(null); return; }
-        if (ap.askPanelOpen) { ap.closeAskPanel(); return; }
-        if (ap.desktopAskPopupOpen) { ap.closeDesktopAskPopup(); return; }
+        if (effectiveAskPanelOpen) { ap.closeAskPanel(); return; }
+        if (effectiveDesktopAskPopupOpen) { ap.closeDesktopAskPopup(); return; }
         if (activeLeftPanel === 'search') { closeSearchPanel(); return; }
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -592,6 +593,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       }
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
+        if (isFullPageChatRoute) return;
         if (window.innerWidth >= 768) {
           ap.toggleAskPanel();
         } else {
@@ -609,7 +611,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeLeftPanel, agentDockOpen, closeSearchPanel, effectivePanelMaximized, lp, ap, toggleSearchPanel]);
+  }, [activeLeftPanel, agentDockOpen, closeSearchPanel, effectiveAskPanelOpen, effectiveDesktopAskPopupOpen, effectivePanelMaximized, isFullPageChatRoute, lp, ap, toggleSearchPanel]);
 
   // ── Settings helpers ──
   const openSyncSettings = useCallback(() => {
@@ -665,16 +667,22 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     setSyncPopoverOpen(false);
   }, [lp]);
 
-  const handleSidebarPanelExpandedChange = useCallback((expanded: boolean) => {
-    previousSearchPanelRef.current = null;
-    if (expanded) {
-      lp.setActivePanel('files');
-    } else {
-      lp.setActivePanel(null);
-    }
-  }, [lp.setActivePanel]);
-
   const handleMobileNavigate = useCallback(() => setMobileOpen(false), []);
+
+  const handleHomeClick = useCallback(() => {
+    flushSync(() => {
+      exitAskMaximized();
+      previousSearchPanelRef.current = null;
+      setAgentDetailKey(null);
+      lp.setActivePanel(null);
+      setPendingHomePathname(pathname !== '/' ? pathname : null);
+    });
+    if (pathname !== '/') {
+      startTransition(() => {
+        router.push('/');
+      });
+    }
+  }, [exitAskMaximized, lp.setActivePanel, pathname, router]);
 
   const handleRoutePanelClick = useCallback((
     event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>,
@@ -693,21 +701,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     if (targetPanel === 'agents') setAgentDetailKey(null);
   }, [activeLeftPanel, exitAskMaximized, lp, pathname]);
 
-  const handleHomeClick = useCallback(() => {
-    previousSearchPanelRef.current = null;
-    const nextPanel = getHomeClickPanel(activeLeftPanel);
-    setPendingNav(null);
-    setPendingHomeNav(pathname !== '/' ? { fromPathname: pathname, panel: nextPanel } : null);
-    if (nextPanel) {
-      lp.setActivePanel(nextPanel);
-    }
-    if (pathname !== '/') {
-      startTransition(() => {
-        router.push('/');
-      });
-    }
-  }, [activeLeftPanel, lp, pathname, router]);
-
   return (
     <InboxOrganizeProvider value={inboxOrganize}>
       <McpStoreInit />
@@ -724,18 +717,19 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       <TitlebarRow
         searchActive={activeLeftPanel === 'search'}
         onSearchOpenOrFocus={openOrFocusSearchPanel}
-        sidebarExpanded={panelOpen}
-        onSidebarExpandedChange={handleSidebarPanelExpandedChange}
+        sidebarExpanded={lp.railExpanded}
+        onSidebarExpandedChange={handleExpandedChange}
       />
       <ActivityBar
         activePanel={railActivePanel}
+        suppressRouteActive={homeNavPending}
         onPanelChange={lp.setActivePanel}
+        onHomeClick={handleHomeClick}
         onCaptureClick={(event) => handleRoutePanelClick(event, 'capture')}
         onEchoClick={(event) => handleRoutePanelClick(event, 'echo')}
         onAgentsClick={(event) => handleRoutePanelClick(event, 'agents')}
         onDiscoverClick={(event) => handleRoutePanelClick(event, 'discover')}
         onSpacesClick={(event) => handleRoutePanelClick(event, 'files')}
-        onHomeClick={handleHomeClick}
         syncStatus={syncStatus}
         syncStale={syncStatusStale}
         expanded={lp.railExpanded}
@@ -764,7 +758,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       >
         {isPanelMounted('echo') && (
           <div className={`flex flex-col h-full ${activeLeftPanel === 'echo' ? '' : 'hidden'}`}>
-            <EchoPanel active={activeLeftPanel === 'echo'} />
+            <EchoPanel active={activeLeftPanel === 'echo'} maximized={effectivePanelMaximized} onMaximize={lp.handlePanelMaximize} />
           </div>
         )}
         {isPanelMounted('capture') && (
@@ -787,6 +781,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           <div className={`flex flex-col h-full ${activeLeftPanel === 'agents' ? '' : 'hidden'}`}>
             <AgentsPanel
               active={activeLeftPanel === 'agents'}
+              maximized={effectivePanelMaximized}
+              onMaximize={lp.handlePanelMaximize}
               selectedAgentKey={agentDockOpen ? agentDetailKey : null}
             />
           </div>
@@ -806,7 +802,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       {/* ── Right-side Ask AI Panel ── */}
       {rightAskMounted && (
         <RightAskPanel
-          open={ap.askPanelOpen}
+          open={effectiveAskPanelOpen}
           onClose={ap.closeAskPanel}
           currentFile={currentFile}
           initialMessage={ap.askInitialMessage}
@@ -829,7 +825,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           open={agentDockOpen}
           agentKey={agentDetailKey}
           onClose={closeAgentDetailPanel}
-          rightOffset={ap.askPanelOpen ? ap.askPanelWidth : 0}
+          rightOffset={effectiveAskPanelOpen ? ap.askPanelWidth : 0}
           width={agentDetailWidth}
           onWidthChange={setAgentDetailWidth}
           onWidthCommit={handleAgentDetailWidthCommit}
@@ -838,7 +834,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
 
       {desktopAskPopupMounted && (
         <AskModal
-          open={ap.desktopAskPopupOpen}
+          open={effectiveDesktopAskPopupOpen}
           onClose={ap.closeDesktopAskPopup}
           currentFile={currentFile}
           initialMessage={ap.askInitialMessage}
@@ -852,7 +848,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
 
       <PluginEntriesDock onOpenPluginsSettings={openPluginsSettings} onOpenCommandCenter={openOrFocusSearchPanel} />
       <PluginHotkeyHost />
-      <AskFab onToggle={ap.toggleAskPanel} askPanelOpen={ap.askPanelOpen || ap.desktopAskPopupOpen} />
+      <AskFab onToggle={ap.toggleAskPanel} askPanelOpen={effectiveAskPanelOpen || effectiveDesktopAskPopupOpen} />
       <KeyboardShortcuts />
 
       {settingsMounted && (
@@ -925,7 +921,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       </aside>
 
       {mobileSearchMounted && <SearchModal open={mobileSearchOpen} onClose={() => setMobileSearchOpen(false)} />}
-      {mobileAskMounted && <AskModal open={mobileAskOpen} onClose={() => setMobileAskOpen(false)} currentFile={currentFile} />}
+      {mobileAskMounted && <AskModal open={effectiveMobileAskOpen} onClose={() => setMobileAskOpen(false)} currentFile={currentFile} />}
 
       <main
         id="main-content"
@@ -1001,7 +997,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           :root {
             --rail-width: ${lp.railWidth}px;
             --content-left-offset: ${panelOpen && effectivePanelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`};
-            --right-panel-width: ${ap.askMaximized ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${ap.askPanelOpen ? ap.askPanelWidth : 0}px`};
+            --right-panel-width: ${ap.askMaximized && effectiveAskPanelOpen ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${effectiveAskPanelOpen ? ap.askPanelWidth : 0}px`};
             --right-agent-detail-width: ${agentDockOpen ? agentDetailWidth : 0}px;
           }
           #main-content {

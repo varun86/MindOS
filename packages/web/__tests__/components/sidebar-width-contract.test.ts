@@ -33,11 +33,17 @@ describe('Sidebar width contract', () => {
     expect(sidebarLayout).not.toContain('href={ROUTE_PANEL_HREF.files}');
   });
 
-  it('keeps Mind file-tree depth controls visible in narrow sidebars', () => {
-    const panel = readSource('components/Panel.tsx');
+  it('keeps titlebar actions positioned from the live rail width', () => {
+    const titlebarRow = readSource('components/TitlebarRow.tsx');
+    const sidebarLayout = readSource('components/SidebarLayout.tsx');
     const globals = readSource('app/globals.css');
 
-    expect(panel).toContain('files-panel-header-depth-actions');
-    expect(globals).not.toContain('.files-panel-header-depth-actions');
+    expect(titlebarRow).toContain("left: 'var(--rail-width, 48px)'");
+    expect(titlebarRow).toContain("paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, 48px)))'");
+    expect(titlebarRow).toContain('z-app-rail-affordance');
+    expect(sidebarLayout).toContain('--rail-width: ${lp.railWidth}px;');
+    expect(titlebarRow).not.toContain('--titlebar-row-left');
+    expect(sidebarLayout).not.toContain('--titlebar-row-left');
+    expect(globals).not.toContain('--titlebar-row-left');
   });
 });

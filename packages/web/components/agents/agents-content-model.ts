@@ -5,7 +5,6 @@ export type AgentsDashboardTab =
   | 'assistant'
   | 'agent'
   | 'capabilities'
-  | 'plugins'
   | 'runs'
   | 'presets'
   | 'mcp'
@@ -14,7 +13,7 @@ export type AgentsDashboardTab =
   | 'sessions'
   | 'activity'
   | 'channels';
-export type AgentsNavGroup = 'overview' | 'assistant' | 'agent' | 'plugins' | 'skills' | 'mcp' | 'channels';
+export type AgentsNavGroup = 'overview' | 'assistant' | 'agent' | 'capabilities' | 'channels';
 export type AgentResolvedStatus = 'connected' | 'detected' | 'notFound';
 export type SkillCapability = 'research' | 'coding' | 'docs' | 'ops' | 'memory';
 export type SkillSourceFilter = 'all' | 'builtin' | 'user';
@@ -41,22 +40,23 @@ export function parseAgentsTab(tab: string | undefined): AgentsDashboardTab {
   if (
     tab === 'assistant' ||
     tab === 'agent' ||
+    tab === 'capabilities' ||
     tab === 'runs' ||
     tab === 'presets' ||
+    tab === 'mcp' ||
     tab === 'skills' ||
     tab === 'a2a' ||
     tab === 'sessions' ||
     tab === 'activity' ||
     tab === 'channels'
   ) return tab;
-  if (tab === 'capabilities' || tab === 'plugins' || tab === 'mcp') return 'skills';
   return 'overview';
 }
 
 export function getAgentsNavGroup(tab: AgentsDashboardTab): AgentsNavGroup {
   if (tab === 'assistant' || tab === 'presets') return 'assistant';
   if (tab === 'agent' || tab === 'a2a') return 'agent';
-  if (tab === 'capabilities' || tab === 'plugins' || tab === 'skills' || tab === 'mcp') return 'skills';
+  if (tab === 'capabilities' || tab === 'skills' || tab === 'mcp') return 'capabilities';
   if (tab === 'channels') return 'channels';
   return 'overview';
 }

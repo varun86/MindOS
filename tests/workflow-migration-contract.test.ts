@@ -253,6 +253,11 @@ describe('GitHub workflow migration contract', () => {
     expect(existsSync(resolve(root, 'packages/desktop-tauri/package-lock.json'))).toBe(false);
     const tauriPkg = readText('packages/desktop-tauri/package.json');
     const tauriConfig = readText('packages/desktop-tauri/src-tauri/tauri.conf.json');
+    const tauriCargo = readText('packages/desktop-tauri/src-tauri/Cargo.toml');
+    const tauriMain = readText('packages/desktop-tauri/src-tauri/src/main.rs');
+    const tauriRuntime = readText('packages/desktop-tauri/src-tauri/src/runtime.rs');
+    const tauriShortcuts = readText('packages/desktop-tauri/src-tauri/src/shortcuts.rs');
+    const tauriUpdater = readText('packages/desktop-tauri/src-tauri/src/updater.rs');
 
     expect(tauriPkg).toContain('"name": "@mindos/desktop-tauri"');
     expect(tauriPkg).toContain('"dev:web": "vite');
@@ -263,6 +268,20 @@ describe('GitHub workflow migration contract', () => {
     expect(tauriConfig).toContain('"beforeBuildCommand": "pnpm run build:web"');
     expect(npmignore).toMatch(/^packages\/desktop-tauri\/$/m);
     expect(readText('.gitignore')).toMatch(/^!packages\/desktop-tauri\/src-tauri\/icons\/\*\.png$/m);
+    expect(tauriCargo).toContain('alloc-no-stdlib = "=2.0.4"');
+    expect(tauriCargo).toContain('alloc-stdlib = "=0.2.2"');
+    expect(tauriCargo).toContain('brotli-decompressor = "=5.0.1"');
+    expect(tauriMain).toContain('use tauri_plugin_deep_link::DeepLinkExt;');
+    expect(tauriMain).toContain('app.deep_link().on_open_url');
+    expect(tauriMain).toContain('shortcuts::register_shortcuts(app.handle())');
+    expect(tauriMain).not.toContain('tauri_plugin_deep_link::register');
+    expect(tauriMain).not.toContain('event.window()');
+    expect(tauriRuntime).toContain('use tauri_plugin_shell::ShellExt;');
+    expect(tauriShortcuts).toContain(
+      'use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};',
+    );
+    expect(tauriUpdater).toContain('use tauri::{AppHandle, Emitter};');
+    expect(tauriUpdater).not.toContain('Manager, Emitter');
   });
 
   it('builds the Tauri desktop spike through an isolated manual workflow', () => {
@@ -314,6 +333,9 @@ describe('GitHub workflow migration contract', () => {
 
     expect(yml).toContain('packages/web/app/api/channels/verify/route.ts');
     expect(yml).toContain('packages/web/lib/im/config.ts');
+    expect(yml.indexOf('pnpm --filter @geminilight/mindos run build')).toBeLessThan(
+      yml.indexOf('pnpm --filter @mindos/web run typecheck'),
+    );
     expect(yml).toContain('pnpm --filter @mindos/web run typecheck');
     expect(yml).toContain('pnpm --filter @mindos/web exec vitest run');
     expect(yml).not.toMatch(/app\/app\/api|app\/lib|app\/__tests__|\bcd app\b|app\/package-lock\.json/);

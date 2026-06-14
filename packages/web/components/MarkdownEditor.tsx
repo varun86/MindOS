@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import EditorWrapper from './EditorWrapper';
-import { splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
+import { hasMarkdownFrontmatterFence } from '@/lib/parsing/frontmatter';
 
 // WysiwygEditor uses browser APIs — load client-side only
 const WysiwygEditor = dynamic(() => import('./WysiwygEditor'), { ssr: false });
@@ -18,7 +18,7 @@ interface MarkdownEditorProps {
 const EDITOR_HEIGHT = 'calc(100vh - 160px)';
 
 export default function MarkdownEditor({ value, onChange, viewMode }: MarkdownEditorProps) {
-  const hasFrontmatter = splitMarkdownFrontmatter(value).frontmatter !== null;
+  const hasFrontmatter = hasMarkdownFrontmatterFence(value);
   const isWysiwyg = viewMode === 'wysiwyg' && !hasFrontmatter;
   const isSource = viewMode === 'source' || (viewMode === 'wysiwyg' && hasFrontmatter);
 

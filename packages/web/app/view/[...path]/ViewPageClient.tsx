@@ -26,7 +26,7 @@ import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import ExportModal from '@/components/ExportModal';
 import { useEditorTheme } from '@/lib/stores/editor-theme-store';
 import { twemojiToNative } from '@/lib/twemoji';
-import { splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
+import { hasMarkdownFrontmatterFence } from '@/lib/parsing/frontmatter';
 import { isPathAffected, notifyFilesChanged, subscribeFilesChanged } from '@/lib/files-changed';
 import { closeByKey, keepTab, openTab } from '@/lib/workspace-tabs';
 import { fetchPluginViewSurfacesForExtension, pluginViewSurfaceHref } from '@/lib/plugins/client';
@@ -76,7 +76,10 @@ export default function ViewPageClient({
     'mp4', 'webm', 'mov', 'mkv',
   ].includes(extension);
   const isMarkdown = extension === 'md';
-  const initialContentHasFrontmatter = isMarkdown && splitMarkdownFrontmatter(content).frontmatter !== null;
+  const initialContentHasFrontmatter = useMemo(
+    () => isMarkdown && hasMarkdownFrontmatterFence(content),
+    [isMarkdown, content],
+  );
   const [editing, setEditing] = useState(() => {
     if (isBinaryFile) return false;
     // Always start in Edit for empty/new files regardless of persisted mode
@@ -87,6 +90,10 @@ export default function ViewPageClient({
   });
   const [editContent, setEditContent] = useState(content);
   const [savedContent, setSavedContent] = useState(content);
+  const normalizedSavedMarkdown = useMemo(
+    () => isMarkdown ? twemojiToNative(savedContent) : savedContent,
+    [isMarkdown, savedContent],
+  );
   const keepCurrentTab = useCallback(() => {
     keepTab(`doc:${filePath}`);
   }, [filePath]);
@@ -160,10 +167,10 @@ export default function ViewPageClient({
     if (stored === 'wysiwyg' || stored === 'source' || stored === 'preview') return stored;
     return 'wysiwyg';
   });
-  const setMdViewMode = (mode: MdViewMode) => {
+  const setMdViewMode = useCallback((mode: MdViewMode) => {
     setMdViewModeState(mode);
     localStorage.setItem('md-view-mode', mode);
-  };
+  }, []);
   const [findOpen, setFindOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -305,7 +312,7 @@ export default function ViewPageClient({
   const handleEdit = useCallback(() => {
     keepCurrentTab();
     setEditContent(savedContent);
-    if (isMarkdown && splitMarkdownFrontmatter(savedContent).frontmatter !== null) {
+    if (isMarkdown && hasMarkdownFrontmatterFence(savedContent)) {
       setMdViewMode('source');
     }
     setEditing(true);
@@ -354,12 +361,11 @@ export default function ViewPageClient({
         setTimeout(() => setSaveSuccess(false), 2500);
         router.push(`/view/${encodePath(targetPath)}`);
         router.refresh();
-        notifyFilesChanged([targetPath]);
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'Failed to save');
       }
     });
-  }, [saveName, createDraftAction, saveDir, editContent, router, filePath, retargetKeptDocTab]);
+  }, [saveName, createDraftAction, saveDir, editContent, filePath, router, retargetKeptDocTab]);
 
   const handleSave = useCallback(() => {
     if (isCsv) {
@@ -381,7 +387,6 @@ export default function ViewPageClient({
         keepCurrentTab();
         await saveAction(cleanContent);
         setSavedContent(cleanContent);
-        notifyFilesChanged([filePath]);
         // Markdown auto-save: Ctrl+S saves but stays in edit mode
         if (!isMarkdown) {
           setEditing(false);
@@ -392,15 +397,13 @@ export default function ViewPageClient({
         setSaveError(err instanceof Error ? err.message : 'Failed to save');
       }
     });
-  }, [isCsv, isDraft, isMarkdown, saveAction, editContent, keepCurrentTab, filePath]);
+  }, [isCsv, isDraft, isMarkdown, saveAction, editContent, keepCurrentTab]);
 
   // Renderer's inline save — updates local savedContent without entering edit mode
   const handleRendererSave = useCallback(async (newContent: string) => {
-    keepCurrentTab();
     await saveAction(newContent);
     setSavedContent(newContent);
-    notifyFilesChanged([filePath]);
-  }, [saveAction, keepCurrentTab, filePath]);
+  }, [saveAction]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -552,7 +555,7 @@ export default function ViewPageClient({
                       onClick={() => {
                         // Use startTransition to mark state updates as non-urgent
                         startTransition(() => {
-                          const nextMode = m.id === 'wysiwyg' && splitMarkdownFrontmatter(editing ? editContent : savedContent).frontmatter !== null
+                          const nextMode = m.id === 'wysiwyg' && hasMarkdownFrontmatterFence(editing ? editContent : savedContent)
                             ? 'source'
                             : m.id;
                           setMdViewMode(nextMode);
@@ -561,12 +564,10 @@ export default function ViewPageClient({
                             const clean = twemojiToNative(editContent);
                             setSavedContent(clean);
                             if (clean !== savedContent) {
-                              keepCurrentTab();
-                              saveAction(clean).then(() => notifyFilesChanged([filePath])).catch(() => {});
+                              saveAction(clean).catch(() => {});
                             }
                             setEditing(false);
                           } else if (!editing) {
-                            keepCurrentTab();
                             setEditContent(savedContent);
                             setEditing(true);
                           }
@@ -791,8 +792,8 @@ export default function ViewPageClient({
             {!editing && (
               <div ref={contentRef} className="content-width">
                 {findOpen && <FindInPage containerRef={contentRef} onClose={() => setFindOpen(false)} />}
-                <MarkdownView content={twemojiToNative(savedContent)} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
-                <TableOfContents content={twemojiToNative(savedContent)} />
+                <MarkdownView content={normalizedSavedMarkdown} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
+                <TableOfContents content={normalizedSavedMarkdown} />
                 <Backlinks filePath={filePath} />
               </div>
             )}
@@ -818,11 +819,9 @@ export default function ViewPageClient({
                 filePath={filePath}
                 appendAction={appendRowAction}
                 saveAction={async (c) => {
-                  keepCurrentTab();
                   await saveAction(c);
                   setEditContent(c);
                   setSavedContent(c);
-                  notifyFilesChanged([filePath]);
                 }}
               />
             ) : (

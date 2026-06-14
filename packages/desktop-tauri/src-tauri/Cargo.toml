@@ -19,6 +19,12 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
 dirs = "5"
 url = "2"
+# Keep brotli's allocator family on the alloc-no-stdlib 2.x trait.
+# The 2026-06-14 alloc-stdlib 0.2.3 / brotli-decompressor 5.0.2 releases
+# can resolve alloc-no-stdlib 3.x while brotli 8.0.x still uses 2.x.
+alloc-no-stdlib = "=2.0.4"
+alloc-stdlib = "=0.2.2"
+brotli-decompressor = "=5.0.1"
 
 [features]
 default = ["custom-protocol"]

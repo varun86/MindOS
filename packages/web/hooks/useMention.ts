@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { fetchAllFilePaths } from '@/lib/client-cache';
 import { subscribeFilesChanged } from '@/lib/files-changed';
 
 const MENTION_RESULT_LIMIT = 30;
+const MENTION_INDEX_IDLE_TIMEOUT_MS = 750;
 
 export interface MentionSearchEntry {
   path: string;
@@ -21,6 +22,9 @@ export interface MentionSearchIndex {
   entries: MentionSearchEntry[];
   candidateBuckets: Map<string, MentionSearchEntry[]>;
 }
+
+const EMPTY_MENTION_INDEX: MentionSearchIndex = { entries: [], candidateBuckets: new Map() };
+let sharedMentionIndex: { signature: string; index: MentionSearchIndex } | null = null;
 
 function safeFetchFiles(): Promise<string[]> {
   // Shared cache + single-flight: simultaneous consumers of /api/files
@@ -44,13 +48,12 @@ function mentionCandidateKey(query: string): string {
   return query.length <= 1 ? query : query.slice(0, 2);
 }
 
-function mentionPathKeys(lowerPath: string): Set<string> {
-  const keys = new Set<string>();
+function collectMentionPathKeys(lowerPath: string, keys: Set<string>): void {
+  keys.clear();
   for (let i = 0; i < lowerPath.length; i += 1) {
     keys.add(lowerPath[i]);
     if (i + 1 < lowerPath.length) keys.add(lowerPath.slice(i, i + 2));
   }
-  return keys;
 }
 
 export function createMentionSearchIndex(allFiles: string[]): MentionSearchIndex {
@@ -60,14 +63,46 @@ export function createMentionSearchIndex(allFiles: string[]): MentionSearchIndex
     lowerName: (path.split('/').pop() ?? path).toLowerCase(),
   }));
   const candidateBuckets = new Map<string, MentionSearchEntry[]>();
+  const pathKeys = new Set<string>();
   for (const entry of entries) {
-    for (const key of mentionPathKeys(entry.lowerPath)) {
+    collectMentionPathKeys(entry.lowerPath, pathKeys);
+    for (const key of pathKeys) {
       const bucket = candidateBuckets.get(key);
       if (bucket) bucket.push(entry);
       else candidateBuckets.set(key, [entry]);
     }
   }
   return { entries, candidateBuckets };
+}
+
+function mentionFilesSignature(allFiles: string[]): string {
+  return allFiles.join('\0');
+}
+
+function getOrCreateSharedMentionIndex(allFiles: string[]): MentionSearchIndex {
+  if (allFiles.length === 0) return EMPTY_MENTION_INDEX;
+  const signature = mentionFilesSignature(allFiles);
+  if (sharedMentionIndex?.signature === signature) return sharedMentionIndex.index;
+  const index = createMentionSearchIndex(allFiles);
+  sharedMentionIndex = { signature, index };
+  return index;
+}
+
+function scheduleMentionIndexBuild(callback: () => void): () => void {
+  const idleWindow = typeof window !== 'undefined'
+    ? window as Window & typeof globalThis & {
+      requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    }
+    : null;
+
+  if (idleWindow?.requestIdleCallback) {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: MENTION_INDEX_IDLE_TIMEOUT_MS });
+    return () => idleWindow.cancelIdleCallback?.(handle);
+  }
+
+  const handle = setTimeout(callback, 0);
+  return () => clearTimeout(handle);
 }
 
 function mentionScore(entry: MentionSearchEntry, query: string): number {
@@ -107,7 +142,7 @@ export function searchMentionFiles(
 
 export function useMention() {
   const [allFiles, setAllFiles] = useState<string[]>([]);
-  const searchIndex = useMemo(() => createMentionSearchIndex(allFiles), [allFiles]);
+  const [searchIndex, setSearchIndex] = useState<MentionSearchIndex>(EMPTY_MENTION_INDEX);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionResults, setMentionResults] = useState<string[]>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -122,6 +157,24 @@ export function useMention() {
     return subscribeFilesChanged(() => loadFiles());
   }, [loadFiles]);
 
+  useEffect(() => {
+    if (allFiles.length === 0) {
+      const handle = setTimeout(() => setSearchIndex(EMPTY_MENTION_INDEX), 0);
+      return () => clearTimeout(handle);
+    }
+
+    let cancelled = false;
+    const cancelBuild = scheduleMentionIndexBuild(() => {
+      const nextIndex = getOrCreateSharedMentionIndex(allFiles);
+      if (!cancelled) setSearchIndex(nextIndex);
+    });
+
+    return () => {
+      cancelled = true;
+      cancelBuild();
+    };
+  }, [allFiles]);
+
   const updateMentionFromInput = useCallback(
     (val: string, cursorPos?: number) => {
       const query = parseMentionQueryFromInput(val, cursorPos);
@@ -131,7 +184,11 @@ export function useMention() {
         setMentionIndex(0);
         return;
       }
-      const results = searchMentionFiles(searchIndex, query);
+      const activeIndex = searchIndex.entries.length > 0
+        ? searchIndex
+        : getOrCreateSharedMentionIndex(allFiles);
+      if (activeIndex !== searchIndex) setSearchIndex(activeIndex);
+      const results = searchMentionFiles(activeIndex, query);
       if (results.length === 0) {
         setMentionQuery(null);
         setMentionResults([]);
@@ -142,7 +199,7 @@ export function useMention() {
       setMentionResults(results);
       setMentionIndex(0);
     },
-    [searchIndex],
+    [allFiles, searchIndex],
   );
 
   const navigateMention = useCallback(

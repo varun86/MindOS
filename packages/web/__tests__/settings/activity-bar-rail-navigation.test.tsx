@@ -181,6 +181,7 @@ describe('ActivityBar rail navigation', () => {
     expect(home).not.toBeNull();
     expect(home!.className).toContain('h-[var(--app-titlebar-h)]');
     expect(home!.className).not.toContain('h-[46px]');
+    expect((home!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('no-drag');
 
     await act(async () => {
       root.unmount();
@@ -188,7 +189,41 @@ describe('ActivityBar rail navigation', () => {
     host.remove();
   });
 
-  it('clicking the rail logo from Echo opens Home without closing the active panel', async () => {
+  it('can suppress route-derived rail active state while Home navigation is pending', async () => {
+    mockPathname = '/echo/imprint';
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          suppressRouteActive
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded={false}
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const echoButton = host.querySelector('[data-walkthrough="echo-panel"]');
+    expect(echoButton).not.toBeNull();
+    expect(echoButton?.getAttribute('data-hit-active')).toBeNull();
+    expect(echoButton?.getAttribute('aria-current')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('clicking the rail logo from Echo opens Home instead of Echo or Wiki', async () => {
     mockPathname = '/echo/imprint';
     const mockPanelChange = vi.fn();
     const ActivityBar = (await import('@/components/ActivityBar')).default;
@@ -218,52 +253,10 @@ describe('ActivityBar rail navigation', () => {
       home?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
 
-    expect(mockPanelChange).not.toHaveBeenCalled();
+    expect(mockPanelChange).toHaveBeenCalledWith(null);
     expect(mockRouterPush).toHaveBeenCalledWith('/');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/wiki');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/echo/imprint');
-
-    await act(async () => {
-      root.unmount();
-    });
-    host.remove();
-  });
-
-  it('delegates the rail logo click to the shell when a Home handler is provided', async () => {
-    mockPathname = '/echo/imprint';
-    const mockPanelChange = vi.fn();
-    const mockHomeClick = vi.fn();
-    const ActivityBar = (await import('@/components/ActivityBar')).default;
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => {
-      root.render(
-        <ActivityBar
-          activePanel="echo"
-          onPanelChange={mockPanelChange}
-          onHomeClick={mockHomeClick}
-          syncStatus={null}
-          expanded={false}
-          onExpandedChange={vi.fn()}
-          onSettingsClick={vi.fn()}
-          onSyncClick={vi.fn()}
-        />,
-      );
-    });
-
-    const home = host.querySelector<HTMLButtonElement>('button[aria-label="MindOS Home"]');
-    expect(home).not.toBeNull();
-
-    await act(async () => {
-      home?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    });
-
-    expect(mockHomeClick).toHaveBeenCalledTimes(1);
-    expect(mockPanelChange).not.toHaveBeenCalled();
-    expect(mockRouterPush).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();

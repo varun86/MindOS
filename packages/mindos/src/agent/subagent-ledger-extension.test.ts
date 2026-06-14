@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setMindRootResolverForTests } from '../foundation/mind-root/index.js';
 import { finalizeSubagentAsyncRunFromEvent, wrapSubagentToolForLedger } from './subagent-ledger-extension.js';
-import { getCurrentAgentRunContext } from './agent-run-context.js';
+import { getCurrentAgentRunContext, setAgentRunContextForResource } from './agent-run-context.js';
 import {
   listAgentEvents,
   listAgentRuns,
@@ -85,6 +85,150 @@ describe('MindOS subagent ledger extension', () => {
         metadata: expect.objectContaining({ toolCallId: 'tool-call-1', source: 'pi-subagents' }),
       }),
     ]);
+  });
+
+  it('links subagent runs to the request context through the pi session manager when ALS is unavailable', async () => {
+    const sessionManager = {};
+    const restoreContext = setAgentRunContextForResource(sessionManager, {
+      chatSessionId: 'chat-subagent-1',
+      rootRunId: 'root-run-1',
+      parentRunId: 'main-run-1',
+    });
+    const upstream = {
+      name: 'subagent',
+      parameters: {} as any,
+      execute: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'Listed agents.' }],
+        details: {},
+      })),
+    };
+    const wrapped = wrapSubagentToolForLedger(upstream as any);
+
+    try {
+      await wrapped.execute(
+        'tool-call-context',
+        { action: 'list' },
+        undefined,
+        undefined,
+        { sessionManager, cwd: '/tmp/mindos', mode: 'agent' },
+      );
+    } finally {
+      restoreContext();
+    }
+
+    expect(listAgentRuns()).toEqual([
+      expect.objectContaining({
+        agentKind: 'pi-subagent',
+        runtimeId: 'subagent:list',
+        chatSessionId: 'chat-subagent-1',
+        rootRunId: 'root-run-1',
+        parentRunId: 'main-run-1',
+        status: 'completed',
+      }),
+    ]);
+  });
+
+  it('links MindOS-orchestrated subagent runs to the request context through the pi session manager', async () => {
+    const sessionManager = {};
+    const restoreContext = setAgentRunContextForResource(sessionManager, {
+      chatSessionId: 'chat-orchestration-1',
+      rootRunId: 'root-run-orchestration-1',
+      parentRunId: 'main-run-orchestration-1',
+    });
+    const upstream = {
+      name: 'subagent',
+      parameters: {} as any,
+      execute: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'Child done.' }],
+        details: {},
+      })),
+    };
+    const wrapped = wrapSubagentToolForLedger(upstream as any);
+
+    try {
+      await wrapped.execute(
+        'tool-call-orchestration-context',
+        {
+          mindosOrchestration: true,
+          tasks: [{ id: 'scan', agent: 'scout', task: 'Scan files.' }],
+        },
+        undefined,
+        undefined,
+        { sessionManager, cwd: '/tmp/mindos', mode: 'agent' },
+      );
+    } finally {
+      restoreContext();
+    }
+
+    const runs = listAgentRuns({ kind: 'pi-subagent', limit: 10 });
+    const parent = runs.find((run) => run.runtimeId === 'subagent:orchestration');
+    const child = runs.find((run) => run.runtimeId === 'scout');
+    expect(parent).toEqual(expect.objectContaining({
+      chatSessionId: 'chat-orchestration-1',
+      rootRunId: 'root-run-orchestration-1',
+      parentRunId: 'main-run-orchestration-1',
+      status: 'completed',
+    }));
+    expect(child).toEqual(expect.objectContaining({
+      chatSessionId: 'chat-orchestration-1',
+      rootRunId: 'root-run-orchestration-1',
+      parentRunId: parent!.id,
+      status: 'completed',
+    }));
+  });
+
+  it('wraps child subagent execution in the optional host runtime hook', async () => {
+    const upstream = {
+      name: 'subagent',
+      parameters: {} as any,
+      execute: vi.fn(async () => ({
+        content: [{ type: 'text', text: process.env.MINDOS_TEST_CHILD_RUNTIME ?? 'missing' }],
+        details: {},
+      })),
+    };
+    const wrapped = wrapSubagentToolForLedger(upstream as any, {
+      withSubagentChildRuntime: vi.fn(async (_input, run) => {
+        const previous = process.env.MINDOS_TEST_CHILD_RUNTIME;
+        process.env.MINDOS_TEST_CHILD_RUNTIME = 'active';
+        try {
+          return await run();
+        } finally {
+          if (previous === undefined) delete process.env.MINDOS_TEST_CHILD_RUNTIME;
+          else process.env.MINDOS_TEST_CHILD_RUNTIME = previous;
+        }
+      }),
+    });
+
+    const result = await wrapped.execute(
+      'tool-call-child-runtime',
+      { agent: 'delegate', task: 'Use child runtime.' },
+    );
+
+    expect(result).toEqual({
+      content: [{ type: 'text', text: 'active' }],
+      details: {},
+    });
+    expect(process.env.MINDOS_TEST_CHILD_RUNTIME).toBeUndefined();
+  });
+
+  it('does not apply the child runtime hook for management actions', async () => {
+    const upstream = {
+      name: 'subagent',
+      parameters: {} as any,
+      execute: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'Executable agents: delegate' }],
+        details: {},
+      })),
+    };
+    const hook = vi.fn(async (_input, run) => run());
+    const wrapped = wrapSubagentToolForLedger(upstream as any, {
+      withSubagentChildRuntime: hook,
+    });
+
+    await wrapped.execute('tool-call-list', { action: 'list' });
+
+    expect(hook).not.toHaveBeenCalled();
+    expect(upstream.execute).toHaveBeenCalledTimes(1);
   });
 
   it('forwards single subagent progress updates into the run timeline without swallowing upstream onUpdate', async () => {

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJwt } from '@/lib/jwt';
-import { buildLoginRedirectTarget, WEB_SESSION_COOKIE_NAME } from '@/lib/auth-session';
+import { buildLoginRedirectTarget, resolveWebSessionSecret, WEB_SESSION_COOKIE_NAME } from '@/lib/auth-session';
 import { readSetupPending } from '@/lib/setup-state';
 import { defaultEchoPath } from '@/lib/echo-segments';
-import { readRuntimeAuthConfig } from '@/lib/runtime-auth-config';
 
 /** CORS headers for /api/* routes (React Native mobile app + cross-origin agents). */
 function corsHeaders(): Record<string, string> {
@@ -24,7 +23,11 @@ function withCors(res: NextResponse): NextResponse {
 }
 
 export async function proxy(req: NextRequest) {
-  const { authToken, webPassword, webSessionSecret } = readRuntimeAuthConfig();
+  const authToken = process.env.AUTH_TOKEN;     // API bearer token (for Agents / MCP)
+  const webPassword = process.env.WEB_PASSWORD; // Web UI login password (for browser users)
+  const webSessionSecret = webPassword
+    ? resolveWebSessionSecret(webPassword, process.env.WEB_SESSION_SECRET)
+    : '';
   const pathname = req.nextUrl.pathname;
 
   function next(): NextResponse {

@@ -1,8 +1,8 @@
 // Auto-updater module for MindOS Desktop
 // Uses Tauri's built-in updater to check and install updates
 
-use tauri::{AppHandle, Manager, Emitter};
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatus {

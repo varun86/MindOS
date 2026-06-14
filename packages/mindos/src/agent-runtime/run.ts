@@ -4,9 +4,9 @@ import {
   createClaudeCodeCliClient,
   createClaudeCodeCliStdioTransport,
   type ClaudeCodeCliClient,
+  type ClaudeCodeCliPermissionMode,
   type ClaudeCodeCliPermissionPrompt,
 } from './claude-code-cli.js';
-import { buildClaudeCodeRuntimeOverrides } from './claude-runtime-options.js';
 import {
   createClaudeCodeSdkClient,
   isClaudeCodeSdkNativeBinaryError,
@@ -20,15 +20,10 @@ import {
   type CodexAppServerClient,
   type CodexAppServerServerRequest,
 } from './codex-app-server.js';
-import {
-  buildCodexAppServerRuntimeOverrides,
-  isReadonlyRuntimePermissionMode,
-  type MindosRuntimePermissionMode,
-  type MindosRuntimeReasoningEffort,
-} from './codex-runtime-options.js';
 import { compactRuntimeFailureMessage } from './runtime-errors.js';
 
 export type MindosNativeAgentRuntimeKind = 'codex' | 'claude';
+
 export type MindosAgentRuntimeSelection = {
   id: string;
   name: string;
@@ -134,9 +129,7 @@ export type MindosAgentRuntimeAskOptions = {
   runtime: MindosAgentRuntimeSelection;
   cwd: string;
   prompt: string;
-  permissionMode?: MindosRuntimePermissionMode;
-  modelOverride?: string;
-  reasoningEffort?: MindosRuntimeReasoningEffort;
+  permissionMode?: 'readonly' | 'agent';
   timeoutMs?: number;
   runtimeEnv?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
@@ -149,10 +142,12 @@ export type MindosAgentRuntimeAskResult = {
   error?: Error;
 };
 
+type CodexPendingServerRequestKind = 'permission' | 'question';
+
 type CodexPendingServerRequest = {
   requestId: number;
   toolCallId: string;
-  kind: 'permission' | 'question';
+  kind: CodexPendingServerRequestKind;
   abortController: AbortController;
   cleanup(): void;
 };
@@ -398,16 +393,11 @@ async function runClaudeTurnWithClient(
       signal: options.signal,
     })
     : undefined;
-  const runtimeOverrides = buildClaudeCodeRuntimeOverrides({
-    permissionMode: options.permissionMode,
-    reasoningEffort: options.reasoningEffort,
-  });
   const turnEvents = resolvedClient.client.startTurn({
     prompt: options.prompt,
     cwd: options.cwd,
     ...(sessionId ? { sessionId } : {}),
-    ...runtimeOverrides,
-    ...(options.modelOverride ? { model: options.modelOverride } : {}),
+    permissionMode: claudeCliPermissionModeForMindosMode(options.permissionMode),
     ...(permissionPrompt ? { permissionPrompt } : {}),
     signal: options.signal,
   });
@@ -434,16 +424,16 @@ function shouldFallbackFromClaudeSdkTurnError(error: Error, signal?: AbortSignal
   return isClaudeCodeSdkNativeBinaryError(error);
 }
 
+function claudeCliPermissionModeForMindosMode(
+  mode: MindosAgentRuntimeAskOptions['permissionMode'],
+): ClaudeCodeCliPermissionMode {
+  return mode === 'readonly' ? 'dontAsk' : 'default';
+}
+
 async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {
   let client: CodexAppServerClient | undefined;
   let threadId = options.runtime.externalSessionId;
   const pendingServerRequests: CodexPendingServerRequests = new Map();
-  const runtimeOverrides = buildCodexAppServerRuntimeOverrides({
-    cwd: options.cwd,
-    permissionMode: options.permissionMode,
-    modelOverride: options.modelOverride,
-    reasoningEffort: options.reasoningEffort,
-  });
 
   try {
     sendNativeRuntimeStatus(options, 'codex', threadId
@@ -454,11 +444,8 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
     });
     await client.initialize({ signal: options.signal });
     const thread = threadId
-      ? await client.resumeThread({ threadId, cwd: options.cwd, ...runtimeOverrides.thread }, { signal: options.signal })
-      : await client.startThread({
-          cwd: options.cwd,
-          ...runtimeOverrides.thread,
-        }, { signal: options.signal });
+      ? await client.resumeThread({ threadId }, { signal: options.signal })
+      : await client.startThread({ cwd: options.cwd }, { signal: options.signal });
     threadId = thread.threadId;
     options.send({
       type: 'runtime_binding',
@@ -477,7 +464,6 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
         threadId,
         cwd: options.cwd,
         input: [{ type: 'text', text: options.prompt }],
-        ...runtimeOverrides.turn,
         signal: options.signal,
       });
       for await (const notification of iterateWithNativeRuntimeAbort(turnNotifications, options.signal)) {
@@ -625,10 +611,6 @@ async function handleCodexServerRequest(
     throw new Error(`Unhandled Codex app-server request: ${request.method}`);
   }
 
-  if (isReadonlyRuntimePermissionMode(options.permissionMode)) {
-    return denyCodexApprovalForReadonly(request, options);
-  }
-
   const permissionRequest = buildCodexPermissionRequest(request);
   const result = await withCodexPendingServerRequest(
     request,
@@ -652,15 +634,6 @@ async function handleCodexServerRequest(
   return {
     decision: result.cancelled ? 'cancel' : normalizeCodexApprovalDecision(result.decision),
   };
-}
-
-function denyCodexApprovalForReadonly(
-  request: CodexAppServerServerRequest,
-  options: MindosAgentRuntimeAskOptions,
-): Record<string, unknown> {
-  sendNativeRuntimeStatus(options, 'codex', 'Read mode blocked a Codex permission request.');
-  if (request.method === 'item/permissions/requestApproval') return { permissions: {} };
-  return { decision: 'decline' };
 }
 
 async function handleCodexUserInputRequest(
@@ -700,18 +673,21 @@ async function handleCodexUserInputRequest(
 }
 
 function isCodexUserInputRequest(request: CodexAppServerServerRequest): boolean {
-  return request.method === 'item/tool/requestUserInput' || request.method === 'tool/requestUserInput';
+  return request.method === 'item/tool/requestUserInput'
+    || request.method === 'tool/requestUserInput';
 }
 
 function isCodexApprovalRequest(request: CodexAppServerServerRequest): boolean {
-  return request.method === 'item/commandExecution/requestApproval' || request.method === 'item/fileChange/requestApproval' || request.method === 'item/permissions/requestApproval'
+  return request.method === 'item/commandExecution/requestApproval'
+    || request.method === 'item/fileChange/requestApproval'
+    || request.method === 'item/permissions/requestApproval'
     || /approval|permission/i.test(request.method);
 }
 
 async function withCodexPendingServerRequest<T>(
   request: CodexAppServerServerRequest,
   input: {
-    kind: 'permission' | 'question';
+    kind: CodexPendingServerRequestKind;
     toolCallId: string;
     signal?: AbortSignal;
     pendingServerRequests?: CodexPendingServerRequests;

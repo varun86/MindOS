@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, memo, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useRef, useEffect, memo, useState, useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Loader2, AlertCircle, Wrench, WifiOff, Zap, Copy, Check, ArrowDown, FolderInput, Search, PenLine, Lightbulb, FileText, Paperclip, Bot, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,6 +15,11 @@ import AgentRunTimeline from './AgentRunTimeline';
 
 const SKILL_PREFIX_RE = /^Use the skill ([^:]+):\s*/;
 const MARKDOWN_REMARK_PLUGINS = [remarkGfm];
+const MESSAGE_ROW_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '0 96px',
+};
+
 function CopyMessageButton({ text, label, variant = 'default' }: { text: string; label?: string; variant?: 'default' | 'dock' }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
@@ -43,7 +48,7 @@ function CopyMessageButton({ text, label, variant = 'default' }: { text: string;
 
 function MessageActionDock({ children }: { children: ReactNode }) {
   return (
-    <div className="absolute right-3 top-full z-40 -mt-2 flex items-center gap-0.5 rounded-lg border border-border/50 bg-background/95 p-0.5 shadow-sm backdrop-blur-sm opacity-100 transition-[opacity,transform] duration-100 pointer-events-auto md:pointer-events-none md:opacity-0 md:translate-y-0.5 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100 md:group-hover/message:translate-y-0 md:focus-within:pointer-events-auto md:focus-within:opacity-100 md:focus-within:translate-y-0">
+    <div className="absolute right-3 top-full z-10 -mt-2 flex items-center gap-0.5 rounded-lg border border-border/50 bg-background/95 p-0.5 shadow-sm backdrop-blur-sm opacity-100 transition-[opacity,transform] duration-100 pointer-events-auto md:pointer-events-none md:opacity-0 md:translate-y-0.5 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100 md:group-hover/message:translate-y-0 md:focus-within:pointer-events-auto md:focus-within:opacity-100 md:focus-within:translate-y-0">
       {children}
     </div>
   );
@@ -370,7 +375,7 @@ const MessageRow = memo(function MessageRow({
   );
 
   return (
-    <div className={`group/message flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div style={MESSAGE_ROW_STYLE} className={`group/message flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {message.role === 'assistant' && shouldShowAssistantSideMark(message.agentKind) && (
         <div className="mt-0.5 shrink-0">
           <RuntimeMark runtime={message.agentKind ?? 'mindos'} label={message.agentName} />
@@ -571,7 +576,7 @@ export default memo(function MessageList({
   }, []);
 
   return (
-    <div ref={scrollContainerRef} role="log" aria-live="polite" className="relative flex-1 overflow-y-auto overflow-x-hidden px-4 pt-5 pb-10 space-y-6 min-h-0">
+    <div ref={scrollContainerRef} role="log" aria-live="polite" className="relative flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 space-y-5 min-h-0">
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 min-h-[260px] px-6 pt-10 pb-4">
           {/* Brand anchor — refined presence */}

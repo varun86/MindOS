@@ -109,14 +109,8 @@ export function updateServerDirectTools(
 
   if (directTools === false || directTools === undefined) {
     delete server.directTools;
-    delete config.settings?.mindosAgent?.mcpServers?.[serverName];
   } else {
-    const access = directTools === true ? true : normalizeToolNameList(directTools);
-    server.directTools = access;
-    config.settings ??= {};
-    config.settings.mindosAgent ??= {};
-    config.settings.mindosAgent.mcpServers ??= {};
-    config.settings.mindosAgent.mcpServers[serverName] = access;
+    server.directTools = directTools;
   }
 
   writeMcpConfig(config);
@@ -217,12 +211,8 @@ function normalizeMindosMcpAccess(access: MindosMcpServerAccess | undefined): tr
 }
 
 function normalizeToolNames(tools: string[]): string[] | null {
-  const normalized = normalizeToolNameList(tools);
+  const normalized = [...new Set(tools.map((tool) => tool.trim()).filter(Boolean))];
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeToolNameList(tools: string[]): string[] {
-  return [...new Set(tools.map((tool) => tool.trim()).filter(Boolean))];
 }
 
 function cloneServerEntryForRuntime(entry: McpServerEntry): McpServerEntry {

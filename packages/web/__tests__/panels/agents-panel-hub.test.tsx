@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import AgentsPanel from '@/components/panels/AgentsPanel';
+import AgentsPanelAgentListRow from '@/components/panels/AgentsPanelAgentListRow';
 import { messages } from '@/lib/i18n';
 
 const runtimeCapabilities = vi.hoisted(() => ({
@@ -133,24 +134,25 @@ describe('AgentsPanel hub layout', () => {
     mcpState.skills = [];
   });
 
-  it('renders split hub nav rows and runtime endpoints in the Agent tab', () => {
-    const html = renderToStaticMarkup(<AgentsPanel active />);
+  it('renders five hub nav rows and runtime endpoints in the Agent tab', () => {
+    const html = renderToStaticMarkup(<AgentsPanel active maximized={false} />);
     const a = messages.en.panels.agents;
-    const navCapabilities = a.navCapabilities.replace('&', '&amp;');
     const runtime = messages.en.agentsContent.runtime;
     const localClients = messages.en.agentsContent.localClients;
+    const capabilitiesLabel = a.navCapabilities.replace('&', '&amp;');
     expect(html).toContain(a.navOverview);
     expect(html).toContain(a.navAssistant);
     expect(html).toContain(a.navAgent);
-    expect(html).toContain(navCapabilities);
+    expect(html).toContain(capabilitiesLabel);
     expect(html).toContain(a.navChannels);
     expect(html).toContain('href="/agents"');
     expect(html).toContain('href="/agents?tab=assistant"');
     expect(html).toContain('href="/agents?tab=agent"');
-    expect(html).toContain('href="/agents?tab=skills"');
+    expect(html).toContain('href="/agents?tab=capabilities"');
     expect(html).toContain('href="/agents?tab=channels"');
     expect(html).toContain('href="/agents?tab=runs"');
-    expect(html).not.toContain('href="/agents?tab=capabilities"');
+    expect(html).not.toContain('href="/agents?tab=mcp"');
+    expect(html).not.toContain('href="/agents?tab=skills"');
     expect(html).toContain(runtime.panelTitle);
     expect(html).toContain(runtime.mindosName);
     expect(html).toContain('Codex');
@@ -159,17 +161,8 @@ describe('AgentsPanel hub layout', () => {
     expect(html).toContain(localClients.panelTitle);
     expect(html).toContain('href="/agents/test-agent"');
     expect(html).toContain('Test Agent');
-    expect(html).not.toContain('Your setup');
+    expect(html).not.toContain(a.rosterLabel);
     expect(html).not.toContain('/help');
-
-    const headerStart = html.indexOf('panel-header');
-    const headerEnd = html.indexOf('<div class="flex-1 overflow-y-auto', headerStart);
-    const headerHtml = html.slice(headerStart, headerEnd);
-    expect(headerHtml).not.toContain(runtime.panelTitle);
-    expect(headerHtml).not.toContain(a.connected);
-    expect(headerHtml).not.toContain(`aria-label="${a.refresh}"`);
-    expect((html.match(new RegExp(`aria-label="${runtime.refresh}"`, 'g')) ?? [])).toHaveLength(1);
-    expect(html).toContain('hit-target-box inline-flex h-7 w-7');
   });
 
   it('keeps the hub nav visible while MCP data is loading', () => {
@@ -178,7 +171,7 @@ describe('AgentsPanel hub layout', () => {
     mcpState.agents = [];
     mcpState.skills = [];
 
-    const html = renderToStaticMarkup(<AgentsPanel active />);
+    const html = renderToStaticMarkup(<AgentsPanel active maximized={false} />);
     const a = messages.en.panels.agents;
 
     expect(html).toContain(a.navOverview);
@@ -186,5 +179,47 @@ describe('AgentsPanel hub layout', () => {
     expect(html).toContain(a.navAgent);
     expect(html).toContain(a.navChannels);
     expect(html.indexOf(a.navOverview)).toBeLessThan(html.indexOf('aria-busy="true"'));
+  });
+
+  it('keeps the Agent parent row active on an agent detail route with lightweight selected rows', () => {
+    routeState.pathname = '/agents/test-agent';
+    routeState.search = '';
+
+    const html = renderToStaticMarkup(<AgentsPanel active maximized={false} />);
+
+    expect(html).toContain('href="/agents?tab=agent"');
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/agents\?tab=agent"/);
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*href="\/agents\/test-agent"/);
+    expect(html).toContain('rounded-none');
+    expect(html).toContain('bg-[var(--amber-subtle)]');
+    expect(html).toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
+    expect(html).not.toContain('ring-2 ring-ring/50');
+    expect(html).not.toContain('bg-[var(--amber-dim)]/45');
+  });
+
+  it('renders selected agent rows as flat rail rows without a bordered card shell', () => {
+    const html = renderToStaticMarkup(
+      <AgentsPanelAgentListRow
+        agent={mcpState.agents[0]}
+        agentStatus="connected"
+        selected
+        detailHref="/agents/test-agent"
+        onInstallAgent={async () => true}
+        copy={{
+          installing: 'Installing',
+          install: 'Install',
+          installSuccess: 'Installed',
+          installFailed: 'Install failed',
+          retryInstall: 'Retry',
+        }}
+      />,
+    );
+    const outerClassName = html.match(/^<div class="([^"]+)"/)?.[1] ?? '';
+
+    expect(html).toContain('rounded-none');
+    expect(html).toContain('bg-[var(--amber-subtle)]');
+    expect(html).toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
+    expect(html).not.toContain('border border-transparent');
+    expect(outerClassName).not.toContain('shadow');
   });
 });

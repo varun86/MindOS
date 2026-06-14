@@ -489,16 +489,16 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
         {tab === 'search' && (
           <>
             {/* Search input - IMPROVED */}
-            <div className="px-4 py-2.5 border-b border-border">
+            <div className="px-4 py-3 border-b border-border">
               <div className="flex items-center gap-3">
-                <Search size={15} className="text-muted-foreground shrink-0 flex-none" />
+                <Search size={16} className="text-muted-foreground shrink-0 flex-none" />
                 <input
                   ref={inputRef}
                   type="text"
                   value={query}
                   onChange={handleChange}
                   placeholder={t.search.placeholder}
-                  className="flex-1 bg-transparent text-foreground text-sm font-medium placeholder:text-muted-foreground/55 outline-none"
+                  className="flex-1 bg-transparent text-foreground text-base font-medium placeholder:text-muted-foreground/60 outline-none"
                 />
                 {loading && (
                   <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-foreground rounded-full animate-spin shrink-0 flex-none" />
@@ -580,7 +580,7 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
                     onClick={() => navigate(result)}
                     onMouseEnter={() => setSelectedIndex(i)}
                     className={`
-                      group w-full px-3 py-2.5 flex items-start gap-3 text-left transition-colors duration-100
+                      w-full px-3 py-2.5 flex items-start gap-3 text-left transition-colors duration-100
                       ${isSelected ? 'bg-[var(--amber-dim)] border-l-2 border-[var(--amber)]' : 'border-l-2 border-transparent'}
                       ${isDragging ? 'bg-muted/70' : isSelected ? '' : 'hover:bg-muted/60'}
                       ${i < results.length - 1 ? 'border-b border-border/50' : ''}
@@ -621,15 +621,11 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
                       )}
                     </div>
 
-                    {/* Drag affordance */}
+                    {/* Drag hint for mobile/desktop */}
                     {isSelected && !isDragging && (
-                      <span
-                        className="hidden md:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
-                        title={t.search.dragToChat}
-                        aria-label={t.search.dragToChat}
-                      >
-                        <GripVertical size={13} aria-hidden="true" />
-                      </span>
+                      <div className="hidden md:flex shrink-0 flex-none text-[10px] text-muted-foreground/50 font-mono pt-0.5">
+                        ⬆ Drag
+                      </div>
                     )}
                   </button>
                 );
@@ -642,15 +638,7 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
                 <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↑↓</kbd> {t.search.navigate}</span>
                 <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">↵</kbd> {t.search.open}</span>
                 <span className="text-muted-foreground/40 mx-0.5">•</span>
-                <span className="inline-flex items-center gap-1">
-                  <span
-                    className="inline-flex h-5 w-5 items-center justify-center rounded bg-muted/40 text-muted-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <GripVertical size={12} />
-                  </span>
-                  {t.search.dragToChat}
-                </span>
+                <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">Drag</kbd> to chat</span>
                 <span className="text-muted-foreground/40 mx-0.5">•</span>
                 <span><kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted/40 rounded">ESC</kbd> {t.search.close}</span>
               </div>

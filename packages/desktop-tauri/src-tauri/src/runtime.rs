@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_shell::ShellExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeHealth {

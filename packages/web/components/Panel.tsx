@@ -11,7 +11,6 @@ import SyncStatusBar from './SyncStatusBar';
 import PanelHeader from './panels/PanelHeader';
 import { useResizeDrag } from '@/hooks/useResizeDrag';
 import { useFilesChanged } from '@/hooks/useFilesChanged';
-import { notifyFilesChanged } from '@/lib/files-changed';
 import { useLocale } from '@/lib/stores/locale-store';
 import { listTrashAction } from '@/lib/actions';
 import { DEFAULT_LEFT_PANEL_WIDTH, LEFT_PANEL } from '@/lib/config/panel-sizes';
@@ -229,29 +228,17 @@ export default function Panel({
   }, []);
 
   const handleRefreshFiles = useCallback(() => {
-    if (refreshingTree) return;
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setRefreshingTree(true);
-    void (async () => {
-      try {
-        if (typeof fetch === 'function') {
-          await fetch('/api/tree-version', { method: 'POST', cache: 'no-store' });
-        }
-      } catch {
-        // Fall back to the RSC refresh below; manual refresh should still make
-        // a best-effort pass even if the force-refresh endpoint is unavailable.
-      } finally {
-        startTransition(() => {
-          router.refresh();
-          notifyFilesChanged();
-        });
-        refreshTimerRef.current = setTimeout(() => {
-          refreshTimerRef.current = null;
-          setRefreshingTree(false);
-        }, 450);
-      }
-    })();
-  }, [refreshingTree, router]);
+    startTransition(() => {
+      router.refresh();
+      window.dispatchEvent(new Event('mindos:files-changed'));
+    });
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      setRefreshingTree(false);
+    }, 450);
+  }, [router]);
 
   // Disable the width transition while dragging (same pattern as
   // RightAskPanel): otherwise every mousemove animates 200ms behind the cursor.
@@ -319,7 +306,6 @@ export default function Panel({
                   data-panel-new-menu
                 >
                   <button
-                    type="button"
                     className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
                     onClick={() => {
                       startTransition(() => {
@@ -332,35 +318,32 @@ export default function Panel({
                     {t.sidebar.newFile}
                   </button>
                   <button
-                    type="button"
                     className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
                     onClick={() => { setNewPopover(false); window.dispatchEvent(new Event('mindos:create-space')); }}
                   >
                     <Layers size={14} className="shrink-0 text-[var(--amber)]" />
                     {t.sidebar.newSpace}
                   </button>
-                  <button
-                    type="button"
-                    className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
-                    onClick={() => {
-                      setNewPopover(false);
-                      onImport?.();
-                    }}
-                  >
-                    <Import size={14} className="shrink-0" />
-                    {t.sidebar.importFile}
-                  </button>
                 </div>
               )}
             </div>
+            {/* Import */}
+            <button
+              type="button"
+              onClick={() => onImport?.()}
+              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+              aria-label={t.sidebar.importFile}
+              title={t.sidebar.importFile}
+            >
+              <Import size={13} />
+            </button>
             {/* Refresh */}
             <button
               type="button"
               onClick={handleRefreshFiles}
-              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
               aria-label={t.sidebar.refreshFiles}
               aria-busy={refreshingTree}
-              disabled={refreshingTree}
               title={t.sidebar.refreshFiles}
             >
               <RefreshCw size={13} className={refreshingTree ? 'motion-safe:animate-spin' : undefined} />
@@ -486,6 +469,7 @@ export default function Panel({
           <BuiltInMindSpaces
             title={t.sidebar.builtInSpacesTitle}
             slots={mindSystemSlots}
+            activePathname={pathname}
             onOpen={(path) => router.push(`/view/${encodePath(path)}`)}
           />
           <FileTree nodes={ordinaryFileTree} onNavigate={onNavigate} maxOpenDepth={maxOpenDepth} onImport={onImport} />
@@ -543,10 +527,12 @@ export default function Panel({
 function BuiltInMindSpaces({
   title,
   slots,
+  activePathname,
   onOpen,
 }: {
   title: string;
   slots: MindSystemSlot[];
+  activePathname: string;
   onOpen: (path: string) => void;
 }) {
   const { t } = useLocale();
@@ -570,6 +556,11 @@ function BuiltInMindSpaces({
   }, []);
 
   if (visibleSlots.length === 0) return null;
+  const activeSlotKey = visibleSlots.find((item) => {
+    const slotHref = `/view/${encodePath(item.path)}`;
+    return activePathname === slotHref || activePathname.startsWith(`${slotHref}/`);
+  })?.key;
+  const expanded = !collapsed;
 
   return (
     <section className="mb-2 px-1 pb-2 border-b border-border/40" aria-label={title}>
@@ -577,15 +568,18 @@ function BuiltInMindSpaces({
         type="button"
         onClick={toggleCollapsed}
         data-state={collapsed ? 'collapsed' : 'expanded'}
-        data-hit-active={collapsed ? undefined : 'true'}
+        data-hit-active={expanded ? 'true' : undefined}
         aria-expanded={!collapsed}
         aria-controls={MIND_SYSTEM_SLOT_LIST_ID}
-        className={`hit-target-box mb-1 flex w-full items-center gap-2 border border-transparent px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-border-width:1px] [--hit-target-radius:var(--radius-lg)] ${
+        className={`hit-target-box relative mb-1 flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:0px] ${
           collapsed
-            ? '[--hit-target-border:color-mix(in_srgb,var(--border)_70%,transparent)] [--hit-target-hover-border:var(--border)] [--hit-target-bg:var(--card)] [--hit-target-hover-bg:var(--muted)]'
-            : '[--hit-target-active-border:color-mix(in_srgb,var(--amber)_20%,transparent)] [--hit-target-hover-border:color-mix(in_srgb,var(--amber)_35%,transparent)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-hover-bg:var(--amber-dim)]'
+            ? '[--hit-target-hover-bg:var(--muted)]'
+            : '[--hit-target-active-bg:var(--amber-subtle)] [--hit-target-hover-bg:var(--amber-dim)]'
         }`}
       >
+        {expanded && (
+          <span className="pointer-events-none absolute bottom-[20%] left-0 top-[20%] w-[3px] rounded-r-full bg-[var(--amber)]" aria-hidden="true" />
+        )}
         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
           collapsed
             ? 'bg-[var(--amber)]/8 text-[var(--amber)]/70'
@@ -606,15 +600,25 @@ function BuiltInMindSpaces({
         <div id={MIND_SYSTEM_SLOT_LIST_ID} className="space-y-0.5">
           {visibleSlots.map((item) => {
             const copy = t.home.mindPillars[item.key];
+            const active = activeSlotKey === item.key;
             return (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => onOpen(item.path)}
                 data-mind-system-sidebar-open={item.key}
-                className="hit-target-box flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+                data-hit-active={active ? 'true' : undefined}
+                aria-current={active ? 'page' : undefined}
+                className={`hit-target-box relative flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-radius:0px] ${
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-background/40 text-[11px] font-semibold text-[var(--amber)]">
+                {active && (
+                  <span className="pointer-events-none absolute bottom-[20%] left-0 top-[20%] w-[3px] rounded-r-full bg-[var(--amber)]" aria-hidden="true" />
+                )}
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border bg-background/40 text-[11px] font-semibold ${
+                  active ? 'border-[var(--amber)]/35 text-[var(--amber)]' : 'border-border text-[var(--amber)]'
+                }`}>
                   {item.label}
                 </span>
                 <span className="block min-w-0 flex-1 truncate">{copy?.desc ?? item.role}</span>

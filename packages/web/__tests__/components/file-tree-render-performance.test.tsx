@@ -177,47 +177,6 @@ describe('FileTree navigation re-render scope', () => {
     expect(f1?.getAttribute('data-hit-active')).toBe('true');
   });
 
-  it('scrolls the active row even when CSS.escape is not available', async () => {
-    const cssHost = globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } };
-    const hadCss = Object.prototype.hasOwnProperty.call(cssHost, 'CSS');
-    const originalCss = cssHost.CSS;
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    const scrollIntoView = vi.fn();
-
-    vi.useFakeTimers();
-    Object.defineProperty(cssHost, 'CSS', { configurable: true, writable: true, value: undefined });
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView,
-    });
-
-    try {
-      const { default: FileTree } = await import('@/components/FileTree');
-      await render(<FileTree nodes={buildSpaceTree()} />);
-
-      await act(async () => { vi.advanceTimersByTime(130); });
-
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    } finally {
-      if (hadCss) {
-        Object.defineProperty(cssHost, 'CSS', { configurable: true, writable: true, value: originalCss });
-      } else {
-        delete cssHost.CSS;
-      }
-      if (originalScrollIntoView) {
-        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-          configurable: true,
-          writable: true,
-          value: originalScrollIntoView,
-        });
-      } else {
-        delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-      }
-      vi.useRealTimers();
-    }
-  });
-
   it('does not re-render directory rows when navigating between files inside them', async () => {
     const { default: FileTree } = await import('@/components/FileTree');
     const tree = buildSpaceTree();

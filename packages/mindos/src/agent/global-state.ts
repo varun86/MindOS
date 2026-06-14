@@ -61,6 +61,17 @@ export const AGENT_RUN_LEDGER_SUBSCRIBERS_KEY = Symbol.for('mindos.agentRunLedge
 export const AGENT_RUN_LEDGER_SHARD_KEY = Symbol.for('mindos.agentRunLedger.shard');
 
 /**
+ * Request-scoped AgentRunContext by pi runtime resource
+ * (agent-run-context.ts). The pi SDK can execute extension tools from a
+ * callback chain that no longer carries AsyncLocalStorage. The extension
+ * context still exposes the runtime's sessionManager object, so MindOS stores
+ * the current turn context in a shared WeakMap keyed by that object. WeakMap
+ * keeps concurrent sessions isolated without leaking completed runtime
+ * objects.
+ */
+export const AGENT_RUN_CONTEXT_BY_RESOURCE_KEY = Symbol.for('mindos.agentRunContext.byResource');
+
+/**
  * Run cancellation handler map (run-cancellation.ts). The cancel API route
  * resolves handlers registered by the streaming route; a forked map means
  * cancellation requests find no handler and runs become unkillable.

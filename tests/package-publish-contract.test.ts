@@ -255,11 +255,6 @@ describe('product npm publish contract', () => {
     expect(verifyStandalone).toContain('redirectUrl.origin !== localOrigin');
     expect(verifyStandalone).toContain('AUTH_TOKEN:');
     expect(verifyStandalone).toContain('WEB_PASSWORD:');
-    expect(verifyStandalone).toContain('mkdtempSync');
-    expect(verifyStandalone).toContain("mindos-standalone-home-");
-    expect(verifyStandalone).toContain('HOME: tempHome');
-    expect(verifyStandalone).toContain('USERPROFILE: tempHome');
-    expect(verifyStandalone).toContain('rmSync(tempHome');
     expect(verifyStandalone).toContain('{ maxRedirects: 5 }');
     expect(verifyStandalone).toContain('/api/health');
   });

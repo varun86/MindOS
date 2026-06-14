@@ -8,7 +8,6 @@ import {
   sanitizeToolOutput,
   type MindOSSSEvent,
 } from '../session/index.js';
-import type { MindosRuntimeReasoningEffort } from './codex-runtime-options.js';
 
 export type ClaudeCodeCliTransport = {
   run(args: string[], options: { cwd: string; signal?: AbortSignal }): AsyncIterable<string>;
@@ -27,10 +26,7 @@ export type ClaudeCodeCliClient = {
     prompt: string;
     cwd: string;
     sessionId?: string;
-    model?: string;
-    effort?: MindosRuntimeReasoningEffort;
     permissionMode?: ClaudeCodeCliPermissionMode;
-    allowDangerouslySkipPermissions?: boolean;
     permissionPrompt?: ClaudeCodeCliPermissionPrompt;
     signal?: AbortSignal;
   }): AsyncIterable<ClaudeCodeCliEvent>;
@@ -159,10 +155,7 @@ export function createClaudeCodeCliStdioTransport(options: {
 function buildClaudeCodeCliArgs(input: {
   prompt: string;
   sessionId?: string;
-  model?: string;
-  effort?: MindosRuntimeReasoningEffort;
   permissionMode?: ClaudeCodeCliPermissionMode;
-  allowDangerouslySkipPermissions?: boolean;
   permissionPrompt?: ClaudeCodeCliPermissionPrompt;
 }): string[] {
   return [
@@ -170,9 +163,6 @@ function buildClaudeCodeCliArgs(input: {
     '--output-format',
     'stream-json',
     '--verbose',
-    ...(input.model ? ['--model', input.model] : []),
-    ...(input.effort ? ['--effort', input.effort] : []),
-    ...(input.allowDangerouslySkipPermissions ? ['--dangerously-skip-permissions'] : []),
     '--permission-mode',
     input.permissionMode ?? 'default',
     ...(input.sessionId ? ['--resume', input.sessionId] : []),

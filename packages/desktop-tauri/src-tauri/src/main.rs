@@ -12,6 +12,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WindowEvent,
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 /// Toggle window visibility
 #[tauri::command]
@@ -50,13 +51,14 @@ fn main() {
         .setup(|app| {
             // Register deep link handler
             let app_handle = app.handle().clone();
-            tauri_plugin_deep_link::register("mindos", move |request| {
-                let url = request.to_string();
-                if let Err(e) = deep_link::handle_deep_link(&app_handle, &url) {
-                    eprintln!("[MindOS] Failed to handle deep link: {}", e);
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    let url = url.to_string();
+                    if let Err(e) = deep_link::handle_deep_link(&app_handle, &url) {
+                        eprintln!("[MindOS] Failed to handle deep link: {}", e);
+                    }
                 }
-            })
-            .map_err(|e| format!("Failed to register deep link: {}", e))?;
+            });
 
             let window = app
                 .get_webview_window("main")
@@ -174,13 +176,13 @@ fn main() {
                 .build(app)?;
 
             // Handle window close event - minimize to tray instead of quit
-            window.on_window_event(|event| {
+            let close_window = window.clone();
+            window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     // Prevent default close behavior
                     api.prevent_close();
                     // Hide window instead
-                    let window = event.window();
-                    let _ = window.hide();
+                    let _ = close_window.hide();
                 }
             });
 
@@ -202,7 +204,7 @@ fn main() {
             });
 
             // Register global shortcuts
-            if let Err(e) = shortcuts::register_shortcuts(app) {
+            if let Err(e) = shortcuts::register_shortcuts(app.handle()) {
                 eprintln!("[MindOS] Failed to register shortcuts: {}", e);
             }
 

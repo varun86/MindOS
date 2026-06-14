@@ -51,25 +51,34 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect(el.className).toContain('fixed');
     expect(el.className).toContain('top-0');
     expect(el.className).toContain('right-0');
-    expect(el.className).toContain('z-30');
+    expect(el.className).toContain('z-app-rail-affordance');
   });
 
   it('binds geometry to the shell CSS variables', () => {
     const el = render();
     const style = el.getAttribute('style') ?? '';
-    expect(style).toContain('left: var(--titlebar-row-left)');
+    expect(style).toContain('left: var(--rail-width, 48px)');
     expect(style).toContain('height: var(--app-titlebar-h)');
-    expect(style).toContain('max(0px, calc(var(--window-controls-left) - var(--titlebar-row-left)))');
+    expect(style).toContain('max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, 48px)))');
   });
 
-  it('is draggable without tracking expanded rail width', () => {
+  it('paints above the expanding rail so leading titlebar buttons stay clickable', () => {
+    const titlebarSource = readFileSync(path.join(webRoot, 'components', 'TitlebarRow.tsx'), 'utf-8');
+    const activityBarSource = readFileSync(path.join(webRoot, 'components', 'ActivityBar.tsx'), 'utf-8');
+
+    expect(titlebarSource).toContain('z-app-rail-affordance');
+    expect(activityBarSource).toContain('z-app-rail ');
+    expect(titlebarSource).not.toContain('className="titlebar-row fixed top-0 right-0 z-30');
+  });
+
+  it('is draggable and animates in sync with the rail (200ms ease-out)', () => {
     const el = render();
     // jsdom does not serialize -webkit-app-region into the style attribute;
     // React assigns it as a camelCase expando on the style object
     expect((el.style as unknown as Record<string, string>).WebkitAppRegion).toBe('drag');
     const style = el.getAttribute('style') ?? '';
-    expect(style).not.toContain('transition:');
-    expect(style).not.toContain('var(--rail-width)');
+    expect(style).toMatch(/transition:[^;]*left 200ms ease-out/);
+    expect(style).toMatch(/transition:[^;]*padding-left 200ms ease-out/);
   });
 
   it('hosts the tab strip and reserves >=110px of pure drag space at the right end', () => {
@@ -90,18 +99,13 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
 
   it('renders the leading Search trigger before the tablist without joining the tab model', () => {
     const onSearchOpenOrFocus = vi.fn();
-    const onSidebarExpandedChange = vi.fn();
-    const el = render({
-      searchActive: true,
-      onSearchOpenOrFocus,
-      sidebarExpanded: true,
-      onSidebarExpandedChange,
-    });
+    const el = render({ searchActive: true, onSearchOpenOrFocus });
     const searchButton = el.querySelector<HTMLButtonElement>('[data-titlebar-search-trigger]');
     const sidebarToggle = el.querySelector<HTMLButtonElement>('[data-titlebar-sidebar-toggle]');
     const tablist = el.querySelector<HTMLElement>('[role="tablist"]');
 
     expect(searchButton).not.toBeNull();
+    expect(sidebarToggle).not.toBeNull();
     expect(searchButton!.getAttribute('aria-label')).toBe('Search');
     expect(searchButton!.getAttribute('aria-pressed')).toBe('true');
     expect(searchButton!.getAttribute('aria-expanded')).toBe('true');
@@ -115,24 +119,53 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect(searchButton!.className).not.toContain('self-center');
     expect(searchButton!.className).not.toMatch(/(^|\s)border(?:-|\s|$)/);
     expect(searchButton!.className).not.toContain('border-r');
-    expect(sidebarToggle).not.toBeNull();
-    expect(sidebarToggle!.getAttribute('aria-label')).toBe('Collapse sidebar');
-    expect(sidebarToggle!.getAttribute('aria-pressed')).toBe('true');
-    expect((sidebarToggle!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('no-drag');
     expect(tablist).not.toBeNull();
+    expect(searchButton!.compareDocumentPosition(tablist!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(searchButton!.compareDocumentPosition(sidebarToggle!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(sidebarToggle!.compareDocumentPosition(tablist!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(searchButton!.compareDocumentPosition(tablist!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     act(() => {
       searchButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(onSearchOpenOrFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the rail expand/collapse control before the tablist and toggles the rail state', () => {
+    const onSidebarExpandedChange = vi.fn();
+    const el = render({ sidebarExpanded: true, onSidebarExpandedChange });
+    const sidebarToggle = el.querySelector<HTMLButtonElement>('[data-titlebar-sidebar-toggle]');
+    const searchButton = el.querySelector<HTMLButtonElement>('[data-titlebar-search-trigger]');
+    const tablist = el.querySelector<HTMLElement>('[role="tablist"]');
+
+    expect(sidebarToggle).not.toBeNull();
+    expect(sidebarToggle!.getAttribute('aria-label')).toBe('Collapse sidebar');
+    expect(sidebarToggle!.getAttribute('aria-pressed')).toBe('true');
+    expect((sidebarToggle!.style as unknown as Record<string, string>).WebkitAppRegion).toBe('no-drag');
+    expect(sidebarToggle!.parentElement).toBe(el);
+    expect(searchButton).not.toBeNull();
+    expect(tablist).not.toBeNull();
+    expect(searchButton!.compareDocumentPosition(sidebarToggle!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sidebarToggle!.compareDocumentPosition(tablist!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     act(() => {
       sidebarToggle!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(onSidebarExpandedChange).toHaveBeenCalledWith(false);
+  });
+
+  it('labels the titlebar rail control as expand when the rail is collapsed', () => {
+    const onSidebarExpandedChange = vi.fn();
+    const el = render({ sidebarExpanded: false, onSidebarExpandedChange });
+    const sidebarToggle = el.querySelector<HTMLButtonElement>('[data-titlebar-sidebar-toggle]');
+
+    expect(sidebarToggle).not.toBeNull();
+    expect(sidebarToggle!.getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(sidebarToggle!.getAttribute('aria-pressed')).toBe('false');
+
+    act(() => {
+      sidebarToggle!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(onSidebarExpandedChange).toHaveBeenCalledWith(true);
   });
 
   it('globals.css gates display and defines the shell variables', () => {
@@ -143,8 +176,6 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // Variables default to 0 (browser/win/linux/old shell = zero diff)
     expect(css).toContain('--app-titlebar-h: 0px');
     expect(css).toContain('--window-controls-left: 0px');
-    expect(css).toContain('--titlebar-row-left: 0px');
-    expect(css).toMatch(/@media \(min-width:\s*768px\)\s*\{[^}]*--titlebar-row-left:\s*48px/);
     // Rail offset exists only for the mac traffic lights: 0 by default so the
     // rail logo sits in the first row on browser/win/linux desktops
     expect(css).toMatch(/:root\s*\{[^}]*--rail-titlebar-offset:\s*0px/);

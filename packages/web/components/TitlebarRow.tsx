@@ -15,10 +15,12 @@ import { useLocale } from '@/lib/stores/locale-store';
 // individually, and the trailing spacer guarantees >=110px of pure drag space
 // at the row's right end no matter how many tabs are open.
 const ROW_STYLE = {
-  left: 'var(--titlebar-row-left)',
+  left: 'var(--rail-width, 48px)',
   height: 'var(--app-titlebar-h)',
   // Clear the traffic lights only when the rail does not already cover them
-  paddingLeft: 'max(0px, calc(var(--window-controls-left) - var(--titlebar-row-left)))',
+  paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, 48px)))',
+  // Same duration/easing as the rail width transition so expand/collapse stays in sync
+  transition: 'left 200ms ease-out, padding-left 200ms ease-out',
   WebkitAppRegion: 'drag',
 } as React.CSSProperties;
 
@@ -37,6 +39,8 @@ interface TitlebarRowProps {
   sidebarExpanded?: boolean;
   onSidebarExpandedChange?: (expanded: boolean) => void;
 }
+
+const TITLEBAR_ACTION_CLASS = 'mb-1 ml-1.5 hidden h-7 w-7 shrink-0 items-center justify-center self-end rounded-full text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex';
 
 function TitlebarSearchTrigger({
   active,
@@ -57,7 +61,7 @@ function TitlebarSearchTrigger({
       data-titlebar-search-trigger
       style={NO_DRAG_STYLE}
       onClick={onOpenOrFocus}
-      className={`mb-1 ml-1.5 mr-1 hidden h-7 w-7 shrink-0 items-center justify-center self-end rounded-full text-muted-foreground transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex ${
+      className={`${TITLEBAR_ACTION_CLASS} ${
         active
           ? 'bg-[var(--amber)]/10 text-[var(--amber)]'
           : 'hover:bg-muted hover:text-foreground'
@@ -89,7 +93,7 @@ function TitlebarSidebarToggle({
       data-titlebar-sidebar-toggle
       style={NO_DRAG_STYLE}
       onClick={() => onExpandedChange?.(!expanded)}
-      className="mb-1 mr-1 hidden h-7 w-7 shrink-0 items-center justify-center self-end rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+      className={`${TITLEBAR_ACTION_CLASS} ml-0 mr-1 hover:bg-muted hover:text-foreground`}
     >
       {expanded ? <PanelLeftClose size={15} aria-hidden="true" /> : <PanelLeftOpen size={15} aria-hidden="true" />}
     </button>
@@ -106,7 +110,7 @@ export default function TitlebarRow({
 
   return (
     <div
-      className="titlebar-row fixed top-0 right-0 z-30 bg-background border-b border-border"
+      className="titlebar-row fixed top-0 right-0 z-app-rail-affordance bg-background border-b border-border"
       style={ROW_STYLE}
     >
       <TitlebarSearchTrigger

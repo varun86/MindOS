@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { RIGHT_ASK_DEFAULT_WIDTH, RIGHT_ASK_MIN_WIDTH, RIGHT_ASK_MAX_WIDTH } from '@/components/RightAskPanel';
 import { useAskModal, type AcpAgentSelection, type AskAgentRuntimeSelection } from './useAskModal';
 
@@ -28,6 +29,8 @@ export interface AskPanelState {
  * Extracted from SidebarLayout to reduce its state complexity.
  */
 export function useAskPanel(): AskPanelState {
+  const pathname = usePathname();
+  const fullPageChat = pathname === '/chat' || pathname.startsWith('/chat/');
   const [askPanelOpen, setAskPanelOpen] = useState(false);
   const [askPanelWidth, setAskPanelWidth] = useState(RIGHT_ASK_DEFAULT_WIDTH);
   const [askMode, setAskMode] = useState<'panel' | 'popup'>('panel');
@@ -44,6 +47,16 @@ export function useAskPanel(): AskPanelState {
   const prevWidthRef = useRef(RIGHT_ASK_DEFAULT_WIDTH);
 
   const askModal = useAskModal();
+
+  useEffect(() => {
+    if (!fullPageChat) return;
+    setAskPanelOpen(false);
+    setDesktopAskPopupOpen(false);
+    if (askMaximizedRef.current) {
+      setAskMaximized(false);
+      setAskPanelWidth(prevWidthRef.current);
+    }
+  }, [fullPageChat]);
 
   // Load persisted width + mode
   useEffect(() => {
@@ -73,6 +86,7 @@ export function useAskPanel(): AskPanelState {
 
     // Listen for "dock to panel" from home page fullscreen
     const onOpenPanel = () => {
+      if (fullPageChat) return;
       setAskPanelOpen(true);
       if (askMaximizedRef.current) {
         setAskMaximized(false);
@@ -85,11 +99,15 @@ export function useAskPanel(): AskPanelState {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('mindos:open-ask-panel', onOpenPanel);
     };
-  }, []);
+  }, [fullPageChat]);
 
   // Bridge useAskModal store → right Ask panel or popup
   useEffect(() => {
     if (askModal.open) {
+      if (fullPageChat) {
+        askModal.close();
+        return;
+      }
       setAskInitialMessage(askModal.initialMessage);
       setAskOpenSource(askModal.source);
       setAskAcpAgent(askModal.acpAgent);
@@ -101,9 +119,10 @@ export function useAskPanel(): AskPanelState {
       }
       askModal.close();
     }
-  }, [askModal.open, askModal.initialMessage, askModal.source, askModal.acpAgent, askModal.agentRuntime, askModal.close, askMode]);
+  }, [askModal.open, askModal.initialMessage, askModal.source, askModal.acpAgent, askModal.agentRuntime, askModal.close, askMode, fullPageChat]);
 
   const toggleAskPanel = useCallback(() => {
+    if (fullPageChat) return;
     if (askMode === 'popup') {
       setDesktopAskPopupOpen(v => {
         if (!v) { setAskInitialMessage(''); setAskOpenSource('user'); setAskAcpAgent(null); setAskAgentRuntime(null); }
@@ -115,7 +134,7 @@ export function useAskPanel(): AskPanelState {
         return !v;
       });
     }
-  }, [askMode]);
+  }, [askMode, fullPageChat]);
 
   const closeAskPanel = useCallback(() => {
     setAskPanelOpen(false);
@@ -143,6 +162,7 @@ export function useAskPanel(): AskPanelState {
   }, []);
 
   const handleAskModeSwitch = useCallback(() => {
+    if (fullPageChat) return;
     setAskMode(prev => {
       const next = prev === 'panel' ? 'popup' : 'panel';
       try {
@@ -158,7 +178,7 @@ export function useAskPanel(): AskPanelState {
       }
       return next;
     });
-  }, []);
+  }, [fullPageChat]);
 
   return {
     askPanelOpen, askPanelWidth, askMaximized, askMode, desktopAskPopupOpen,

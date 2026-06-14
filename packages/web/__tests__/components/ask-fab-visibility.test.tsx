@@ -21,16 +21,17 @@ vi.mock('@/lib/stores/locale-store', () => ({
   }),
 }));
 
-function renderFab(askPanelOpen: boolean): { host: HTMLDivElement; root: Root } {
+function renderFab(askPanelOpen: boolean): { host: HTMLDivElement; root: Root; onToggle: ReturnType<typeof vi.fn> } {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
+  const onToggle = vi.fn();
 
   act(() => {
-    root.render(<AskFab onToggle={vi.fn()} askPanelOpen={askPanelOpen} />);
+    root.render(<AskFab onToggle={onToggle} askPanelOpen={askPanelOpen} />);
   });
 
-  return { host, root };
+  return { host, root, onToggle };
 }
 
 describe('AskFab visibility', () => {
@@ -67,6 +68,25 @@ describe('AskFab visibility', () => {
 
     expect(button?.className).toContain('opacity-0');
     expect(button?.className).toContain('pointer-events-none');
+
+    act(() => root.unmount());
+  });
+
+  it('stays hidden on full-page chat routes because the route owns the composer', () => {
+    navState.pathname = '/chat/session-123';
+    const { host, root, onToggle } = renderFab(false);
+    const button = host.querySelector('button');
+
+    expect(button?.className).toContain('opacity-0');
+    expect(button?.className).toContain('pointer-events-none');
+    expect(button?.disabled).toBe(true);
+    expect(button?.tabIndex).toBe(-1);
+    expect(button?.getAttribute('aria-hidden')).toBe('true');
+
+    act(() => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(onToggle).not.toHaveBeenCalled();
 
     act(() => root.unmount());
   });

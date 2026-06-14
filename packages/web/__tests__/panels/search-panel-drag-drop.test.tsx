@@ -7,16 +7,12 @@ import { createRoot } from 'react-dom/client';
 vi.mock('@/lib/stores/locale-store', () => ({
   useLocale: () => ({
     t: {
-      sidebar: {
-        searchTitle: 'Search',
-      },
       search: {
         placeholder: 'Search files...',
         noResults: 'No results found',
         prompt: 'Type to search',
         navigate: 'navigate',
         open: 'open',
-        dragToChat: 'to chat',
       },
     },
   }),
@@ -155,13 +151,11 @@ describe('SearchPanel Drag-Drop Tests', () => {
 
     let capturedPath = '';
     let capturedType = '';
-    let capturedPlain = '';
 
     // Mock setData to capture calls
     dt.setData = (type: string, value: string) => {
       if (type === 'text/mindos-path') capturedPath = value;
       if (type === 'text/mindos-type') capturedType = value;
-      if (type === 'text/plain') capturedPlain = value;
     };
 
     await act(async () => {
@@ -170,7 +164,6 @@ describe('SearchPanel Drag-Drop Tests', () => {
 
     expect(capturedPath).toBeTruthy();
     expect(capturedType).toBe('file');
-    expect(capturedPlain).toBe(capturedPath);
     expect(capturedPath).toMatch(/\.(md|csv)$/);
   });
 
@@ -206,33 +199,6 @@ describe('SearchPanel Drag-Drop Tests', () => {
     // Second should be .csv
     const csvButton = resultButtons[1] as HTMLButtonElement;
     expect(csvButton.draggable).toBe(true);
-  });
-
-  it('should use icon-only drag affordances instead of visible Drag text', async () => {
-    const { default: SearchPanel } = await import('@/components/panels/SearchPanel');
-
-    await act(async () => {
-      root.render(
-        <SearchPanel
-          active={true}
-          onNavigate={() => {}}
-        />
-      );
-    });
-
-    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
-    await act(async () => {
-      setInputValue(input, 'test');
-    });
-
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 400));
-    });
-
-    const resultButton = host.querySelector('[data-testid="result-item-0"] button') as HTMLButtonElement;
-    expect(resultButton).toBeTruthy();
-    expect(resultButton.querySelector('[aria-label="to chat"]')).toBeTruthy();
-    expect(host.textContent).not.toContain('Drag');
   });
 
   it('should handle drag events without throwing', async () => {

@@ -23,6 +23,7 @@ export const RAIL_WIDTH_EXPANDED = ACTIVITY_BAR.WIDTH_EXPANDED;
 
 interface ActivityBarProps {
   activePanel: PanelId | null;
+  suppressRouteActive?: boolean;
   onPanelChange: (id: PanelId | null) => void;
   onCaptureClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
   onEchoClick?: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement>;
@@ -84,7 +85,7 @@ function RailButton({
 }: RailButtonProps) {
   const tooltipText = shortcut ? `${label} (${shortcut})` : label;
   const buttonClassName = `
-    hit-target-box relative flex items-center ${expanded ? 'justify-start px-3 w-full' : 'justify-center w-10'} h-10 transition-colors [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-dim)] [--hit-target-radius:var(--radius-md)]
+    hit-target-box relative flex items-center ${expanded ? 'justify-start px-3 w-full' : 'justify-center w-10'} h-10 transition-colors [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-radius:0px]
     ${active
       ? 'text-[var(--amber)]'
       : 'text-muted-foreground hover:text-foreground'
@@ -153,6 +154,7 @@ function RailButton({
 
 export default function ActivityBar({
   activePanel,
+  suppressRouteActive = false,
   onPanelChange,
   onCaptureClick,
   onEchoClick,
@@ -179,7 +181,10 @@ export default function ActivityBar({
   const [, startTransition] = useTransition();
   const router = useRouter();
   const isHome = pathname === '/';
-  const activeDestination = getRailActivePanel(pathname, activePanel);
+  const activeDestination = suppressRouteActive ? activePanel : getRailActivePanel(pathname, activePanel);
+  const isCurrentRouteForPanel = useCallback((panel: RoutePanelId) => (
+    !suppressRouteActive && isContentRouteForPanel(pathname, panel)
+  ), [pathname, suppressRouteActive]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') return;
@@ -317,12 +322,14 @@ export default function ActivityBar({
         {/* ── Top: Logo — mirrors the titlebar height so rail and panel start on the same line. ── */}
         <button
           type="button"
+          style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
           onClick={(event) => {
             if (onHomeClick) {
               onHomeClick(event);
               return;
             }
             startTransition(() => {
+              onPanelChange(null);
               if (!isHome) {
                 router.push('/');
               }
@@ -343,7 +350,7 @@ export default function ActivityBar({
             icon={<Inbox size={18} />}
             label={t.sidebar.capture}
             active={activeDestination === 'capture'}
-            current={isContentRouteForPanel(pathname, 'capture')}
+            current={isCurrentRouteForPanel('capture')}
             expanded={expanded}
             href={ROUTE_PANEL_HREF.capture}
             onClick={(event) => handleRouteRailClick(event, 'capture', onCaptureClick)}
@@ -353,7 +360,7 @@ export default function ActivityBar({
             icon={<Brain size={18} />}
             label={t.sidebar.files}
             active={activeDestination === 'files'}
-            current={isContentRouteForPanel(pathname, 'files')}
+            current={isCurrentRouteForPanel('files')}
             expanded={expanded}
             href={ROUTE_PANEL_HREF.files}
             onClick={(event) => handleRouteRailClick(event, 'files', onSpacesClick)}
@@ -363,7 +370,7 @@ export default function ActivityBar({
             icon={<Radio size={18} />}
             label={t.sidebar.echo}
             active={activeDestination === 'echo'}
-            current={isContentRouteForPanel(pathname, 'echo')}
+            current={isCurrentRouteForPanel('echo')}
             expanded={expanded}
             href={ROUTE_PANEL_HREF.echo}
             onClick={(event) => handleRouteRailClick(event, 'echo', onEchoClick)}
@@ -373,7 +380,7 @@ export default function ActivityBar({
             icon={<Bot size={18} />}
             label={t.sidebar.agents}
             active={activeDestination === 'agents'}
-            current={isContentRouteForPanel(pathname, 'agents')}
+            current={isCurrentRouteForPanel('agents')}
             expanded={expanded}
             href={ROUTE_PANEL_HREF.agents}
             onClick={(event) => handleRouteRailClick(event, 'agents', onAgentsClick)}
@@ -405,7 +412,7 @@ export default function ActivityBar({
             icon={<Compass size={18} />}
             label={t.sidebar.discover}
             active={activeDestination === 'discover'}
-            current={isContentRouteForPanel(pathname, 'discover')}
+            current={isCurrentRouteForPanel('discover')}
             expanded={expanded}
             href={ROUTE_PANEL_HREF.discover}
             onClick={(event) => handleRouteRailClick(event, 'discover', onDiscoverClick)}

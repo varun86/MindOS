@@ -437,8 +437,8 @@ function FrontmatterPanel({ frontmatter }: { frontmatter: NonNullable<ReturnType
 
 export default function MarkdownView({ content, highlightLines, onDismissHighlight, emptyPlaceholder, sourcePath = '' }: MarkdownViewProps) {
   const hasHighlights = highlightLines && highlightLines.length > 0;
-  const parsedMarkdown = splitMarkdownFrontmatter(content);
-  const hasFencedCodeBlocks = /(^|\n)(```|~~~)/.test(parsedMarkdown.body);
+  const parsedMarkdown = useMemo(() => splitMarkdownFrontmatter(content), [content]);
+  const hasFencedCodeBlocks = useMemo(() => /(^|\n)(```|~~~)/.test(parsedMarkdown.body), [parsedMarkdown.body]);
   const fencedCodeBlocks = useMemo(
     () => hasFencedCodeBlocks ? extractFencedCodeBlocks(parsedMarkdown.body) : [],
     [hasFencedCodeBlocks, parsedMarkdown.body],
@@ -557,6 +557,7 @@ export default function MarkdownView({ content, highlightLines, onDismissHighlig
   // un-highlighted for a frame and re-renders once the plugin arrives.
   const [highlightPlugin, setHighlightPlugin] = useState<RehypePlugin | null>(null);
   useEffect(() => {
+    if (!hasFencedCodeBlocks) return;
     let cancelled = false;
     import('rehype-highlight')
       .then((mod) => {
@@ -565,9 +566,9 @@ export default function MarkdownView({ content, highlightLines, onDismissHighlig
       .catch((err) => {
         // Graceful degradation: code stays readable without highlighting.
         console.error('[MarkdownView] Failed to load syntax highlighter:', err);
-    });
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [hasFencedCodeBlocks]);
 
   if (!content.trim() && emptyPlaceholder) {
     return (

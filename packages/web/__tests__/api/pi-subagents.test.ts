@@ -10,6 +10,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
+import { resetAgentRunsForTest } from '@geminilight/mindos/agent/run-ledger';
+import {
+  buildMindosPiChildRuntimeConfig,
+  MINDOS_PI_CHILD_API_KEY_ENV,
+  PI_CODING_AGENT_DIR_ENV,
+} from '../../lib/agent/subagent-ledger-extension';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 let tempHomeToClean: string | null = null;
@@ -233,6 +239,115 @@ describe('pi-subagents built-in extension', () => {
 
       // pi-subagents 0.28 folds status checks into subagent({ action: "status" }).
       expect(subagentsExt!.tools.size).toBeGreaterThanOrEqual(1);
+    });
+
+    it('executes action=list through the MindOS wrapper and exposes executable subagents', async () => {
+      resetAgentRunsForTest();
+      const settingsManager = SettingsManager.inMemory();
+      const piSubagentsPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'subagent-ledger-extension.ts');
+
+      const loader = new DefaultResourceLoader({
+        cwd: PROJECT_ROOT,
+        agentDir: path.join(PROJECT_ROOT, '.pi-test'),
+        settingsManager,
+        systemPrompt: '',
+        appendSystemPrompt: [],
+        additionalSkillPaths: [],
+        additionalExtensionPaths: [piSubagentsPath],
+      });
+
+      await loader.reload();
+      const { extensions, errors } = loader.getExtensions();
+
+      expect(errors).toEqual([]);
+      const subagentsExt = extensions.find((ext) => ext.tools.has('subagent'));
+      const subagentTool = subagentsExt?.tools.get('subagent')?.definition as {
+        execute: (
+          toolCallId: string,
+          params: unknown,
+          signal?: AbortSignal,
+          onUpdate?: unknown,
+          ctx?: unknown,
+        ) => Promise<any>;
+      } | undefined;
+
+      expect(subagentTool).toBeDefined();
+
+      const result = await subagentTool!.execute(
+        'subagent-list-smoke',
+        { action: 'list' },
+        new AbortController().signal,
+        undefined,
+        {
+          cwd: PROJECT_ROOT,
+          hasUI: false,
+          sessionManager: {
+            getSessionFile: () => undefined,
+            getSessionId: () => 'subagent-list-smoke-session',
+          },
+          ui: {
+            setToolsExpanded: () => undefined,
+            requestRender: () => undefined,
+          },
+        },
+      );
+      const text = result.content
+        .filter((part: any) => part?.type === 'text')
+        .map((part: any) => part.text)
+        .join('\n');
+
+      expect(result.isError).not.toBe(true);
+      expect(text).toContain('Executable agents:');
+      expect(text).toMatch(/- reviewer \(builtin/);
+      expect(text).toMatch(/- researcher \(builtin/);
+    });
+
+    it('builds child pi runtime config from MindOS provider settings without writing raw keys to models.json', () => {
+      const runtimeConfig = buildMindosPiChildRuntimeConfig({
+        provider: 'openai',
+        modelName: 'step-3.7-flash',
+        apiKey: 'sk-test-secret',
+        baseUrl: 'https://gateway.example/v1',
+        model: {
+          id: 'step-3.7-flash',
+          name: 'step-3.7-flash',
+          provider: 'openai',
+          api: 'openai-completions',
+          baseUrl: 'https://gateway.example/v1',
+          reasoning: false,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 16384,
+          compat: { supportsDeveloperRole: false },
+        },
+      });
+
+      expect(runtimeConfig).not.toBeNull();
+      expect(runtimeConfig!.env[MINDOS_PI_CHILD_API_KEY_ENV]).toBe('sk-test-secret');
+      expect(runtimeConfig!.env[PI_CODING_AGENT_DIR_ENV]).toContain('mindos-pi-child-runtime-');
+      expect(runtimeConfig!.settingsJson).toEqual({
+        defaultProvider: 'openai',
+        defaultModel: 'step-3.7-flash',
+      });
+      expect(runtimeConfig!.modelsJson).toEqual({
+        providers: {
+          openai: {
+            apiKey: `$${MINDOS_PI_CHILD_API_KEY_ENV}`,
+            baseUrl: 'https://gateway.example/v1',
+            api: 'openai-completions',
+            models: [
+              expect.objectContaining({
+                id: 'step-3.7-flash',
+                api: 'openai-completions',
+                baseUrl: 'https://gateway.example/v1',
+                compat: { supportsDeveloperRole: false },
+              }),
+            ],
+          },
+        },
+      });
+      expect(JSON.stringify(runtimeConfig!.modelsJson)).not.toContain('sk-test-secret');
     });
   });
 });

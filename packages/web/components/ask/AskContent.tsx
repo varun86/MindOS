@@ -20,11 +20,6 @@ import AskHeader from '@/components/ask/AskHeader';
 import FileChip from '@/components/ask/FileChip';
 import AskComposerInput from '@/components/ask/AskComposerInput';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
-import RuntimeOptionsCapsule, {
-  getPersistedRuntimeOptions,
-  persistRuntimeOptions,
-  type RuntimeOptionsState,
-} from '@/components/ask/RuntimeOptionsCapsule';
 import type { ProviderId } from '@/lib/agent/providers';
 import { useAskChat } from '@/hooks/useAskChat';
 import { useAgentRunTimeline } from '@/hooks/useAgentRunTimeline';
@@ -174,7 +169,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const [chatMode, setChatMode] = useState<AskMode>('agent');
   const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
   const [modelOverride, setModelOverride] = useState<string | null>(null);
-  const [runtimeOptions, setRuntimeOptions] = useState<RuntimeOptionsState>(() => getPersistedRuntimeOptions('codex'));
 
   const updateSelectedAgentRuntime = useCallback((runtime: AgentRuntimeIdentity | null) => {
     const normalized = normalizeSelectedAgentRuntime(runtime);
@@ -187,7 +181,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     const persisted = getPersistedProviderModel();
     setProviderOverride(persisted.provider);
     setModelOverride(persisted.model);
-    setRuntimeOptions(getPersistedRuntimeOptions('codex'));
   }, []);
 
   const session = useAskSession(currentFile);
@@ -243,14 +236,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
       }));
   }, [nativeDetection.runtimes]);
   const isMindosRuntime = !selectedAgentRuntime || selectedAgentRuntime.kind === 'mindos';
-  const selectedNativeRuntimeKind = selectedAgentRuntime?.kind === 'codex' || selectedAgentRuntime?.kind === 'claude'
-    ? selectedAgentRuntime.kind
-    : null;
-
-  useEffect(() => {
-    if (!selectedNativeRuntimeKind) return;
-    setRuntimeOptions(getPersistedRuntimeOptions(selectedNativeRuntimeKind));
-  }, [selectedNativeRuntimeKind]);
   const selectedRuntimeChecking = useMemo(() => {
     if (!selectedAgentRuntime || selectedAgentRuntime.kind === 'mindos') return false;
     const nativeKind = selectedAgentRuntime.kind;
@@ -406,7 +391,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     chatMode,
     providerOverride,
     modelOverride,
-    runtimeOptions,
     activeSessionId: session.activeSessionId,
     onFirstMessage,
     refs: chatRefs,
@@ -1051,11 +1035,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     setModelOverride(null);
   }, []);
 
-  const handleRuntimeOptionsChange = useCallback((next: RuntimeOptionsState) => {
-    setRuntimeOptions(next);
-    persistRuntimeOptions(selectedNativeRuntimeKind ?? 'codex', next);
-  }, [selectedNativeRuntimeKind]);
-
   return (
     <div className="flex min-h-0 w-full flex-col h-full">
       {/* Header — home variant shows session switcher + new/history/fullscreen buttons */}
@@ -1318,16 +1297,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
           {/* Mode + provider selector row + keyboard hint */}
           <div className={cn('relative z-20 flex items-center justify-between border-t border-border/10', isPanel ? 'px-2 pb-1.5 pt-1 gap-1' : 'px-3 pb-2 pt-1.5')}>
             <div className={cn('flex items-center flex-wrap', isPanel ? 'gap-1' : 'gap-2')}>
-              {selectedNativeRuntimeKind ? (
-                <RuntimeOptionsCapsule
-                  runtimeKind={selectedNativeRuntimeKind}
-                  value={runtimeOptions}
-                  onChange={handleRuntimeOptionsChange}
-                  disabled={isLoading}
-                />
-              ) : (
-                <ModeCapsule mode={chatMode} onChange={setChatMode} disabled={isLoading} />
-              )}
+              <ModeCapsule mode={chatMode} onChange={setChatMode} disabled={isLoading} />
             {mounted && isMindosRuntime && (
               <ProviderModelCapsule
                 providerValue={providerOverride}

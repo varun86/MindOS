@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
+import { hasMarkdownFrontmatterFence, splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
 
 describe('splitMarkdownFrontmatter', () => {
   it('extracts leading YAML frontmatter and returns the markdown body', () => {
@@ -55,6 +55,7 @@ title: [broken
     const result = splitMarkdownFrontmatter(content);
 
     expect(result).toEqual({ body: content, frontmatter: null });
+    expect(hasMarkdownFrontmatterFence(content)).toBe(true);
   });
 
   it('leaves non-object YAML roots unchanged', () => {
@@ -88,5 +89,12 @@ meta: &meta
         },
       },
     ]);
+  });
+
+  it('detects leading frontmatter fences without requiring valid YAML', () => {
+    expect(hasMarkdownFrontmatterFence('---\ntitle: Fast\n---\n\n# Body')).toBe(true);
+    expect(hasMarkdownFrontmatterFence('---\r\ntitle: Windows\r\n---\r\n\r\n# Body')).toBe(true);
+    expect(hasMarkdownFrontmatterFence('# Body\n\n---\nnot frontmatter\n---')).toBe(false);
+    expect(hasMarkdownFrontmatterFence('---\ntitle: missing close\n\n# Body')).toBe(false);
   });
 });

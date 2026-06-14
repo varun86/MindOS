@@ -244,6 +244,16 @@ function insertTopSearchResult(results: SearchResult[], result: SearchResult, li
   if (results.length > limit) results.length = limit;
 }
 
+interface MatchedSearchDocument {
+  filePath: string;
+  content: string;
+  lowerContent: string;
+  docLength: number;
+  termCounts: number[];
+  firstMatchIndex: number;
+  totalOccurrences: number;
+}
+
 /**
  * Prewarm the core search index for a given mindRoot.
  * Tries loading from disk first (fast path), falls back to full rebuild.
@@ -388,10 +398,12 @@ export function searchFiles(mindRoot: string, query: string, opts: SearchOptions
   const results: SearchResult[] = [];
   const lowerQuery = query.toLowerCase();
 
-  // ── Pre-scan: compute document frequency for each query term ──
-  // Contents come from the index's in-memory cache (no disk IO).
+  // ── Match once: compute per-document term counts and document frequency ──
+  // Contents come from the index's in-memory cache (no disk IO). Keep the term
+  // counts so BM25 scoring below does not re-run regex matching over the same
+  // document a second time.
   const termDf = new Map<string, number>();
-  const matchedFiles: string[] = [];
+  const matchedFiles: MatchedSearchDocument[] = [];
 
   for (const filePath of allFiles) {
     if (mtimeThreshold > 0) {
@@ -402,73 +414,81 @@ export function searchFiles(mindRoot: string, query: string, opts: SearchOptions
       } catch { continue; }
     }
 
+    const content = searchIndex.getContent(mindRoot, filePath);
     const lower = searchIndex.getLowerContent(mindRoot, filePath);
-    if (lower === null) continue;
-    matchedFiles.push(filePath);
+    if (content === null || lower === null) continue;
 
-    for (const term of queryTerms) {
+    const termCounts = new Array(queryTerms.length).fill(0);
+    let firstMatchIndex = -1;
+    let totalOccurrences = 0;
+
+    for (let termIndex = 0; termIndex < queryTerms.length; termIndex += 1) {
+      const term = queryTerms[termIndex];
       // Use consistent term counting with word boundaries for Latin terms
-      if (countTermOccurrences(term, lower) > 0) {
+      const tf = countTermOccurrences(term, lower);
+      if (tf > 0) {
+        termCounts[termIndex] = tf;
         termDf.set(term, (termDf.get(term) ?? 0) + 1);
+        totalOccurrences += tf;
+        if (firstMatchIndex === -1) {
+          firstMatchIndex = lower.indexOf(term);
+        }
       }
     }
+
+    if (totalOccurrences === 0) continue;
+    matchedFiles.push({
+      filePath,
+      content,
+      lowerContent: lower,
+      docLength: searchIndex.getDocLength(filePath) || content.length,
+      termCounts,
+      firstMatchIndex,
+      totalOccurrences,
+    });
   }
 
   // ── Score each document with BM25 ──
-  for (const filePath of matchedFiles) {
-    const content = searchIndex.getContent(mindRoot, filePath);
-    const lowerContent = searchIndex.getLowerContent(mindRoot, filePath);
-    if (content === null || lowerContent === null) continue;
-
-    // Check if document matches any term (full-text verification after index narrowing)
-    let matchedAnyTerm = false;
-    let firstMatchIndex = -1;
-
+  for (const matchedFile of matchedFiles) {
     // Compute BM25 score: sum of per-term scores
     let totalScore = 0;
-    let totalOccurrences = 0;
-    // Full (pre-truncation) length for BM25 length normalization.
-    const docLength = searchIndex.getDocLength(filePath) || content.length;
 
-    for (const term of queryTerms) {
-      const tf = countTermOccurrences(term, lowerContent);
+    for (let termIndex = 0; termIndex < queryTerms.length; termIndex += 1) {
+      const tf = matchedFile.termCounts[termIndex];
       if (tf === 0) continue;
 
-      matchedAnyTerm = true;
-      totalOccurrences += tf;
-
-      if (firstMatchIndex === -1) {
-        firstMatchIndex = lowerContent.indexOf(term);
-      }
-
       // Get document frequency for this term (computed in pre-scan)
+      const term = queryTerms[termIndex];
       const df = termDf.get(term) ?? 0;
 
-      totalScore += bm25Score(tf, df, docLength, avgDocLength, totalDocs);
+      totalScore += bm25Score(tf, df, matchedFile.docLength, avgDocLength, totalDocs);
     }
 
-    if (!matchedAnyTerm) continue;
-
     // Build snippet around the first match
-    const index = firstMatchIndex >= 0 ? firstMatchIndex : lowerContent.indexOf(lowerQuery);
+    const index = matchedFile.firstMatchIndex >= 0 ? matchedFile.firstMatchIndex : matchedFile.lowerContent.indexOf(lowerQuery);
     const snippetAnchor = index >= 0 ? index : 0;
 
-    let snippetStart = content.lastIndexOf('\n\n', snippetAnchor);
+    let snippetStart = matchedFile.content.lastIndexOf('\n\n', snippetAnchor);
     if (snippetStart === -1) snippetStart = Math.max(0, snippetAnchor - 200);
     else snippetStart += 2;
 
-    let snippetEnd = content.indexOf('\n\n', snippetAnchor);
-    if (snippetEnd === -1) snippetEnd = Math.min(content.length, snippetAnchor + query.length + 200);
+    let snippetEnd = matchedFile.content.indexOf('\n\n', snippetAnchor);
+    if (snippetEnd === -1) snippetEnd = Math.min(matchedFile.content.length, snippetAnchor + query.length + 200);
 
     if (snippetAnchor - snippetStart > 200) snippetStart = snippetAnchor - 200;
     if (snippetEnd - snippetAnchor > 200) snippetEnd = snippetAnchor + query.length + 200;
 
-    let snippet = content.slice(snippetStart, snippetEnd).trim();
+    let snippet = matchedFile.content.slice(snippetStart, snippetEnd).trim();
     snippet = snippet.replace(/\n{3,}/g, '\n\n');
     if (snippetStart > 0) snippet = '...' + snippet;
-    if (snippetEnd < content.length) snippet += '...';
+    if (snippetEnd < matchedFile.content.length) snippet += '...';
 
-    insertTopSearchResult(results, { path: filePath, snippet, score: totalScore, occurrences: totalOccurrences }, resultLimit);
+    insertTopSearchResult(results, {
+      path: matchedFile.filePath,
+      snippet,
+      score: totalScore,
+      occurrences: matchedFile.totalOccurrences,
+    }, resultLimit);
   }
 
   stopQuery({

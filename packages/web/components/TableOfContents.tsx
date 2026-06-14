@@ -14,23 +14,44 @@ interface Heading {
 
 function parseHeadings(content: string): Heading[] {
   const slugger = new GithubSlugger();
-  const lines = content.split('\n');
   const headings: Heading[] = [];
   let inCodeBlock = false;
-  for (const line of lines) {
-    if (/^(`{3,}|~{3,})/.test(line)) {
-      inCodeBlock = !inCodeBlock;
-      continue;
+
+  for (let start = 0; start <= content.length;) {
+    let end = content.indexOf('\n', start);
+    if (end === -1) end = content.length;
+    const line = content.charCodeAt(end - 1) === 13
+      ? content.slice(start, end - 1)
+      : content.slice(start, end);
+
+    const fenceChar = line[0];
+    if ((fenceChar === '`' || fenceChar === '~') && line.length >= 3) {
+      let fenceLen = 0;
+      while (line[fenceLen] === fenceChar) fenceLen += 1;
+      if (fenceLen >= 3) {
+        inCodeBlock = !inCodeBlock;
+        start = end + 1;
+        continue;
+      }
     }
-    if (inCodeBlock) continue;
-    const match = line.match(/^(#{1,4})\s+(.+)/);
-    if (match) {
-      const level = match[1].length;
-      const text = match[2].trim();
-      const id = slugger.slug(text);
-      headings.push({ id, text, level });
+
+    if (!inCodeBlock && line[0] === '#') {
+      let level = 0;
+      while (level < 4 && line[level] === '#') level += 1;
+      const next = line[level];
+      if (level > 0 && (next === ' ' || next === '\t')) {
+        const text = line.slice(level).trim();
+        if (text) {
+          const id = slugger.slug(text);
+          headings.push({ id, text, level });
+        }
+      }
     }
+
+    if (end === content.length) break;
+    start = end + 1;
   }
+
   return headings;
 }
 

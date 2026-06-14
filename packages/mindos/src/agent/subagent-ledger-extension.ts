@@ -24,7 +24,12 @@ import {
   startAgentRun,
   updateAgentRun,
 } from './run-ledger.js';
-import { runWithAgentRunContext } from './agent-run-context.js';
+import {
+  getAgentRunContextForResource,
+  getCurrentAgentRunContext,
+  runWithAgentRunContext,
+  type AgentRunContext,
+} from './agent-run-context.js';
 import {
   abortErrorFromSignal,
   isAbortLikeError,
@@ -62,6 +67,26 @@ export interface MindosSubagentLedgerExtensionHost {
    * node_modules/pi-subagents/src/extension/index.ts).
    */
   loadUpstreamSubagentExtension(): Promise<RegisterSubagentExtension>;
+
+  /**
+   * Optional host hook used around real child-subagent execution. Hosts can
+   * use this to provide runtime-only auth/model config to the child pi process
+   * without changing the global pi config directory.
+   */
+  withSubagentChildRuntime?<T>(
+    input: SubagentChildRuntimeInput,
+    run: () => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface SubagentChildRuntimeInput {
+  toolCallId: string;
+  params: unknown;
+  ctx?: Record<string, any>;
+}
+
+export interface SubagentLedgerToolOptions {
+  withSubagentChildRuntime?: MindosSubagentLedgerExtensionHost['withSubagentChildRuntime'];
 }
 
 const SUBAGENT_ASYNC_COMPLETE_EVENT = 'subagent:async-complete';
@@ -296,6 +321,29 @@ function subagentPermissionMode(ctx?: Record<string, any>) {
   return createMindosAgentPermissionPolicyFromContext(ctx, 'agent').permissionMode;
 }
 
+function sessionManagerFromToolContext(ctx?: Record<string, any>): unknown {
+  if (!ctx || typeof ctx !== 'object') return undefined;
+  try {
+    return ctx.sessionManager;
+  } catch {
+    return undefined;
+  }
+}
+
+function inheritedAgentRunContext(ctx?: Record<string, any>): AgentRunContext | undefined {
+  return getCurrentAgentRunContext() ?? getAgentRunContextForResource(sessionManagerFromToolContext(ctx));
+}
+
+function agentRunContextStartFields(
+  context: AgentRunContext | undefined,
+): Pick<Parameters<typeof startAgentRun>[0], 'chatSessionId' | 'rootRunId' | 'parentRunId'> {
+  return {
+    ...(context?.chatSessionId ? { chatSessionId: context.chatSessionId } : {}),
+    ...(context?.rootRunId ? { rootRunId: context.rootRunId } : {}),
+    ...(context?.parentRunId ? { parentRunId: context.parentRunId } : {}),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -358,6 +406,7 @@ function hasExplicitDependencies(items: unknown[]): boolean {
 function mindosOrchestrationPlanFromParams(params: unknown, ctx?: Record<string, any>): SubagentOrchestrationPlan | null {
   if (!isRecord(params)) return null;
   const fallbackCwd = subagentCwd(params, ctx);
+  const runContext = inheritedAgentRunContext(ctx);
   const rawTasks = Array.isArray(params.subtasks)
     ? params.subtasks
     : Array.isArray(params.tasks)
@@ -379,6 +428,7 @@ function mindosOrchestrationPlanFromParams(params: unknown, ctx?: Record<string,
 
   return {
     displayName: `Subagent orchestration (${tasks.length})`,
+    ...agentRunContextStartFields(runContext),
     cwd: fallbackCwd,
     permissionMode: subagentPermissionMode(ctx),
     timeoutMs: positiveNumber(params.timeoutMs ?? params.maxRuntimeMs),
@@ -407,7 +457,27 @@ function subagentToolResultFromOrchestration(result: Awaited<ReturnType<typeof e
   };
 }
 
-export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWithRuntimeContext {
+function shouldUseSubagentChildRuntime(params: unknown): boolean {
+  if (!params || typeof params !== 'object') return false;
+  const input = params as Record<string, unknown>;
+  return !(typeof input.action === 'string' && input.action.trim());
+}
+
+function runWithOptionalSubagentChildRuntime<T>(
+  options: SubagentLedgerToolOptions | undefined,
+  input: SubagentChildRuntimeInput,
+  run: () => Promise<T>,
+): Promise<T> {
+  if (!shouldUseSubagentChildRuntime(input.params) || typeof options?.withSubagentChildRuntime !== 'function') {
+    return run();
+  }
+  return options.withSubagentChildRuntime(input, run);
+}
+
+export function wrapSubagentToolForLedger(
+  tool: ToolWithRuntimeContext,
+  options?: SubagentLedgerToolOptions,
+): ToolWithRuntimeContext {
   return {
     ...tool,
     async execute(toolCallId, params, signal, onUpdate, ctx) {
@@ -427,12 +497,17 @@ export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWit
             orchestrator: undefined,
             ...(task.timeoutMs ? { timeoutMs: task.timeoutMs } : {}),
           };
-          const childResult = await tool.execute(
-            `${toolCallId}:${task.id}`,
-            childParams,
-            context.signal,
-            onUpdateWithLedger(context.run.id, onUpdate),
-            ctx,
+          const childToolCallId = `${toolCallId}:${task.id}`;
+          const childResult = await runWithOptionalSubagentChildRuntime(
+            options,
+            { toolCallId: childToolCallId, params: childParams, ctx },
+            () => tool.execute(
+              childToolCallId,
+              childParams,
+              context.signal,
+              onUpdateWithLedger(context.run.id, onUpdate),
+              ctx,
+            ),
           );
           const summary = outputSummary(childResult);
           if (resultIsError(childResult)) {
@@ -455,6 +530,7 @@ export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWit
         agentKind: 'pi-subagent',
         runtimeId: subagentRuntimeId(params),
         displayName: subagentDisplayName(params),
+        ...agentRunContextStartFields(inheritedAgentRunContext(ctx)),
         cwd: subagentCwd(params, ctx),
         permissionMode: subagentPermissionMode(ctx),
         inputSummary: safeStringify(params),
@@ -485,7 +561,11 @@ export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWit
           ...(run.chatSessionId ? { chatSessionId: run.chatSessionId } : {}),
           rootRunId: run.rootRunId ?? run.id,
           parentRunId: run.id,
-        }, () => tool.execute(toolCallId, params, upstreamAbort.signal, onUpdateWithLedger(run.id, onUpdate), ctx));
+        }, () => runWithOptionalSubagentChildRuntime(
+          options,
+          { toolCallId, params, ctx },
+          () => tool.execute(toolCallId, params, upstreamAbort.signal, onUpdateWithLedger(run.id, onUpdate), ctx),
+        ));
         if (hasAsyncStartDetails(result) && !resultIsError(result)) {
           const metadata = resultMetadata(result);
           updateAgentRun(run.id, {
@@ -529,7 +609,7 @@ export function wrapSubagentToolForLedger(tool: ToolWithRuntimeContext): ToolWit
         unregisterCancelHandler();
       }
     },
-  };
+  } as ToolWithRuntimeContext;
 }
 
 /**
@@ -563,7 +643,10 @@ export function createMindosSubagentLedgerExtension(
       ...pi,
       registerTool(tool: ToolDefinition) {
         if (tool.name === 'subagent') {
-          pi.registerTool(wrapSubagentToolForLedger(tool as ToolWithRuntimeContext) as ToolDefinition);
+          const options = typeof host.withSubagentChildRuntime === 'function'
+            ? { withSubagentChildRuntime: host.withSubagentChildRuntime }
+            : undefined;
+          pi.registerTool(wrapSubagentToolForLedger(tool as ToolWithRuntimeContext, options) as ToolDefinition);
           return;
         }
         pi.registerTool(tool);

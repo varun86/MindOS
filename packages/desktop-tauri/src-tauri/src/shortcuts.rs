@@ -2,7 +2,7 @@
 // Registers system-wide keyboard shortcuts
 
 use tauri::{AppHandle, Manager};
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 /// Register global shortcuts
 pub fn register_shortcuts(app: &AppHandle) -> Result<(), String> {
