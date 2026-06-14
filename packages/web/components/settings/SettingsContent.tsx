@@ -5,7 +5,7 @@ import { Settings, Loader2, AlertCircle, CheckCircle2, RotateCcw, Sparkles, Pale
 import { useRouter } from 'next/navigation';
 import { useLocale } from '@/lib/stores/locale-store';
 import { apiFetch } from '@/lib/api';
-import type { AiSettings, AgentSettings, SettingsData, Tab } from './types';
+import type { AiSettings, AgentSettings, PluginPanel, SettingsData, Tab } from './types';
 import { AiTab } from './AiTab';
 import { AppearanceTab } from './AppearanceTab';
 import { KnowledgeTab } from './KnowledgeTab';
@@ -21,6 +21,7 @@ import { requestCommandCenterOpen, requestPluginEntriesOpen } from '@/lib/plugin
 interface SettingsContentProps {
   visible: boolean;
   initialTab?: Tab;
+  initialPluginPanel?: PluginPanel;
   variant: 'modal' | 'panel';
   onClose?: () => void;
   onOpenPluginEntries?: () => void;
@@ -43,6 +44,7 @@ function migrateStoredContentWidth(raw: string): string {
 export default function SettingsContent({
   visible,
   initialTab,
+  initialPluginPanel,
   variant,
   onClose,
   onOpenPluginEntries,
@@ -387,6 +389,7 @@ export default function SettingsContent({
               setPluginStates={setPluginStates}
               t={t}
               mindRoot={data?.mindRoot}
+              initialPanel={initialPluginPanel}
               onOpenPluginEntries={openPluginEntries}
               onOpenCommandCenter={openCommandCenter}
               onOpenPluginViews={openPluginViews}

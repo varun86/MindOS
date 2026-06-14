@@ -1,9 +1,32 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Download, Search, CheckCircle2, AlertTriangle, XCircle, Loader2, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef } from 'react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FolderOpen,
+  ListChecks,
+  Loader2,
+  Search,
+  ShieldCheck,
+  XCircle,
+  AlertTriangle,
+  type LucideIcon,
+} from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { getObsidianImportSupport, isObsidianPluginImportable } from '@/lib/obsidian-compat/import-policy';
+import {
+  getObsidianImportSupport,
+  type ObsidianImportSupport,
+  type ObsidianImportSupportKind,
+} from '@/lib/obsidian-compat/import-policy';
+import type {
+  ObsidianCommunitySurfacePreview,
+  ObsidianCommunitySurfacePreviewState,
+} from '@/lib/obsidian-compat/community-support';
+import type { ObsidianCapabilitySupport } from '@/lib/obsidian-compat/capability-matrix';
 import { notifyObsidianPluginPackagesChanged } from '@/lib/plugins/events';
 
 interface ScannedPlugin {
@@ -21,8 +44,18 @@ interface ScannedPlugin {
   hasStyles: boolean;
   hasData: boolean;
   importable?: boolean;
+  support?: ObsidianImportSupport;
+  surfacePreview?: ObsidianCommunitySurfacePreview[];
+  coverageSummary?: Record<ObsidianCapabilitySupport, number>;
+  migrationPlan?: {
+    copiedFiles: string[];
+    sourceVaultUnchanged: boolean;
+    enableAfterImport: boolean;
+    defaultSelected: boolean;
+  };
   obsidianConfig?: {
     enabledInObsidian: boolean;
+    hasEnabledList?: boolean;
     hotkeyCount: number;
     hotkeys: Array<{ commandId: string; hotkeys: Array<{ modifiers: string[]; key: string }> }>;
   };
@@ -36,7 +69,26 @@ interface SkippedPlugin {
 interface CompatReport {
   ok: boolean;
   vaultRoot: string;
-  summary: { total: number; compatible: number; partial: number; blocked: number; importable?: number };
+  summary: {
+    total: number;
+    compatible: number;
+    partial: number;
+    blocked: number;
+    importable?: number;
+    selectedByDefault?: number;
+    enabledInObsidian?: number;
+    hotkeys?: number;
+    hasEnabledList?: boolean;
+    pluginsDirFound?: boolean;
+    support?: Record<ObsidianImportSupportKind, number>;
+  };
+  migration?: {
+    defaultSelectionPolicy: string;
+    sourceVaultUnchanged: boolean;
+    writesTo: string;
+    writesConfig: string;
+    enableAfterImport: boolean;
+  };
   plugins: ScannedPlugin[];
   skipped: SkippedPlugin[];
 }
@@ -44,12 +96,94 @@ interface CompatReport {
 type ScanState = 'idle' | 'scanning' | 'done' | 'error';
 type ImportState = 'idle' | 'importing' | 'done';
 
-const LEVEL_CONFIG = {
-  ready: { icon: CheckCircle2, color: 'var(--success)', bg: 'rgba(90,141,96,0.1)' },
-  limited: { icon: AlertTriangle, color: 'var(--amber)', bg: 'var(--amber-subtle)' },
-  review: { icon: AlertTriangle, color: 'var(--amber)', bg: 'var(--amber-subtle)' },
-  blocked: { icon: XCircle, color: 'var(--error)', label: 'Blocked', bg: 'rgba(200,80,80,0.08)' },
-} as const;
+interface ImportResult {
+  id: string;
+  ok: boolean;
+  copiedFiles?: string[];
+  error?: string;
+}
+
+const LEVEL_CONFIG: Record<ObsidianImportSupportKind, {
+  icon: LucideIcon;
+  badgeClass: string;
+  selectedClass: string;
+  iconClass: string;
+}> = {
+  ready: {
+    icon: CheckCircle2,
+    badgeClass: 'border-success/25 bg-success/10 text-success',
+    selectedClass: 'bg-success/10',
+    iconClass: 'text-success',
+  },
+  limited: {
+    icon: AlertTriangle,
+    badgeClass: 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]',
+    selectedClass: 'bg-[var(--amber-subtle)]',
+    iconClass: 'text-[var(--amber)]',
+  },
+  review: {
+    icon: AlertTriangle,
+    badgeClass: 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]',
+    selectedClass: 'bg-[var(--amber-subtle)]',
+    iconClass: 'text-[var(--amber)]',
+  },
+  blocked: {
+    icon: XCircle,
+    badgeClass: 'border-error/25 bg-error/10 text-error',
+    selectedClass: 'bg-error/10',
+    iconClass: 'text-error',
+  },
+};
+
+const SUPPORT_ORDER: ObsidianImportSupportKind[] = ['ready', 'limited', 'review', 'blocked'];
+
+function supportFor(plugin: ScannedPlugin, hasEnabledList: boolean): ObsidianImportSupport {
+  return plugin.support ?? getObsidianImportSupport(plugin, { hasEnabledList });
+}
+
+function surfaceLabel(surface: ObsidianCommunitySurfacePreview['id']): string {
+  return {
+    commands: 'Commands',
+    settings: 'Settings',
+    entries: 'Entries',
+    views: 'Views',
+    document: 'Documents',
+    styles: 'Styles',
+    editor: 'Editor',
+    vault: 'Vault',
+    network: 'Network',
+  }[surface] ?? surface;
+}
+
+function surfaceStateClass(state: ObsidianCommunitySurfacePreviewState): string {
+  if (state === 'mounted') return 'border-success/25 bg-success/10 text-success';
+  if (state === 'limited') return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]';
+  if (state === 'catalog') return 'border-border bg-muted text-muted-foreground';
+  return 'border-error/25 bg-error/10 text-error';
+}
+
+function copiedFilesFor(plugin: ScannedPlugin): string[] {
+  return plugin.migrationPlan?.copiedFiles ?? [
+    'manifest.json',
+    'main.js',
+    ...(plugin.hasStyles ? ['styles.css'] : []),
+    ...(plugin.hasData ? ['data.json'] : []),
+    'obsidian-import.json',
+  ];
+}
+
+function compactCoverageSummary(summary?: Record<ObsidianCapabilitySupport, number>): string | null {
+  if (!summary) return null;
+  const parts = [
+    summary.full ? `${summary.full} full` : '',
+    summary.limited ? `${summary.limited} limited` : '',
+    summary['snapshot-only'] ? `${summary['snapshot-only']} snapshot` : '',
+    summary['catalog-only'] ? `${summary['catalog-only']} catalog` : '',
+    summary['request-only'] ? `${summary['request-only']} request` : '',
+    summary.unsupported ? `${summary.unsupported} unsupported` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : null;
+}
 
 export function ObsidianImportSection({
   initialExpanded = false,
@@ -63,11 +197,32 @@ export function ObsidianImportSection({
   const [report, setReport] = useState<CompatReport | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importState, setImportState] = useState<ImportState>('idle');
-  const [importResults, setImportResults] = useState<{ id: string; ok: boolean; error?: string }[]>([]);
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const scanSeqRef = useRef(0);
+
+  const hasEnabledList = report?.summary.hasEnabledList
+    ?? report?.plugins.some((plugin) => plugin.obsidianConfig?.hasEnabledList)
+    ?? false;
+
+  const supportCounts = useMemo(() => {
+    if (!report) return { ready: 0, limited: 0, review: 0, blocked: 0 } satisfies Record<ObsidianImportSupportKind, number>;
+    return report.summary.support ?? report.plugins.reduce<Record<ObsidianImportSupportKind, number>>((counts, plugin) => {
+      counts[supportFor(plugin, hasEnabledList).kind] += 1;
+      return counts;
+    }, { ready: 0, limited: 0, review: 0, blocked: 0 });
+  }, [hasEnabledList, report]);
+
+  const selectedImportableCount = useMemo(() => {
+    if (!report) return 0;
+    return report.plugins.filter((plugin) => selected.has(plugin.id) && supportFor(plugin, hasEnabledList).importable).length;
+  }, [hasEnabledList, report, selected]);
 
   const handleScan = useCallback(async () => {
     const trimmed = vaultPath.trim();
     if (!trimmed) return;
+
+    const scanSeq = scanSeqRef.current + 1;
+    scanSeqRef.current = scanSeq;
     setScanState('scanning');
     setScanError('');
     setReport(null);
@@ -76,32 +231,39 @@ export function ObsidianImportSection({
     setImportResults([]);
     try {
       const data = await apiFetch<CompatReport>(`/api/obsidian/compat-report?vaultRoot=${encodeURIComponent(trimmed)}`);
-      setReport(data);
-      // Prefer the source vault's enabled list when available; otherwise choose plugins that can run through known MindOS hosts.
-      const hasEnabledList = data.plugins.some(p => p.obsidianConfig?.enabledInObsidian);
+      if (scanSeqRef.current !== scanSeq) return;
+      const nextHasEnabledList = data.summary.hasEnabledList
+        ?? data.plugins.some((plugin) => plugin.obsidianConfig?.hasEnabledList)
+        ?? false;
       const defaultSelectedIds = new Set(data.plugins
-        .filter(p => getObsidianImportSupport(p, { hasEnabledList }).defaultSelected)
-        .map(p => p.id));
+        .filter((plugin) => supportFor(plugin, nextHasEnabledList).defaultSelected)
+        .map((plugin) => plugin.id));
+      setReport(data);
       setSelected(defaultSelectedIds);
       setScanState('done');
     } catch (err) {
+      if (scanSeqRef.current !== scanSeq) return;
       setScanError(err instanceof Error ? err.message : 'Scan failed');
       setScanState('error');
     }
   }, [vaultPath]);
 
   const handleImport = useCallback(async () => {
-    if (!report || selected.size === 0) return;
+    if (!report) return;
+    const selectedImportableIds = report.plugins
+      .filter((plugin) => selected.has(plugin.id) && supportFor(plugin, hasEnabledList).importable)
+      .map((plugin) => plugin.id);
+    if (selectedImportableIds.length === 0) return;
     setImportState('importing');
-    const results: { id: string; ok: boolean; error?: string }[] = [];
-    for (const pluginId of selected) {
+    const results: ImportResult[] = [];
+    for (const pluginId of selectedImportableIds) {
       try {
-        await apiFetch('/api/obsidian/import', {
+        const data = await apiFetch<{ imported?: { copiedFiles?: string[] } }>('/api/obsidian/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ vaultRoot: report.vaultRoot, pluginId }),
         });
-        results.push({ id: pluginId, ok: true });
+        results.push({ id: pluginId, ok: true, copiedFiles: data.imported?.copiedFiles });
       } catch (err) {
         results.push({ id: pluginId, ok: false, error: err instanceof Error ? err.message : 'Failed' });
       }
@@ -111,9 +273,10 @@ export function ObsidianImportSection({
     if (results.some((result) => result.ok)) {
       notifyObsidianPluginPackagesChanged();
     }
-  }, [report, selected]);
+  }, [hasEnabledList, report, selected]);
 
   const togglePlugin = (id: string) => {
+    if (importState === 'importing') return;
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -121,145 +284,226 @@ export function ObsidianImportSection({
     });
   };
 
+  const totalImportable = report?.summary.importable ?? report?.plugins.filter((plugin) => supportFor(plugin, hasEnabledList).importable).length ?? 0;
+  const enabledInObsidian = report?.summary.enabledInObsidian ?? report?.plugins.filter((plugin) => plugin.obsidianConfig?.enabledInObsidian).length ?? 0;
+  const hotkeyCount = report?.summary.hotkeys ?? report?.plugins.reduce((sum, plugin) => sum + (plugin.obsidianConfig?.hotkeyCount ?? 0), 0) ?? 0;
+
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
-      {/* Header — always visible */}
+    <div className="overflow-hidden rounded-xl border border-border">
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <FolderOpen size={16} className="text-muted-foreground shrink-0" />
-        <div className="flex-1 min-w-0">
+        <FolderOpen size={16} className="shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
           <span className="text-sm font-medium text-foreground">Import from Obsidian</span>
-          <p className="text-xs text-muted-foreground mt-0.5">Scan an Obsidian vault and import ready or limited plugins</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Scan a local vault, review compatibility, then copy selected plugin packages into MindOS.
+          </p>
         </div>
         {expanded ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
       </button>
 
-      {/* Expanded content */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-border">
-          {/* Vault path input */}
-          <div className="flex gap-2 mt-3">
+        <div className="space-y-4 border-t border-border px-4 pb-4">
+          <div className="mt-3 flex gap-2">
             <input
               type="text"
+              aria-label="Obsidian vault path"
               value={vaultPath}
               onChange={e => setVaultPath(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleScan(); }}
+              onKeyDown={e => { if (e.key === 'Enter') void handleScan(); }}
               placeholder="~/obsidian-vault"
-              className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground/50 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
             />
             <button
-              onClick={handleScan}
+              onClick={() => void handleScan()}
               disabled={!vaultPath.trim() || scanState === 'scanning'}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--amber)] bg-[var(--amber)] px-3 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-colors hover:bg-[var(--amber)]/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {scanState === 'scanning' ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
               <span>Scan</span>
             </button>
           </div>
 
-          {/* Scan error */}
           {scanState === 'error' && (
-            <div className="flex items-center gap-2 text-xs text-[var(--error)] bg-[rgba(200,80,80,0.08)] rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-xs text-error">
               <XCircle size={13} className="shrink-0" />
               <span>{scanError}</span>
             </div>
           )}
 
-          {/* Scanning indicator */}
           {scanState === 'scanning' && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
+            <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
               <Loader2 size={14} className="animate-spin" />
               <span>Scanning plugins...</span>
             </div>
           )}
 
-          {/* Results */}
           {scanState === 'done' && report && (
             <div className="space-y-3">
-              {/* Summary bar */}
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span>{report.summary.total} plugins found</span>
-                <span className="text-[var(--success)]">{report.summary.compatible} ready</span>
-                {report.summary.partial > 0 && <span className="text-[var(--amber)]">{report.summary.partial} limited/review</span>}
-                {report.summary.blocked > 0 && <span className="text-[var(--error)]">{report.summary.blocked} blocked</span>}
-                {(report.summary.importable ?? report.plugins.filter(isObsidianPluginImportable).length) > 0 && (
-                  <span>{report.summary.importable ?? report.plugins.filter(isObsidianPluginImportable).length} importable</span>
-                )}
-                {report.plugins.some(plugin => plugin.obsidianConfig?.enabledInObsidian) && (
-                  <span>{report.plugins.filter(plugin => plugin.obsidianConfig?.enabledInObsidian).length} enabled in Obsidian</span>
-                )}
-                {report.plugins.some(plugin => (plugin.obsidianConfig?.hotkeyCount ?? 0) > 0) && (
-                  <span>{report.plugins.reduce((sum, plugin) => sum + (plugin.obsidianConfig?.hotkeyCount ?? 0), 0)} hotkeys</span>
-                )}
-                {report.skipped.length > 0 && <span>{report.skipped.length} skipped</span>}
-              </div>
+              <section className="rounded-lg border border-border bg-card/60 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck size={14} className="text-[var(--amber)]" />
+                      <h4 className="text-sm font-semibold text-foreground">Migration report</h4>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      {report.migration?.defaultSelectionPolicy
+                        ?? 'Ready and limited plugins are selected by default. Review and blocked plugins stay unchecked.'}
+                    </p>
+                  </div>
+                  <span className="rounded-md border border-border bg-background px-2 py-1 font-mono text-2xs text-muted-foreground">
+                    source unchanged
+                  </span>
+                </div>
 
-              {/* Plugin list */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  {[
+                    { label: 'Plugins found', value: report.summary.total },
+                    { label: 'Selected now', value: selectedImportableCount },
+                    { label: 'Enabled in source', value: enabledInObsidian },
+                    { label: 'Hotkeys found', value: hotkeyCount },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                      <div className="text-2xs uppercase text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 font-mono text-lg font-semibold text-foreground">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {SUPPORT_ORDER.map((kind) => {
+                    const config = LEVEL_CONFIG[kind];
+                    return (
+                      <span key={kind} className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${config.badgeClass}`}>
+                        {kind} {supportCounts[kind]}
+                      </span>
+                    );
+                  })}
+                  {report.skipped.length > 0 && (
+                    <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                      skipped {report.skipped.length}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 grid gap-2 text-2xs text-muted-foreground sm:grid-cols-3">
+                  <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
+                    Copy package files into <span className="font-mono text-foreground">{report.migration?.writesTo ?? '.plugins/<plugin-id>'}</span>.
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
+                    Write <span className="font-mono text-foreground">{report.migration?.writesConfig ?? 'obsidian-import.json'}</span> with source state and hotkeys.
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
+                    Imported plugins stay disabled until you enable and load them from Installed.
+                  </div>
+                </div>
+              </section>
+
+              {report.summary.pluginsDirFound === false && (
+                <div className="rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] px-3 py-2 text-xs text-[var(--amber-text)]">
+                  No <span className="font-mono">.obsidian/plugins</span> directory was found at this path. Check the vault path and scan again.
+                </div>
+              )}
+
+              {report.skipped.length > 0 && (
+                <div className="rounded-lg border border-border bg-card/60 px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                    <AlertTriangle size={13} className="text-[var(--amber)]" />
+                    Skipped plugin folders
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {report.skipped.slice(0, 4).map((item) => (
+                      <div key={item.dirName} className="flex items-start gap-2 text-2xs text-muted-foreground">
+                        <span className="shrink-0 font-mono text-foreground">{item.dirName}</span>
+                        <span className="min-w-0 truncate">{item.reason}</span>
+                      </div>
+                    ))}
+                    {report.skipped.length > 4 && (
+                      <div className="text-2xs text-muted-foreground">
+                        {report.skipped.length - 4} more skipped folders are hidden.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {report.plugins.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No plugins found in this vault</p>
+                <p className="py-4 text-center text-sm text-muted-foreground">No plugins found in this vault.</p>
               ) : (
-                <div className="flex flex-col gap-1.5 max-h-[400px] overflow-y-auto">
+                <div className="flex max-h-[460px] flex-col gap-2 overflow-y-auto">
                   {report.plugins.map(plugin => {
-                    const support = getObsidianImportSupport(plugin);
+                    const support = supportFor(plugin, hasEnabledList);
                     const level = LEVEL_CONFIG[support.kind];
                     const Icon = level.icon;
                     const canSelect = plugin.importable ?? support.importable;
                     const isSelected = selected.has(plugin.id);
+                    const coverage = compactCoverageSummary(plugin.coverageSummary);
                     return (
                       <label
                         key={plugin.id}
-                        className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${canSelect ? 'cursor-pointer hover:bg-muted/50' : 'opacity-60'}`}
-                        style={{ background: isSelected ? level.bg : undefined }}
+                        className={`flex items-start gap-3 rounded-lg border border-border/70 px-3 py-2.5 transition-colors ${
+                          canSelect ? 'cursor-pointer hover:bg-muted/45' : 'opacity-65'
+                        } ${isSelected ? level.selectedClass : 'bg-card/45'}`}
                       >
-                        {canSelect && (
+                        {canSelect ? (
                           <input
                             type="checkbox"
                             checked={isSelected}
+                            disabled={importState === 'importing'}
                             onChange={() => togglePlugin(plugin.id)}
                             className="form-check mt-0.5"
                           />
+                        ) : (
+                          <Icon size={14} className={`mt-0.5 shrink-0 ${level.iconClass}`} />
                         )}
-                        {!canSelect && <Icon size={14} className="mt-0.5 shrink-0" style={{ color: level.color }} />}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-foreground truncate">{plugin.manifest.name}</span>
-                            <span className="text-2xs px-1.5 py-0.5 rounded font-mono shrink-0" style={{ background: level.bg, color: level.color }}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-medium text-foreground">{plugin.manifest.name}</span>
+                            <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-2xs ${level.badgeClass}`}>
+                              <Icon size={10} />
                               {support.label}
                             </span>
                             {plugin.obsidianConfig?.enabledInObsidian && (
-                              <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                                Enabled
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                                source enabled
                               </span>
                             )}
                             {(plugin.obsidianConfig?.hotkeyCount ?? 0) > 0 && (
-                              <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                                 {plugin.obsidianConfig?.hotkeyCount} hotkey{plugin.obsidianConfig?.hotkeyCount === 1 ? '' : 's'}
                               </span>
                             )}
-                            <span className="text-2xs text-muted-foreground/50 font-mono">{plugin.manifest.version}</span>
+                            <span className="font-mono text-2xs text-muted-foreground/60">{plugin.manifest.version}</span>
                           </div>
                           {plugin.manifest.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{plugin.manifest.description}</p>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">{plugin.manifest.description}</p>
                           )}
-                          {plugin.compatibilityLevel === 'partial' && plugin.compatibility.partialApis.length > 0 && (
-                            <p className="text-2xs text-[var(--amber)] mt-1">
-                              {support.reason}
-                            </p>
-                          )}
-                          {plugin.compatibilityLevel === 'partial' && plugin.compatibility.partialApis.length === 0 && (plugin.compatibility.unsupportedApis?.length ?? 0) > 0 && (
-                            <p className="text-2xs text-[var(--amber)] mt-1">
-                              {support.reason}
-                            </p>
-                          )}
-                          {plugin.compatibilityLevel === 'blocked' && plugin.compatibility.blockers.length > 0 && (
-                            <p className="text-2xs text-[var(--error)] mt-1">
-                              {plugin.compatibility.blockers[0]}
-                            </p>
-                          )}
+                          <p className={`mt-1 text-2xs ${support.kind === 'blocked' ? 'text-error' : 'text-muted-foreground'}`}>
+                            {support.reason}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(plugin.surfacePreview ?? []).slice(0, 6).map((surface) => (
+                              <span
+                                key={surface.id}
+                                className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${surfaceStateClass(surface.state)}`}
+                              >
+                                {surfaceLabel(surface.id)}:{surface.state}
+                              </span>
+                            ))}
+                            {coverage && (
+                              <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                                {coverage}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+                            <ListChecks size={11} />
+                            <span>Copy {copiedFilesFor(plugin).join(', ')}</span>
+                          </div>
                         </div>
                       </label>
                     );
@@ -267,37 +511,60 @@ export function ObsidianImportSection({
                 </div>
               )}
 
-              {/* Import button */}
-              {(report.summary.importable ?? report.plugins.filter(isObsidianPluginImportable).length) > 0 && importState !== 'done' && (
+              {totalImportable > 0 && importState !== 'done' && (
                 <button
-                  onClick={handleImport}
-                  disabled={selected.size === 0 || importState === 'importing'}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
+                  onClick={() => void handleImport()}
+                  disabled={selectedImportableCount === 0 || importState === 'importing'}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--amber)] bg-[var(--amber)] px-4 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-colors hover:bg-[var(--amber)]/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {importState === 'importing' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  <span>{importState === 'importing' ? 'Importing...' : `Import ${selected.size} plugin${selected.size !== 1 ? 's' : ''}`}</span>
+                  <span>{importState === 'importing' ? 'Importing...' : `Import ${selectedImportableCount} plugin${selectedImportableCount !== 1 ? 's' : ''}`}</span>
                 </button>
               )}
 
-              {/* Import results */}
               {importState === 'done' && importResults.length > 0 && (
-                <div className="space-y-1.5">
-                  {importResults.map(r => (
-                    <div key={r.id} className="flex items-center gap-2 text-xs">
-                      {r.ok ? (
-                        <CheckCircle2 size={13} style={{ color: 'var(--success)' }} />
-                      ) : (
-                        <XCircle size={13} style={{ color: 'var(--error)' }} />
-                      )}
-                      <span className={r.ok ? 'text-foreground' : 'text-[var(--error)]'}>
-                        {r.id}{r.error ? ` — ${r.error}` : ''}
+                <div className="rounded-lg border border-border bg-card/60 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={14} className="text-success" />
+                      <span className="text-sm font-medium text-foreground">
+                        {importResults.filter(r => r.ok).length} imported, {importResults.filter(r => !r.ok).length} failed
                       </span>
                     </div>
-                  ))}
-                  <p className="text-xs text-[var(--success)] font-medium mt-2">
-                    {importResults.filter(r => r.ok).length} plugin{importResults.filter(r => r.ok).length !== 1 ? 's' : ''} imported successfully
-                  </p>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href="/settings?tab=plugins"
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-2xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Manage installed
+                        <ArrowRight size={11} />
+                      </a>
+                      <a
+                        href="/settings?tab=plugins&panel=surfaces"
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-2xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Open surfaces
+                        <ArrowRight size={11} />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {importResults.map(result => (
+                      <div key={result.id} className="flex items-start gap-2 text-xs">
+                        {result.ok ? (
+                          <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" />
+                        ) : (
+                          <XCircle size={13} className="mt-0.5 shrink-0 text-error" />
+                        )}
+                        <span className={result.ok ? 'text-muted-foreground' : 'text-error'}>
+                          <span className="font-medium text-foreground">{result.id}</span>
+                          {result.ok
+                            ? ` copied ${result.copiedFiles?.join(', ') ?? 'plugin files'}`
+                            : ` failed: ${result.error}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

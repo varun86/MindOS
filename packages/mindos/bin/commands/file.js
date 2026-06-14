@@ -756,16 +756,24 @@ async function remoteFileDispatch(sub, args, flags) {
         const query = args.slice(1).join(' ');
         if (!query) { console.error(red('Usage: mindos file search <query>')); process.exit(EXIT.ERROR); }
         const limit = flags.limit || 20;
-        const res = await apiCall(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+        const res = await apiCall(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`, { cache: 'no-store' });
         const data = await res.json();
         if (isJsonMode(flags)) { output(data, flags); return; }
-        const results = data.results || [];
+        const results = Array.isArray(data) ? data : data.results || [];
         if (results.length === 0) { console.log(dim(`No results for "${query}"`)); return; }
         console.log(`\n${bold(`Search: "${query}"  (${results.length} files)`)}\n`);
         for (const r of results) {
           console.log(`  ${cyan(r.path || r.file)}`);
-          for (const m of (r.matches || []).slice(0, 3)) {
-            console.log(`    ${dim(`L${m.line}:`)} ${m.text || m.snippet || ''}`);
+          const matches = Array.isArray(r.matches) ? r.matches : [];
+          if (matches.length > 0) {
+            for (const m of matches.slice(0, 3)) {
+              console.log(`    ${dim(`L${m.line}:`)} ${m.text || m.snippet || ''}`);
+            }
+          } else if (r.snippet || r.preview || r.excerpt) {
+            const snippet = r.snippet || r.preview || r.excerpt || '';
+            for (const line of String(snippet).split('\n').slice(0, 2)) {
+              console.log(`    ${dim(line.trim().slice(0, 100))}`);
+            }
           }
         }
         console.log();

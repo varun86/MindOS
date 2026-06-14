@@ -3,6 +3,12 @@
  * Scans plugin code to infer required APIs and likely blockers.
  */
 
+import {
+  isFullySupportedObsidianApi,
+  isPartiallySupportedObsidianApi,
+  isUnsupportedObsidianApi,
+} from './capability-matrix';
+
 export type CompatibilityLevel = 'compatible' | 'partial' | 'blocked';
 
 export interface PluginCompatibilityReport {
@@ -15,78 +21,6 @@ export interface PluginCompatibilityReport {
   unsupportedApis: string[];
   blockers: string[];
 }
-
-const SUPPORTED_APIS = new Set([
-  'Plugin',
-  'Component',
-  'Events',
-  'Notice',
-  'Modal',
-  'PluginSettingTab',
-  'Setting',
-  'TFile',
-  'TFolder',
-  'TAbstractFile',
-  'normalizePath',
-  'Platform',
-  'loadData',
-  'saveData',
-  'addCommand',
-  'removeCommand',
-  'addSettingTab',
-  'addRibbonIcon',
-  'addStatusBarItem',
-  'Vault.read',
-  'Vault.cachedRead',
-  'Vault.create',
-  'Vault.modify',
-  'Vault.append',
-  'Vault.appendBinary',
-  'Vault.process',
-  'Vault.getResourcePath',
-  'Vault.delete',
-  'Vault.trash',
-  'Vault.rename',
-  'Vault.copy',
-  'Vault.adapter',
-  'MetadataCache.getCache',
-  'MetadataCache.getFileCache',
-  'MetadataCache.getFirstLinkpathDest',
-  'MetadataCache.fileToLinktext',
-  'FileManager.processFrontMatter',
-  'FileManager.generateMarkdownLink',
-  'FileManager.getNewFileParent',
-  'FileManager.renameFile',
-  'FileManager.promptForDeletion',
-  'FileManager.trashFile',
-  'FileManager.getAvailablePathForAttachment',
-  'Workspace.openLinkText',
-  'Workspace.onLayoutReady',
-  'Workspace.getActiveViewOfType',
-  'Workspace.iterateRootLeaves',
-  'Workspace.iterateAllLeaves',
-  'request',
-  'requestUrl',
-]);
-
-const PARTIAL_APIS = new Set([
-  'registerView',
-  'registerExtensions',
-  'registerMarkdownPostProcessor',
-  'registerMarkdownCodeBlockProcessor',
-  'registerEditorExtension',
-  'ItemView',
-  'MarkdownView',
-  'MarkdownRenderChild',
-  'MarkdownRenderer',
-  'WorkspaceLeaf',
-  'Workspace.getLeaf',
-  'Workspace.getLeavesOfType',
-  'Menu',
-  'MenuItem',
-  'SuggestModal',
-  'FuzzySuggestModal',
-]);
 
 const NODE_BLOCKLIST = new Set([
   'fs',
@@ -133,12 +67,21 @@ function collectObsidianImports(code: string): string[] {
     [/\.addStatusBarItem\s*\(/, 'addStatusBarItem'],
     [/\.loadData\s*\(/, 'loadData'],
     [/\.saveData\s*\(/, 'saveData'],
+    [/\.vault\.getAbstractFileByPath\s*\(|\bvault\.getAbstractFileByPath\s*\(/, 'Vault.getAbstractFileByPath'],
+    [/\.vault\.getFileByPath\s*\(|\bvault\.getFileByPath\s*\(/, 'Vault.getFileByPath'],
+    [/\.vault\.getFolderByPath\s*\(|\bvault\.getFolderByPath\s*\(/, 'Vault.getFolderByPath'],
+    [/\.vault\.getMarkdownFiles\s*\(|\bvault\.getMarkdownFiles\s*\(/, 'Vault.getMarkdownFiles'],
+    [/\.vault\.getAllLoadedFiles\s*\(|\bvault\.getAllLoadedFiles\s*\(/, 'Vault.getAllLoadedFiles'],
+    [/\.vault\.getFiles\s*\(|\bvault\.getFiles\s*\(/, 'Vault.getFiles'],
+    [/\.vault\.readBinary\s*\(|\bvault\.readBinary\s*\(/, 'Vault.readBinary'],
     [/\.vault\.read\s*\(|\bvault\.read\s*\(/, 'Vault.read'],
     [/\.vault\.cachedRead\s*\(|\bvault\.cachedRead\s*\(/, 'Vault.cachedRead'],
+    [/\.vault\.createBinary\s*\(|\bvault\.createBinary\s*\(/, 'Vault.createBinary'],
     [/\.vault\.create\s*\(|\bvault\.create\s*\(/, 'Vault.create'],
+    [/\.vault\.modifyBinary\s*\(|\bvault\.modifyBinary\s*\(/, 'Vault.modifyBinary'],
     [/\.vault\.modify\s*\(|\bvault\.modify\s*\(/, 'Vault.modify'],
-    [/\.vault\.append\s*\(|\bvault\.append\s*\(/, 'Vault.append'],
     [/\.vault\.appendBinary\s*\(|\bvault\.appendBinary\s*\(/, 'Vault.appendBinary'],
+    [/\.vault\.append\s*\(|\bvault\.append\s*\(/, 'Vault.append'],
     [/\.vault\.process\s*\(|\bvault\.process\s*\(/, 'Vault.process'],
     [/\.vault\.getResourcePath\s*\(|\bvault\.getResourcePath\s*\(/, 'Vault.getResourcePath'],
     [/\.vault\.delete\s*\(|\bvault\.delete\s*\(/, 'Vault.delete'],
@@ -155,6 +98,8 @@ function collectObsidianImports(code: string): string[] {
     [/metadataCache\.getFileCache\s*\(/, 'MetadataCache.getFileCache'],
     [/metadataCache\.getFirstLinkpathDest\s*\(/, 'MetadataCache.getFirstLinkpathDest'],
     [/metadataCache\.fileToLinktext\s*\(/, 'MetadataCache.fileToLinktext'],
+    [/metadataCache\.resolvedLinks\b/, 'MetadataCache.resolvedLinks'],
+    [/metadataCache\.unresolvedLinks\b/, 'MetadataCache.unresolvedLinks'],
     [/fileManager\.processFrontMatter\s*\(/, 'FileManager.processFrontMatter'],
     [/fileManager\.generateMarkdownLink\s*\(/, 'FileManager.generateMarkdownLink'],
     [/fileManager\.getNewFileParent\s*\(/, 'FileManager.getNewFileParent'],
@@ -164,6 +109,7 @@ function collectObsidianImports(code: string): string[] {
     [/fileManager\.getAvailablePathForAttachment\s*\(/, 'FileManager.getAvailablePathForAttachment'],
     [/workspace\.openLinkText\s*\(/, 'Workspace.openLinkText'],
     [/workspace\.onLayoutReady\s*\(/, 'Workspace.onLayoutReady'],
+    [/workspace\.getActiveFile\s*\(/, 'Workspace.getActiveFile'],
     [/workspace\.getActiveViewOfType\s*\(/, 'Workspace.getActiveViewOfType'],
     [/workspace\.iterateRootLeaves\s*\(/, 'Workspace.iterateRootLeaves'],
     [/workspace\.iterateAllLeaves\s*\(/, 'Workspace.iterateAllLeaves'],
@@ -261,9 +207,9 @@ export function analyzePluginCompatibility(code: string, manifest?: { isDesktopO
   const nodeModules = collectNodeModules(moduleImports);
   const unsupportedModules = collectUnsupportedModules(moduleImports);
 
-  const supportedApis = obsidianApis.filter((api) => SUPPORTED_APIS.has(api));
-  const partialApis = obsidianApis.filter((api) => PARTIAL_APIS.has(api));
-  const unsupportedApis = obsidianApis.filter((api) => !SUPPORTED_APIS.has(api) && !PARTIAL_APIS.has(api));
+  const supportedApis = obsidianApis.filter(isFullySupportedObsidianApi);
+  const partialApis = obsidianApis.filter(isPartiallySupportedObsidianApi);
+  const unsupportedApis = obsidianApis.filter(isUnsupportedObsidianApi);
 
   const blockers = [
     ...(manifest?.isDesktopOnly ? ['Manifest marks this plugin as desktop-only.'] : []),

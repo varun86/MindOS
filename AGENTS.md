@@ -237,7 +237,13 @@ npm test                          # 手动跑测试，不杀 dev server
 - 只做当前任务相关改动；不要顺手改主线正在进行的其它文件。
 - 完成后在任务分支提交并 `git push -u origin <task-branch>`，不要直接 push 到 `main`。
 - push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
-- 如果 pre-push hook 因环境问题失败（如缺全局 `pnpm`），只有在已经用等价命令完成验证后才可 `SKIP_TESTS=1 git push`，并在汇报里写明原因。
+
+**验证分层：任务分支快门 / 主线全量门**
+- 任务分支 push 是交付候选，不等于进入主线；小 feature、UI polish、文档/局部修复默认跑“快门”：受影响测试 + 必要 typecheck + `git diff --check`，UI 改动补 `/tmp/...png` 截图。
+- 快门已通过时，任务分支可用 `SKIP_TESTS=1 git push -u origin <task-branch>` 跳过 pre-push 全量门；handoff 必须写清已跑命令、截图路径、未跑全量的原因。
+- 跨模块重构、权限/安全/数据迁移、发布包、runtime/协议/同步等高风险改动，不走默认快门；任务分支 push 前也应主动跑相应 full test/build。
+- 主 worktree 合入任务分支后必须走主线全量门：按影响范围跑 full tests/typecheck/build，再 `git push origin main`；`main` / release push 不使用快门跳过。
+- 如果 hook 因环境问题失败，只有在已用等价命令完成同级验证后才可 `SKIP_TESTS=1`，并在汇报里写明环境原因和替代验证。
 
 **任务成果进入主线的标准流程**
 1. 任务 worktree 只把成果 push 到 `origin/<task-branch>`；这一步只是交付候选，不会让 `main` 变新。

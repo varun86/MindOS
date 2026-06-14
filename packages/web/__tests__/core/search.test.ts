@@ -55,6 +55,14 @@ describe('search', () => {
     expect(results[0].occurrences).toBeGreaterThan(0);
   });
 
+  it('scores tokenized CJK matches even when the query has no whitespace', () => {
+    seedFile(mindRoot, 'Notes/cjk.md', '知识体系需要管理流程支持');
+
+    const results = searchFiles(mindRoot, '知识管理');
+
+    expect(results.map((r) => r.path)).toContain('Notes/cjk.md');
+  });
+
   it('sorts by score (occurrence density) descending', () => {
     seedFile(mindRoot, 'many.md', 'test test test test test');
     seedFile(mindRoot, 'few.md', 'test and lots of other words that dilute the density of matches significantly');

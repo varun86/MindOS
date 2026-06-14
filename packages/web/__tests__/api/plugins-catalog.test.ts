@@ -104,9 +104,9 @@ describe('/api/plugins/catalog', () => {
         enabled: true,
         loaded: true,
         compatibility: expect.objectContaining({
-          level: 'compatible',
-          kind: 'ready',
-          label: 'Ready',
+          level: 'partial',
+          kind: 'limited',
+          label: 'Limited',
         }),
         surfaces: expect.objectContaining({
           total: 2,

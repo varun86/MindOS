@@ -178,4 +178,60 @@ describe('SearchPanel preview cache', () => {
       '/api/file?path=b.md',
     ]);
   });
+
+  it('aborts stale search requests and keeps the latest query results', async () => {
+    let firstSearchSignal: AbortSignal | undefined;
+    let firstSearchResolve: ((value: Array<{ path: string; snippet: string; score: number }>) => void) | undefined;
+
+    mocks.apiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/search/prewarm') return Promise.resolve({ ok: true });
+      if (url === '/api/plugins/surfaces?loadEnabled=1&kind=command') {
+        return Promise.resolve({ ok: true, surfaces: [] });
+      }
+      if (url === '/api/search?q=alpha') {
+        firstSearchSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Array<{ path: string; snippet: string; score: number }>>((resolve) => {
+          firstSearchResolve = resolve;
+        });
+      }
+      if (url === '/api/search?q=beta') {
+        return Promise.resolve([
+          { path: 'beta.md', snippet: 'beta note', score: 10 },
+        ]);
+      }
+      if (url.startsWith('/api/file?path=')) {
+        return Promise.resolve({ content: 'preview' });
+      }
+      return Promise.resolve({});
+    });
+
+    const { default: SearchPanel } = await import('@/components/panels/SearchPanel');
+
+    await act(async () => {
+      root.render(<SearchPanel active />);
+      await Promise.resolve();
+    });
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
+    await act(async () => {
+      setInputValue(input, 'alpha');
+    });
+    await advance(300);
+    expect(firstSearchSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      setInputValue(input, 'beta');
+    });
+    expect(firstSearchSignal?.aborted).toBe(true);
+    await advance(300);
+
+    await act(async () => {
+      firstSearchResolve?.([{ path: 'alpha.md', snippet: 'alpha note', score: 10 }]);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('beta.md');
+    expect(host.textContent).not.toContain('alpha.md');
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/api/search?q=beta', expect.objectContaining({ cache: 'no-store' }));
+  });
 });

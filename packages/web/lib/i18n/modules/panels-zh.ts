@@ -557,7 +557,7 @@ export const panelsZh = {
     plugins: {
       title: 'Plugins',
       description: '面向智能体的插件支持上线后会显示在这里。',
-      empty: '暂无可用的智能体插件。',
+      empty: '暂无 Agent 专属插件。Web 与 Obsidian 插件请在「设置 / Plugins」中管理。',
     },
     runsSubtitle: '查看会话、最近运行与智能体审计记录。',
     sessionsSubtitle: '当前活跃的 ACP 智能体会话。',

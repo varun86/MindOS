@@ -5,7 +5,7 @@ import {
 } from '@/lib/obsidian-compat/compatibility-report';
 
 describe('compatibility report', () => {
-  it('detects high-frequency supported Obsidian APIs', () => {
+  it('detects high-frequency Obsidian APIs and preserves host-boundary levels', () => {
     const report = analyzePluginCompatibility(`
       const { Plugin, Notice, Modal, PluginSettingTab, Setting, MarkdownRenderer } = require('obsidian');
       module.exports = class Example extends Plugin {
@@ -54,21 +54,23 @@ describe('compatibility report', () => {
         'Workspace.iterateAllLeaves',
       ]),
     );
-    expect(report.supportedApis).toContain('Vault.adapter');
     expect(report.supportedApis).toEqual(expect.arrayContaining([
       'FileManager.processFrontMatter',
       'FileManager.generateMarkdownLink',
       'FileManager.getAvailablePathForAttachment',
-      'FileManager.promptForDeletion',
       'FileManager.trashFile',
       'Vault.process',
       'Vault.getResourcePath',
       'Vault.appendBinary',
       'Vault.trash',
+    ]));
+    expect(report.partialApis).toEqual(expect.arrayContaining([
+      'MarkdownRenderer',
+      'Vault.adapter',
+      'FileManager.promptForDeletion',
       'Workspace.getActiveViewOfType',
       'Workspace.iterateAllLeaves',
     ]));
-    expect(report.partialApis).toContain('MarkdownRenderer');
     expect(report.nodeModules).toEqual([]);
   });
 
@@ -106,12 +108,55 @@ describe('compatibility report', () => {
     expect(report.obsidianApis).toEqual(
       expect.arrayContaining(['ItemView', 'requestUrl', 'registerView', 'registerExtensions', 'registerEditorExtension']),
     );
-    expect(report.supportedApis).toContain('requestUrl');
+    expect(report.partialApis).toContain('requestUrl');
     expect(report.partialApis).toEqual(
-      expect.arrayContaining(['ItemView', 'registerView', 'registerExtensions', 'registerEditorExtension']),
+      expect.arrayContaining(['ItemView', 'requestUrl', 'registerView', 'registerExtensions', 'registerEditorExtension']),
     );
-    expect(report.partialApis).not.toContain('requestUrl');
     expect(getCompatibilityLevel(report)).toBe('partial');
+  });
+
+  it('recognizes implemented workspace, vault, and metadata accessor APIs', () => {
+    const report = analyzePluginCompatibility(`
+      const { Plugin } = require('obsidian');
+      module.exports = class Example extends Plugin {
+        onload() {
+          const active = this.app.workspace.getActiveFile();
+          this.app.vault.getAbstractFileByPath('notes/today.md');
+          this.app.vault.getFileByPath('notes/today.md');
+          this.app.vault.getFolderByPath('notes');
+          this.app.vault.getFiles();
+          this.app.vault.getMarkdownFiles();
+          this.app.vault.getAllLoadedFiles();
+          this.app.metadataCache.resolvedLinks;
+          this.app.metadataCache.unresolvedLinks;
+          return active;
+        }
+      }
+    `);
+
+    expect(report.obsidianApis).toEqual(expect.arrayContaining([
+      'Workspace.getActiveFile',
+      'Vault.getAbstractFileByPath',
+      'Vault.getFileByPath',
+      'Vault.getFolderByPath',
+      'Vault.getFiles',
+      'Vault.getMarkdownFiles',
+      'Vault.getAllLoadedFiles',
+      'MetadataCache.resolvedLinks',
+      'MetadataCache.unresolvedLinks',
+    ]));
+    expect(report.supportedApis).toEqual(expect.arrayContaining([
+      'Vault.getAbstractFileByPath',
+      'Vault.getFileByPath',
+      'Vault.getFolderByPath',
+      'Vault.getFiles',
+      'Vault.getMarkdownFiles',
+      'Vault.getAllLoadedFiles',
+      'MetadataCache.resolvedLinks',
+      'MetadataCache.unresolvedLinks',
+    ]));
+    expect(report.partialApis).toContain('Workspace.getActiveFile');
+    expect(report.unsupportedApis).toEqual([]);
   });
 
   it('classifies simple command and metadata plugins as compatible', () => {

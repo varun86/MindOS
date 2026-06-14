@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -51,6 +51,8 @@ import { ObsidianPluginHostSection } from './ObsidianPluginHostSection';
 import { PluginManagerHeader, type PluginManagerNavItem } from './PluginManagerHeader';
 import { PluginSurfacesPanel, type SurfaceInventoryState } from './PluginSurfacesPanel';
 import {
+  applyCommunityInstallToCatalog,
+  applyCommunityUpdateToCatalog,
   catalogStatusClass,
   rendererMatchLabel,
   type CatalogFilterOption,
@@ -61,16 +63,16 @@ import {
   type ObsidianCommunityCatalogResponse,
   type ObsidianCommunityInstallResponse,
   type PluginCatalogResponse,
-  type PluginPanel,
   type PluginSurfacesResponse,
 } from './PluginsTabModel';
-import type { PluginsTabProps } from './types';
+import type { PluginPanel, PluginsTabProps } from './types';
 
 export function PluginsTab({
   pluginStates,
   setPluginStates,
   t,
   mindRoot,
+  initialPanel,
   onOpenPluginEntries,
   onOpenCommandCenter,
   onOpenPluginViews,
@@ -99,6 +101,26 @@ export function PluginsTab({
     loaded: false,
     surfaces: [],
   });
+  const communityLoadSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!initialPanel) return;
+    setPanel(initialPanel);
+  }, [initialPanel]);
+
+  const changePanel = useCallback((nextPanel: PluginPanel) => {
+    setPanel(nextPanel);
+    if (typeof window === 'undefined' || window.location.pathname !== '/settings') return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'plugins');
+    if (nextPanel === 'installed') {
+      url.searchParams.delete('panel');
+    } else {
+      url.searchParams.set('panel', nextPanel);
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     loadDisabledState();
@@ -145,6 +167,8 @@ export function PluginsTab({
   }, []);
 
   const loadCommunityCatalog = useCallback(async (query: string) => {
+    const requestSeq = communityLoadSeqRef.current + 1;
+    communityLoadSeqRef.current = requestSeq;
     setCommunityLoading(true);
     setCommunityError(null);
 
@@ -157,6 +181,7 @@ export function PluginsTab({
         `/api/obsidian/community-catalog?${params.toString()}`,
         { cache: 'no-store' },
       );
+      if (communityLoadSeqRef.current !== requestSeq) return;
       setCommunityCatalog(data.catalog ?? null);
       setCommunitySkipped(Array.isArray(data.skipped) ? data.skipped : []);
       setCommunityPreflights({});
@@ -165,6 +190,7 @@ export function PluginsTab({
       setCommunityUpdates({});
       setCommunityLoaded(true);
     } catch (err) {
+      if (communityLoadSeqRef.current !== requestSeq) return;
       setCommunityCatalog(null);
       setCommunitySkipped([]);
       setCommunityInstalls({});
@@ -173,7 +199,9 @@ export function PluginsTab({
       setCommunityLoaded(true);
       setCommunityError(err instanceof Error ? err.message : copy.communityLoadFailed);
     } finally {
-      setCommunityLoading(false);
+      if (communityLoadSeqRef.current === requestSeq) {
+        setCommunityLoading(false);
+      }
     }
   }, [copy.communityLoadFailed]);
 
@@ -279,21 +307,7 @@ export function PluginsTab({
     pluginId: string,
     version: string,
   ) => {
-    setCommunityCatalog((current) => {
-      if (!current) return current;
-      let changed = false;
-      const plugins = current.plugins.map((plugin) => {
-        if (plugin.id !== pluginId) return plugin;
-        changed = true;
-        return {
-          ...plugin,
-          installedVersion: version,
-          installedLoaded: false,
-          installStatus: plugin.installedEnabled ? 'enabled' as const : 'disabled' as const,
-        };
-      });
-      return changed ? { ...current, plugins } : current;
-    });
+    setCommunityCatalog((current) => applyCommunityUpdateToCatalog(current, pluginId, version));
   }, []);
 
   const applyCommunityUpdate = useCallback(async (
@@ -353,39 +367,16 @@ export function PluginsTab({
     pluginId: string,
     preflight: ObsidianCommunityPluginPreflight,
   ) => {
-    setCommunityCatalog((current) => {
-      if (!current) return current;
-      let changed = false;
-      let newlyInstalled = false;
-      const plugins = current.plugins.map((plugin) => {
-        if (plugin.id !== pluginId) return plugin;
-        changed = true;
-        newlyInstalled = !plugin.installed;
-        return {
-          ...plugin,
-          installed: true,
-          installStatus: 'disabled' as const,
-          installedVersion: preflight.package.manifest.version,
-          installedEnabled: false,
-          installedLoaded: false,
-          installedLastError: undefined,
-        };
-      });
-
-      if (!changed) return current;
-      return {
-        ...current,
-        plugins,
-        counts: {
-          ...current.counts,
-          installed: current.counts.installed + (newlyInstalled ? 1 : 0),
-        },
-      };
-    });
+    setCommunityCatalog((current) => applyCommunityInstallToCatalog(current, pluginId, preflight));
   }, []);
 
   const installCommunityPlugin = useCallback(async (plugin: ObsidianCommunityCatalogItem) => {
-    const confirmed = window.confirm(copy.communityInstallConfirm(plugin.name));
+    const preflight = communityPreflights[plugin.id]?.result;
+    const confirmed = window.confirm(
+      preflight?.support?.kind === 'review'
+        ? copy.communityInstallConfirmReview(plugin.name, preflight.support.reason)
+        : copy.communityInstallConfirm(plugin.name),
+    );
     if (!confirmed) return;
 
     setCommunityInstalls((current) => ({
@@ -428,7 +419,7 @@ export function PluginsTab({
         },
       }));
     }
-  }, [copy, markCommunityPluginInstalled]);
+  }, [communityPreflights, copy, markCommunityPluginInstalled]);
 
   useEffect(() => {
     if (panel !== 'community' || communityLoaded) return;
@@ -507,8 +498,8 @@ export function PluginsTab({
 
   const openObsidianPluginInHost = useCallback((pluginId: string) => {
     setFocusedObsidianPluginId(pluginId);
-    setPanel('installed');
-  }, []);
+    changePanel('installed');
+  }, [changePanel]);
 
   const setObsidianHotkeysEnabled = useCallback((enabled: boolean) => {
     setObsidianHotkeysEnabledState(enabled);
@@ -533,7 +524,7 @@ export function PluginsTab({
         managerStats={managerStats}
         panel={panel}
         panels={panels}
-        onPanelChange={setPanel}
+        onPanelChange={changePanel}
       />
 
       {panel === 'installed' && (
@@ -881,7 +872,7 @@ export function PluginsTab({
                     onApplyUpdate={applyCommunityUpdate}
                     onInstall={installCommunityPlugin}
                     onOpenHost={openObsidianPluginInHost}
-                    onOpenImportPanel={() => setPanel('import')}
+                    onOpenImportPanel={() => changePanel('import')}
                   />
                 ))}
               </div>

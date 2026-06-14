@@ -739,6 +739,23 @@ Write a concise signal brief.
     });
   });
 
+  it('applies runtime search filters and tokenized CJK matching', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-runtime-search-filter-'));
+    mkdirSync(join(root, 'Projects'), { recursive: true });
+    mkdirSync(join(root, 'Archive'), { recursive: true });
+    writeFileSync(join(root, 'Projects', 'note.md'), '知识体系需要管理流程支持');
+    writeFileSync(join(root, 'Archive', 'old.md'), '知识体系也需要管理');
+    writeFileSync(join(root, 'Projects', 'data.csv'), 'name,value\n知识管理,1');
+
+    const results = await searchMindRoot(root, '知识管理', {
+      limit: 10,
+      scope: 'Projects',
+      file_type: 'md',
+    });
+
+    expect(results.map((item) => item.path)).toEqual(['Projects/note.md']);
+  });
+
   it('exposes the default MCP agent registry from the product HTTP runtime', async () => {
     const home = mkdtempSync(join(tmpdir(), 'mindos-product-agents-home-'));
     const root = mkdtempSync(join(tmpdir(), 'mindos-product-agents-root-'));
@@ -1877,7 +1894,7 @@ Write a concise signal brief.
     });
   });
 
-  it('handles search empty query and delegates non-empty query to injected services', async () => {
+  it('handles search empty query and delegates parsed options to injected services', async () => {
     const empty = await handleSearch(new URLSearchParams('q='), {
       search: async () => {
         throw new Error('should not search empty query');
@@ -1885,12 +1902,34 @@ Write a concise signal brief.
     });
     expect(empty).toEqual({ status: 200, body: [] });
 
-    const found = await handleSearch(new URLSearchParams('q=hello'), {
-      search: async (query, options) => [{ path: 'hello.md', query, limit: options.limit }],
+    const found = await handleSearch(new URLSearchParams('q=hello&limit=5&scope=Projects&file_type=md&modified_after=2026-01-01T00%3A00%3A00.000Z'), {
+      search: async (query, options) => [{ path: 'hello.md', query, options }],
     });
     expect(found.status).toBe(200);
-    expect(found.body).toEqual([{ path: 'hello.md', query: 'hello', limit: 20 }]);
-    expect(found.headers?.['Cache-Control']).toBe('private, max-age=300');
+    expect(found.body).toEqual([{
+      path: 'hello.md',
+      query: 'hello',
+      options: {
+        limit: 5,
+        scope: 'Projects',
+        file_type: 'md',
+        modified_after: '2026-01-01T00:00:00.000Z',
+      },
+    }]);
+    expect(found.headers?.['Cache-Control']).toBe('no-store');
+  });
+
+  it('clamps invalid search limits and ignores invalid file_type filters', async () => {
+    const found = await handleSearch(new URLSearchParams('q=hello&limit=500&file_type=pdf'), {
+      search: async (query, options) => [{ path: 'hello.md', query, options }],
+    });
+
+    expect(found.status).toBe(200);
+    expect(found.body).toEqual([{
+      path: 'hello.md',
+      query: 'hello',
+      options: { limit: 100 },
+    }]);
   });
 
   it('handles search prewarm from product file collection services', () => {

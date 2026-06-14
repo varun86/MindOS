@@ -218,6 +218,32 @@ describe('ObsidianRuntimeHost', () => {
     expect(host.renderNoticeSnapshotsSince(0)).toEqual([]);
   });
 
+  it('records notice snapshots opened during plugin onload with the correct plugin context', async () => {
+    writePlugin(
+      'onload-notice-plugin',
+      `
+        const { Notice, Plugin } = require('obsidian');
+        module.exports = class OnloadNoticePlugin extends Plugin {
+          onload() {
+            new Notice('Loaded from onload', 900);
+          }
+        };
+      `,
+    );
+
+    const loader = new PluginLoader(mindRoot);
+    await loader.loadPlugin('onload-notice-plugin');
+    const host = loader.getApp().getRuntimeHost();
+
+    expect(host.renderNoticeSnapshotsSince(0)).toEqual([{
+      id: 'onload-notice-plugin:notice:1',
+      pluginId: 'onload-notice-plugin',
+      message: 'Loaded from onload',
+      timeout: 900,
+      level: 'info',
+    }]);
+  });
+
   it('renders markdown code block processor output as a text snapshot', async () => {
     writePlugin(
       'markdown-runtime-plugin',

@@ -58,6 +58,7 @@ export interface SettingsData {
 }
 
 export type Tab = 'ai' | 'appearance' | 'knowledge' | 'plugins' | 'mcp' | 'sync' | 'update' | 'uninstall';
+export type PluginPanel = 'installed' | 'community' | 'import' | 'surfaces';
 
 export const CONTENT_WIDTH_DEFAULT = '80%';
 export const CONTENT_WIDTH_MIN = 50;
@@ -263,6 +264,7 @@ export interface PluginsTabProps {
   setPluginStates: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   t: Messages;
   mindRoot?: string;
+  initialPanel?: PluginPanel;
   onOpenPluginEntries?: () => void;
   onOpenCommandCenter?: () => void;
   onOpenPluginViews?: () => void;

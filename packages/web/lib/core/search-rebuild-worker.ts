@@ -13,6 +13,7 @@ import { resolveExistingSafe } from './security';
 import { extractPdfText } from './pdf-text';
 import { CJK_CHAR_REGEX } from './cjk';
 import path from 'path';
+import fs from 'fs';
 
 const MAX_CONTENT_LENGTH = 50_000;
 
@@ -75,13 +76,24 @@ interface PersistedIndex {
   totalChars: number;
   docLengths: Record<string, number>;
   invertedIndex: Record<string, string[]>;
+  fileSignature: string;
   timestamp: number;
+  deferredPdfs?: string[];
 }
 
-function rebuild(mindRoot: string): PersistedIndex {
+function buildFileSignature(mindRoot: string, filePaths: string[]): string {
+  return [...filePaths].sort().map((filePath) => {
+    const stat = fs.statSync(resolveExistingSafe(mindRoot, filePath));
+    return `${filePath}\0${stat.size}\0${stat.mtimeMs}`;
+  }).join('\n');
+}
+
+function rebuild(mindRoot: string, opts: { pdfTimeBudgetMs?: number } = {}): PersistedIndex {
+  const pdfDeadline = opts.pdfTimeBudgetMs === undefined ? null : Date.now() + opts.pdfTimeBudgetMs;
   const allFiles = collectAllFiles(mindRoot);
   const invertedIndex: Record<string, string[]> = {};
   const docLengths: Record<string, number> = {};
+  const deferredPdfs: string[] = [];
   let totalChars = 0;
 
   for (const filePath of allFiles) {
@@ -89,11 +101,16 @@ function rebuild(mindRoot: string): PersistedIndex {
     const ext = path.extname(filePath).toLowerCase();
 
     if (ext === '.pdf') {
-      try {
-        const resolved = resolveExistingSafe(mindRoot, filePath);
-        content = extractPdfText(resolved);
-        if (!content) continue;
-      } catch { continue; }
+      if (pdfDeadline !== null && Date.now() >= pdfDeadline) {
+        deferredPdfs.push(filePath);
+        content = '';
+      } else {
+        try {
+          const resolved = resolveExistingSafe(mindRoot, filePath);
+          content = extractPdfText(resolved);
+          if (!content) continue;
+        } catch { continue; }
+      }
     } else {
       try { content = readFile(mindRoot, filePath); } catch { continue; }
     }
@@ -117,20 +134,24 @@ function rebuild(mindRoot: string): PersistedIndex {
   }
 
   return {
-    version: 1,
+    version: 2,
     builtForRoot: mindRoot,
     fileCount: allFiles.length,
     totalChars,
     docLengths,
     invertedIndex,
+    fileSignature: buildFileSignature(mindRoot, allFiles),
     timestamp: Date.now(),
+    deferredPdfs,
   };
 }
 
 // Execute when loaded as a worker
 if (parentPort && workerData?.mindRoot) {
   try {
-    const result = rebuild(workerData.mindRoot);
+    const result = rebuild(workerData.mindRoot, {
+      pdfTimeBudgetMs: workerData.pdfTimeBudgetMs,
+    });
     parentPort.postMessage({ ok: true, data: result });
   } catch (err) {
     parentPort.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });

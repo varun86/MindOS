@@ -92,6 +92,8 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
+  const searchRequestId = useRef(0);
   const { t } = useLocale();
   const warmState = useSearchPrewarm(open && tab === 'search');
 
@@ -317,21 +319,27 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
       setTimeout(() => inputRef.current?.focus(), 50);
       setQuery('');
       setResults([]);
+      setLoading(false);
       setSelectedIndex(0);
       setTab('search');
       setActionIndex(0);
     }
     return () => {
+      searchRequestId.current += 1;
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
+      searchAbort.current?.abort();
     };
   }, [open]);
 
   // Debounced search
   const doSearch = useCallback((q: string) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    searchAbort.current?.abort();
+    const requestId = searchRequestId.current + 1;
+    searchRequestId.current = requestId;
     if (!q.trim()) {
       setResults([]);
       setLoading(false);
@@ -339,14 +347,23 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
     }
     setLoading(true);
     debounceTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      searchAbort.current = controller;
       try {
-        const data = await apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (controller.signal.aborted || searchRequestId.current !== requestId) return;
         setResults(Array.isArray(data) ? data : []);
         setSelectedIndex(0);
       } catch {
+        if (controller.signal.aborted || searchRequestId.current !== requestId) return;
         setResults([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted && searchRequestId.current === requestId) {
+          setLoading(false);
+        }
       }
     }, 300);
   }, []);

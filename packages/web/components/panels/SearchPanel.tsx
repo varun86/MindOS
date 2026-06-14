@@ -98,6 +98,8 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
   const pathname = usePathname();
   const pluginEditorContext = useMemo(() => pluginEditorCommandContextForPathname(pathname), [pathname]);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
+  const searchRequestId = useRef(0);
   const { t } = useLocale();
   const searchTitle = t.sidebar?.searchTitle ?? t.search.tabSearch ?? 'Search';
 
@@ -221,6 +223,9 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
   // Debounced search
   const doSearch = useCallback((q: string) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    searchAbort.current?.abort();
+    const requestId = searchRequestId.current + 1;
+    searchRequestId.current = requestId;
     if (!q.trim()) {
       setResults([]);
       setLoading(false);
@@ -228,16 +233,41 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
     }
     setLoading(true);
     debounceTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      searchAbort.current = controller;
       try {
-        const data = await apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await apiFetch<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (controller.signal.aborted || searchRequestId.current !== requestId) return;
         setResults(Array.isArray(data) ? data : []);
         setSelectedIndex(0);
       } catch {
+        if (controller.signal.aborted || searchRequestId.current !== requestId) return;
         setResults([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted && searchRequestId.current === requestId) {
+          setLoading(false);
+        }
       }
     }, 300);
+  }, []);
+
+  useEffect(() => {
+    if (active) return;
+    searchRequestId.current += 1;
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    searchAbort.current?.abort();
+    setLoading(false);
+  }, [active]);
+
+  useEffect(() => () => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    searchAbort.current?.abort();
   }, []);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

@@ -64,6 +64,7 @@ describe('obsidian requestUrl shim', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('https://example.com/post', expect.objectContaining({
       method: 'POST',
+      redirect: 'manual',
       headers: {
         'content-type': 'application/octet-stream',
         authorization: 'Bearer token',
@@ -112,14 +113,101 @@ describe('obsidian requestUrl shim', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects redirects to local and private hosts before reading the redirected body', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://example.com/redirect') {
+        return {
+          status: 302,
+          headers: new Headers({ location: 'http://[::ffff:127.0.0.1]/private' }),
+          arrayBuffer: vi.fn(),
+        };
+      }
+      return {
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: vi.fn(async () => arrayBufferFrom('should not be read')),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(requestUrl('https://example.com/redirect')).rejects.toThrow(/local\/private hosts/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/redirect', expect.objectContaining({
+      redirect: 'manual',
+    }));
+  });
+
+  it('follows safe redirects and reports the final response', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://example.com/redirect') {
+        return {
+          status: 302,
+          headers: new Headers({ location: 'https://cdn.example.com/final' }),
+          arrayBuffer: vi.fn(),
+        };
+      }
+      return {
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/plain' }),
+        arrayBuffer: vi.fn(async () => arrayBufferFrom('redirected')),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(requestUrl('https://example.com/redirect')).resolves.toMatchObject({
+      status: 200,
+      text: 'redirected',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith('https://cdn.example.com/final', expect.objectContaining({
+      redirect: 'manual',
+    }));
+  });
+
+  it('strips sensitive headers when following cross-origin redirects', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://example.com/redirect') {
+        return {
+          status: 302,
+          headers: new Headers({ location: 'https://cdn.example.com/final' }),
+          arrayBuffer: vi.fn(),
+        };
+      }
+      return {
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: vi.fn(async () => arrayBufferFrom('redirected')),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestUrl({
+      url: 'https://example.com/redirect',
+      headers: {
+        authorization: 'Bearer secret',
+        cookie: 'sid=secret',
+        'x-api-key': 'secret',
+        'x-safe-header': 'public',
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://cdn.example.com/final', expect.objectContaining({
+      headers: { 'x-safe-header': 'public' },
+    }));
+  });
+
   it('rejects local and private hosts before fetch', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(requestUrl('http://localhost:3000/private')).rejects.toThrow(/local\/private hosts/);
     await expect(requestUrl('http://127.0.0.1/private')).rejects.toThrow(/local\/private hosts/);
+    await expect(requestUrl('http://100.64.0.1/private')).rejects.toThrow(/local\/private hosts/);
     await expect(requestUrl('http://192.168.1.10/private')).rejects.toThrow(/local\/private hosts/);
+    await expect(requestUrl('http://198.18.0.1/private')).rejects.toThrow(/local\/private hosts/);
     await expect(requestUrl('http://[::1]/private')).rejects.toThrow(/local\/private hosts/);
+    await expect(requestUrl('http://[::ffff:127.0.0.1]/private')).rejects.toThrow(/local\/private hosts/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -37,6 +37,19 @@ describe('POST /api/obsidian/import', () => {
     expect(await res.json()).toEqual({ ok: false, error: 'Missing vaultRoot or pluginId' });
   });
 
+  it('rejects malformed body values', async () => {
+    const { POST } = await importRoute();
+    const req = new NextRequest('http://localhost/api/obsidian/import', {
+      method: 'POST',
+      body: JSON.stringify({ vaultRoot: 1, pluginId: 'quickadd-like' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: 'Missing vaultRoot or pluginId' });
+  });
+
   it('imports a plugin and returns compatibility details', async () => {
     scanObsidianVaultPlugins.mockResolvedValue({
       plugins: [
@@ -44,23 +57,30 @@ describe('POST /api/obsidian/import', () => {
           id: 'quickadd-like',
           manifest: { id: 'quickadd-like', name: 'QuickAdd', version: '1.0.0' },
           sourceDir: '/tmp/vault/.obsidian/plugins/quickadd-like',
-          compatibilityLevel: 'compatible',
+          compatibilityLevel: 'partial',
           compatibility: {
             obsidianApis: ['Plugin', 'Modal', 'Notice', 'addCommand'],
+            moduleImports: [],
             nodeModules: [],
-            supportedApis: ['Plugin', 'Modal', 'Notice', 'addCommand'],
-            partialApis: [],
+            unsupportedModules: [],
+            supportedApis: ['Plugin', 'addCommand'],
+            partialApis: ['Modal', 'Notice'],
+            unsupportedApis: [],
             blockers: [],
           },
           hasStyles: false,
           hasData: true,
+          obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
         },
       ],
       skipped: [],
+      vault: { pluginsDirFound: true, hasEnabledList: true },
     });
     importObsidianPlugin.mockResolvedValue({
       pluginId: 'quickadd-like',
       targetDir: '/tmp/mindRoot/.plugins/quickadd-like',
+      copiedFiles: ['manifest.json', 'main.js', 'data.json', 'obsidian-import.json'],
+      obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
     });
 
     const { POST } = await importRoute();
@@ -76,9 +96,21 @@ describe('POST /api/obsidian/import', () => {
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
     expect(json.plugin.id).toBe('quickadd-like');
-    expect(json.plugin.compatibilityLevel).toBe('compatible');
+    expect(json.plugin.compatibilityLevel).toBe('partial');
     expect(json.plugin.importable).toBe(true);
-    expect(json.imported.targetDir).not.toContain('~/');
+    expect(json.plugin.support).toMatchObject({ kind: 'limited', importable: true, defaultSelected: true });
+    expect(json.plugin.coverage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ api: 'Modal', support: 'snapshot-only' }),
+      expect.objectContaining({ api: 'Notice', support: 'snapshot-only' }),
+    ]));
+    expect(json.nextStep).toMatchObject({
+      manageHref: '/settings?tab=plugins',
+      surfacesHref: '/settings?tab=plugins&panel=surfaces',
+    });
+    expect(json.plugin.sourceDir).toBeUndefined();
+    expect(json.imported.targetDir).toBeUndefined();
+    expect(json.imported.targetPath).toBe('.plugins/quickadd-like');
+    expect(json.imported.copiedFiles).toEqual(['manifest.json', 'main.js', 'data.json', 'obsidian-import.json']);
     expect(importObsidianPlugin).toHaveBeenCalledTimes(1);
     expect(importObsidianPlugin).toHaveBeenCalledWith(expect.objectContaining({
       pluginId: 'quickadd-like',
@@ -100,16 +132,21 @@ describe('POST /api/obsidian/import', () => {
           compatibilityLevel: 'blocked',
           compatibility: {
             obsidianApis: ['Plugin'],
+            moduleImports: ['electron'],
             nodeModules: ['electron'],
+            unsupportedModules: ['electron'],
             supportedApis: ['Plugin'],
             partialApis: [],
+            unsupportedApis: [],
             blockers: ['Requires unsupported runtime module: electron'],
           },
           hasStyles: false,
           hasData: false,
+          obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
         },
       ],
       skipped: [],
+      vault: { pluginsDirFound: true, hasEnabledList: true },
     });
 
     const { POST } = await importRoute();
@@ -126,7 +163,7 @@ describe('POST /api/obsidian/import', () => {
   });
 
   it('returns 404 when plugin is not found in the scanned vault', async () => {
-    scanObsidianVaultPlugins.mockResolvedValue({ plugins: [], skipped: [] });
+    scanObsidianVaultPlugins.mockResolvedValue({ plugins: [], skipped: [], vault: { pluginsDirFound: true, hasEnabledList: false } });
     const { POST } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',

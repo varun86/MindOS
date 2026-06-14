@@ -330,6 +330,17 @@ describe('SearchIndex', () => {
       expect(restored.getContent(mindRoot, 'Archive/old.md')).toContain('archived content');
     });
 
+    it('rejects a persisted index when file contents change without a file-count change', () => {
+      index.rebuild(mindRoot);
+      const dir = fs.mkdtempSync(path.join(mindRoot, 'persist-'));
+      index.persist(dir);
+
+      seedFile(mindRoot, 'Archive/old.md', 'same path but a newer index signature');
+
+      const restored = new SearchIndex();
+      expect(restored.load(dir, mindRoot)).toBe(false);
+    });
+
     it('refreshes cached content on updateFile', () => {
       index.rebuild(mindRoot);
       expect(index.getContent(mindRoot, 'Archive/old.md')).toContain('archived');

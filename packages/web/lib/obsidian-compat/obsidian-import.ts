@@ -8,7 +8,7 @@ import path from 'path';
 import { analyzePluginCompatibility, getCompatibilityLevel, type CompatibilityLevel, type PluginCompatibilityReport } from './compatibility-report';
 import { validateManifest } from './manifest';
 import type { PluginManifest } from './types';
-import { resolveExistingSafe } from '@/lib/core/security';
+import { resolveExistingSafe, resolveSafe } from '@/lib/core/security';
 
 export interface ObsidianPluginHotkey {
   modifiers: string[];
@@ -22,6 +22,7 @@ export interface ObsidianPluginCommandHotkeys {
 
 export interface ObsidianVaultPluginConfig {
   enabledInObsidian: boolean;
+  hasEnabledList?: boolean;
   hotkeys: ObsidianPluginCommandHotkeys[];
   hotkeyCount: number;
 }
@@ -34,6 +35,7 @@ export interface ImportedObsidianPluginConfig extends ObsidianVaultPluginConfig 
 
 interface ObsidianVaultConfigSnapshot {
   enabledPluginIds: Set<string>;
+  hasEnabledList: boolean;
   hotkeys: Map<string, ObsidianPluginHotkey[]>;
 }
 
@@ -56,6 +58,10 @@ export interface SkippedPlugin {
 export interface ScanResult {
   plugins: ScannedObsidianPlugin[];
   skipped: SkippedPlugin[];
+  vault: {
+    pluginsDirFound: boolean;
+    hasEnabledList: boolean;
+  };
 }
 
 export interface ImportObsidianPluginOptions {
@@ -67,6 +73,7 @@ export interface ImportObsidianPluginOptions {
 export interface ImportedObsidianPlugin {
   pluginId: string;
   targetDir: string;
+  copiedFiles: string[];
   obsidianConfig: ImportedObsidianPluginConfig;
 }
 
@@ -85,14 +92,45 @@ function resolvePluginDir(root: string, basePath: string, pluginId: string): str
   }
 }
 
+function resolveRegularPluginFile(pluginDir: string, fileName: string): string {
+  const filePath = resolveSafe(pluginDir, fileName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Missing plugin file: ${fileName}`);
+  }
+  const stats = fs.lstatSync(filePath);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    throw new Error(`Plugin file must be a regular file: ${fileName}`);
+  }
+  return filePath;
+}
+
+function maybeResolveRegularPluginFile(pluginDir: string, fileName: string): string | null {
+  try {
+    const filePath = resolveSafe(pluginDir, fileName);
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const stats = fs.lstatSync(filePath);
+    if (stats.isSymbolicLink()) {
+      throw new Error(`Plugin file must not be a symlink: ${fileName}`);
+    }
+    return stats.isFile() ? filePath : null;
+  } catch (err) {
+    if (err instanceof Error && /must not be a symlink/.test(err.message)) {
+      throw err;
+    }
+    return null;
+  }
+}
+
 function readManifest(pluginDir: string): PluginManifest {
-  const manifestPath = path.join(pluginDir, 'manifest.json');
+  const manifestPath = resolveRegularPluginFile(pluginDir, 'manifest.json');
   const raw = fs.readFileSync(manifestPath, 'utf-8');
   return validateManifest(JSON.parse(raw));
 }
 
 function readMainCode(pluginDir: string): string {
-  return fs.readFileSync(path.join(pluginDir, 'main.js'), 'utf-8');
+  return fs.readFileSync(resolveRegularPluginFile(pluginDir, 'main.js'), 'utf-8');
 }
 
 function readJsonFile(root: string, relativePath: string): unknown | null {
@@ -107,21 +145,32 @@ function readJsonFile(root: string, relativePath: string): unknown | null {
   }
 }
 
-function readObsidianEnabledPluginIds(vaultRoot: string): Set<string> {
+function readObsidianEnabledPluginIds(vaultRoot: string): { ids: Set<string>; hasEnabledList: boolean } {
+  const enabledListPath = path.join(vaultRoot, '.obsidian', 'community-plugins.json');
+  const hasEnabledList = fs.existsSync(enabledListPath);
   const parsed = readJsonFile(vaultRoot, '.obsidian/community-plugins.json');
   if (Array.isArray(parsed)) {
-    return new Set(parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0));
+    return {
+      ids: new Set(parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)),
+      hasEnabledList,
+    };
   }
   if (parsed && typeof parsed === 'object') {
     const record = parsed as Record<string, unknown>;
     if (Array.isArray(record.enabledPlugins)) {
-      return new Set(record.enabledPlugins.filter((item): item is string => typeof item === 'string' && item.trim().length > 0));
+      return {
+        ids: new Set(record.enabledPlugins.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)),
+        hasEnabledList,
+      };
     }
-    return new Set(Object.entries(record)
-      .filter(([, enabled]) => enabled === true)
-      .map(([pluginId]) => pluginId));
+    return {
+      ids: new Set(Object.entries(record)
+        .filter(([, enabled]) => enabled === true)
+        .map(([pluginId]) => pluginId)),
+      hasEnabledList,
+    };
   }
-  return new Set();
+  return { ids: new Set(), hasEnabledList };
 }
 
 function normalizeHotkey(value: unknown): ObsidianPluginHotkey | null {
@@ -169,8 +218,10 @@ function readObsidianHotkeys(vaultRoot: string): Map<string, ObsidianPluginHotke
 }
 
 function readObsidianVaultConfigSnapshot(vaultRoot: string): ObsidianVaultConfigSnapshot {
+  const enabled = readObsidianEnabledPluginIds(vaultRoot);
   return {
-    enabledPluginIds: readObsidianEnabledPluginIds(vaultRoot),
+    enabledPluginIds: enabled.ids,
+    hasEnabledList: enabled.hasEnabledList,
     hotkeys: readObsidianHotkeys(vaultRoot),
   };
 }
@@ -183,6 +234,7 @@ function obsidianVaultPluginConfigFromSnapshot(snapshot: ObsidianVaultConfigSnap
 
   return {
     enabledInObsidian: snapshot.enabledPluginIds.has(pluginId),
+    hasEnabledList: snapshot.hasEnabledList,
     hotkeys,
     hotkeyCount: hotkeys.reduce((sum, item) => sum + item.hotkeys.length, 0),
   };
@@ -198,6 +250,7 @@ function toImportedObsidianPluginConfig(pluginId: string, config: ObsidianVaultP
     source: 'obsidian',
     pluginId,
     enabledInObsidian: config.enabledInObsidian,
+    hasEnabledList: config.hasEnabledList,
     hotkeys: config.hotkeys,
     hotkeyCount: config.hotkeyCount,
   };
@@ -230,6 +283,7 @@ export function readImportedObsidianPluginConfig(mindRoot: string, pluginId: str
       source: 'obsidian',
       pluginId,
       enabledInObsidian: record.enabledInObsidian === true,
+      hasEnabledList: record.hasEnabledList === true,
       hotkeys,
       hotkeyCount: hotkeys.reduce((sum, item) => sum + item.hotkeys.length, 0),
     };
@@ -243,16 +297,17 @@ export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanR
   try {
     pluginsDir = resolveVaultPluginsDir(vaultRoot);
   } catch {
-    return { plugins: [], skipped: [] };
+    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false } };
   }
   if (!fs.existsSync(pluginsDir)) {
-    return { plugins: [], skipped: [] };
+    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false } };
   }
 
   const entries = fs.readdirSync(pluginsDir);
   const obsidianConfigSnapshot = readObsidianVaultConfigSnapshot(vaultRoot);
   const plugins: ScannedObsidianPlugin[] = [];
   const skipped: SkippedPlugin[] = [];
+  const seenPluginIds = new Set<string>();
 
   for (const entry of entries) {
     const pluginDir = path.resolve(path.join(pluginsDir, entry));
@@ -262,6 +317,13 @@ export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanR
 
     try {
       const manifest = readManifest(pluginDir);
+      if (manifest.id !== entry) {
+        throw new Error(`Plugin folder name "${entry}" does not match manifest id "${manifest.id}".`);
+      }
+      if (seenPluginIds.has(manifest.id)) {
+        throw new Error(`Duplicate Obsidian plugin id: ${manifest.id}`);
+      }
+      seenPluginIds.add(manifest.id);
       const code = readMainCode(pluginDir);
       const compatibility = analyzePluginCompatibility(code, manifest);
       const obsidianConfig = obsidianVaultPluginConfigFromSnapshot(obsidianConfigSnapshot, manifest.id);
@@ -271,8 +333,8 @@ export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanR
         sourceDir: pluginDir,
         compatibility,
         compatibilityLevel: getCompatibilityLevel(compatibility),
-        hasStyles: fs.existsSync(path.join(pluginDir, 'styles.css')),
-        hasData: fs.existsSync(path.join(pluginDir, 'data.json')),
+        hasStyles: maybeResolveRegularPluginFile(pluginDir, 'styles.css') !== null,
+        hasData: maybeResolveRegularPluginFile(pluginDir, 'data.json') !== null,
         obsidianConfig,
       });
     } catch (err) {
@@ -286,6 +348,10 @@ export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanR
   return {
     plugins: plugins.sort((a, b) => a.id.localeCompare(b.id, 'en')),
     skipped,
+    vault: {
+      pluginsDirFound: true,
+      hasEnabledList: obsidianConfigSnapshot.hasEnabledList,
+    },
   };
 }
 
@@ -293,6 +359,10 @@ export async function importObsidianPlugin(options: ImportObsidianPluginOptions)
   const sourceDir = resolvePluginDir(options.vaultRoot, '.obsidian/plugins', options.pluginId);
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     throw new Error(`Obsidian plugin not found: ${options.pluginId}`);
+  }
+  const sourceManifest = readManifest(sourceDir);
+  if (sourceManifest.id !== options.pluginId) {
+    throw new Error(`Obsidian plugin manifest id does not match requested plugin: ${options.pluginId}`);
   }
 
   let targetDir: string;
@@ -305,12 +375,13 @@ export async function importObsidianPlugin(options: ImportObsidianPluginOptions)
 
   fs.mkdirSync(targetDir, { recursive: true });
 
+  const copiedFiles: string[] = [];
   for (const fileName of ['manifest.json', 'main.js', 'styles.css', 'data.json']) {
-    const from = path.join(sourceDir, fileName);
+    const from = maybeResolveRegularPluginFile(sourceDir, fileName);
+    if (!from) continue;
     const to = path.join(targetDir, fileName);
-    if (fs.existsSync(from) && fs.statSync(from).isFile()) {
-      fs.copyFileSync(from, to);
-    }
+    fs.copyFileSync(from, to);
+    copiedFiles.push(fileName);
   }
   const obsidianConfig = toImportedObsidianPluginConfig(
     options.pluginId,
@@ -321,10 +392,12 @@ export async function importObsidianPlugin(options: ImportObsidianPluginOptions)
     JSON.stringify(obsidianConfig, null, 2),
     'utf-8',
   );
+  copiedFiles.push('obsidian-import.json');
 
   return {
     pluginId: options.pluginId,
     targetDir,
+    copiedFiles,
     obsidianConfig,
   };
 }

@@ -99,13 +99,18 @@ describe('MindOS client SDK boundary', () => {
       offset: 1,
       limit: 1,
     });
-    await expect(client.search('hello')).resolves.toEqual([{ path: 'hello.md' }]);
+    await expect(client.search('hello', {
+      limit: 5,
+      scope: 'Projects',
+      file_type: 'md',
+      modified_after: '2026-01-01T00:00:00.000Z',
+    })).resolves.toEqual([{ path: 'hello.md' }]);
     await expect(client.settings()).resolves.toEqual({ mindRoot: '/tmp/mind' });
     await expect(client.updateSettings({ mindRoot: '/tmp/next' })).resolves.toEqual({ ok: true });
     await expect(client.mcpStatus()).resolves.toMatchObject({ running: true, port: 8567 });
 
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3456/api/files?limit=1&offset=1');
-    expect(String(fetchMock.mock.calls[2]![0])).toBe('http://localhost:3456/api/search?q=hello');
+    expect(String(fetchMock.mock.calls[2]![0])).toBe('http://localhost:3456/api/search?q=hello&limit=5&scope=Projects&file_type=md&modified_after=2026-01-01T00%3A00%3A00.000Z');
     expect(fetchMock.mock.calls[4]![1]?.method).toBe('POST');
     expect(String(fetchMock.mock.calls[5]![0])).toBe('http://localhost:3456/api/mcp/status');
   });

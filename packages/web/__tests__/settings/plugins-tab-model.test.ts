@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyCommunityInstallToCatalog,
+  applyCommunityUpdateToCatalog,
   communityPreflightSupportClass,
   communityPreflightSupportLevel,
   communityPreflightSurfaces,
@@ -8,7 +10,10 @@ import {
   buildObsidianCommunityPreflightSupport,
   buildObsidianCommunitySurfacePreview,
 } from '@/lib/obsidian-compat/community-support';
-import type { ObsidianCommunityPluginPreflight } from '@/lib/obsidian-compat/community-catalog';
+import type {
+  ObsidianCommunityCatalog,
+  ObsidianCommunityPluginPreflight,
+} from '@/lib/obsidian-compat/community-catalog';
 
 function preflight(
   overrides: Partial<ObsidianCommunityPluginPreflight> & {
@@ -186,5 +191,93 @@ describe('PluginsTabModel community preflight support preview', () => {
     expect(communityPreflightSurfaces(result)).toEqual([
       { id: 'commands', state: 'blocked', count: 1 },
     ]);
+  });
+});
+
+describe('PluginsTabModel community catalog local state updates', () => {
+  function catalog(): ObsidianCommunityCatalog {
+    return {
+      source: {
+        type: 'obsidian-releases',
+        url: 'https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json',
+      },
+      query: '',
+      plugins: [
+        {
+          id: 'quickadd',
+          source: 'obsidian-community',
+          name: 'QuickAdd',
+          description: 'Capture workflows',
+          author: 'Christian',
+          repo: 'chhoumann/quickadd',
+          githubUrl: 'https://github.com/chhoumann/quickadd',
+          installed: false,
+          installStatus: 'available',
+        },
+        {
+          id: 'desktop-only',
+          source: 'obsidian-community',
+          name: 'Desktop Only',
+          description: 'Needs desktop APIs',
+          author: 'Node User',
+          repo: 'node/desktop-only',
+          githubUrl: 'https://github.com/node/desktop-only',
+          installed: true,
+          installStatus: 'blocked',
+          installedVersion: '1.0.0',
+          installedEnabled: true,
+          installedLoaded: false,
+          installedLastError: 'Requires unsupported runtime module: fs',
+        },
+      ],
+      counts: {
+        total: 2,
+        returned: 2,
+        installed: 1,
+        enabled: 1,
+        blocked: 1,
+        errors: 0,
+      },
+    };
+  }
+
+  it('marks a newly installed community package as disabled local state', () => {
+    const next = applyCommunityInstallToCatalog(catalog(), 'quickadd', preflight());
+    const item = next?.plugins.find((plugin) => plugin.id === 'quickadd');
+
+    expect(item).toEqual(expect.objectContaining({
+      installed: true,
+      installStatus: 'disabled',
+      installedVersion: '1.0.0',
+      installedEnabled: false,
+      installedLoaded: false,
+      installedLastError: undefined,
+    }));
+    expect(next?.counts.installed).toBe(2);
+    expect(next?.counts.blocked).toBe(1);
+  });
+
+  it('clears stale blocker state after a successful community update', () => {
+    const next = applyCommunityUpdateToCatalog(catalog(), 'desktop-only', '1.0.1');
+    const item = next?.plugins.find((plugin) => plugin.id === 'desktop-only');
+
+    expect(item).toEqual(expect.objectContaining({
+      installed: true,
+      installedVersion: '1.0.1',
+      installedLoaded: false,
+      installStatus: 'enabled',
+      installedLastError: undefined,
+    }));
+    expect(next?.counts.installed).toBe(1);
+    expect(next?.counts.enabled).toBe(1);
+    expect(next?.counts.blocked).toBe(0);
+    expect(next?.counts.errors).toBe(0);
+  });
+
+  it('keeps the same catalog reference when no matching plugin exists', () => {
+    const current = catalog();
+
+    expect(applyCommunityInstallToCatalog(current, 'missing', preflight())).toBe(current);
+    expect(applyCommunityUpdateToCatalog(current, 'missing', '9.9.9')).toBe(current);
   });
 });

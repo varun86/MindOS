@@ -156,6 +156,16 @@ describe('Vault', () => {
     expect(await vault.read(copied)).toBe('copy me');
   });
 
+  it('copies binary files without text transcoding', async () => {
+    const binary = new Uint8Array([0, 255, 1, 2, 128, 64]);
+    const created = await vault.createBinary('assets/source.bin', binary.buffer.slice(0));
+
+    const copied = await vault.copy(created, 'assets/copied.bin');
+
+    expect(copied.path).toBe('assets/copied.bin');
+    expect(Array.from(new Uint8Array(await vault.readBinary(copied)))).toEqual(Array.from(binary));
+  });
+
   it('returns markdown files only from getMarkdownFiles', async () => {
     await vault.create('notes/one.md', 'one');
     await vault.create('notes/two.txt', 'two');

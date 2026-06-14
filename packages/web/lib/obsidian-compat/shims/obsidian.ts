@@ -16,7 +16,9 @@ import type { RequestUrlParam, RequestUrlResponse, RequestUrlResponsePromise, Wo
 
 const REQUEST_URL_TIMEOUT_MS = 15_000;
 const REQUEST_URL_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const REQUEST_URL_MAX_REDIRECTS = 5;
 const REQUEST_URL_ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD']);
+const SENSITIVE_REDIRECT_HEADER = /^(authorization|cookie|proxy-authorization)$|api[-_]?key|token|secret|session/i;
 
 export function normalizePath(input: string): string {
   return input
@@ -77,20 +79,52 @@ function isPrivateIPv4(hostname: string): boolean {
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
     return false;
   }
-  const [a, b] = parts;
+  const [a, b, c] = parts;
   return (
     a === 0
     || a === 10
     || a === 127
+    || (a === 100 && b >= 64 && b <= 127)
     || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 0 && (c === 0 || c === 2))
     || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19))
+    || (a === 198 && b === 51 && c === 100)
+    || (a === 203 && b === 0 && c === 113)
     || a >= 224
   );
 }
 
+function ipv4FromMappedIPv6(hostname: string): string | null {
+  const dotted = hostname.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    return dotted[1];
+  }
+
+  const hex = hostname.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (!hex) {
+    return null;
+  }
+  const high = Number.parseInt(hex[1], 16);
+  const low = Number.parseInt(hex[2], 16);
+  if (!Number.isFinite(high) || !Number.isFinite(low) || high < 0 || high > 0xffff || low < 0 || low > 0xffff) {
+    return null;
+  }
+  return [
+    (high >> 8) & 0xff,
+    high & 0xff,
+    (low >> 8) & 0xff,
+    low & 0xff,
+  ].join('.');
+}
+
 function isPrivateIPv6(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
+  const mapped = ipv4FromMappedIPv6(normalized);
+  if (mapped) {
+    return isPrivateIPv4(mapped);
+  }
   if (
     normalized === '::'
     || normalized === '::1'
@@ -100,11 +134,13 @@ function isPrivateIPv6(hostname: string): boolean {
     || normalized.startsWith('feb0:')
     || normalized.startsWith('fc')
     || normalized.startsWith('fd')
+    || normalized.startsWith('ff')
+    || normalized === '2001:db8::'
+    || normalized.startsWith('2001:db8:')
   ) {
     return true;
   }
-  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  return mapped ? isPrivateIPv4(mapped[1]) : false;
+  return false;
 }
 
 function assertRequestUrlAllowed(rawUrl: string): URL {
@@ -187,6 +223,80 @@ async function readResponseArrayBuffer(response: Response, url: string): Promise
   return arrayBuffer;
 }
 
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function redirectedMethod(status: number, method: string): string {
+  if (status === 303) return 'GET';
+  if ((status === 301 || status === 302) && method !== 'GET' && method !== 'HEAD') {
+    return 'GET';
+  }
+  return method;
+}
+
+function buildRequestHeaders(params: RequestUrlParam): Record<string, string> {
+  return {
+    ...(params.contentType ? { 'content-type': params.contentType } : {}),
+    ...(params.headers ?? {}),
+  };
+}
+
+function stripSensitiveRedirectHeaders(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !SENSITIVE_REDIRECT_HEADER.test(name)),
+  );
+}
+
+async function fetchRequestUrlWithRedirects(
+  parsedUrl: URL,
+  params: RequestUrlParam,
+  method: string,
+  signal: AbortSignal,
+): Promise<{ response: Response; finalUrl: string }> {
+  let currentUrl = parsedUrl;
+  let currentMethod = method;
+  let currentBody = params.body as BodyInit | undefined;
+  let currentHeaders = buildRequestHeaders(params);
+
+  for (let redirectCount = 0; redirectCount <= REQUEST_URL_MAX_REDIRECTS; redirectCount += 1) {
+    const response = await fetch(currentUrl.toString(), {
+      method: currentMethod,
+      headers: currentHeaders,
+      body: currentBody,
+      signal,
+      redirect: 'manual',
+    });
+
+    if (!isRedirectStatus(response.status)) {
+      return { response, finalUrl: currentUrl.toString() };
+    }
+
+    if (redirectCount >= REQUEST_URL_MAX_REDIRECTS) {
+      throw new Error(`[obsidian-compat] requestUrl followed too many redirects: ${parsedUrl.toString()}`);
+    }
+
+    const location = response.headers.get('location');
+    if (!location) {
+      return { response, finalUrl: currentUrl.toString() };
+    }
+
+    const nextUrl = new URL(location, currentUrl);
+    const allowedNextUrl = assertRequestUrlAllowed(nextUrl.toString());
+    if (allowedNextUrl.origin !== currentUrl.origin) {
+      currentHeaders = stripSensitiveRedirectHeaders(currentHeaders);
+    }
+    currentUrl = allowedNextUrl;
+    const nextMethod = redirectedMethod(response.status, currentMethod);
+    if (nextMethod !== currentMethod) {
+      currentBody = undefined;
+    }
+    currentMethod = nextMethod;
+  }
+
+  throw new Error(`[obsidian-compat] requestUrl followed too many redirects: ${parsedUrl.toString()}`);
+}
+
 export function requestUrl(input: string | RequestUrlParam): RequestUrlResponsePromise {
   const params: RequestUrlParam = typeof input === 'string' ? { url: input } : input;
   let parsedUrl: URL;
@@ -206,17 +316,12 @@ export function requestUrl(input: string | RequestUrlParam): RequestUrlResponseP
     const timeout = setTimeout(() => abortController.abort(), REQUEST_URL_TIMEOUT_MS);
     let response: Response;
     let arrayBuffer: ArrayBuffer;
+    let finalUrl = parsedUrl.toString();
     try {
-      response = await fetch(parsedUrl.toString(), {
-        method,
-        headers: {
-          ...(params.contentType ? { 'content-type': params.contentType } : {}),
-          ...(params.headers ?? {}),
-        },
-        body: params.body as BodyInit | undefined,
-        signal: abortController.signal,
-      });
-      arrayBuffer = await readResponseArrayBuffer(response, parsedUrl.toString());
+      const fetched = await fetchRequestUrlWithRedirects(parsedUrl, params, method, abortController.signal);
+      response = fetched.response;
+      finalUrl = fetched.finalUrl;
+      arrayBuffer = await readResponseArrayBuffer(response, finalUrl);
     } catch (err) {
       if (abortController.signal.aborted) {
         throw new Error(`[obsidian-compat] requestUrl timed out after ${REQUEST_URL_TIMEOUT_MS}ms: ${parsedUrl.toString()}`);
@@ -247,7 +352,7 @@ export function requestUrl(input: string | RequestUrlParam): RequestUrlResponseP
     };
 
     if (params.throw !== false && response.status >= 400) {
-      throw new RequestUrlError(parsedUrl.toString(), result);
+      throw new RequestUrlError(finalUrl, result);
     }
 
     return result;

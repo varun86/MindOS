@@ -10,6 +10,20 @@ function prewarmCallCount(): number {
   return apiFetchMock.mock.calls.filter((call) => call[0] === '/api/search/prewarm').length;
 }
 
+function setInputValue(input: HTMLInputElement, value: string) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  nativeSetter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function advance(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 vi.mock('@/lib/stores/locale-store', () => ({
   useLocale: () => ({
     t: {
@@ -156,5 +170,56 @@ describe('SearchModal prewarm', () => {
     });
 
     expect(prewarmCallCount()).toBe(2);
+  });
+
+  it('aborts stale search requests and keeps the latest query results', async () => {
+    vi.useFakeTimers();
+    let firstSearchSignal: AbortSignal | undefined;
+    let firstSearchResolve: ((value: Array<{ path: string; snippet: string; score: number }>) => void) | undefined;
+
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/search/prewarm') {
+        return Promise.resolve({ warmed: true, cacheState: 'built', documentCount: 42 });
+      }
+      if (url === '/api/search?q=alpha') {
+        firstSearchSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Array<{ path: string; snippet: string; score: number }>>((resolve) => {
+          firstSearchResolve = resolve;
+        });
+      }
+      if (url === '/api/search?q=beta') {
+        return Promise.resolve([
+          { path: 'beta.md', snippet: 'beta note', score: 10 },
+        ]);
+      }
+      return Promise.resolve({ ok: true, surfaces: [] });
+    });
+
+    await act(async () => {
+      root.render(<SearchModal open={true} onClose={() => {}} />);
+      await Promise.resolve();
+    });
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
+    await act(async () => {
+      setInputValue(input, 'alpha');
+    });
+    await advance(300);
+    expect(firstSearchSignal?.aborted).toBe(false);
+
+    await act(async () => {
+      setInputValue(input, 'beta');
+    });
+    expect(firstSearchSignal?.aborted).toBe(true);
+    await advance(300);
+
+    await act(async () => {
+      firstSearchResolve?.([{ path: 'alpha.md', snippet: 'alpha note', score: 10 }]);
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('beta.md');
+    expect(host.textContent).not.toContain('alpha.md');
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/search?q=beta', expect.objectContaining({ cache: 'no-store' }));
   });
 });

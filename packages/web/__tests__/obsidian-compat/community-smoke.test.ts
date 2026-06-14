@@ -68,7 +68,7 @@ describe('community plugin smoke suite', () => {
     const result = await manager.loadEnabledPlugins();
 
     expect(result.loaded).toEqual([fixture.pluginId]);
-    expect(manager.list()[0]).toMatchObject({ compatibilityLevel: 'compatible', loaded: true });
+    expect(manager.list()[0]).toMatchObject({ compatibilityLevel: fixture.expectedCompatibilityLevel, loaded: true });
   });
 
   it('executes the Dataview/Tasks-like fixture against rich metadata', async () => {

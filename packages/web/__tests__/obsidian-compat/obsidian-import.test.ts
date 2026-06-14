@@ -87,11 +87,12 @@ describe('obsidian import scanner', () => {
 
     const quickadd = result.plugins.find((item) => item.id === 'quickadd-like');
     expect(quickadd).toMatchObject({
-      compatibilityLevel: 'compatible',
+      compatibilityLevel: 'partial',
       hasStyles: true,
       hasData: true,
       obsidianConfig: {
         enabledInObsidian: true,
+        hasEnabledList: true,
         hotkeyCount: 1,
         hotkeys: [{
           commandId: 'quickadd-like:capture',
@@ -102,8 +103,9 @@ describe('obsidian import scanner', () => {
 
     const desktopOnly = result.plugins.find((item) => item.id === 'desktop-only-like');
     expect(desktopOnly).toMatchObject({ compatibilityLevel: 'blocked' });
-    expect(desktopOnly?.obsidianConfig).toMatchObject({ enabledInObsidian: false, hotkeyCount: 0 });
+    expect(desktopOnly?.obsidianConfig).toMatchObject({ enabledInObsidian: false, hasEnabledList: true, hotkeyCount: 0 });
     expect(desktopOnly?.compatibility.nodeModules).toContain('electron');
+    expect(result.vault).toEqual({ pluginsDirFound: true, hasEnabledList: true });
   });
 
   it('skips invalid manifests and reports the reason', async () => {
@@ -153,6 +155,7 @@ describe('obsidian import scanner', () => {
       source: 'obsidian',
       pluginId: 'import-me',
       enabledInObsidian: true,
+      hasEnabledList: true,
       hotkeyCount: 1,
       hotkeys: [{
         commandId: 'import-me:open',
@@ -160,6 +163,84 @@ describe('obsidian import scanner', () => {
       }],
     });
     expect(imported.obsidianConfig.enabledInObsidian).toBe(true);
+    expect(imported.copiedFiles).toEqual(['manifest.json', 'main.js', 'styles.css', 'data.json', 'obsidian-import.json']);
+  });
+
+  it('skips plugin folders whose directory name does not match the manifest id', async () => {
+    writeVaultPlugin(
+      'folder-name',
+      `const { Plugin } = require('obsidian'); module.exports = class Mismatch extends Plugin {};`,
+      { manifest: { id: 'manifest-id', name: 'Mismatch', version: '1.0.0' } },
+    );
+
+    const result = await scanObsidianVaultPlugins(vaultRoot);
+
+    expect(result.plugins).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        dirName: 'folder-name',
+        reason: 'Plugin folder name "folder-name" does not match manifest id "manifest-id".',
+      },
+    ]);
+  });
+
+  it('rejects importing a plugin when the source manifest id does not match the requested id', async () => {
+    writeVaultPlugin(
+      'folder-name',
+      `const { Plugin } = require('obsidian'); module.exports = class Mismatch extends Plugin {};`,
+      { manifest: { id: 'manifest-id', name: 'Mismatch', version: '1.0.0' } },
+    );
+
+    await expect(importObsidianPlugin({
+      vaultRoot,
+      pluginId: 'folder-name',
+      targetMindRoot: mindRoot,
+    })).rejects.toThrow(/manifest id does not match/);
+  });
+
+  it('rejects source plugin files that are symlinks outside the plugin directory', async () => {
+    const pluginDir = path.join(vaultRoot, '.obsidian', 'plugins', 'symlink-plugin');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, 'manifest.json'),
+      JSON.stringify({ id: 'symlink-plugin', name: 'Symlink Plugin', version: '1.0.0' }, null, 2),
+      'utf-8',
+    );
+    const outsideFile = path.join(vaultRoot, 'outside-main.js');
+    fs.writeFileSync(outsideFile, `const { Plugin } = require('obsidian'); module.exports = class Outside extends Plugin {};`, 'utf-8');
+    fs.symlinkSync(outsideFile, path.join(pluginDir, 'main.js'));
+
+    const result = await scanObsidianVaultPlugins(vaultRoot);
+
+    expect(result.plugins).toEqual([]);
+    expect(result.skipped).toEqual([
+      { dirName: 'symlink-plugin', reason: 'Plugin file must be a regular file: main.js' },
+    ]);
+
+    await expect(importObsidianPlugin({
+      vaultRoot,
+      pluginId: 'symlink-plugin',
+      targetMindRoot: mindRoot,
+    })).rejects.toThrow(/symlink|regular file/);
+    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'symlink-plugin', 'main.js'))).toBe(false);
+  });
+
+  it('reports missing required plugin files without leaking absolute paths', async () => {
+    const pluginDir = path.join(vaultRoot, '.obsidian', 'plugins', 'missing-main');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, 'manifest.json'),
+      JSON.stringify({ id: 'missing-main', name: 'Missing Main', version: '1.0.0' }, null, 2),
+      'utf-8',
+    );
+
+    const result = await scanObsidianVaultPlugins(vaultRoot);
+
+    expect(result.plugins).toEqual([]);
+    expect(result.skipped).toEqual([
+      { dirName: 'missing-main', reason: 'Missing plugin file: main.js' },
+    ]);
+    expect(result.skipped[0].reason).not.toContain(vaultRoot);
   });
 
   it('rejects importing into a symlinked MindOS .plugins directory outside mindRoot', async () => {

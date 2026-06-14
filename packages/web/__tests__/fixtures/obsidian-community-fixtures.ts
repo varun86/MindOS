@@ -68,7 +68,7 @@ export const OBSIDIAN_COMMUNITY_FIXTURES: ObsidianCommunityFixture[] = [
     pluginId: 'quickadd-like',
     displayName: 'QuickAdd-like',
     source: 'https://publish.obsidian.md/quickadd/ManualInstallation',
-    expectedCompatibilityLevel: 'compatible',
+    expectedCompatibilityLevel: 'partial',
     code: `
       const { Plugin, Modal, Notice, Setting } = require('obsidian');
 
@@ -167,7 +167,7 @@ export const OBSIDIAN_COMMUNITY_FIXTURES: ObsidianCommunityFixture[] = [
     pluginId: 'tag-wrangler-like',
     displayName: 'Tag Wrangler-like',
     source: 'https://publish.obsidian.md/hub/02+-+Community+Expansions/02.05+All+Community+Expansions/Plugins/tag-wrangler',
-    expectedCompatibilityLevel: 'compatible',
+    expectedCompatibilityLevel: 'partial',
     code: `
       const { Plugin, Notice, Modal, Setting } = require('obsidian');
 
@@ -266,7 +266,7 @@ export const OBSIDIAN_COMMUNITY_FIXTURES: ObsidianCommunityFixture[] = [
     pluginId: 'homepage-like',
     displayName: 'Homepage-like',
     source: 'https://www.obsidianstats.com/plugins/homepage',
-    expectedCompatibilityLevel: 'compatible',
+    expectedCompatibilityLevel: 'partial',
     code: `
       const { Plugin, PluginSettingTab, Setting } = require('obsidian');
 
@@ -338,7 +338,7 @@ export const OBSIDIAN_COMMUNITY_FIXTURES: ObsidianCommunityFixture[] = [
     pluginId: 'dataview-tasks-like',
     displayName: 'Dataview/Tasks-like',
     source: 'https://github.com/blacksmithgu/obsidian-dataview + https://github.com/obsidian-tasks-group/obsidian-tasks',
-    expectedCompatibilityLevel: 'compatible',
+    expectedCompatibilityLevel: 'partial',
     code: `
       const { Plugin, Notice } = require('obsidian');
 
@@ -373,7 +373,7 @@ export const OBSIDIAN_COMMUNITY_FIXTURES: ObsidianCommunityFixture[] = [
     pluginId: 'attachment-lifecycle-like',
     displayName: 'Attachment lifecycle-like',
     source: 'https://docs.obsidian.md/Plugins/Vault',
-    expectedCompatibilityLevel: 'compatible',
+    expectedCompatibilityLevel: 'partial',
     code: `
       const { Plugin, Notice } = require('obsidian');
 

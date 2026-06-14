@@ -415,7 +415,7 @@ export const settingsZh = {
       pluginViewsTitle: '插件视图',
       pluginViewsDesc: '插件自定义视图和文件扩展名映射会进入独立视图宿主。',
       communityTitle: 'Obsidian 社区',
-      communityDesc: '浏览 Obsidian 官方社区插件索引，预检插件包，并把兼容插件显式安装到当前 MindOS vault。',
+      communityDesc: '浏览 Obsidian 官方社区插件索引。这里不是 MindOS 推荐榜；安装前请先点“检查”查看本机兼容层级。',
       communityReadOnlyBadge: '受控安装',
       communitySearchPlaceholder: '搜索插件、作者或仓库',
       communitySearchAction: '搜索',
@@ -446,6 +446,7 @@ export const settingsZh = {
       communityInstallAction: '安装',
       communityInstallInstalling: '安装中',
       communityInstallConfirm: (name: string) => `从 Obsidian 社区安装「${name}」？MindOS 会把插件代码下载到当前本机 vault，并保持禁用，直到你手动启用。`,
+      communityInstallConfirmReview: (name: string, reason: string) => `仍要安装「${name}」吗？这个插件需要人工复核后再使用：${reason}。MindOS 会保持禁用，直到你明确启用并加载。`,
       communityInstallFailed: '无法安装插件包',
       communityInstallSucceeded: (version: string) => `已安装到本机（${version}）。可在“已安装”中管理并启用。`,
       communityPreflightAction: '检查',
@@ -459,6 +460,19 @@ export const settingsZh = {
         return installable ? '使用前需要复核' : '需要复核';
       },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · 样式${stylesCss ? '存在' : '缺失'}`,
+      communityPreflightRecommendationTitle: '安装建议',
+      communityPreflightRecommendation: (level: string) => ({
+        ready: '推荐试用',
+        limited: '可试用但受限',
+        review: '需要人工复核',
+        blocked: '不应安装',
+      }[level] ?? '需要人工复核'),
+      communityPreflightRecommendationNote: (level: string) => ({
+        ready: '这是较适合在 MindOS 中试用的插件：检测到的 API 能映射到已挂载的本机宿主。',
+        limited: '可以在本机试用，但至少一类能力会通过受限宿主运行，安装后需要实际验证。',
+        review: '只有在你信任该插件且已复核未支持 API 后才建议安装。',
+        blocked: '存在硬阻断，MindOS 不会安装或运行这个插件包。',
+      }[level] ?? '依赖这个插件前需要先复核。'),
       communityPreflightSupportTitle: 'MindOS 兼容性预览',
       communityPreflightSupportLevel: (level: string) => ({
         ready: 'Ready',
@@ -492,7 +506,7 @@ export const settingsZh = {
       }[state] ?? state),
       communityPreflightSurfaceDetail: (_surface: string, count: number) => `${count}`,
       communityPreflightSurfaceEmpty: '尚未检测到明确的 MindOS 使用入口。它仍可能是库型插件，但需要人工复核。',
-      communityPreflightInstallBoundary: '安装只会把插件包复制到本机 MindOS vault；需要到“已安装”里启用并加载后才会运行。',
+      communityPreflightInstallBoundary: '流程：安装本机副本 → 到“已安装”管理 → 启用 → 加载 → 打开对应 MindOS 宿主。社区搜索来自 Obsidian 官方索引，不等于 MindOS 背书。',
       communityUpdateCheckAction: '检查更新',
       communityUpdateStatus: (state: string) => ({
         'update-available': '有可用更新',
@@ -502,7 +516,7 @@ export const settingsZh = {
       }[state] ?? '版本需要复核'),
       communityUpdateVersions: (installedVersion?: string, remoteVersion?: string) => `本机 ${installedVersion ?? '未知'} · 远端 ${remoteVersion ?? '未知'}`,
       communityUpdateNote: (state: string) => ({
-        'update-available': '远端插件包版本更新。MindOS 暂不在此处覆盖已安装插件，请复核后手动更新。',
+        'update-available': '远端插件包版本更新。请先预览文件计划；确认应用后只替换插件包文件，保留本机数据/配置，并且不会自动加载插件。',
         'up-to-date': '本机副本与远端 manifest 版本一致。',
         'local-newer': '本机副本比远端 manifest 更新；除非你明确要替换，否则应保留本机版本。',
         unknown: 'MindOS 无法可靠比较这两个版本，请先查看 manifest 再变更本机副本。',
@@ -511,7 +525,7 @@ export const settingsZh = {
       communityUpdatePreviewLoading: '正在生成预览',
       communityUpdatePreviewFailed: '无法预览更新计划',
       communityUpdatePreviewTitle: '只读更新计划',
-      communityUpdatePreviewPolicy: '仅预览。MindOS 没有修改本机插件文件或启用状态。',
+      communityUpdatePreviewPolicy: '更新计划预览。点击应用更新之前，MindOS 不会修改本机插件文件或启用状态。',
       communityUpdatePreviewBlocked: (reason?: string) => reason
         ? `仅预览。这个插件包暂不适合更新：${reason}`
         : '仅预览。这个插件包暂不适合更新。',

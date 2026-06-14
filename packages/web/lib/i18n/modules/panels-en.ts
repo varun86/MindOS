@@ -557,7 +557,7 @@ export const panelsEn = {
     plugins: {
       title: 'Plugins',
       description: 'Agent-facing plugin support will appear here as it becomes available.',
-      empty: 'No agent plugins are available yet.',
+      empty: 'No Agent-specific plugins are available yet. Web and Obsidian plugins are managed in Settings / Plugins.',
     },
     runsSubtitle: 'Review sessions, recent runs, and agent audit records.',
     sessionsSubtitle: 'Active ACP agent sessions.',

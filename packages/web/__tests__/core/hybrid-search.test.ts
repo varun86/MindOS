@@ -71,6 +71,7 @@ describe('hybridSearch', () => {
 
     // Mock BM25 search
     vi.doMock('@/lib/core/search', () => ({
+      ensureCoreSearchIndexReady: vi.fn().mockResolvedValue({ cacheState: 'hit', fileCount: 1 }),
       searchFiles: () => [
         { path: 'test.md', snippet: 'test content', score: 10, occurrences: 1 },
       ],
@@ -161,6 +162,7 @@ describe('rrfMerge semantic snippets', () => {
 
     // Mock BM25 to return one result
     vi.doMock('@/lib/core/search', () => ({
+      ensureCoreSearchIndexReady: vi.fn().mockResolvedValue({ cacheState: 'hit', fileCount: 1 }),
       searchFiles: () => [
         { path: 'keyword-match.md', snippet: 'exact keyword match here', score: 10, occurrences: 1 },
       ],
@@ -226,6 +228,7 @@ describe('embedding config change detection', () => {
     }));
 
     vi.doMock('@/lib/core/search', () => ({
+      ensureCoreSearchIndexReady: vi.fn().mockResolvedValue({ cacheState: 'hit', fileCount: 0 }),
       searchFiles: () => [],
     }));
 
@@ -284,4 +287,3 @@ describe('getSemanticSnippet logic', () => {
     }
   });
 });
-

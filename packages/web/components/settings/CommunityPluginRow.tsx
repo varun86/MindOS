@@ -62,6 +62,17 @@ function CommunityPreflightSupportPreview({
     <div className="mt-2 border-t border-current/15 pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xs font-medium uppercase opacity-80">
+          {copy.communityPreflightRecommendationTitle}
+        </span>
+        <span className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${communityPreflightSupportClass(level)}`}>
+          {copy.communityPreflightRecommendation(level)}
+        </span>
+      </div>
+      <p className="mt-1 text-2xs leading-relaxed opacity-90">
+        {copy.communityPreflightRecommendationNote(level)}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-2xs font-medium uppercase opacity-80">
           {copy.communityPreflightSupportTitle}
         </span>
         <span className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${communityPreflightSupportClass(level)}`}>

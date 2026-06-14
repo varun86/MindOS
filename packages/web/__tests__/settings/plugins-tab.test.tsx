@@ -151,6 +151,7 @@ const t = {
       communityInstallAction: 'Install',
       communityInstallInstalling: 'Installing',
       communityInstallConfirm: (name: string) => `Install ${name}?`,
+      communityInstallConfirmReview: (name: string, reason: string) => `Install ${name} after review? ${reason}`,
       communityInstallFailed: 'Could not install package',
       communityInstallSucceeded: (version: string) => `Installed ${version}`,
       communityPreflightAction: 'Check',
@@ -163,6 +164,19 @@ const t = {
         return `Preflight ${level}`;
       },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · styles ${stylesCss ? 'found' : 'none'}`,
+      communityPreflightRecommendationTitle: 'Install recommendation',
+      communityPreflightRecommendation: (level: string) => ({
+        ready: 'Recommended trial',
+        limited: 'Limited trial',
+        review: 'Manual review',
+        blocked: 'Do not install',
+      }[level] ?? level),
+      communityPreflightRecommendationNote: (level: string) => ({
+        ready: 'Good candidate for MindOS.',
+        limited: 'Can be tested locally with limited hosts.',
+        review: 'Install only after manual review.',
+        blocked: 'Do not install blocked packages.',
+      }[level] ?? 'Review first.'),
       communityPreflightSupportTitle: 'MindOS compatibility preview',
       communityPreflightSupportLevel: (level: string) => ({
         ready: 'Ready',
@@ -215,7 +229,7 @@ const t = {
       communityUpdatePreviewLoading: 'Building preview',
       communityUpdatePreviewFailed: 'Could not preview update plan',
       communityUpdatePreviewTitle: 'Read-only update plan',
-      communityUpdatePreviewPolicy: 'Preview only. No files changed.',
+      communityUpdatePreviewPolicy: 'Plan preview. No files changed until apply.',
       communityUpdatePreviewBlocked: (reason?: string) => `Preview blocked${reason ? `: ${reason}` : ''}`,
       communityUpdatePreviewFile: (action: string, localBytes?: number, remoteBytes?: number) => `${action} ${localBytes ?? '-'}>${remoteBytes ?? '-'}`,
       communityUpdateApplyAction: 'Apply update',
@@ -239,7 +253,7 @@ const t = {
   },
 } as any;
 
-async function renderTab() {
+async function renderTab(options: { initialPanel?: 'installed' | 'community' | 'import' | 'surfaces' } = {}) {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -251,6 +265,7 @@ async function renderTab() {
         setPluginStates={vi.fn()}
         t={t}
         mindRoot="/tmp/mind"
+        initialPanel={options.initialPanel}
         onOpenPluginEntries={mocks.openEntries}
         onOpenCommandCenter={mocks.openCommandCenter}
         onOpenPluginViews={mocks.openViews}
@@ -279,6 +294,7 @@ describe('PluginsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    window.history.replaceState(null, '', '/');
     mocks.getPluginRenderers.mockReturnValue([
       {
         id: 'markdown',
@@ -974,6 +990,29 @@ describe('PluginsTab', () => {
     await cleanup(root, host);
   });
 
+  it('opens a linked plugin manager panel and keeps the settings URL in sync', async () => {
+    window.history.replaceState(null, '', '/settings?tab=plugins&panel=community');
+    const { host, root } = await renderTab({ initialPanel: 'community' });
+
+    expect(host.textContent).toContain('Obsidian Community');
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/api/obsidian/community-catalog?limit=80', { cache: 'no-store' });
+
+    const surfacesButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Surfaces')) as HTMLButtonElement;
+
+    await act(async () => {
+      surfacesButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(window.location.pathname).toBe('/settings');
+    expect(window.location.search).toBe('?tab=plugins&panel=surfaces');
+    expect(host.textContent).toContain('Plugin surfaces');
+
+    await cleanup(root, host);
+  });
+
   it('browses the gated Obsidian community catalog and installs after preflight confirmation', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const packageChanged = vi.fn();
@@ -1031,7 +1070,7 @@ describe('PluginsTab', () => {
       );
       expect(host.textContent).toContain('Read-only update plan');
       expect(host.textContent).toContain('preview-only');
-      expect(host.textContent).toContain('Preview only. No files changed.');
+      expect(host.textContent).toContain('Plan preview. No files changed until apply.');
       expect(host.textContent).toContain('manifest.json');
       expect(host.textContent).toContain('modify 40>42');
       expect(host.textContent).toContain('obsidian-community.json');

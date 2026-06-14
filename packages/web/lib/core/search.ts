@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { resolveExistingSafe } from './security';
-import { SearchIndex } from './search-index';
+import { SearchIndex, tokenizeSearchText } from './search-index';
 import { registerSearchIndexHooks } from './search-index-bridge';
 import type { SearchResult, SearchOptions } from './types';
 import { telemetry } from '../telemetry';
@@ -11,6 +11,9 @@ import { telemetry } from '../telemetry';
  * Lazily built on first search, invalidated by `invalidateSearchIndex()`.
  */
 const searchIndex = new SearchIndex();
+type CoreSearchPrewarmResult = { cacheState: 'hit' | 'loaded' | 'built'; fileCount: number };
+type CoreSearchEnsureResult = CoreSearchPrewarmResult | { cacheState: 'miss'; fileCount: 0 };
+let _coreBuildTask: { mindRoot: string; promise: Promise<CoreSearchPrewarmResult> } | null = null;
 
 function invalidateEmbeddingIndexLazy(): void {
   void import('./hybrid-search')
@@ -38,6 +41,7 @@ function getMindosDir(): string {
 /** Invalidate the core search index. Called from `lib/fs.ts` on write operations. */
 export function invalidateSearchIndex(): void {
   searchIndex.invalidate();
+  _coreBuildTask = null;
   invalidateEmbeddingIndexLazy();
 }
 
@@ -183,10 +187,16 @@ export function bm25Score(
  */
 function splitQueryTerms(query: string): string[] {
   const lower = query.toLowerCase().trim();
-  // Split on whitespace, filter empty
-  const terms = lower.split(/\s+/).filter(t => t.length > 0);
-  // Deduplicate
-  return [...new Set(terms)];
+  if (!lower) return [];
+  const terms = new Set<string>();
+  terms.add(lower);
+  for (const term of lower.split(/\s+/)) {
+    if (term.length > 0) terms.add(term);
+  }
+  for (const token of tokenizeSearchText(lower)) {
+    if (token.length > 0) terms.add(token);
+  }
+  return [...terms];
 }
 
 /**
@@ -223,12 +233,23 @@ function countTermOccurrences(term: string, text: string): number {
   return matches ? matches.length : 0;
 }
 
+function insertTopSearchResult(results: SearchResult[], result: SearchResult, limit: number): void {
+  if (results.length === limit && result.score <= results[results.length - 1].score) return;
+
+  let insertAt = results.length;
+  while (insertAt > 0 && results[insertAt - 1].score < result.score) {
+    insertAt -= 1;
+  }
+  results.splice(insertAt, 0, result);
+  if (results.length > limit) results.length = limit;
+}
+
 /**
  * Prewarm the core search index for a given mindRoot.
  * Tries loading from disk first (fast path), falls back to full rebuild.
  * Returns the number of indexed files and whether the index was loaded or built.
  */
-export async function prewarmCoreSearchIndex(mindRoot: string): Promise<{ cacheState: 'hit' | 'loaded' | 'built'; fileCount: number }> {
+export async function prewarmCoreSearchIndex(mindRoot: string): Promise<CoreSearchPrewarmResult> {
   if (searchIndex.isBuiltFor(mindRoot)) {
     telemetry.track('search.core.prewarm', { cacheState: 'hit', fileCount: searchIndex.getFileCount() });
     return { cacheState: 'hit', fileCount: searchIndex.getFileCount() };
@@ -243,12 +264,42 @@ export async function prewarmCoreSearchIndex(mindRoot: string): Promise<{ cacheS
     return { cacheState: 'loaded', fileCount: searchIndex.getFileCount() };
   }
 
-  // Use async worker rebuild to avoid blocking the event loop
-  await searchIndex.rebuildAsync(mindRoot);
-  try { searchIndex.persist(getMindosDir()); } catch { /* non-critical */ }
+  if (_coreBuildTask?.mindRoot === mindRoot) {
+    return _coreBuildTask.promise;
+  }
 
-  telemetry.track('search.core.prewarm', { cacheState: 'built', fileCount: searchIndex.getFileCount() });
-  return { cacheState: 'built', fileCount: searchIndex.getFileCount() };
+  // Use async worker rebuild to avoid blocking the event loop
+  const promise = (async (): Promise<CoreSearchPrewarmResult> => {
+    const { deferredPdfs } = await searchIndex.rebuildAsync(mindRoot, { pdfTimeBudgetMs: _coldPdfBudgetMs });
+    scheduleDeferredPdfIndexing(mindRoot, deferredPdfs);
+    try { searchIndex.persist(getMindosDir()); } catch { /* non-critical */ }
+
+    telemetry.track('search.core.prewarm', { cacheState: 'built', fileCount: searchIndex.getFileCount() });
+    return { cacheState: 'built', fileCount: searchIndex.getFileCount() };
+  })();
+  _coreBuildTask = { mindRoot, promise };
+  try {
+    return await promise;
+  } finally {
+    if (_coreBuildTask?.promise === promise) _coreBuildTask = null;
+  }
+}
+
+export async function ensureCoreSearchIndexReady(mindRoot: string): Promise<CoreSearchEnsureResult> {
+  if (searchIndex.isBuiltFor(mindRoot)) {
+    return { cacheState: 'hit', fileCount: searchIndex.getFileCount() };
+  }
+
+  if (_coreBuildTask?.mindRoot === mindRoot) {
+    return _coreBuildTask.promise;
+  }
+
+  const loaded = searchIndex.load(getMindosDir(), mindRoot);
+  if (loaded) {
+    return { cacheState: 'loaded', fileCount: searchIndex.getFileCount() };
+  }
+
+  return { cacheState: 'miss', fileCount: 0 };
 }
 
 /**
@@ -272,6 +323,8 @@ export async function prewarmCoreSearchIndex(mindRoot: string): Promise<{ cacheS
 export function searchFiles(mindRoot: string, query: string, opts: SearchOptions = {}): SearchResult[] {
   if (!query.trim()) return [];
   const { limit = 20, scope, file_type = 'all', modified_after } = opts;
+  if (limit <= 0) return [];
+  const resultLimit = limit;
 
   // Ensure search index is built for this mindRoot
   if (!searchIndex.isBuiltFor(mindRoot)) {
@@ -415,14 +468,12 @@ export function searchFiles(mindRoot: string, query: string, opts: SearchOptions
     if (snippetStart > 0) snippet = '...' + snippet;
     if (snippetEnd < content.length) snippet += '...';
 
-    results.push({ path: filePath, snippet, score: totalScore, occurrences: totalOccurrences });
+    insertTopSearchResult(results, { path: filePath, snippet, score: totalScore, occurrences: totalOccurrences }, resultLimit);
   }
 
-  results.sort((a, b) => b.score - a.score);
-  const limitedResults = results.slice(0, limit);
   stopQuery({
     candidateCount: candidateSet ? candidateSet.size : allFiles.length,
-    resultCount: limitedResults.length,
+    resultCount: results.length,
   });
-  return limitedResults;
+  return results;
 }

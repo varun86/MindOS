@@ -22,11 +22,9 @@ import {
   type ObsidianCommunitySurfacePreviewState,
 } from '@/lib/obsidian-compat/community-support';
 import type { SurfaceInventoryState } from './PluginSurfacesPanel';
-import type { PluginsTabProps } from './types';
+import type { PluginPanel, PluginsTabProps } from './types';
 
 export type PluginsCopy = PluginsTabProps['t']['settings']['plugins'];
-
-export type PluginPanel = 'installed' | 'community' | 'import' | 'surfaces';
 export type CommunityPreflightSupportLevel = ObsidianCommunityPreflightSupportLevel;
 export type CommunityPreflightSurfaceId = ObsidianCommunitySurfacePreviewId;
 export type CommunityPreflightSurfaceState = ObsidianCommunitySurfacePreviewState;
@@ -173,4 +171,99 @@ export function communityPreflightSurfaces(
     installBlockedReasons: result.installBlockedReasons,
     stylesCss: result.package.assets.stylesCss,
   });
+}
+
+export function applyCommunityInstallToCatalog(
+  catalog: ObsidianCommunityCatalog | null,
+  pluginId: string,
+  preflight: ObsidianCommunityPluginPreflight,
+): ObsidianCommunityCatalog | null {
+  if (!catalog) return catalog;
+
+  let changed = false;
+  let installedDelta = 0;
+  let blockedDelta = 0;
+  let errorsDelta = 0;
+
+  const plugins = catalog.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin;
+
+    changed = true;
+    if (!plugin.installed) installedDelta += 1;
+    blockedDelta += communityProblemDelta(plugin.installStatus, 'disabled', 'blocked');
+    errorsDelta += communityProblemDelta(plugin.installStatus, 'disabled', 'error');
+
+    return {
+      ...plugin,
+      installed: true,
+      installStatus: 'disabled' as const,
+      installedVersion: preflight.package.manifest.version,
+      installedEnabled: false,
+      installedLoaded: false,
+      installedLastError: undefined,
+    };
+  });
+
+  if (!changed) return catalog;
+  return {
+    ...catalog,
+    plugins,
+    counts: {
+      ...catalog.counts,
+      installed: Math.max(0, catalog.counts.installed + installedDelta),
+      blocked: Math.max(0, catalog.counts.blocked + blockedDelta),
+      errors: Math.max(0, catalog.counts.errors + errorsDelta),
+    },
+  };
+}
+
+export function applyCommunityUpdateToCatalog(
+  catalog: ObsidianCommunityCatalog | null,
+  pluginId: string,
+  version: string,
+): ObsidianCommunityCatalog | null {
+  if (!catalog) return catalog;
+
+  let changed = false;
+  let blockedDelta = 0;
+  let errorsDelta = 0;
+
+  const plugins = catalog.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin;
+
+    changed = true;
+    const nextStatus: ObsidianCommunityCatalogItem['installStatus'] = plugin.installedEnabled ? 'enabled' : 'disabled';
+    blockedDelta += communityProblemDelta(plugin.installStatus, nextStatus, 'blocked');
+    errorsDelta += communityProblemDelta(plugin.installStatus, nextStatus, 'error');
+
+    return {
+      ...plugin,
+      installed: true,
+      installedVersion: version,
+      installedLoaded: false,
+      installStatus: nextStatus,
+      installedLastError: undefined,
+    };
+  });
+
+  if (!changed) return catalog;
+  return {
+    ...catalog,
+    plugins,
+    counts: {
+      ...catalog.counts,
+      blocked: Math.max(0, catalog.counts.blocked + blockedDelta),
+      errors: Math.max(0, catalog.counts.errors + errorsDelta),
+    },
+  };
+}
+
+function communityProblemDelta(
+  previous: ObsidianCommunityCatalogItem['installStatus'],
+  next: ObsidianCommunityCatalogItem['installStatus'],
+  problemStatus: 'blocked' | 'error',
+): number {
+  const before = previous === problemStatus ? 1 : 0;
+  const after = next === problemStatus ? 1 : 0;
+  return after - before;
 }

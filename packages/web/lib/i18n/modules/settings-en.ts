@@ -415,7 +415,7 @@ export const settingsEn = {
       pluginViewsTitle: 'Plugin Views',
       pluginViewsDesc: 'Plugin-owned views and file extension mappings open in the dedicated view host.',
       communityTitle: 'Obsidian Community',
-      communityDesc: 'Browse the official Obsidian community index, preflight packages, and explicitly install compatible plugins into this MindOS vault.',
+      communityDesc: 'Browse the official Obsidian community index. This is not a MindOS recommendation list: run Check to see the local compatibility tier before installing.',
       communityReadOnlyBadge: 'gated install',
       communitySearchPlaceholder: 'Search plugins, authors, or repositories',
       communitySearchAction: 'Search',
@@ -446,6 +446,7 @@ export const settingsEn = {
       communityInstallAction: 'Install',
       communityInstallInstalling: 'Installing',
       communityInstallConfirm: (name: string) => `Install "${name}" from Obsidian Community? MindOS will download plugin code into this local vault and keep it disabled until you enable it.`,
+      communityInstallConfirmReview: (name: string, reason: string) => `Install "${name}" anyway? This plugin needs manual review before use: ${reason}. MindOS will keep it disabled until you explicitly enable and load it.`,
       communityInstallFailed: 'Could not install package',
       communityInstallSucceeded: (version: string) => `Installed locally (${version}). Manage it from Installed to enable it.`,
       communityPreflightAction: 'Check',
@@ -459,6 +460,19 @@ export const settingsEn = {
         return installable ? 'Needs review before use' : 'Needs review';
       },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · styles ${stylesCss ? 'found' : 'none'}`,
+      communityPreflightRecommendationTitle: 'Install recommendation',
+      communityPreflightRecommendation: (level: string) => ({
+        ready: 'Recommended trial',
+        limited: 'Limited trial',
+        review: 'Manual review',
+        blocked: 'Do not install',
+      }[level] ?? 'Manual review'),
+      communityPreflightRecommendationNote: (level: string) => ({
+        ready: 'Good candidate for MindOS: detected APIs map to mounted local hosts.',
+        limited: 'Can be tested locally, but at least one capability runs through a limited host.',
+        review: 'Install only if you trust the plugin and have reviewed the unsupported APIs.',
+        blocked: 'Hard blockers prevent MindOS from installing or running this package.',
+      }[level] ?? 'Review this plugin before relying on it.'),
       communityPreflightSupportTitle: 'MindOS compatibility preview',
       communityPreflightSupportLevel: (level: string) => ({
         ready: 'Ready',
@@ -492,7 +506,7 @@ export const settingsEn = {
       }[state] ?? state),
       communityPreflightSurfaceDetail: (_surface: string, count: number) => `${count}`,
       communityPreflightSurfaceEmpty: 'No concrete MindOS surface was detected yet. This can still be a library-style plugin, but it needs manual review.',
-      communityPreflightInstallBoundary: 'Install only copies the package into the local MindOS vault; enable and load it from Installed before it can run.',
+      communityPreflightInstallBoundary: 'Flow: install a local copy -> manage it from Installed -> enable -> load -> open its MindOS host. Community search is the official index, not a MindOS endorsement.',
       communityUpdateCheckAction: 'Check update',
       communityUpdateStatus: (state: string) => ({
         'update-available': 'Update available',
@@ -502,7 +516,7 @@ export const settingsEn = {
       }[state] ?? 'Version needs review'),
       communityUpdateVersions: (installedVersion?: string, remoteVersion?: string) => `local ${installedVersion ?? 'unknown'} · remote ${remoteVersion ?? 'unknown'}`,
       communityUpdateNote: (state: string) => ({
-        'update-available': 'Remote package is newer. MindOS does not overwrite installed plugins from this screen yet; review and update manually.',
+        'update-available': 'Remote package is newer. Preview the file plan first; Apply update replaces package files, preserves local data/config, and does not auto-load the plugin.',
         'up-to-date': 'The installed local copy matches the latest remote manifest version.',
         'local-newer': 'The installed local copy is newer than the remote manifest; keep local unless you intentionally want to replace it.',
         unknown: 'MindOS could not compare these versions reliably. Review the manifest before changing the local copy.',
@@ -511,7 +525,7 @@ export const settingsEn = {
       communityUpdatePreviewLoading: 'Building preview',
       communityUpdatePreviewFailed: 'Could not preview update plan',
       communityUpdatePreviewTitle: 'Read-only update plan',
-      communityUpdatePreviewPolicy: 'Preview only. MindOS has not changed local plugin files or enabled state.',
+      communityUpdatePreviewPolicy: 'Plan preview. MindOS will not change local plugin files or enabled state until you apply the update.',
       communityUpdatePreviewBlocked: (reason?: string) => reason
         ? `Preview only. This package is not safe to update yet: ${reason}`
         : 'Preview only. This package is not safe to update yet.',

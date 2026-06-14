@@ -6,6 +6,7 @@ import PluginViewPageClient from '@/app/plugins/views/PluginViewPageClient';
 import { PLUGINS_CHANGED_EVENT } from '@/lib/plugins/events';
 
 const mocks = vi.hoisted(() => ({
+  fetchPluginSurfaces: vi.fn(),
   fetchPluginView: vi.fn(),
   fetchPluginStylesheet: vi.fn(),
 }));
@@ -17,8 +18,18 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('@/lib/plugins/client', () => ({
+  fetchPluginSurfaces: mocks.fetchPluginSurfaces,
   fetchPluginView: mocks.fetchPluginView,
   fetchPluginStylesheet: mocks.fetchPluginStylesheet,
+  pluginViewSurfaceHref: (surface: any, sourcePath?: string | null) => {
+    if (surface.action?.type !== 'obsidian-view') return null;
+    const params = new URLSearchParams({
+      pluginId: surface.action.pluginId,
+      viewType: surface.action.viewType,
+    });
+    if (sourcePath?.trim()) params.set('sourcePath', sourcePath.trim());
+    return `/plugins/views?${params.toString()}`;
+  },
 }));
 
 async function flushPluginViewPromises() {
@@ -72,7 +83,8 @@ describe('PluginViewPageClient', () => {
     expect(mocks.fetchPluginView).toHaveBeenCalledWith('daily', 'daily-calendar');
     expect(mocks.fetchPluginStylesheet).toHaveBeenCalledWith('daily');
     expect(host.textContent).toContain('Daily Calendar');
-    expect(host.textContent).toContain('Plugin View');
+    expect(host.textContent).toContain('Snapshot host');
+    expect(host.textContent).toContain('Compatibility host boundary');
     expect(host.textContent).toContain('Loaded from plugin host');
     expect(host.textContent).toContain('Scoped stylesheet active');
     expect(host.textContent).toContain('daily-calendar');
@@ -159,16 +171,36 @@ describe('PluginViewPageClient', () => {
     expect(host.textContent).toContain('Refreshed after plugin change');
   });
 
-  it('shows parameter diagnostics without calling the plugin host', async () => {
+  it('lists available plugin views when opened without view parameters', async () => {
+    mocks.fetchPluginSurfaces.mockResolvedValueOnce([
+      {
+        id: 'obsidian:view:daily:daily-calendar',
+        source: 'obsidian',
+        kind: 'view',
+        location: 'plugin-views',
+        availability: 'available',
+        pluginId: 'daily',
+        pluginName: 'Daily',
+        title: 'Daily Calendar',
+        host: { state: 'mounted', label: 'Plugin Views', description: 'Mounted view' },
+        action: { type: 'obsidian-view', pluginId: 'daily', viewType: 'daily-calendar' },
+      },
+    ]);
+
     await act(async () => {
       root.render(<PluginViewPageClient pluginId="" viewType="" />);
       await flushPluginViewPromises();
     });
 
+    expect(mocks.fetchPluginSurfaces).toHaveBeenCalledWith('kind=view&source=obsidian', { loadEnabled: true });
     expect(mocks.fetchPluginView).not.toHaveBeenCalled();
     expect(mocks.fetchPluginStylesheet).not.toHaveBeenCalled();
-    expect(host.textContent).toContain('Could not open plugin view');
-    expect(host.textContent).toContain('Missing pluginId or viewType.');
-    expect(host.textContent).toContain('Waiting for view parameters');
+    expect(host.textContent).toContain('Plugin views');
+    expect(host.textContent).toContain('Available plugin views');
+    expect(host.textContent).toContain('Daily Calendar');
+    expect(host.textContent).toContain('Showing available plugin views');
+    expect(Array.from(host.querySelectorAll('a')).some((link) => (
+      link.getAttribute('href') === '/plugins/views?pluginId=daily&viewType=daily-calendar'
+    ))).toBe(true);
   });
 });

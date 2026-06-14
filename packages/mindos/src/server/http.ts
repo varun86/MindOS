@@ -101,7 +101,7 @@ import { handleMcpStatus, handleMcpTokenReveal, type MindosMcpStatusServices, ty
 import { handleRawFile } from './handlers/file-raw.js';
 import { handleAskStream } from './handlers/ask.js';
 import { handleRecentFiles } from './handlers/recent-files.js';
-import { handleSearch } from './handlers/search.js';
+import { handleSearch, type SearchRequestOptions } from './handlers/search.js';
 import { handleSearchPrewarm } from './handlers/search-prewarm.js';
 import {
   handleSettingsGet,
@@ -158,7 +158,7 @@ export type MindosHttpServices = {
   readLines(path: string): string[];
   listSpaces(): string[];
   listDirectories(): string[];
-  search(query: string, options: { limit: number }): Promise<unknown[]>;
+  search(query: string, options: SearchRequestOptions): Promise<unknown[]>;
   readSettings(): MindosRuntimeSettings;
   writeSettings(settings: MindosRuntimeSettings): void;
   /** Marks any tree/link caches dirty after internal writes. Optional for custom services. */

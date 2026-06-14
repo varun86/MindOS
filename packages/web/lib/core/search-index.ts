@@ -23,7 +23,7 @@ const zhSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
  *   Falls back to bigrams if Intl.Segmenter is unavailable.
  * Mixed text: both strategies applied, tokens merged.
  */
-function tokenize(text: string): Set<string> {
+export function tokenizeSearchText(text: string): Set<string> {
   const tokens = new Set<string>();
   const lower = text.toLowerCase();
 
@@ -81,6 +81,19 @@ function emitCjkBigrams(chars: string[], tokens: Set<string>): void {
   }
 }
 
+function buildFileSignature(mindRoot: string, filePaths: string[]): string | null {
+  const lines: string[] = [];
+  for (const filePath of [...filePaths].sort()) {
+    try {
+      const stat = fs.statSync(resolveExistingSafe(mindRoot, filePath));
+      lines.push(`${filePath}\0${stat.size}\0${stat.mtimeMs}`);
+    } catch {
+      return null;
+    }
+  }
+  return lines.join('\n');
+}
+
 /**
  * In-memory inverted index for core search acceleration.
  *
@@ -113,7 +126,7 @@ export class SearchIndex {
    * Async rebuild using worker_threads (non-blocking).
    * Falls back to sync rebuild if worker fails.
    */
-  async rebuildAsync(mindRoot: string): Promise<void> {
+  async rebuildAsync(mindRoot: string, opts: { pdfTimeBudgetMs?: number } = {}): Promise<{ deferredPdfs: string[] }> {
     const stop = telemetry.startTimer('search.index.rebuild.async');
     try {
       const { Worker } = await import('worker_threads');
@@ -126,14 +139,19 @@ export class SearchIndex {
         workerPath = require.resolve('./search-rebuild-worker');
         if (!existsSync(workerPath)) throw new Error('Worker file not found');
       } catch {
-        this.rebuild(mindRoot);
-        stop({ fileCount: this.fileCount, tokenCount: this.invertedIndex?.size ?? 0, method: 'sync_no_worker' });
-        return;
+        const result = this.rebuild(mindRoot, opts);
+        stop({
+          fileCount: this.fileCount,
+          tokenCount: this.invertedIndex?.size ?? 0,
+          deferredPdfCount: result.deferredPdfs.length,
+          method: 'sync_no_worker',
+        });
+        return result;
       }
 
-      const result = await new Promise<PersistedIndex>((resolve, reject) => {
+      const result = await new Promise<PersistedIndex & { deferredPdfs?: string[] }>((resolve, reject) => {
         const worker = new Worker(workerPath, {
-          workerData: { mindRoot },
+          workerData: { mindRoot, pdfTimeBudgetMs: opts.pdfTimeBudgetMs },
           execArgv: process.execArgv.filter(a => a.startsWith('--require') || a.startsWith('--loader')),
         });
         const timeout = setTimeout(() => {
@@ -156,11 +174,24 @@ export class SearchIndex {
 
       // Restore from worker result (same as load() deserialization)
       this.restoreFromPersisted(result);
-      stop({ fileCount: this.fileCount, tokenCount: this.invertedIndex?.size ?? 0, method: 'worker' });
+      const deferredPdfs = result.deferredPdfs ?? [];
+      stop({
+        fileCount: this.fileCount,
+        tokenCount: this.invertedIndex?.size ?? 0,
+        deferredPdfCount: deferredPdfs.length,
+        method: 'worker',
+      });
+      return { deferredPdfs };
     } catch {
       // Worker failed — fall back to sync rebuild
-      this.rebuild(mindRoot);
-      stop({ fileCount: this.fileCount, tokenCount: this.invertedIndex?.size ?? 0, method: 'sync_fallback' });
+      const result = this.rebuild(mindRoot, opts);
+      stop({
+        fileCount: this.fileCount,
+        tokenCount: this.invertedIndex?.size ?? 0,
+        deferredPdfCount: result.deferredPdfs.length,
+        method: 'sync_fallback',
+      });
+      return result;
     }
   }
 
@@ -195,7 +226,7 @@ export class SearchIndex {
    *   inline PDF extraction. PDFs encountered after the budget elapses are
    *   indexed by path only (placeholder content) and returned in
    *   `deferredPdfs` so the caller can finish them asynchronously via
-   *   `updateFile`. Omit for an unbounded build (worker / prewarm paths).
+   *   `updateFile`. Omit for an unbounded build.
    */
   rebuild(mindRoot: string, opts: { pdfTimeBudgetMs?: number } = {}): { deferredPdfs: string[] } {
     const stop = telemetry.startTimer('search.index.rebuild');
@@ -247,7 +278,7 @@ export class SearchIndex {
 
       // Also index the file path itself
       const allText = filePath + '\n' + content;
-      const tokens = tokenize(allText);
+      const tokens = tokenizeSearchText(allText);
       tokenCount += tokens.size;
       fileTokensMap.set(filePath, tokens);
 
@@ -365,7 +396,7 @@ export class SearchIndex {
     this.contents.set(filePath, content);
     this.lowerContents.delete(filePath);
     const allText = filePath + '\n' + content;
-    const tokens = tokenize(allText);
+    const tokens = tokenizeSearchText(allText);
     this.fileTokens.set(filePath, tokens);
 
     for (const token of tokens) {
@@ -475,7 +506,7 @@ export class SearchIndex {
     if (!query.trim()) return null;
     if (!this.invertedIndex) return null;
 
-    const tokens = tokenize(query.toLowerCase().trim());
+    const tokens = tokenizeSearchText(query.toLowerCase().trim());
     if (tokens.size === 0) return null;
 
     // Count how many query tokens each file matches
@@ -520,7 +551,7 @@ export class SearchIndex {
     if (!query.trim()) return null;
     if (!this.invertedIndex) return null;
 
-    const tokens = tokenize(query.toLowerCase().trim());
+    const tokens = tokenizeSearchText(query.toLowerCase().trim());
     // No tokens produced → query is a substring/single-char that the index
     // cannot resolve. Return null so the caller falls back to full scan,
     // preserving pre-index indexOf behavior for partial-word queries.
@@ -556,12 +587,15 @@ export class SearchIndex {
     if (!this.invertedIndex) return;
 
     const data: PersistedIndex = {
-      version: 1,
+      version: 2,
       builtForRoot: this.builtForRoot ?? '',
       fileCount: this.fileCount,
       totalChars: this.totalChars,
       docLengths: Object.fromEntries(this.docLengths),
       invertedIndex: {},
+      fileSignature: this.builtForRoot
+        ? buildFileSignature(this.builtForRoot, [...this.docLengths.keys()]) ?? ''
+        : '',
       timestamp: Date.now(),
     };
 
@@ -596,44 +630,12 @@ export class SearchIndex {
     let data: PersistedIndex;
     try { data = JSON.parse(raw); } catch { return false; }
 
-    if (data.version !== 1 || data.builtForRoot !== mindRoot) return false;
+    if (data.version !== 2 || data.builtForRoot !== mindRoot) return false;
 
-    // Check 1: file count on disk must match indexed count
-    // This catches new files created or files deleted while process was down
     const currentFiles = collectAllFiles(mindRoot);
     if (currentFiles.length !== data.fileCount) return false;
-
-    // Check 2: mtime sampling — check every file if ≤50, otherwise sample 50
-    const docPaths = Object.keys(data.docLengths);
-    const sampleSize = Math.min(50, docPaths.length);
-    if (sampleSize === docPaths.length) {
-      // Small index: check all files
-      for (const dp of docPaths) {
-        try {
-          const stat = fs.statSync(resolveExistingSafe(mindRoot, dp));
-          if (stat.mtimeMs > data.timestamp) return false;
-        } catch {
-          return false; // file deleted
-        }
-      }
-    } else {
-      // Large index: sample evenly + always check the last few (most likely to be recent)
-      const step = Math.max(1, Math.floor(docPaths.length / 40));
-      const sampled = new Set<number>();
-      // Evenly spaced samples
-      for (let i = 0; i < docPaths.length; i += step) sampled.add(i);
-      // Always check the last 10 files (most recently added to the index)
-      for (let i = Math.max(0, docPaths.length - 10); i < docPaths.length; i++) sampled.add(i);
-
-      for (const idx of sampled) {
-        try {
-          const stat = fs.statSync(resolveExistingSafe(mindRoot, docPaths[idx]));
-          if (stat.mtimeMs > data.timestamp) return false;
-        } catch {
-          return false;
-        }
-      }
-    }
+    const currentSignature = buildFileSignature(mindRoot, currentFiles);
+    if (!currentSignature || currentSignature !== data.fileSignature) return false;
 
     // Restore state
     this.restoreFromPersisted(data);
@@ -650,5 +652,6 @@ interface PersistedIndex {
   totalChars: number;
   docLengths: Record<string, number>;
   invertedIndex: Record<string, string[]>;
+  fileSignature: string;
   timestamp: number;
 }

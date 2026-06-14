@@ -72,11 +72,11 @@ describe('/api/obsidian/community-catalog/preflight', () => {
         },
       },
       compatibility: {
-        level: 'compatible',
+        level: 'partial',
       },
       support: {
-        kind: 'ready',
-        label: 'Ready',
+        kind: 'limited',
+        label: 'Limited',
         installable: true,
       },
       surfacePreview: [

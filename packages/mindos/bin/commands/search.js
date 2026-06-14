@@ -25,10 +25,11 @@ export async function run(args, flags) {
   }
   loadConfig();
   const baseUrl = getBaseUrl();
-  const limit = parseInt(flags.limit) || 20;
+  const parsedLimit = Number.parseInt(flags.limit, 10);
+  const limit = Number.isFinite(parsedLimit) ? parsedLimit : 20;
   const headers = getAuthHeaders();
   try {
-    const res = await fetch(`${baseUrl}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers });
+    const res = await fetch(`${baseUrl}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers, cache: 'no-store' });
     if (!res.ok) throw new Error('API error (' + res.status + ')');
     const data = await res.json();
     const results = data.results || data || [];

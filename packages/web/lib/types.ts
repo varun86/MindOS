@@ -57,6 +57,10 @@ export interface SearchPrewarmResponse {
   warmed: true;
   cacheState: SearchPrewarmCacheState;
   documentCount: number;
+  core?: {
+    cacheState: string;
+    fileCount: number;
+  };
 }
 
 export type SearchWarmState = 'idle' | 'warming' | 'ready' | 'fallback';

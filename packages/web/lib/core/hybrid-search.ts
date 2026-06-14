@@ -6,7 +6,7 @@
  * falls back to pure BM25 — zero overhead.
  */
 
-import { searchFiles as bm25Search } from './search';
+import { ensureCoreSearchIndexReady, searchFiles as bm25Search } from './search';
 import { EmbeddingIndex } from './embedding-index';
 import { getEmbeddingConfig } from './embedding-provider';
 import { readFile } from './fs-ops';
@@ -78,6 +78,7 @@ export async function hybridSearch(
   const limit = opts.limit ?? 20;
 
   // Step 1: BM25 (always runs — synchronous, fast)
+  await ensureCoreSearchIndexReady(mindRoot);
   const bm25Results = bm25Search(mindRoot, query, { ...opts, limit: limit * 2 });
 
   // Step 2: Check if embedding is available

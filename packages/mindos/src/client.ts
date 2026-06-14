@@ -44,6 +44,10 @@ export type MindosFilesOptions = {
 };
 
 export type MindosSearchOptions = {
+  limit?: number;
+  scope?: string;
+  file_type?: 'md' | 'csv' | 'all';
+  modified_after?: string;
   signal?: AbortSignal;
 };
 
@@ -311,6 +315,10 @@ export function createMindosClient(config: MindosClientConfig = {}): MindosClien
     },
     search(query, options) {
       const params = new URLSearchParams({ q: query });
+      if (options?.limit !== undefined) params.set('limit', String(options.limit));
+      if (options?.scope) params.set('scope', options.scope);
+      if (options?.file_type) params.set('file_type', options.file_type);
+      if (options?.modified_after) params.set('modified_after', options.modified_after);
       return request(`/api/search?${params.toString()}`, {
         method: 'GET',
         signal: options?.signal,

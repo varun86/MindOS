@@ -149,7 +149,7 @@ export class PluginLoader {
 
     // Call onload
     try {
-      await instance.load();
+      await this.app.getRuntimeHost().runWithPluginContext(pluginId, () => instance.load());
     } catch (err) {
       await this.cleanupPlugin(pluginId, instance);
       throw new CompatError(
@@ -172,7 +172,7 @@ export class PluginLoader {
     }
 
     try {
-      await loaded.instance.unload();
+      await this.app.getRuntimeHost().runWithPluginContext(pluginId, () => loaded.instance.unload());
     } catch (err) {
       console.error(`[obsidian-compat] Error during plugin unload: ${err instanceof Error ? err.message : String(err)}`);
     }

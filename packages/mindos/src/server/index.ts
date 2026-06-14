@@ -414,6 +414,8 @@ export {
 export {
   handleSearch,
   type SearchHandlerServices,
+  type SearchRequestFileType,
+  type SearchRequestOptions,
 } from './handlers/search.js';
 
 export {

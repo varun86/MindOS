@@ -17,6 +17,11 @@ interface MentionSearchHit {
   score: number;
 }
 
+export interface MentionSearchIndex {
+  entries: MentionSearchEntry[];
+  candidateBuckets: Map<string, MentionSearchEntry[]>;
+}
+
 function safeFetchFiles(): Promise<string[]> {
   // Shared cache + single-flight: simultaneous consumers of /api/files
   // (mention picker, plugin panels, ...) issue one request.
@@ -35,12 +40,34 @@ export function parseMentionQueryFromInput(val: string, cursorPos?: number): str
   return query;
 }
 
-export function createMentionSearchIndex(allFiles: string[]): MentionSearchEntry[] {
-  return allFiles.map((path) => ({
+function mentionCandidateKey(query: string): string {
+  return query.length <= 1 ? query : query.slice(0, 2);
+}
+
+function mentionPathKeys(lowerPath: string): Set<string> {
+  const keys = new Set<string>();
+  for (let i = 0; i < lowerPath.length; i += 1) {
+    keys.add(lowerPath[i]);
+    if (i + 1 < lowerPath.length) keys.add(lowerPath.slice(i, i + 2));
+  }
+  return keys;
+}
+
+export function createMentionSearchIndex(allFiles: string[]): MentionSearchIndex {
+  const entries = allFiles.map((path) => ({
     path,
     lowerPath: path.toLowerCase(),
     lowerName: (path.split('/').pop() ?? path).toLowerCase(),
   }));
+  const candidateBuckets = new Map<string, MentionSearchEntry[]>();
+  for (const entry of entries) {
+    for (const key of mentionPathKeys(entry.lowerPath)) {
+      const bucket = candidateBuckets.get(key);
+      if (bucket) bucket.push(entry);
+      else candidateBuckets.set(key, [entry]);
+    }
+  }
+  return { entries, candidateBuckets };
 }
 
 function mentionScore(entry: MentionSearchEntry, query: string): number {
@@ -62,15 +89,16 @@ function insertTopMentionHit(hits: MentionSearchHit[], hit: MentionSearchHit, li
 }
 
 export function searchMentionFiles(
-  index: MentionSearchEntry[],
+  index: MentionSearchIndex,
   rawQuery: string,
   limit = MENTION_RESULT_LIMIT,
 ): string[] {
   const query = rawQuery.toLowerCase();
-  if (!query) return index.slice(0, limit).map((entry) => entry.path);
+  if (!query) return index.entries.slice(0, limit).map((entry) => entry.path);
 
   const hits: MentionSearchHit[] = [];
-  for (const entry of index) {
+  const candidates = index.candidateBuckets.get(mentionCandidateKey(query)) ?? [];
+  for (const entry of candidates) {
     const score = mentionScore(entry, query);
     if (score > 0) insertTopMentionHit(hits, { path: entry.path, score }, limit);
   }

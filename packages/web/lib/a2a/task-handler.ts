@@ -87,11 +87,11 @@ function routeToTool(text: string): { tool: string; params: Record<string, strin
 
 const TOOL_TIMEOUT_MS = 10_000;
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { ...init, signal: controller.signal });
     return res;
   } finally {
     clearTimeout(timeout);
@@ -117,7 +117,7 @@ async function executeTool(tool: string, params: Record<string, string>): Promis
   switch (tool) {
     case 'search_notes': {
       const q = (params.q || '').slice(0, 500); // limit query length
-      const res = await fetchWithTimeout(`${baseUrl}/api/search?q=${encodeURIComponent(q)}`);
+      const res = await fetchWithTimeout(`${baseUrl}/api/search?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const data = await res.json();
       return JSON.stringify(data, null, 2);

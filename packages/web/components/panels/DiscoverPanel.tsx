@@ -123,9 +123,10 @@ export default function DiscoverPanel({ active, maximized, onMaximize }: Discove
             href="/explore"
           />
           <PanelNavRow
-            icon={<Blocks size={14} className="text-muted-foreground" />}
+            icon={<Blocks size={14} className="text-[var(--amber)]" />}
             title={d.pluginMarket}
-            badge={<ComingSoonBadge label={d.comingSoon} />}
+            subtitle={d.pluginMarketDesc}
+            href="/settings?tab=plugins&panel=community"
           />
           <PanelNavRow
             icon={<Zap size={14} className="text-muted-foreground" />}

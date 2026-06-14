@@ -1,7 +1,8 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import type { PluginPanel, PluginsCopy } from './PluginsTabModel';
+import type { PluginsCopy } from './PluginsTabModel';
+import type { PluginPanel } from './types';
 
 interface PluginManagerStats {
   total: number;

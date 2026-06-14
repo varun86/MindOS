@@ -584,8 +584,15 @@ export class Vault extends Events implements IVault {
 
   async copy(file: TFile, newPath: string): Promise<TFile> {
     try {
-      const content = await this.read(file);
-      return this.create(newPath, content);
+      const sourceResolved = this.resolveExisting(file.path);
+      const normalizedNewPath = normalizeVaultPath(newPath);
+      const targetResolved = this.resolveForWrite(normalizedNewPath);
+      fs.mkdirSync(path.dirname(targetResolved), { recursive: true });
+      fs.copyFileSync(sourceResolved, targetResolved);
+      const copied = new TFileImpl(this, normalizedNewPath, this.mindRoot);
+      this.fileCache.set(normalizedNewPath, copied);
+      this.trigger('create', copied);
+      return copied;
     } catch (err) {
       throw new Error(`Failed to copy file: ${file.path} -> ${newPath}: ${err instanceof Error ? err.message : String(err)}`);
     }
