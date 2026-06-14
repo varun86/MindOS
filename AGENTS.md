@@ -233,7 +233,9 @@ npm test                          # 手动跑测试，不杀 dev server
 - 绝对禁止 `git merge public/main` 或 `git push public main`；公开仓只走 CI 单向同步。
 
 **任务 worktree 规则**
-- 开工前同步基线：确认 `origin/main` 最新，必要时把 `main` 合入或 rebase 到任务分支。
+- 主动对齐 `main` 是任务 worktree 的前置动作：新任务开工、恢复已有任务、push 或开 PR 前，都先执行 `git fetch origin --prune`，再确认当前目录、分支和 `origin/main` 状态。
+- 对齐检查必须具体到命令结果：`git status --short --branch` 确认 worktree 干净或改动归属明确；`git merge-base --is-ancestor origin/main HEAD` 确认任务分支包含最新 `origin/main`。如果不包含，先把 `origin/main` merge/rebase 到任务分支并解决冲突，再继续开发或交付。
+- 开 PR 前再查一次 base/head：确认 PR 目标是 `main`、分支已 push、merge state 无冲突；如果主线刚更新，先同步 `origin/main` 并按影响范围重跑验证。
 - 只做当前任务相关改动；不要顺手改主线正在进行的其它文件。
 - 完成后在任务分支提交并 `git push -u origin <task-branch>`，不要直接 push 到 `main`。
 - push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
