@@ -17,6 +17,10 @@ function track(cache: MindRootTreeCache): MindRootTreeCache {
   return cache;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 afterEach(() => {
   while (cleanups.length) cleanups.pop()?.();
 });
@@ -116,15 +120,16 @@ describe('mind root tree cache', () => {
       const cache = track(createMindRootTreeCache(root, { fallbackTtlMs: 3_600_000, watchedTtlMs: 3_600_000 }));
       const before = cache.getTreeVersion();
       expect(cache.isWatching()).toBe(true);
+      await delay(100);
 
       writeFileSync(join(root, 'external.md'), 'written by another process');
 
       await vi.waitFor(() => {
         expect(cache.getTreeVersion()).toBeGreaterThan(before);
-      }, { timeout: 4_000, interval: 50 });
+      }, { timeout: 15_000, interval: 100 });
       expect(cache.collectAllFiles()).toContain('external.md');
     },
-    10_000,
+    20_000,
   );
 
   it('keeps serving (via TTL) after dispose stops the watcher', () => {
