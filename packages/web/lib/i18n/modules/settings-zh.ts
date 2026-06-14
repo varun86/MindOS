@@ -451,13 +451,48 @@ export const settingsZh = {
       communityPreflightAction: '检查',
       communityPreflightChecking: '检查中',
       communityPreflightFailed: '无法预检插件包',
-      communityPreflightNoBlockers: '未发现阻断级兼容性问题。',
+      communityPreflightNoBlockers: '未发现硬阻断；请继续查看下方支持说明。',
       communityPreflightStatus: (level: string, installable: boolean) => {
-        if (installable) return '预检通过';
+        if (level === 'compatible' && installable) return '可安装';
+        if (level === 'partial' && installable) return '可安装但支持受限';
         if (level === 'blocked') return '预检阻断';
-        return '需要复核';
+        return installable ? '使用前需要复核' : '需要复核';
       },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · 样式${stylesCss ? '存在' : '缺失'}`,
+      communityPreflightSupportTitle: 'MindOS 兼容性预览',
+      communityPreflightSupportLevel: (level: string) => ({
+        ready: 'Ready',
+        limited: 'Limited',
+        review: 'Review',
+        blocked: '已阻断',
+      }[level] ?? level),
+      communityPreflightSupportNote: (level: string) => ({
+        ready: '支持的 API 会在你启用并加载插件后映射到 MindOS 宿主。',
+        limited: '部分 API 会通过 snapshot、目录态、独立视图或受限宿主运行；安装后仍需要实际验证。',
+        review: '检测到未支持 API。依赖这个插件前需要先人工复核报告。',
+        blocked: '存在阻断级兼容问题，MindOS 不会安装这个插件包。',
+      }[level] ?? '依赖这个插件前需要先复核。'),
+      communityPreflightSupportReasonLabel: '原因：',
+      communityPreflightSurfaceLabel: (surface: string) => ({
+        commands: '命令中心',
+        settings: '设置',
+        entries: '插件条目',
+        views: '插件视图',
+        document: '文档快照',
+        styles: '受限样式',
+        editor: '编辑器目录',
+        vault: 'Vault API',
+        network: '受限网络',
+      }[surface] ?? surface),
+      communityPreflightSurfaceState: (state: string) => ({
+        mounted: '已挂载',
+        limited: '受限',
+        catalog: '目录态',
+        blocked: '阻断',
+      }[state] ?? state),
+      communityPreflightSurfaceDetail: (_surface: string, count: number) => `${count}`,
+      communityPreflightSurfaceEmpty: '尚未检测到明确的 MindOS 使用入口。它仍可能是库型插件，但需要人工复核。',
+      communityPreflightInstallBoundary: '安装只会把插件包复制到本机 MindOS vault；需要到“已安装”里启用并加载后才会运行。',
       communityUpdateCheckAction: '检查更新',
       communityUpdateStatus: (state: string) => ({
         'update-available': '有可用更新',

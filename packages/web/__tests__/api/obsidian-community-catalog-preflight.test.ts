@@ -74,6 +74,15 @@ describe('/api/obsidian/community-catalog/preflight', () => {
       compatibility: {
         level: 'compatible',
       },
+      support: {
+        kind: 'ready',
+        label: 'Ready',
+        installable: true,
+      },
+      surfacePreview: [
+        { id: 'entries', state: 'mounted', count: 1 },
+        { id: 'styles', state: 'mounted', count: 1 },
+      ],
       installable: true,
       installBlockedReasons: [],
     });
@@ -117,6 +126,11 @@ describe('/api/obsidian/community-catalog/preflight', () => {
           unsupportedModules: ['fs'],
           blockers: ['Requires unsupported runtime module: fs'],
         },
+      },
+      support: {
+        kind: 'blocked',
+        label: 'Blocked',
+        installable: false,
       },
       installable: false,
       installBlockedReasons: ['Requires unsupported runtime module: fs'],

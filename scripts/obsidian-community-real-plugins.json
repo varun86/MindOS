@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourcePolicy": "github-release-assets",
+  "plugins": [
+    {
+      "id": "obsidian-style-settings",
+      "name": "Style Settings",
+      "repo": "mgmeyers/obsidian-style-settings",
+      "expectedCompatibilityLevel": "compatible",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "quickadd",
+      "name": "QuickAdd",
+      "repo": "chhoumann/quickadd",
+      "expectedCompatibilityLevel": "partial",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": []
+    },
+    {
+      "id": "tag-wrangler",
+      "name": "Tag Wrangler",
+      "repo": "pjeby/tag-wrangler",
+      "expectedCompatibilityLevel": "compatible",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": []
+    },
+    {
+      "id": "obsidian-homepage",
+      "name": "Homepage",
+      "repo": "mirnovov/obsidian-homepage",
+      "expectedCompatibilityLevel": "compatible",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    }
+  ]
+}

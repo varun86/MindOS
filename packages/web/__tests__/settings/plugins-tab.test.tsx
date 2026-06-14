@@ -156,9 +156,47 @@ const t = {
       communityPreflightAction: 'Check',
       communityPreflightChecking: 'Checking',
       communityPreflightFailed: 'Could not preflight package',
-      communityPreflightNoBlockers: 'No blockers',
-      communityPreflightStatus: (level: string, installable: boolean) => (installable ? 'Preflight passed' : `Preflight ${level}`),
+      communityPreflightNoBlockers: 'No hard blockers',
+      communityPreflightStatus: (level: string, installable: boolean) => {
+        if (level === 'compatible' && installable) return 'Ready to install';
+        if (level === 'partial' && installable) return 'Installable with limited support';
+        return `Preflight ${level}`;
+      },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · styles ${stylesCss ? 'found' : 'none'}`,
+      communityPreflightSupportTitle: 'MindOS compatibility preview',
+      communityPreflightSupportLevel: (level: string) => ({
+        ready: 'Ready',
+        limited: 'Limited',
+        review: 'Review',
+        blocked: 'Blocked',
+      }[level] ?? level),
+      communityPreflightSupportNote: (level: string) => ({
+        ready: 'Supported APIs map to MindOS hosts after enable/load.',
+        limited: 'Some APIs use limited MindOS hosts; verify after install.',
+        review: 'Unsupported APIs need manual review before relying on this plugin.',
+        blocked: 'MindOS will not install this package until blockers are resolved.',
+      }[level] ?? 'Review this plugin before relying on it.'),
+      communityPreflightSupportReasonLabel: 'Reason:',
+      communityPreflightSurfaceLabel: (surface: string) => ({
+        commands: 'Command Center',
+        settings: 'Settings',
+        entries: 'Plugin Entries',
+        views: 'Plugin Views',
+        document: 'Document snapshots',
+        styles: 'Scoped styles',
+        editor: 'Editor catalog',
+        vault: 'Vault APIs',
+        network: 'Restricted network',
+      }[surface] ?? surface),
+      communityPreflightSurfaceState: (state: string) => ({
+        mounted: 'mounted',
+        limited: 'limited',
+        catalog: 'catalog',
+        blocked: 'blocked',
+      }[state] ?? state),
+      communityPreflightSurfaceDetail: (surface: string, count: number) => `${surface}:${count}`,
+      communityPreflightSurfaceEmpty: 'No concrete MindOS surface was detected yet.',
+      communityPreflightInstallBoundary: 'Install copies the package locally; enable and load it from Installed before it can run.',
       communityUpdateCheckAction: 'Check update',
       communityUpdateStatus: (state: string) => ({
         'update-available': 'Update available',
@@ -345,6 +383,17 @@ describe('PluginsTab', () => {
             githubUrl: 'https://github.com/chhoumann/quickadd',
             version: '1.0.0',
             stylesCss: false,
+            level: 'partial',
+            report: {
+              obsidianApis: ['Plugin', 'addCommand', 'addSettingTab', 'Vault.create', 'registerMarkdownCodeBlockProcessor'],
+              moduleImports: [],
+              nodeModules: [],
+              unsupportedModules: [],
+              supportedApis: ['Plugin', 'addCommand', 'addSettingTab', 'Vault.create'],
+              partialApis: ['registerMarkdownCodeBlockProcessor'],
+              unsupportedApis: [],
+              blockers: [],
+            },
           },
           'desktop-only': {
             id: 'desktop-only',
@@ -388,8 +437,8 @@ describe('PluginsTab', () => {
             },
           },
           compatibility: {
-            level: 'compatible',
-            report: {
+            level: fixtures.level ?? 'compatible',
+            report: fixtures.report ?? {
               obsidianApis: ['Plugin'],
               moduleImports: [],
               nodeModules: [],
@@ -1037,9 +1086,17 @@ describe('PluginsTab', () => {
         '/api/obsidian/community-catalog/preflight?repo=chhoumann%2Fquickadd&pluginId=quickadd',
         { cache: 'no-store' },
       );
-      expect(host.textContent).toContain('Preflight passed');
+      expect(host.textContent).toContain('Installable with limited support');
       expect(host.textContent).toContain('manifest 1.0.0 · styles none');
-      expect(host.textContent).toContain('No blockers');
+      expect(host.textContent).toContain('No hard blockers');
+      expect(host.textContent).toContain('MindOS compatibility preview');
+      expect(host.textContent).toContain('Limited');
+      expect(host.textContent).toContain('Reason: Limited APIs are routed through safe MindOS hosts');
+      expect(host.textContent).toContain('Command Center');
+      expect(host.textContent).toContain('Settings');
+      expect(host.textContent).toContain('Document snapshots');
+      expect(host.textContent).toContain('limited');
+      expect(host.textContent).toContain('Install copies the package locally');
 
       const installButton = host.querySelector('[data-obsidian-community-install="quickadd"]') as HTMLButtonElement;
       expect(installButton).toBeTruthy();

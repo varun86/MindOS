@@ -12,12 +12,25 @@ import type {
 } from '@/lib/obsidian-compat/community-catalog';
 import type { ObsidianCommunityUpdatePlan } from '@/lib/obsidian-compat/community-install';
 import type { CommunityVersionState } from '@/lib/obsidian-compat/community-version';
+import {
+  buildObsidianCommunityPreflightSupport,
+  buildObsidianCommunitySurfacePreview,
+  type ObsidianCommunityPreflightSupport,
+  type ObsidianCommunityPreflightSupportLevel,
+  type ObsidianCommunitySurfacePreview,
+  type ObsidianCommunitySurfacePreviewId,
+  type ObsidianCommunitySurfacePreviewState,
+} from '@/lib/obsidian-compat/community-support';
 import type { SurfaceInventoryState } from './PluginSurfacesPanel';
 import type { PluginsTabProps } from './types';
 
 export type PluginsCopy = PluginsTabProps['t']['settings']['plugins'];
 
 export type PluginPanel = 'installed' | 'community' | 'import' | 'surfaces';
+export type CommunityPreflightSupportLevel = ObsidianCommunityPreflightSupportLevel;
+export type CommunityPreflightSurfaceId = ObsidianCommunitySurfacePreviewId;
+export type CommunityPreflightSurfaceState = ObsidianCommunitySurfacePreviewState;
+export type CommunityPreflightSurfacePrediction = ObsidianCommunitySurfacePreview;
 
 export interface PluginCatalogResponse {
   ok: boolean;
@@ -116,4 +129,48 @@ export function communityUpdateClass(
     return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]';
   }
   return 'border-border bg-muted text-muted-foreground';
+}
+
+export function communityPreflightSupportClass(level: CommunityPreflightSupportLevel): string {
+  if (level === 'blocked') return 'border-error/25 bg-error/10 text-error';
+  if (level === 'ready') return 'border-success/25 bg-success/10 text-success';
+  if (level === 'limited' || level === 'review') {
+    return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]';
+  }
+  return 'border-border bg-muted text-muted-foreground';
+}
+
+export function communityPreflightSurfaceClass(state: CommunityPreflightSurfaceState): string {
+  if (state === 'mounted') return 'border-success/25 bg-success/10 text-success';
+  if (state === 'limited') return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]';
+  if (state === 'catalog') return 'border-border bg-muted text-muted-foreground';
+  return 'border-error/25 bg-error/10 text-error';
+}
+
+export function communityPreflightSupport(
+  result: ObsidianCommunityPluginPreflight,
+): ObsidianCommunityPreflightSupport {
+  return result.support ?? buildObsidianCommunityPreflightSupport({
+    compatibility: result.compatibility,
+    installable: result.installable,
+    installBlockedReasons: result.installBlockedReasons,
+    stylesCss: result.package.assets.stylesCss,
+  });
+}
+
+export function communityPreflightSupportLevel(
+  result: ObsidianCommunityPluginPreflight,
+): CommunityPreflightSupportLevel {
+  return communityPreflightSupport(result).kind;
+}
+
+export function communityPreflightSurfaces(
+  result: ObsidianCommunityPluginPreflight,
+): CommunityPreflightSurfacePrediction[] {
+  return result.surfacePreview ?? buildObsidianCommunitySurfacePreview({
+    compatibility: result.compatibility,
+    installable: result.installable,
+    installBlockedReasons: result.installBlockedReasons,
+    stylesCss: result.package.assets.stylesCss,
+  });
 }

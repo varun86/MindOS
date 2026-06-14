@@ -32,6 +32,10 @@ export {
   updateObsidianCommunityPlugin,
 } from './community-install';
 export { compareCommunityVersions } from './community-version';
+export {
+  buildObsidianCommunityPreflightSupport,
+  buildObsidianCommunitySurfacePreview,
+} from './community-support';
 export { CompatError, CompatErrorCodes } from './errors';
 export type { DataAdapter, IFileManager, ListedFiles, PluginManifest, Stat, TFile, TFolder, TAbstractFile, Command } from './types';
 export type {
@@ -62,3 +66,10 @@ export type {
   UpdatedObsidianCommunityPlugin,
 } from './community-install';
 export type { CommunityVersionState } from './community-version';
+export type {
+  ObsidianCommunityPreflightSupport,
+  ObsidianCommunityPreflightSupportLevel,
+  ObsidianCommunitySurfacePreview,
+  ObsidianCommunitySurfacePreviewId,
+  ObsidianCommunitySurfacePreviewState,
+} from './community-support';

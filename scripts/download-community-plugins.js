@@ -1,62 +1,52 @@
 #!/usr/bin/env node
 
 /**
- * Download Community Plugins Script
+ * Download real Obsidian community plugin packages for manual compatibility gates.
  *
- * Downloads real Obsidian community plugins for testing.
- * Only downloads the built files (main.js, manifest.json, styles.css),
- * not the full source code.
+ * This script intentionally downloads only release assets used by Obsidian
+ * community packages: manifest.json, main.js, and optional styles.css.
  *
  * Usage:
  *   node scripts/download-community-plugins.js
  */
 
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import https from 'node:https';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const PLUGINS = [
-  {
-    id: 'obsidian-style-settings',
-    name: 'Style Settings',
-    repo: 'mgmeyers/obsidian-style-settings',
-    // Download from latest release
-    files: ['main.js', 'manifest.json', 'styles.css'],
-  },
-  {
-    id: 'quickadd',
-    name: 'QuickAdd',
-    repo: 'chhoumann/quickadd',
-    files: ['main.js', 'manifest.json'],
-  },
-  {
-    id: 'tag-wrangler',
-    name: 'Tag Wrangler',
-    repo: 'pjeby/tag-wrangler',
-    files: ['main.js', 'manifest.json'],
-  },
-  {
-    id: 'obsidian-homepage',
-    name: 'Homepage',
-    repo: 'mirnovov/obsidian-homepage',
-    files: ['main.js', 'manifest.json', 'styles.css'],
-  },
-];
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TARGETS_PATH = path.join(__dirname, 'obsidian-community-real-plugins.json');
 const OUTPUT_DIR = path.join(__dirname, '../packages/web/__fixtures__/real-plugins');
+const MATRIX_PATH = path.join(OUTPUT_DIR, 'matrix.json');
+const HTTPS_TIMEOUT_MS = 20_000;
+const SAFE_PATH_SEGMENT = /^[A-Za-z0-9_.-]+$/;
+
+const targetsConfig = JSON.parse(fs.readFileSync(TARGETS_PATH, 'utf-8'));
+const targets = Array.isArray(targetsConfig.plugins) ? targetsConfig.plugins : [];
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    https.get(url, (response) => {
+    const request = https.get(url, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
-        // Follow redirect
-        download(response.headers.location, dest).then(resolve).catch(reject);
+        file.close();
+        fs.rmSync(dest, { force: true });
+        const location = response.headers.location;
+        if (!location) {
+          reject(new Error(`Redirect without location for ${url}`));
+          return;
+        }
+        download(new URL(location, url).toString(), dest).then(resolve).catch(reject);
         return;
       }
 
       if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download: ${response.statusCode}`));
+        response.resume();
+        file.close();
+        fs.rmSync(dest, { force: true });
+        reject(new Error(`Failed to download ${url}: HTTP ${response.statusCode}`));
         return;
       }
 
@@ -65,20 +55,32 @@ function download(url, dest) {
         file.close();
         resolve();
       });
-    }).on('error', (err) => {
-      fs.unlink(dest, () => {});
+      file.on('error', (err) => {
+        file.close();
+        fs.rmSync(dest, { force: true });
+        reject(err);
+      });
+    });
+
+    request.setTimeout(HTTPS_TIMEOUT_MS, () => {
+      request.destroy(new Error(`Timed out downloading ${url}`));
+    });
+    request.on('error', (err) => {
+      file.close();
+      fs.rmSync(dest, { force: true });
       reject(err);
     });
   });
 }
 
-async function getLatestRelease(repo) {
+function getLatestRelease(repo) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
       path: `/repos/${repo}/releases/latest`,
       headers: {
-        'User-Agent': 'MindOS-Test-Suite',
+        'User-Agent': 'MindOS-Obsidian-Plugin-Matrix',
+        Accept: 'application/vnd.github+json',
       },
     };
 
@@ -90,56 +92,145 @@ async function getLatestRelease(repo) {
       response.on('end', () => {
         if (response.statusCode === 200) {
           resolve(JSON.parse(data));
-        } else {
-          reject(new Error(`Failed to get release info: ${response.statusCode}`));
+          return;
         }
+        reject(new Error(`Failed to get release info for ${repo}: HTTP ${response.statusCode}`));
       });
+    }).setTimeout(HTTPS_TIMEOUT_MS, function onTimeout() {
+      this.destroy(new Error(`Timed out fetching release info for ${repo}`));
     }).on('error', reject);
   });
 }
 
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function readManifest(pluginDir) {
+  const manifestPath = path.join(pluginDir, 'manifest.json');
+  return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+}
+
+function assertSafePathSegment(value, label) {
+  if (typeof value !== 'string' || !SAFE_PATH_SEGMENT.test(value)) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+}
+
 async function downloadPlugin(plugin) {
-  console.log(`\nDownloading ${plugin.name}...`);
+  console.log(`\nDownloading ${plugin.name} (${plugin.repo})...`);
+  assertSafePathSegment(plugin.id, 'plugin id');
+  const release = await getLatestRelease(plugin.repo);
+  const pluginDir = path.join(OUTPUT_DIR, plugin.id);
+  const stagePluginDir = path.join(OUTPUT_DIR, `.tmp-${plugin.id}-${process.pid}`);
+  fs.rmSync(stagePluginDir, { recursive: true, force: true });
+  fs.mkdirSync(stagePluginDir, { recursive: true });
+
+  const files = {};
+  const requiredFiles = Array.isArray(plugin.requiredFiles) ? plugin.requiredFiles : ['main.js', 'manifest.json'];
+  const optionalFiles = Array.isArray(plugin.optionalFiles) ? plugin.optionalFiles : [];
 
   try {
-    const release = await getLatestRelease(plugin.repo);
-    console.log(`  Latest release: ${release.tag_name}`);
+    for (const fileName of [...requiredFiles, ...optionalFiles]) {
+      assertSafePathSegment(fileName, 'asset file name');
+      const asset = Array.isArray(release.assets)
+        ? release.assets.find((item) => item.name === fileName)
+        : undefined;
+      const optional = optionalFiles.includes(fileName);
 
-    const pluginDir = path.join(OUTPUT_DIR, plugin.id);
-    fs.mkdirSync(pluginDir, { recursive: true });
-
-    for (const file of plugin.files) {
-      const asset = release.assets.find(a => a.name === file);
       if (!asset) {
-        console.log(`  ⚠ ${file} not found in release, skipping`);
-        continue;
+        if (optional) {
+          console.log(`  - ${fileName}: not published`);
+          files[fileName] = { present: false, optional: true };
+          continue;
+        }
+        throw new Error(`${plugin.name} release ${release.tag_name} is missing required asset ${fileName}`);
       }
 
-      const dest = path.join(pluginDir, file);
-      console.log(`  Downloading ${file}...`);
+      const dest = path.join(stagePluginDir, fileName);
       await download(asset.browser_download_url, dest);
-      console.log(`  ✓ ${file}`);
+      const bytes = fs.statSync(dest).size;
+      const sha256 = sha256File(dest);
+      files[fileName] = {
+        present: true,
+        optional,
+        bytes,
+        sha256,
+        url: asset.browser_download_url,
+      };
+      console.log(`  + ${fileName}: ${bytes} B`);
     }
 
-    console.log(`✓ ${plugin.name} downloaded successfully`);
+    const manifest = readManifest(stagePluginDir);
+    const matrixEntry = {
+      id: plugin.id,
+      name: plugin.name,
+      repo: plugin.repo,
+      sourcePolicy: targetsConfig.sourcePolicy ?? 'github-release-assets',
+      releaseTag: release.tag_name,
+      releaseUrl: release.html_url,
+      downloadedAt: new Date().toISOString(),
+      expectedCompatibilityLevel: plugin.expectedCompatibilityLevel,
+      manifest: {
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        minAppVersion: manifest.minAppVersion,
+        isDesktopOnly: manifest.isDesktopOnly === true,
+      },
+      files,
+    };
+
+    fs.rmSync(pluginDir, { recursive: true, force: true });
+    fs.renameSync(stagePluginDir, pluginDir);
+    return matrixEntry;
   } catch (err) {
-    console.error(`✗ Failed to download ${plugin.name}: ${err.message}`);
+    fs.rmSync(stagePluginDir, { recursive: true, force: true });
+    throw err;
   }
 }
 
 async function main() {
-  console.log('Downloading Obsidian community plugins for testing...');
-  console.log(`Output directory: ${OUTPUT_DIR}\n`);
+  if (targets.length === 0) {
+    throw new Error(`No plugin targets found in ${TARGETS_PATH}`);
+  }
+
+  console.log('Downloading Obsidian community plugins for compatibility testing...');
+  console.log(`Output directory: ${OUTPUT_DIR}`);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-  for (const plugin of PLUGINS) {
-    await downloadPlugin(plugin);
+  const matrix = {
+    schemaVersion: 1,
+    sourcePolicy: targetsConfig.sourcePolicy ?? 'github-release-assets',
+    generatedAt: new Date().toISOString(),
+    plugins: [],
+  };
+  const failures = [];
+
+  for (const plugin of targets) {
+    try {
+      matrix.plugins.push(await downloadPlugin(plugin));
+      console.log(`+ ${plugin.name} downloaded`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      failures.push({ id: plugin.id, name: plugin.name, repo: plugin.repo, error: message });
+      console.error(`! ${plugin.name} failed: ${message}`);
+    }
   }
 
-  console.log('\n✓ All downloads complete!');
-  console.log('\nTo run tests with real plugins:');
-  console.log('  TEST_REAL_PLUGINS=1 npm test -- community-real-plugins.test.ts');
+  matrix.failures = failures;
+  fs.writeFileSync(MATRIX_PATH, `${JSON.stringify(matrix, null, 2)}\n`, 'utf-8');
+  console.log(`\nMatrix written: ${MATRIX_PATH}`);
+
+  if (failures.length > 0) {
+    console.error(`\n${failures.length} plugin download(s) failed.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('\nAll downloads complete.');
+  console.log('Run: cd packages/web && TEST_REAL_PLUGINS=1 pnpm test __tests__/obsidian-compat/community-real-plugins.test.ts');
 }
 
 main().catch((err) => {

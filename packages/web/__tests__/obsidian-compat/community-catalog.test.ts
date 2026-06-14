@@ -341,6 +341,12 @@ describe('Obsidian community catalog adapter', () => {
     expect(preflight.installBlockedReasons).toEqual([
       'Manifest id "manifest-id" does not match requested plugin id "catalog-id".',
     ]);
+    expect(preflight.support).toMatchObject({
+      kind: 'blocked',
+      label: 'Blocked',
+      installable: false,
+      reason: 'Manifest id "manifest-id" does not match requested plugin id "catalog-id".',
+    });
   });
 
   it('blocks community plugin preflight when main.js imports unsupported modules', async () => {

@@ -9,6 +9,12 @@ import {
 import { ManifestError, validateManifest } from './manifest';
 import { OBSIDIAN_PLUGIN_STYLESHEET_MAX_BYTES } from './stylesheet-host';
 import type { PluginManifest } from './types';
+import {
+  buildObsidianCommunityPreflightSupport,
+  buildObsidianCommunitySurfacePreview,
+  type ObsidianCommunityPreflightSupport,
+  type ObsidianCommunitySurfacePreview,
+} from './community-support';
 
 export const OBSIDIAN_COMMUNITY_PLUGINS_URL = 'https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json';
 const RAW_GITHUB_HEAD_BASE_URL = 'https://raw.githubusercontent.com';
@@ -101,6 +107,8 @@ export interface ObsidianCommunityPluginPreflight {
     level: CompatibilityLevel;
     report: PluginCompatibilityReport;
   };
+  support: ObsidianCommunityPreflightSupport;
+  surfacePreview: ObsidianCommunitySurfacePreview[];
   installable: boolean;
   installBlockedReasons: string[];
 }
@@ -323,6 +331,16 @@ export async function fetchObsidianCommunityPluginPackage(
     ...manifestIdMismatchReasons(options.pluginId, manifest.id),
     ...compatibilityReport.blockers,
   ];
+  const installable = installBlockedReasons.length === 0;
+  const supportInput = {
+    compatibility: {
+      level,
+      report: compatibilityReport,
+    },
+    installable,
+    installBlockedReasons,
+    stylesCss: typeof stylesCss === 'string',
+  };
 
   return {
     preflight: {
@@ -347,7 +365,9 @@ export async function fetchObsidianCommunityPluginPackage(
         level,
         report: compatibilityReport,
       },
-      installable: installBlockedReasons.length === 0,
+      support: buildObsidianCommunityPreflightSupport(supportInput),
+      surfacePreview: buildObsidianCommunitySurfacePreview(supportInput),
+      installable,
       installBlockedReasons,
     },
     files: {

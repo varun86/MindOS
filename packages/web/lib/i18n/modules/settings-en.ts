@@ -451,13 +451,48 @@ export const settingsEn = {
       communityPreflightAction: 'Check',
       communityPreflightChecking: 'Checking',
       communityPreflightFailed: 'Could not preflight package',
-      communityPreflightNoBlockers: 'No blocking compatibility issues found.',
+      communityPreflightNoBlockers: 'No hard blockers found; review the support notes below.',
       communityPreflightStatus: (level: string, installable: boolean) => {
-        if (installable) return 'Preflight passed';
+        if (level === 'compatible' && installable) return 'Ready to install';
+        if (level === 'partial' && installable) return 'Installable with limited support';
         if (level === 'blocked') return 'Blocked by preflight';
-        return 'Needs review';
+        return installable ? 'Needs review before use' : 'Needs review';
       },
       communityPreflightAssets: (version: string, stylesCss: boolean) => `manifest ${version} · styles ${stylesCss ? 'found' : 'none'}`,
+      communityPreflightSupportTitle: 'MindOS compatibility preview',
+      communityPreflightSupportLevel: (level: string) => ({
+        ready: 'Ready',
+        limited: 'Limited',
+        review: 'Review',
+        blocked: 'Blocked',
+      }[level] ?? level),
+      communityPreflightSupportNote: (level: string) => ({
+        ready: 'Supported APIs map to MindOS hosts after you enable and load the plugin.',
+        limited: 'Some APIs use limited MindOS hosts such as snapshots, catalogs, or scoped views. Verify the plugin after install.',
+        review: 'Unsupported APIs were detected. Review the report before relying on this plugin.',
+        blocked: 'MindOS will not install this package until blocking compatibility issues are resolved.',
+      }[level] ?? 'Review this plugin before relying on it.'),
+      communityPreflightSupportReasonLabel: 'Reason:',
+      communityPreflightSurfaceLabel: (surface: string) => ({
+        commands: 'Command Center',
+        settings: 'Settings',
+        entries: 'Plugin Entries',
+        views: 'Plugin Views',
+        document: 'Document snapshots',
+        styles: 'Scoped styles',
+        editor: 'Editor catalog',
+        vault: 'Vault APIs',
+        network: 'Restricted network',
+      }[surface] ?? surface),
+      communityPreflightSurfaceState: (state: string) => ({
+        mounted: 'mounted',
+        limited: 'limited',
+        catalog: 'catalog',
+        blocked: 'blocked',
+      }[state] ?? state),
+      communityPreflightSurfaceDetail: (_surface: string, count: number) => `${count}`,
+      communityPreflightSurfaceEmpty: 'No concrete MindOS surface was detected yet. This can still be a library-style plugin, but it needs manual review.',
+      communityPreflightInstallBoundary: 'Install only copies the package into the local MindOS vault; enable and load it from Installed before it can run.',
       communityUpdateCheckAction: 'Check update',
       communityUpdateStatus: (state: string) => ({
         'update-available': 'Update available',

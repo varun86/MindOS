@@ -11,7 +11,7 @@
  *   node scripts/download-community-plugins.js
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -19,41 +19,49 @@ import { analyzePluginCompatibility, getCompatibilityLevel } from '@/lib/obsidia
 import { PluginManager } from '@/lib/obsidian-compat/plugin-manager';
 
 const REAL_PLUGINS_DIR = path.join(__dirname, '../../__fixtures__/real-plugins');
+const REAL_PLUGINS_MATRIX_PATH = path.join(REAL_PLUGINS_DIR, 'matrix.json');
+const REAL_PLUGIN_TARGETS_PATH = path.join(__dirname, '../../../../scripts/obsidian-community-real-plugins.json');
 const ENABLED = process.env.TEST_REAL_PLUGINS === '1';
 
-interface RealPluginFixture {
+interface RealPluginTarget {
   id: string;
   name: string;
   repo: string;
   expectedCompatibilityLevel: 'compatible' | 'partial' | 'blocked';
+  requiredFiles?: string[];
+  optionalFiles?: string[];
 }
 
-const REAL_PLUGIN_FIXTURES: RealPluginFixture[] = [
-  {
-    id: 'obsidian-style-settings',
-    name: 'Style Settings',
-    repo: 'mgmeyers/obsidian-style-settings',
-    expectedCompatibilityLevel: 'compatible',
-  },
-  {
-    id: 'quickadd',
-    name: 'QuickAdd',
-    repo: 'chhoumann/quickadd',
-    expectedCompatibilityLevel: 'partial', // May use some unsupported APIs
-  },
-  {
-    id: 'tag-wrangler',
-    name: 'Tag Wrangler',
-    repo: 'pjeby/tag-wrangler',
-    expectedCompatibilityLevel: 'compatible',
-  },
-  {
-    id: 'obsidian-homepage',
-    name: 'Homepage',
-    repo: 'mirnovov/obsidian-homepage',
-    expectedCompatibilityLevel: 'compatible',
-  },
-];
+interface RealPluginMatrix {
+  schemaVersion: 1;
+  sourcePolicy: string;
+  generatedAt: string;
+  plugins: Array<{
+    id: string;
+    name: string;
+    repo: string;
+    sourcePolicy: string;
+    releaseTag: string;
+    releaseUrl?: string;
+    expectedCompatibilityLevel: 'compatible' | 'partial' | 'blocked';
+    manifest: {
+      id: string;
+      name: string;
+      version: string;
+      isDesktopOnly?: boolean;
+    };
+    files: Record<string, {
+      present: boolean;
+      optional?: boolean;
+      bytes?: number;
+      sha256?: string;
+      url?: string;
+    }>;
+  }>;
+  failures?: Array<{ id: string; error: string }>;
+}
+
+const REAL_PLUGIN_FIXTURES: RealPluginTarget[] = readRealPluginTargets();
 
 let mindRoot: string;
 
@@ -65,6 +73,19 @@ function pluginExists(pluginId: string): boolean {
   const pluginPath = getPluginPath(pluginId);
   return fs.existsSync(path.join(pluginPath, 'main.js')) &&
          fs.existsSync(path.join(pluginPath, 'manifest.json'));
+}
+
+function readRealPluginTargets(): RealPluginTarget[] {
+  const raw = JSON.parse(fs.readFileSync(REAL_PLUGIN_TARGETS_PATH, 'utf-8')) as { plugins?: RealPluginTarget[] };
+  return Array.isArray(raw.plugins) ? raw.plugins : [];
+}
+
+function readRealPluginMatrix(): RealPluginMatrix {
+  return JSON.parse(fs.readFileSync(REAL_PLUGINS_MATRIX_PATH, 'utf-8')) as RealPluginMatrix;
+}
+
+function matrixPlugin(matrix: RealPluginMatrix, pluginId: string): RealPluginMatrix['plugins'][number] | undefined {
+  return matrix.plugins.find((plugin) => plugin.id === pluginId);
 }
 
 function copyPluginToVault(pluginId: string, destDir: string): void {
@@ -93,6 +114,33 @@ function copyPluginToVault(pluginId: string, destDir: string): void {
 }
 
 describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
+  let matrix: RealPluginMatrix;
+
+  beforeAll(() => {
+    const missingPlugins = REAL_PLUGIN_FIXTURES.filter((fixture) => !pluginExists(fixture.id));
+    if (missingPlugins.length > 0) {
+      throw new Error([
+        'Real plugin fixtures are missing. Run:',
+        '  node scripts/download-community-plugins.js',
+        'Missing:',
+        ...missingPlugins.map((plugin) => `  - ${plugin.name} (${plugin.repo})`),
+      ].join('\n'));
+    }
+    if (!fs.existsSync(REAL_PLUGINS_MATRIX_PATH)) {
+      throw new Error('Real plugin matrix is missing. Run: node scripts/download-community-plugins.js');
+    }
+
+    matrix = readRealPluginMatrix();
+    expect(matrix.schemaVersion).toBe(1);
+    expect(matrix.failures ?? []).toEqual([]);
+    for (const fixture of REAL_PLUGIN_FIXTURES) {
+      const item = matrixPlugin(matrix, fixture.id);
+      expect(item, `matrix entry for ${fixture.id}`).toBeDefined();
+      expect(item?.repo).toBe(fixture.repo);
+      expect(item?.expectedCompatibilityLevel).toBe(fixture.expectedCompatibilityLevel);
+    }
+  });
+
   beforeEach(() => {
     mindRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-real-plugins-'));
   });
@@ -103,11 +151,20 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
 
   for (const fixture of REAL_PLUGIN_FIXTURES) {
     describe(fixture.name, () => {
-      it.skipIf(!pluginExists(fixture.id))(`analyzes ${fixture.name} compatibility`, () => {
+      it(`analyzes ${fixture.name} compatibility against the downloaded matrix`, () => {
         const mainJsPath = path.join(getPluginPath(fixture.id), 'main.js');
+        const manifestPath = path.join(getPluginPath(fixture.id), 'manifest.json');
         const code = fs.readFileSync(mainJsPath, 'utf-8');
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as { id: string; name: string; version: string };
+        const matrixItem = matrixPlugin(matrix, fixture.id);
+        expect(matrixItem).toBeDefined();
+        expect(matrixItem?.manifest).toMatchObject({
+          id: manifest.id,
+          name: manifest.name,
+          version: manifest.version,
+        });
 
-        const report = analyzePluginCompatibility(code);
+        const report = analyzePluginCompatibility(code, manifest);
         const level = getCompatibilityLevel(report);
 
         console.log(`${fixture.name} compatibility: ${level}`);
@@ -116,12 +173,10 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
         console.log(`  Unsupported APIs: ${report.unsupportedApis.length}`);
         console.log(`  Blockers: ${report.blockers.length}`);
 
-        // We don't enforce exact match because real plugins may evolve
-        // Just ensure we can analyze them without crashing
-        expect(['compatible', 'partial', 'blocked']).toContain(level);
+        expect(level).toBe(fixture.expectedCompatibilityLevel);
       });
 
-      it.skipIf(!pluginExists(fixture.id))(`loads ${fixture.name} plugin`, async () => {
+      it(`loads ${fixture.name} plugin or records a typed runtime failure`, async () => {
         copyPluginToVault(fixture.id, mindRoot);
 
         const manager = new PluginManager(mindRoot);
@@ -131,35 +186,41 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
         expect(plugin).toBeDefined();
         expect(plugin?.name).toBe(fixture.name);
 
-        // Try to enable and load
         await manager.enable(fixture.id);
         const result = await manager.loadEnabledPlugins();
 
-        // Plugin should either load successfully or fail gracefully
-        expect(result.loaded.includes(fixture.id) || result.failed.includes(fixture.id)).toBe(true);
+        const loaded = result.loaded.includes(fixture.id);
+        const failed = result.failed.includes(fixture.id);
+        const skipped = result.skipped.includes(fixture.id);
+        expect(loaded || failed || skipped).toBe(true);
 
-        if (result.loaded.includes(fixture.id)) {
+        if (fixture.expectedCompatibilityLevel === 'compatible') {
+          expect(loaded, `${fixture.name} should load as a compatible real-plugin fixture`).toBe(true);
+        }
+
+        if (loaded) {
           console.log(`✓ ${fixture.name} loaded successfully`);
+        } else if (skipped) {
+          console.log(`- ${fixture.name} skipped by compatibility gate`);
         } else {
-          console.log(`✗ ${fixture.name} failed to load (expected for some plugins)`);
+          const afterLoad = manager.list().find((p) => p.id === fixture.id);
+          expect(afterLoad?.lastError, `${fixture.name} should expose a runtime failure reason`).toBeTruthy();
+          console.log(`✗ ${fixture.name} failed to load: ${afterLoad?.lastError}`);
         }
       });
     });
   }
 
-  it('provides instructions when plugins are not downloaded', () => {
-    const missingPlugins = REAL_PLUGIN_FIXTURES.filter(f => !pluginExists(f.id));
-
-    if (missingPlugins.length > 0) {
-      console.log('\nTo download real plugins for testing:');
-      console.log('  node scripts/download-community-plugins.js\n');
-      console.log('Missing plugins:');
-      missingPlugins.forEach(p => {
-        console.log(`  - ${p.name} (${p.repo})`);
-      });
+  it('records source provenance for the manual compatibility matrix', () => {
+    expect(matrix.sourcePolicy).toBe('github-release-assets');
+    for (const fixture of REAL_PLUGIN_FIXTURES) {
+      const item = matrixPlugin(matrix, fixture.id);
+      expect(item?.releaseTag).toBeTruthy();
+      expect(item?.files['manifest.json']?.present).toBe(true);
+      expect(item?.files['manifest.json']?.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(item?.files['main.js']?.present).toBe(true);
+      expect(item?.files['main.js']?.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
-
-    expect(true).toBe(true); // Always pass, just informational
   });
 });
 

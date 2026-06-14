@@ -14,12 +14,17 @@ import type { ObsidianCommunityUpdatePlan } from '@/lib/obsidian-compat/communit
 import { compareCommunityVersions } from '@/lib/obsidian-compat/community-version';
 import {
   communityPreflightClass,
+  communityPreflightSupport,
+  communityPreflightSupportClass,
+  communityPreflightSurfaceClass,
+  communityPreflightSurfaces,
   communityStatusClass,
   communityUpdateClass,
   type CommunityInstallState,
   type CommunityPreflightState,
   type CommunityUpdatePlanState,
   type CommunityUpdateState,
+  type CommunityPreflightSurfacePrediction,
   type PluginsCopy,
 } from './PluginsTabModel';
 
@@ -40,6 +45,70 @@ interface CommunityPluginRowProps {
   onInstall: (plugin: ObsidianCommunityCatalogItem) => void | Promise<void>;
   onOpenHost: (pluginId: string) => void;
   onOpenImportPanel: () => void;
+}
+
+function CommunityPreflightSupportPreview({
+  copy,
+  result,
+}: {
+  copy: PluginsCopy;
+  result: NonNullable<CommunityPreflightState['result']>;
+}) {
+  const support = communityPreflightSupport(result);
+  const level = support.kind;
+  const surfaces = communityPreflightSurfaces(result);
+
+  return (
+    <div className="mt-2 border-t border-current/15 pt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-2xs font-medium uppercase opacity-80">
+          {copy.communityPreflightSupportTitle}
+        </span>
+        <span className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${communityPreflightSupportClass(level)}`}>
+          {copy.communityPreflightSupportLevel(level)}
+        </span>
+      </div>
+      <p className="mt-1 text-2xs leading-relaxed opacity-90">
+        {copy.communityPreflightSupportNote(level)}
+      </p>
+      {support.reason && (
+        <p className="mt-1 text-2xs leading-relaxed opacity-90">
+          <span className="font-medium">{copy.communityPreflightSupportReasonLabel}</span>{' '}
+          {support.reason}
+        </p>
+      )}
+      {surfaces.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {surfaces.map((surface) => (
+            <CommunityPreflightSurfaceChip key={surface.id} copy={copy} surface={surface} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-2xs leading-relaxed opacity-75">
+          {copy.communityPreflightSurfaceEmpty}
+        </p>
+      )}
+      <p className="mt-2 text-2xs leading-relaxed opacity-75">
+        {copy.communityPreflightInstallBoundary}
+      </p>
+    </div>
+  );
+}
+
+function CommunityPreflightSurfaceChip({
+  copy,
+  surface,
+}: {
+  copy: PluginsCopy;
+  surface: CommunityPreflightSurfacePrediction;
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs ${communityPreflightSurfaceClass(surface.state)}`}>
+      <span className="font-medium">{copy.communityPreflightSurfaceLabel(surface.id)}</span>
+      <span className="font-mono opacity-75">{copy.communityPreflightSurfaceState(surface.state)}</span>
+      <span className="font-mono opacity-60">{copy.communityPreflightSurfaceDetail(surface.id, surface.count)}</span>
+    </span>
+  );
 }
 
 export function CommunityPluginRow({
@@ -195,6 +264,7 @@ export function CommunityPluginRow({
           <p className="mt-1 text-2xs leading-relaxed opacity-90">
             {preflightBlocker ?? copy.communityUpdateNote(versionState)}
           </p>
+          <CommunityPreflightSupportPreview copy={copy} result={preflight.result} />
           {versionState === 'update-available' && (
             <button
               type="button"
@@ -294,6 +364,7 @@ export function CommunityPluginRow({
           <p className="mt-1 text-2xs leading-relaxed opacity-90">
             {preflightBlocker ?? copy.communityPreflightNoBlockers}
           </p>
+          <CommunityPreflightSupportPreview copy={copy} result={preflight.result} />
         </div>
       )}
 
