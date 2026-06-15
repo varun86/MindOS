@@ -198,9 +198,10 @@ MCP_TRANSPORT=http MINDOS_MCP_PORT=8567 MINDOS_WEB_PORT=4567 node packages/mindo
 `stopMindos()` 在 `NODE_ENV=test` 时自动跳过进程 kill，`npm test` 和 `git push` 都不会影响 dev server。
 
 ```bash
-git push                          # 正常跑测试，不杀 dev server
+git push                          # 跑 pre-push 分层快门，不杀 dev server
 SKIP_TESTS=1 git push             # 跳过测试直接 push
-npm test                          # 手动跑测试，不杀 dev server
+pnpm test                         # 手动跑测试，不杀 dev server
+pnpm run test:release             # release 前全量 build + test + typecheck
 ```
 
 ## Git 提交流程
@@ -238,11 +239,12 @@ npm test                          # 手动跑测试，不杀 dev server
 - 完成后在任务分支提交并 `git push -u origin <task-branch>`，不要直接 push 到 `main`。
 - push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
 
-**验证分层：任务分支快门 / 主线全量门**
+**验证分层：pre-push 快门 / release 全量门**
+- `git push` 默认调用 `scripts/pre-push-checks.mjs`，按本次 push 的 changed files 选择验证：文档-only 只跑 `git diff --check`；Web 代码跑相关 Vitest + `@mindos/web` typecheck；核心 / mobile / desktop / retrieval 改动跑对应 package 的 test/typecheck；脚本改动补 `node --check` 或 `bash -n`。
 - 任务分支 push 是交付候选，不等于进入主线；小 feature、UI polish、文档/局部修复默认跑“快门”：受影响测试 + 必要 typecheck + `git diff --check`，UI 改动补 `/tmp/...png` 截图。
-- 快门已通过时，任务分支可用 `SKIP_TESTS=1 git push -u origin <task-branch>` 跳过 pre-push 全量门；handoff 必须写清已跑命令、截图路径、未跑全量的原因。
-- 跨模块重构、权限/安全/数据迁移、发布包、runtime/协议/同步等高风险改动，不走默认快门；任务分支 push 前也应主动跑相应 full test/build。
-- 主 worktree 合入任务分支后必须走主线全量门：按影响范围跑 full tests/typecheck/build，再 `git push origin main`；`main` / release push 不使用快门跳过。
+- 快门已通过时，任务分支如果还需跳过 hook，可用 `SKIP_TESTS=1 git push -u origin <task-branch>`；handoff 必须写清已跑命令、截图路径、未跑全量的原因。
+- 跨模块重构、权限/安全/数据迁移、发布包、runtime/协议/同步等高风险改动，不只依赖默认快门；任务分支 push 前也应主动跑相应 full test/build。
+- release 前必须跑全量门：`pnpm run test:release`。它显式执行 root contracts / unit、全 workspace build、全 workspace test、全 workspace typecheck；不要把 release 质量门塞回普通 pre-push。
 - 如果 hook 因环境问题失败，只有在已用等价命令完成同级验证后才可 `SKIP_TESTS=1`，并在汇报里写明环境原因和替代验证。
 
 **防覆盖合并规则**

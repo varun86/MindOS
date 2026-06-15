@@ -31,6 +31,8 @@
     "start": "node packages/mindos/bin/cli.js start",
     "mcp": "node packages/mindos/bin/cli.js mcp",
     "test": "pnpm run test:contracts && pnpm run test:unit && turbo run test",
+    "test:quick": "pnpm run test:contracts && pnpm run test:unit",
+    "test:release": "pnpm run test:contracts && pnpm run test:unit && turbo run build && turbo run test && turbo run type-check",
     "test:contracts": "vitest run tests/*.test.ts",
     "test:unit": "vitest run tests/unit/*.test.ts",
     "test:integration": "vitest run --config tests/integration/vitest.config.ts",

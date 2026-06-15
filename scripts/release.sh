@@ -16,7 +16,7 @@ fi
 
 # 2. Run tests
 echo "🧪 Running tests..."
-npm test
+pnpm run test:release
 echo ""
 
 # 3. Verify Next.js build
