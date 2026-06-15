@@ -17,8 +17,6 @@ interface AskHeaderProps {
   isLoading: boolean;
   maximized?: boolean;
   onMaximize?: () => void;
-  askMode?: 'panel' | 'popup';
-  onModeSwitch?: () => void;
   onClose?: () => void;
   /** Navigate from fullscreen to right-side panel mode */
   onDockToPanel?: () => void;

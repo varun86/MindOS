@@ -568,14 +568,10 @@ function BuiltInMindSpaces({
         type="button"
         onClick={toggleCollapsed}
         data-state={collapsed ? 'collapsed' : 'expanded'}
-        data-hit-active={expanded ? 'true' : undefined}
+        data-hit-active={expanded || activeSlotKey ? 'true' : undefined}
         aria-expanded={!collapsed}
         aria-controls={MIND_SYSTEM_SLOT_LIST_ID}
-        className={`hit-target-box relative mb-1 flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:var(--radius-md)] ${
-          collapsed
-            ? 'rounded-md border border-transparent [--hit-target-border-width:1px] [--hit-target-border:transparent] [--hit-target-hover-bg:var(--muted)]'
-            : 'rounded-md border border-transparent [--hit-target-border-width:1px] [--hit-target-border:color-mix(in_srgb,var(--amber)_25%,transparent)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-active-border:color-mix(in_srgb,var(--amber)_25%,transparent)] [--hit-target-hover-bg:var(--amber-dim)] [--hit-target-hover-border:color-mix(in_srgb,var(--amber)_30%,transparent)]'
-        }`}
+        className="hit-target-box relative mb-1 flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:var(--radius-lg)] [--hit-target-border-width:1px] [--hit-target-border:transparent] [--hit-target-hover-bg:var(--muted)] [--hit-target-hover-border:color-mix(in_srgb,var(--border)_65%,transparent)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-active-border:color-mix(in_srgb,var(--amber)_28%,transparent)]"
       >
         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
           collapsed
@@ -606,9 +602,9 @@ function BuiltInMindSpaces({
                 data-mind-system-sidebar-open={item.key}
                 data-hit-active={active ? 'true' : undefined}
                 aria-current={active ? 'page' : undefined}
-                className={`hit-target-box relative flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-radius:var(--radius-md)] ${
+                className={`hit-target-box relative flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:var(--radius-md)] [--hit-target-border-width:1px] [--hit-target-border:transparent] [--hit-target-hover-bg:var(--muted)] [--hit-target-hover-border:color-mix(in_srgb,var(--border)_60%,transparent)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-active-border:color-mix(in_srgb,var(--amber)_24%,transparent)] ${
                   active
-                    ? 'rounded-md bg-[var(--amber-subtle)] text-foreground'
+                    ? 'text-foreground'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >

@@ -325,15 +325,17 @@ describe('Panel Mind System collapse', () => {
     });
 
     const toggle = getMindSystemToggle(host);
-    expect(toggle.className).toContain('rounded-md');
-    expect(toggle.className).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_25%,transparent)]');
+    expect(toggle.className).toContain('[--hit-target-radius:var(--radius-lg)]');
+    expect(toggle.className).toContain('[--hit-target-active-bg:var(--amber-subtle)]');
+    expect(toggle.className).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_28%,transparent)]');
     expect(toggle.querySelector('[class*="rounded-r-full"]')).toBeNull();
 
     const openButton = host.querySelector<HTMLButtonElement>('[data-mind-system-sidebar-open="dao"]');
     expect(openButton).not.toBeNull();
     expect(openButton?.getAttribute('aria-current')).toBe('page');
-    expect(openButton?.className).toContain('rounded-md');
-    expect(openButton?.className).toContain('bg-[var(--amber-subtle)]');
+    expect(openButton?.className).toContain('[--hit-target-radius:var(--radius-md)]');
+    expect(openButton?.className).toContain('[--hit-target-active-bg:var(--amber-subtle)]');
+    expect(openButton?.className).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_24%,transparent)]');
     expect(openButton?.querySelector('[class*="rounded-r-full"]')).toBeNull();
   });
 

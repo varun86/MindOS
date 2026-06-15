@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Cpu, ChevronDown, ChevronRight, Check, Loader2, Search, RefreshCw } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -164,49 +164,63 @@ export default function ProviderModelCapsule({
 
   /* ── Dropdown positioning ── */
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-  const repositionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const repositionFrameRef = useRef<number | undefined>(undefined);
 
-  const reposition = useCallback(() => {
-    if (!triggerRef.current) return;
+  const computeDropdownStyle = useCallback((): React.CSSProperties | null => {
+    if (!triggerRef.current) return null;
     const dropdownWidth = 276;
     const viewportPadding = 8;
     const rect = triggerRef.current.getBoundingClientRect();
     const goUp = rect.top > window.innerHeight - rect.bottom && rect.top > 280;
-    setDropdownStyle({
+    return {
       position: 'fixed',
       left: Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - dropdownWidth - viewportPadding)),
       width: dropdownWidth,
       ...(goUp ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
       zIndex: 60,
-    });
+    };
   }, []);
 
-  // Debounce repositioning to prevent jank from rapid mouse events
-  const debouncedReposition = useCallback(() => {
-    if (repositionTimerRef.current) clearTimeout(repositionTimerRef.current);
-    repositionTimerRef.current = setTimeout(() => {
+  const reposition = useCallback(() => {
+    const nextStyle = computeDropdownStyle();
+    if (!nextStyle) return;
+    setDropdownStyle(previous => {
+      const same =
+        previous.left === nextStyle.left &&
+        previous.top === nextStyle.top &&
+        previous.bottom === nextStyle.bottom &&
+        previous.width === nextStyle.width;
+      return same ? previous : nextStyle;
+    });
+  }, [computeDropdownStyle]);
+
+  const scheduleReposition = useCallback(() => {
+    if (repositionFrameRef.current !== undefined) cancelAnimationFrame(repositionFrameRef.current);
+    repositionFrameRef.current = requestAnimationFrame(() => {
+      repositionFrameRef.current = undefined;
       reposition();
-    }, 0); // Use requestAnimationFrame-like timing
+    });
   }, [reposition]);
 
   // Cleanup timers on unmount
   useEffect(() => () => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     if (openTimerRef.current) clearTimeout(openTimerRef.current);
-    if (repositionTimerRef.current) clearTimeout(repositionTimerRef.current);
+    if (repositionFrameRef.current !== undefined) cancelAnimationFrame(repositionFrameRef.current);
   }, []);
 
-  useEffect(() => { if (open) reposition(); }, [open, reposition]);
+  useLayoutEffect(() => { if (open) reposition(); }, [open, reposition]);
   useEffect(() => {
     if (!open) return;
-    window.addEventListener('scroll', debouncedReposition, true);
-    window.addEventListener('resize', debouncedReposition);
+    window.addEventListener('resize', scheduleReposition);
     return () => { 
-      window.removeEventListener('scroll', debouncedReposition, true); 
-      window.removeEventListener('resize', debouncedReposition); 
-      if (repositionTimerRef.current) clearTimeout(repositionTimerRef.current);
+      window.removeEventListener('resize', scheduleReposition);
+      if (repositionFrameRef.current !== undefined) {
+        cancelAnimationFrame(repositionFrameRef.current);
+        repositionFrameRef.current = undefined;
+      }
     };
-  }, [open, debouncedReposition]);
+  }, [open, scheduleReposition]);
 
   // Close on outside click — check trigger, provider panel, and flyout
   useEffect(() => {
@@ -607,8 +621,14 @@ export default function ProviderModelCapsule({
         type="button"
         onClick={() => {
           if (disabled) return;
-          setOpen(v => !v);
-          if (open) { setHoveredProvider(null); setModelSearch(''); }
+          if (open) {
+            setOpen(false);
+            setHoveredProvider(null);
+            setModelSearch('');
+            return;
+          }
+          reposition();
+          setOpen(true);
         }}
         disabled={disabled}
         data-hit-active={providerValue || hasModelOverride || open ? 'true' : undefined}

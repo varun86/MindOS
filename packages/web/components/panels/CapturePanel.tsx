@@ -201,6 +201,7 @@ export default function CapturePanel() {
               title={t.inbox.viewShelved}
               active={activeView === 'shelved'}
               count={shelvedFiles.length}
+              emphasized={shelvedFiles.length > 0}
               onSelect={() => navigateToView('shelved')}
             />
             <CapturePanelLink
@@ -208,6 +209,7 @@ export default function CapturePanel() {
               title={t.inbox.viewHistory}
               active={activeView === 'history'}
               count={history.length}
+              emphasized={history.length > 0}
               onSelect={() => navigateToView('history')}
             />
           </div>
@@ -291,11 +293,9 @@ function CapturePanelLink({
       <span className={`min-w-0 flex-1 truncate text-xs font-medium ${active ? 'text-foreground' : 'text-foreground/85'}`}>{title}</span>
       {typeof count === 'number' && count > 0 && (
         <span className={`rounded-full px-1.5 py-px text-2xs font-medium tabular-nums ${
-          active
-            ? 'bg-background/75 text-[var(--amber-text)]'
-            : emphasized
-              ? 'bg-[var(--amber)]/10 text-[var(--amber)]/75'
-              : 'bg-muted/55 text-muted-foreground/75'
+          emphasized
+            ? 'bg-[var(--amber)]/10 text-[var(--amber)]/75'
+            : 'bg-muted/55 text-muted-foreground/75'
         }`}>
           {count}
         </span>

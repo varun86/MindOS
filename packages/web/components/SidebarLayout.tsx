@@ -804,8 +804,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
             <SearchPanel
               active={activeLeftPanel === 'search'}
               focusRequest={searchFocusRequest}
-              maximized={effectivePanelMaximized}
-              onMaximize={lp.handlePanelMaximize}
               onClose={closeSearchPanel}
             />
           </div>
@@ -843,8 +841,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           width={ap.askPanelWidth}
           onWidthChange={ap.handleAskWidthChange}
           onWidthCommit={ap.handleAskWidthCommit}
-          askMode={ap.askMode}
-          onModeSwitch={ap.handleAskModeSwitch}
           maximized={ap.askMaximized}
           onMaximize={ap.toggleAskMaximized}
           sidebarOffset={panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}
@@ -872,8 +868,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           initialAcpAgent={ap.askAcpAgent}
           initialAgentRuntime={ap.askAgentRuntime}
           onFirstMessage={handleFirstMessage}
-          askMode={ap.askMode}
-          onModeSwitch={ap.handleAskModeSwitch}
         />
       )}
 

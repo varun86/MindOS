@@ -64,25 +64,24 @@ afterEach(async () => {
 });
 
 describe('idle polling budget (35s 空闲请求数 ≤10 的支撑契约)', () => {
-  it('EchoSidebarStats stays quiet for 35 idle seconds after the initial load', async () => {
+  it('EchoSidebarStats is disabled and makes no idle requests', async () => {
     await renderComponent(<EchoSidebarStats />);
     await act(() => vi.advanceTimersByTimeAsync(50));
     const initialCalls = apiFetchMock.mock.calls.length;
-    expect(initialCalls).toBe(3); // monitoring + changes + ask-sessions
+    expect(initialCalls).toBe(0);
 
     await act(() => vi.advanceTimersByTimeAsync(35_000));
     expect(apiFetchMock.mock.calls.length).toBe(initialCalls);
   });
 
-  it('EchoSidebarStats refetches promptly on a files-changed event instead of polling', async () => {
+  it('EchoSidebarStats ignores files-changed events after the Recent section was removed', async () => {
     await renderComponent(<EchoSidebarStats />);
     await act(() => vi.advanceTimersByTimeAsync(50));
     const initialCalls = apiFetchMock.mock.calls.length;
 
     emitFilesChanged();
-    // listener coalesces bursts (~300ms) before refetching
     await act(() => vi.advanceTimersByTimeAsync(500));
-    expect(apiFetchMock.mock.calls.length).toBe(initialCalls + 3);
+    expect(apiFetchMock.mock.calls.length).toBe(initialCalls);
   });
 
   it('ChangesBanner stays quiet for 35 idle seconds after the initial load', async () => {

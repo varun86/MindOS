@@ -45,6 +45,7 @@ describe('icon button hit areas', () => {
     const panelHeaderSource = readSource('components/panels/PanelHeader.tsx');
     const filesPanelSource = readSource('components/Panel.tsx');
     const agentsPanelSource = readSource('components/panels/AgentsPanel.tsx');
+    const searchPanelSource = readSource('components/panels/SearchPanel.tsx');
 
     expect(panelHeaderSource).toContain('flex h-[46px] shrink-0 items-center');
     expect(panelHeaderSource).not.toContain('px-4 py-3 h-[46px]');
@@ -59,6 +60,9 @@ describe('icon button hit areas', () => {
     expect(agentsPanelSource).toContain('<PanelHeader title={p.title} />');
     expect(agentsPanelSource).not.toContain('onMaximize={onMaximize}');
     expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
+
+    expect(searchPanelSource).not.toContain('onMaximize');
+    expect(searchPanelSource).not.toContain('shadow-[inset_3px_0_0_var(--amber)]');
   });
 
   it('keeps files panel header actions compact without hiding depth controls', () => {
@@ -80,14 +84,14 @@ describe('icon button hit areas', () => {
   it('keeps built-in Mind System sidebar controls on rectangular hit targets', () => {
     const source = readSource('components/Panel.tsx');
 
-    expect(source).toContain('data-hit-active={expanded ? \'true\' : undefined}');
+    expect(source).toContain("data-hit-active={expanded || activeSlotKey ? 'true' : undefined}");
     expect(source).toContain('hit-target-box relative mb-1 flex w-full items-center gap-2');
     expect(source).toContain('[--hit-target-active-bg:var(--amber-subtle)]');
-    expect(source).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_25%,transparent)]');
+    expect(source).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_28%,transparent)]');
     expect(source).not.toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
     expect(source).toContain('data-mind-system-sidebar-open={item.key}');
     expect(source).toContain('hit-target-box relative flex w-full min-w-0 items-center gap-2');
-    expect(source).toContain('rounded-md bg-[var(--amber-subtle)] text-foreground');
+    expect(source).toContain('[--hit-target-active-border:color-mix(in_srgb,var(--amber)_24%,transparent)]');
   });
 
   it('keeps file tree row controls on stable hit targets', () => {

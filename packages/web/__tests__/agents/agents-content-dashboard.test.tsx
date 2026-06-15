@@ -272,8 +272,10 @@ describe('Agents content dashboard', () => {
 
     expect(html).toContain(a.mcp.tabs.byAgent);
     expect(html).toContain(a.mcp.tabs.byServer);
-    expect(html).toContain(a.mcp.connectionGraph);
+    expect(html).not.toContain(a.mcp.connectionGraph);
+    expect(html).not.toContain(a.mcp.serverAgentCount(2));
     expect(html).not.toContain(a.mcp.resultCount(4));
+    expect(html).toContain('h-[calc(100vh-340px)]');
     expect(html).toContain(a.skills.title);
     expect(html).toContain(a.skills.tabs.bySkill);
     expect(html).toContain(a.skills.tabs.byAgent);

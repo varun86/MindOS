@@ -124,15 +124,11 @@ interface AskContentProps {
   onClose?: () => void;
   maximized?: boolean;
   onMaximize?: () => void;
-  /** Current Ask display mode */
-  askMode?: 'panel' | 'popup';
-  /** Switch between panel ↔ popup */
-  onModeSwitch?: () => void;
   /** Navigate from fullscreen to right-side panel mode */
   onDockToPanel?: () => void;
 }
 
-export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, initialSessionId, onFirstMessage, variant, onClose, maximized, onMaximize, askMode, onModeSwitch, onDockToPanel }: AskContentProps) {
+export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, initialSessionId, onFirstMessage, variant, onClose, maximized, onMaximize, onDockToPanel }: AskContentProps) {
   const isPanel = variant === 'panel';
   const isHome = variant === 'home';
 
@@ -1075,8 +1071,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
         isLoading={isLoading}
         maximized={maximized}
         onMaximize={isHome ? onMaximize : onMaximize}
-        askMode={isHome ? undefined : askMode}
-        onModeSwitch={isHome ? undefined : onModeSwitch}
         onClose={isHome ? undefined : onClose}
         onDockToPanel={maximized ? onDockToPanel : undefined}
         sessions={runtimeScopedSessions}

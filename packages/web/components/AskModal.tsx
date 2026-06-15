@@ -12,11 +12,9 @@ interface AskModalProps {
   initialAcpAgent?: AcpAgentSelection | null;
   initialAgentRuntime?: AskAgentRuntimeSelection | null;
   onFirstMessage?: () => void;
-  askMode?: 'panel' | 'popup';
-  onModeSwitch?: () => void;
 }
 
-export default function AskModal({ open, onClose, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, onFirstMessage, askMode, onModeSwitch }: AskModalProps) {
+export default function AskModal({ open, onClose, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, onFirstMessage }: AskModalProps) {
   const { t } = useLocale();
 
   if (!open) return null;
@@ -41,8 +39,6 @@ export default function AskModal({ open, onClose, currentFile, initialMessage, i
           initialAcpAgent={initialAcpAgent}
           initialAgentRuntime={initialAgentRuntime}
           onFirstMessage={onFirstMessage}
-          askMode={askMode}
-          onModeSwitch={onModeSwitch}
         />
       </div>
     </div>

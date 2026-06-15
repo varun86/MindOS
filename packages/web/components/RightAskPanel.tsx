@@ -27,8 +27,6 @@ interface RightAskPanelProps {
   width: number;
   onWidthChange: (w: number) => void;
   onWidthCommit: (w: number) => void;
-  askMode?: 'panel' | 'popup';
-  onModeSwitch?: () => void;
   maximized?: boolean;
   onMaximize?: () => void;
   /** Left offset (px) to avoid covering Rail + Sidebar when maximized */
@@ -37,7 +35,7 @@ interface RightAskPanelProps {
 
 export default function RightAskPanel({
   open, onClose, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, onFirstMessage,
-  width, onWidthChange, onWidthCommit, askMode, onModeSwitch,
+  width, onWidthChange, onWidthCommit,
   maximized = false, onMaximize, sidebarOffset = 0,
 }: RightAskPanelProps) {
   const snapFiredRef = useRef(false);
@@ -154,8 +152,6 @@ export default function RightAskPanel({
             initialAgentRuntime={initialAgentRuntime}
             onFirstMessage={onFirstMessage}
             onClose={onClose}
-            askMode={askMode}
-            onModeSwitch={onModeSwitch}
             maximized={maximized}
             onMaximize={onMaximize}
           />

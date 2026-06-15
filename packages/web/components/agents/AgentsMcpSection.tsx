@@ -171,7 +171,7 @@ export default function AgentsMcpSection({
       </div>
 
       {/* Compact status strip + risk alerts */}
-      <div className="rounded-xl border border-border/60 bg-gradient-to-r from-card to-card/80 p-3.5">
+      <div className="space-y-2 px-0.5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
           <StatusDot tone="ok" label={copy.filters.connected} count={buckets.connected.length} />
           <StatusDot tone="warn" label={copy.filters.detected} count={buckets.detected.length} />
@@ -182,12 +182,10 @@ export default function AgentsMcpSection({
           <StatusDot tone={mcp.status?.running ? 'ok' : 'neutral'} label={copy.mcpServerLabel} count={mcp.status?.running ? 1 : 0} />
         </div>
         {!mcp.status?.running && (
-          <div className="mt-2 pt-2 border-t border-border/60" role="alert">
-            <p className="text-xs text-destructive flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" aria-hidden="true" />
-              {copy.riskMcpStopped}
-            </p>
-          </div>
+          <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
+            {copy.riskMcpStopped}
+          </p>
         )}
       </div>
 
@@ -452,10 +450,7 @@ function ByServerView({
 
   return (
     <>
-      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-        {copy.connectionGraph}
-      </p>
-      <div className="max-h-[min(540px,calc(100vh-260px))] space-y-3 overflow-y-auto pr-1">
+      <div className="h-[calc(100vh-340px)] min-h-[220px] space-y-2 overflow-y-auto pr-1">
         {hintMessage && (
           <div role="status" aria-live="polite" className="mb-3 rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground animate-in fade-in duration-200">
             {hintMessage}
@@ -469,16 +464,12 @@ function ByServerView({
           const orphanNames = srv.agents.filter((name) => !agentsByName.has(name));
           const availableToAdd = allAgentPickerOptions.filter((a) => !serverAgentNames.has(a.name));
 
-          const connectedCount = agentDetails.filter((a) => resolveAgentStatus(a) === 'connected').length;
-          const detectedCount = agentDetails.filter((a) => resolveAgentStatus(a) === 'detected').length;
-          const notFoundCount = agentDetails.length - connectedCount - detectedCount + orphanNames.length;
-
           return (
-            <div key={srv.serverName} className="rounded-lg border border-border/70 bg-card/90 p-4 shadow-sm transition-all duration-200 hover:border-[var(--amber)]/35 hover:bg-card hover:shadow-md">
+            <div key={srv.serverName} className="rounded-lg border border-border/60 bg-background/55 px-3 py-3 transition-colors duration-150 hover:border-[var(--amber)]/30 hover:bg-muted/25">
               {/* Server header */}
-              <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-md bg-[var(--amber-subtle)] border border-[var(--amber)]/15 flex items-center justify-center shrink-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/15 bg-[var(--amber-subtle)]">
                     <Server size={13} className="text-[var(--amber)]" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
@@ -510,28 +501,6 @@ function ByServerView({
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Agent status breakdown */}
-              <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground mb-3">
-                {connectedCount > 0 && (
-                  <span className="inline-flex min-h-[22px] items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" aria-hidden="true" />
-                    {connectedCount}
-                  </span>
-                )}
-                {detectedCount > 0 && (
-                  <span className="inline-flex min-h-[22px] items-center gap-1 rounded-full border border-[var(--amber)]/20 bg-[var(--amber-dim)] px-2 text-[var(--amber-text)]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--amber)]" aria-hidden="true" />
-                    {detectedCount}
-                  </span>
-                )}
-                {notFoundCount > 0 && (
-                  <span className="inline-flex min-h-[22px] items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
-                    {notFoundCount}
-                  </span>
-                )}
               </div>
 
               {reconnectMsg[srv.serverName] && (

@@ -51,8 +51,6 @@ describe('AskHeader panel hit area', () => {
         isLoading={false}
         maximized={false}
         onMaximize={vi.fn()}
-        askMode="panel"
-        onModeSwitch={vi.fn()}
         onClose={vi.fn()}
         sessions={[
           { id: '1', title: 'First session' } as any,

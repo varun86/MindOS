@@ -74,8 +74,6 @@ interface SearchPanelProps {
   /** Called when user navigates to a result (panel host may want to close) */
   onNavigate?: () => void;
   onClose?: () => void;
-  maximized?: boolean;
-  onMaximize?: () => void;
 }
 
 export { getSearchWarmHint, shouldStartSearchPrewarm } from '@/hooks/useSearchPrewarm';
@@ -566,7 +564,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
                   onMouseEnter={() => setSelectedIndex(i)}
                   className={`
                     group flex w-full items-center gap-3 rounded-md border px-2.5 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-100
-                    ${isSelected ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] shadow-[inset_3px_0_0_var(--amber)]' : 'border-transparent hover:bg-muted/45'}
+                    ${isSelected ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)]' : 'border-transparent hover:bg-muted/45'}
                   `}
                 >
                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
@@ -619,7 +617,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
                   onMouseEnter={() => setSelectedIndex(visiblePluginCommands.length + i)}
                   className={`
                     mb-1 flex w-full items-start gap-3 rounded-md border px-2.5 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-100
-                    ${isSelected ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] shadow-[inset_3px_0_0_var(--amber)]' : 'border-transparent'}
+                    ${isSelected ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)]' : 'border-transparent'}
                     ${isDragging ? 'bg-muted/70' : isSelected ? '' : 'hover:bg-muted/45'}
                   `}
                 >

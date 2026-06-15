@@ -233,6 +233,15 @@ describe('CapturePanel inbox sync', () => {
 
   it('marks Done active on the full history route', async () => {
     window.history.replaceState(null, '', '/capture/history');
+    localStorage.setItem('mindos:organize-history', JSON.stringify([
+      {
+        id: 'history-1',
+        timestamp: Date.now(),
+        sourceFiles: ['first.md'],
+        files: [{ action: 'create', path: 'MIND_DAO/first.md', ok: true }],
+        status: 'completed',
+      },
+    ]));
 
     const CapturePanel = (await import('@/components/panels/CapturePanel')).default;
 
@@ -248,6 +257,8 @@ describe('CapturePanel inbox sync', () => {
     const doneButton = Array.from(host.querySelectorAll('button'))
       .find(button => button.textContent?.includes('Done'));
     expect(doneButton?.getAttribute('aria-current')).toBe('page');
+    expect(doneButton?.textContent).toContain('1');
+    expect(doneButton?.querySelector('span:last-child')?.className).toContain('bg-[var(--amber)]/10');
     expect(host.querySelector('a[href="/capture/history"]')).toBeNull();
 
     await act(async () => {
