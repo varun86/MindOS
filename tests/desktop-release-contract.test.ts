@@ -198,6 +198,9 @@ describe('Desktop release packaging contract', () => {
     expect(workflow).toContain('Publishing unsigned Windows artifacts because WINDOWS_CERTIFICATE_BASE64/WINDOWS_CERTIFICATE_PASSWORD are not configured.');
     expect(workflow).toContain('Skipping Windows Authenticode verification because code-signing secrets are not configured; unsigned artifacts will be published.');
     expect(smokeStep).toContain('if [ "${{ matrix.platform }}" = "win" ] && [ "${{ matrix.arch }}" = "arm64" ]; then');
+    expect(smokeStep).toContain('if [ "${{ matrix.platform }}" = "mac" ] && [ "${{ matrix.arch }}" = "x64" ]; then');
+    expect(smokeStep).toContain('node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 240000');
+    expect(smokeStep.indexOf('matrix.platform }}" = "mac"')).toBeLessThan(smokeStep.indexOf('matrix.platform }}" = "win"'));
     expect(smokeStep).toContain('node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-only');
     expect(smokeStep).toContain('elif [ "${{ matrix.platform }}" = "win" ]; then');
     expect(smokeStep).toContain('node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-fallback');

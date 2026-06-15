@@ -252,11 +252,15 @@ jobs:
       - name: Smoke packaged app
         # mac x64 runs under Rosetta on the arm64 runner (smoke-desktop-app.mjs
         # detects the mismatch and prepends `arch -x86_64` instead of skipping).
+        # Rosetta cold starts are slow in CI, so mac x64 gets a longer timeout
+        # without weakening the native platform checks.
         # Windows x64 first smokes the real packaged Electron app, then falls
         # back to runtime-only smoke if CI cannot observe the GUI process.
         # Windows ARM64 uses runtime-only smoke on the x64 runner.
         run: |
-          if [ "${{ matrix.platform }}" = "win" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
+          if [ "${{ matrix.platform }}" = "mac" ] && [ "${{ matrix.arch }}" = "x64" ]; then
+            node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 240000
+          elif [ "${{ matrix.platform }}" = "win" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
             node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-only
           elif [ "${{ matrix.platform }}" = "win" ]; then
             node scripts/smoke-desktop-app.mjs --skip-if-arch-mismatch --timeout 90000 --windows-runtime-fallback
