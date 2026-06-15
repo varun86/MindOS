@@ -211,18 +211,16 @@ npm test                          # 手动跑测试，不杀 dev server
 
 | 角色 | 路径 / 分支 | 职责 |
 |------|-------------|------|
-| Git admin / bare repo | `/Users/moonshot/projects/product/mindos-dev` | 只存 Git 对象、refs、worktree 元数据；不是源码工作区 |
-| 主 worktree | 当前实际 `main` worktree（本机通常为 `/Users/moonshot/projects/product/mindos-dev/.claude/worktrees/perf-hardening`）/ `main` | 承接当前主线、热修、release、最终集成 |
-| 任务 worktree | 相邻目录或临时 worktree / 唯一任务分支 | 承接较大功能、跨模块 hardening、需要较长验证的任务 |
+| 主 worktree | `/Users/moonshot/projects/product/mindos-dev` / `main` | 承接当前主线、热修、release、最终集成 |
+| 任务 worktree | 相邻目录或 `.claude/worktrees/<task-slug>` / 唯一任务分支 | 承接较大功能、跨模块 hardening、需要较长验证的任务 |
 
-本仓库当前采用 **bare repo + 多 worktree** 布局：`/Users/moonshot/projects/product/mindos-dev` 是 Git 管理目录，不包含完整源码工作区；实际可编辑、可测试、可 merge 的源码目录通过 `git worktree list` 确认。看到 `(bare)` 的目录不要当作项目根来开发。
+本仓库主线固定回归根目录：`/Users/moonshot/projects/product/mindos-dev` 是唯一长期 `main` worktree。`.claude/worktrees/*` 和相邻 `mindos-dev-*` 目录只作为任务 worktree；不要让这些临时目录长期承载 `main`、release 或最终集成。
 
-**Bare / worktree 操作边界**
-- `bare` 目录只负责保存 Git 数据库和 worktree 元信息；不要在其中执行普通开发、测试、merge、rebase、冲突解决或 release。
-- `git status`、代码编辑、测试、build、merge、rebase、版本 bump、发版前检查都必须在具体 worktree 内执行；主线操作用实际 `main` worktree。
-- 不确定当前目录时先执行 `git worktree list` 和 `git rev-parse --show-toplevel`；如果当前路径显示为 `(bare)` 或 `git status` 提示必须在 work tree 里运行，立即切到实际 worktree。
-- 同步 `main` 时，先在主 worktree 跑 `git status --short --branch`。如果有本地改动，不能直接 `reset` 或强行 pull；先明确这些改动归属，必要时用临时 branch / commit / stash 保护后再快进或 merge。
-- merge 的结果（commit objects / refs）会写回 bare repo，但 merge 行为本身必须在 worktree 中完成。
+**Root / worktree 操作边界**
+- `git status`、代码编辑、测试、build、merge、rebase、版本 bump、发版前检查都默认在根目录主 worktree 执行。
+- 不确定当前目录时先执行 `pwd`、`git status --short --branch`、`git branch --show-current` 和 `git worktree list`；如果在 detached HEAD 或临时任务 worktree，先说明再决定是否切回根目录。
+- 同步 `main` 时，先在根目录主 worktree 跑 `git status --short --branch`。如果有本地改动，不能直接 `reset` 或强行 pull；先明确这些改动归属，必要时用临时 branch / commit / stash 保护后再快进或 merge。
+- 如果发现 `main` 被 checkout 到 `.claude/worktrees/*`，先提交或迁移其中改动，再释放该 worktree，把 `main` 切回根目录。
 
 任务分支不要写死成一个共享分支。按任务创建唯一分支，例如 `<agent>/<task-slug>`、`async/<task-slug>`、`fix/<task-slug>`；worktree 目录也用同一个 task slug 命名，便于清理和追踪。
 
@@ -246,6 +244,13 @@ npm test                          # 手动跑测试，不杀 dev server
 - 跨模块重构、权限/安全/数据迁移、发布包、runtime/协议/同步等高风险改动，不走默认快门；任务分支 push 前也应主动跑相应 full test/build。
 - 主 worktree 合入任务分支后必须走主线全量门：按影响范围跑 full tests/typecheck/build，再 `git push origin main`；`main` / release push 不使用快门跳过。
 - 如果 hook 因环境问题失败，只有在已用等价命令完成同级验证后才可 `SKIP_TESTS=1`，并在汇报里写明环境原因和替代验证。
+
+**防覆盖合并规则**
+- 固定由实际 `main` worktree 做最终集成和 release；任务 worktree 只交付候选分支，不直接替代主线状态。
+- 合并任务分支前，先确认该分支已包含最新 `origin/main`；长期分支、旧 PR、恢复类分支尤其不能直接合入。
+- 合并前不只看 Git conflict，还要做语义 diff：`git diff --name-status origin/main...origin/<task-branch>`，并重点审查 sidebar、channel、inbox、agents、activity bar、runtime、settings 等高风险 UI / 状态面。
+- 如果任务分支改到了高风险面，handoff 必须说明它是否会覆盖主线近期改动；主 worktree merge 后要补跑对应 regression tests 或手动截图检查。
+- 发现“无冲突但行为回退”时，不要继续 release；先在主 worktree 修复并补测试，把丢失的行为变成 regression contract。
 
 **任务成果进入主线的标准流程**
 1. 任务 worktree 只把成果 push 到 `origin/<task-branch>`；这一步只是交付候选，不会让 `main` 变新。
