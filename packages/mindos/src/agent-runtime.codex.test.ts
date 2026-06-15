@@ -215,12 +215,16 @@ describe('agent runtime adapters: Codex app-server', () => {
     });
 
     await client.initialize();
-    const thread = await client.startThread({ cwd: '/tmp/mind' });
+    const thread = await client.startThread({ cwd: '/tmp/mind', model: 'gpt-5.4-codex' });
     const notifications = [];
     for await (const notification of client.startTurn({
       threadId: thread.threadId,
       cwd: '/tmp/mind',
       input: [{ type: 'text', text: 'Summarize this repo.' }],
+      model: 'gpt-5.4-codex',
+      effort: 'high',
+      approvalPolicy: 'never',
+      sandbox: { mode: 'read-only' },
     })) {
       notifications.push(notification);
     }
@@ -235,7 +239,7 @@ describe('agent runtime adapters: Codex app-server', () => {
         },
       },
       { method: 'initialized', params: {} },
-      { method: 'thread/start', id: 2, params: { cwd: '/tmp/mind' } },
+      { method: 'thread/start', id: 2, params: { cwd: '/tmp/mind', model: 'gpt-5.4-codex' } },
       {
         method: 'turn/start',
         id: 3,
@@ -243,6 +247,10 @@ describe('agent runtime adapters: Codex app-server', () => {
           threadId: 'thr-new',
           cwd: '/tmp/mind',
           input: [{ type: 'text', text: 'Summarize this repo.' }],
+          model: 'gpt-5.4-codex',
+          effort: 'high',
+          approvalPolicy: 'never',
+          sandbox: { mode: 'read-only' },
         },
       },
     ]);
@@ -799,6 +807,9 @@ describe('agent runtime adapters: Codex app-server', () => {
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Summarize this repo.',
+      permissionMode: 'readonly',
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'high',
       send: (event) => events.push(event),
       services: {
         createCodexClient: () => createCodexAppServerClient(transport),
@@ -809,7 +820,20 @@ describe('agent runtime adapters: Codex app-server', () => {
     expect(transport.sent).toContainEqual({
       method: 'thread/start',
       id: 2,
-      params: { cwd: '/tmp/mind' },
+      params: { cwd: '/tmp/mind', model: 'gpt-5.4-codex' },
+    });
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: 'Summarize this repo.' }],
+        model: 'gpt-5.4-codex',
+        effort: 'high',
+        approvalPolicy: 'never',
+        sandbox: { mode: 'read-only' },
+      },
     });
     expect(events).toEqual([
       { type: 'status', visible: true, runtime: 'codex', message: 'Starting Codex locally.' },

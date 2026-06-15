@@ -857,6 +857,7 @@ input[type="radio"].form-radio:focus-visible {
      win / linux desktops keep 0 so the logo sits in the first row. */
   --rail-titlebar-offset: 0px;
   --rail-width: 0px;
+  --titlebar-row-left: 48px;
 }
 @media (min-width: 768px) {
   :root {

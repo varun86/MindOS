@@ -49,7 +49,7 @@ function CopyMessageButton({ text, label, variant = 'default' }: { text: string;
 
 function MessageActionDock({ children }: { children: ReactNode }) {
   return (
-    <div className="absolute right-3 top-full z-10 -mt-2 flex items-center gap-0.5 rounded-lg border border-border/50 bg-background/95 p-0.5 shadow-sm backdrop-blur-sm opacity-100 transition-[opacity,transform] duration-100 pointer-events-auto md:pointer-events-none md:opacity-0 md:translate-y-0.5 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100 md:group-hover/message:translate-y-0 md:focus-within:pointer-events-auto md:focus-within:opacity-100 md:focus-within:translate-y-0">
+    <div data-message-action-dock className="absolute right-3 top-full z-20 -mt-2 flex items-center gap-0.5 rounded-lg border border-border/50 bg-background/95 p-0.5 shadow-sm backdrop-blur-sm opacity-100 transition-[opacity,transform] duration-100 pointer-events-auto md:pointer-events-none md:opacity-0 md:translate-y-0.5 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100 md:group-hover/message:translate-y-0 md:focus-within:pointer-events-auto md:focus-within:opacity-100 md:focus-within:translate-y-0">
       {children}
     </div>
   );
@@ -321,6 +321,17 @@ const StepCounter = memo(function StepCounter({ parts }: { parts: Message['parts
   );
 });
 
+function isNativeRuntimeMessage(message: Message): boolean {
+  return message.agentKind === 'codex' || message.agentKind === 'claude';
+}
+
+function hasVisiblePart(part: NonNullable<Message['parts']>[number]): boolean {
+  if (part.type === 'text') return part.text.trim().length > 0;
+  if (part.type === 'reasoning') return part.text.trim().length > 0;
+  if (part.type === 'runtime-status') return !isRoutineRuntimeStatusPart(part);
+  return true;
+}
+
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
@@ -369,9 +380,22 @@ const MessageRow = memo(function MessageRow({
     () => message.role === 'assistant' ? stripThinkingTags(message.content) : '',
     [message.content, message.role],
   );
+  const assistantHasRenderableBody = message.role === 'assistant' && (
+    cleanedAssistantContent.trim().length > 0
+    || Boolean(message.parts?.some(hasVisiblePart))
+  );
+  const isErrorMessage = message.role === 'assistant' && message.content.startsWith('__error__');
+  const suppressEmptyNativePlaceholder = message.role === 'assistant'
+    && !isErrorMessage
+    && !assistantHasRenderableBody
+    && (isStreamingLast ? isNativeRuntimeMessage(message) : true);
+  const hasFloatingDock = message.role === 'user'
+    || (message.role === 'assistant' && !isStreamingLast && !isErrorMessage && cleanedAssistantContent.trim().length > 0);
+
+  if (suppressEmptyNativePlaceholder) return null;
 
   return (
-    <div style={MESSAGE_ROW_STYLE} className={`group/message flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div style={hasFloatingDock ? undefined : MESSAGE_ROW_STYLE} className={`group/message flex gap-3 animate-[fadeSlideUp_0.22s_ease_both] ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       {message.role === 'assistant' && shouldShowAssistantSideMark(message.agentKind) && (
         <div className="mt-0.5 shrink-0">
           <RuntimeMark runtime={message.agentKind ?? 'mindos'} label={message.agentName} />
@@ -397,7 +421,7 @@ const MessageRow = memo(function MessageRow({
             />
           </MessageActionDock>
         </div>
-      ) : message.content.startsWith('__error__') ? (
+      ) : isErrorMessage ? (
         <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-bl-md border border-error/30 bg-error/10 text-sm shadow-sm">
           <AssistantAgentBadge agentName={message.agentName} agentKind={message.agentKind} />
           <div className="flex items-start gap-2.5 text-error">
@@ -408,7 +432,7 @@ const MessageRow = memo(function MessageRow({
       ) : (
         <div className="group relative max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-lg bg-card border border-border/30 shadow-sm text-foreground text-sm">
           <AssistantAgentBadge agentName={message.agentName} agentKind={message.agentKind} />
-          {(message.parts && message.parts.length > 0) || cleanedAssistantContent ? (
+          {assistantHasRenderableBody ? (
             <>
               <AssistantMessageWithParts message={message} isStreaming={isStreamingLast} />
               {isStreamingLast && (
@@ -572,7 +596,7 @@ export default memo(function MessageList({
   }, []);
 
   return (
-    <div ref={scrollContainerRef} role="log" aria-live="polite" className="relative flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 space-y-5 min-h-0">
+    <div ref={scrollContainerRef} role="log" aria-live="polite" className="relative flex-1 overflow-y-auto overflow-x-hidden px-4 pt-5 pb-10 space-y-5 min-h-0">
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 min-h-[260px] px-6 pt-10 pb-4">
           {/* Brand anchor — refined presence */}

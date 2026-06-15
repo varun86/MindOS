@@ -235,6 +235,15 @@ export type AskMode = 'chat' | 'agent';
 /** All Ask modes including internal ones sent to the API */
 export type AskModeApi = AskMode | 'organize';
 
+export type NativeRuntimePermissionMode = 'readonly' | 'agent';
+export type NativeRuntimeEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+export interface NativeRuntimeOptions {
+  permissionMode?: NativeRuntimePermissionMode;
+  modelOverride?: string;
+  reasoningEffort?: NativeRuntimeEffort;
+}
+
 export interface ChatSession {
   id: string;
   title?: string;

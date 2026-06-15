@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useLayoutEffect } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, AskMode, LocalAttachment, RuntimeSessionBinding } from '@/lib/types';
+import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, AskMode, LocalAttachment, RuntimeSessionBinding, NativeRuntimeOptions } from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { annotateMessageWithAgentRuntime, compactAgentRuntimeIdentity, getMatchingRuntimeSessionBinding, isRuntimeSessionBindingResumable } from '@/lib/ask-agent';
@@ -78,6 +78,7 @@ interface UseAskChatOpts {
   chatMode: AskMode;
   providerOverride: ProviderId | `p_${string}` | null;
   modelOverride: string | null;
+  nativeRuntimeOptions?: NativeRuntimeOptions;
   activeSessionId: string | null;
   onFirstMessage?: () => void;
   refs: AskChatRefs;
@@ -91,6 +92,7 @@ export function useAskChat({
   chatMode,
   providerOverride,
   modelOverride,
+  nativeRuntimeOptions = {},
   activeSessionId,
   onFirstMessage,
   refs,
@@ -253,6 +255,14 @@ export function useAskChat({
       pendingUserMessage: userMsg,
     });
 
+    const selectedRuntimeIsNative = selectedRuntimeBase?.kind === 'codex' || selectedRuntimeBase?.kind === 'claude';
+    const compactNativeRuntimeOptions: NativeRuntimeOptions = {
+      ...(nativeRuntimeOptions.permissionMode ? { permissionMode: nativeRuntimeOptions.permissionMode } : {}),
+      ...(nativeRuntimeOptions.modelOverride?.trim() ? { modelOverride: nativeRuntimeOptions.modelOverride.trim() } : {}),
+      ...(selectedRuntimeIsNative && nativeRuntimeOptions.reasoningEffort
+        ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort }
+        : {}),
+    };
     const requestBody = JSON.stringify({
       messages: requestMessages,
       currentFile,
@@ -272,6 +282,9 @@ export function useAskChat({
       chatSessionId: sessionId,
       providerOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : providerOverride ?? undefined,
       modelOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : modelOverride ?? undefined,
+      runtimeOptions: selectedRuntimeIsNative && Object.keys(compactNativeRuntimeOptions).length > 0
+        ? compactNativeRuntimeOptions
+        : undefined,
     });
 
     // ---- Async phase (run closure): only snapshots + store APIs from here.
@@ -416,7 +429,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, chatMode, providerOverride, modelOverride, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState]);
+  }, [currentFile, chatMode, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState]);
 
   return {
     isLoading,

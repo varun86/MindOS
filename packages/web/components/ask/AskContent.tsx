@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } fr
 import { createPortal } from 'react-dom';
 import { Plus, FileText, ImageIcon } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskMode, Message } from '@/lib/types';
+import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskMode, Message, NativeRuntimeOptions } from '@/lib/types';
 import ModeCapsule, { getPersistedMode } from '@/components/ask/ModeCapsule';
 import { useAskSession } from '@/hooks/useAskSession';
 import { useFileUpload } from '@/hooks/useFileUpload';
@@ -20,6 +20,7 @@ import AskHeader from '@/components/ask/AskHeader';
 import FileChip from '@/components/ask/FileChip';
 import AskComposerInput from '@/components/ask/AskComposerInput';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
+import NativeRuntimeOptionsCapsule, { getPersistedNativeRuntimeOptions, persistNativeRuntimeOptions } from '@/components/ask/NativeRuntimeOptionsCapsule';
 import type { ProviderId } from '@/lib/agent/providers';
 import { useAskChat } from '@/hooks/useAskChat';
 import { useAgentRunTimeline } from '@/hooks/useAgentRunTimeline';
@@ -169,11 +170,17 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const [chatMode, setChatMode] = useState<AskMode>('agent');
   const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
   const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [nativeRuntimeOptions, setNativeRuntimeOptions] = useState<NativeRuntimeOptions>({});
 
   const updateSelectedAgentRuntime = useCallback((runtime: AgentRuntimeIdentity | null) => {
     const normalized = normalizeSelectedAgentRuntime(runtime);
     selectedAgentRuntimeRef.current = normalized;
     setSelectedAgentRuntime(normalized);
+    if (normalized?.kind === 'codex' || normalized?.kind === 'claude') {
+      setNativeRuntimeOptions(getPersistedNativeRuntimeOptions(normalized.kind));
+    } else {
+      setNativeRuntimeOptions({});
+    }
   }, []);
 
   useEffect(() => {
@@ -236,6 +243,10 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
       }));
   }, [nativeDetection.runtimes]);
   const isMindosRuntime = !selectedAgentRuntime || selectedAgentRuntime.kind === 'mindos';
+  const selectedNativeRuntimeKind = selectedAgentRuntime?.kind === 'codex' || selectedAgentRuntime?.kind === 'claude'
+    ? selectedAgentRuntime.kind
+    : null;
+  const isNativeRuntime = selectedNativeRuntimeKind !== null;
   const selectedRuntimeChecking = useMemo(() => {
     if (!selectedAgentRuntime || selectedAgentRuntime.kind === 'mindos') return false;
     const nativeKind = selectedAgentRuntime.kind;
@@ -391,6 +402,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     chatMode,
     providerOverride,
     modelOverride,
+    nativeRuntimeOptions,
     activeSessionId: session.activeSessionId,
     onFirstMessage,
     refs: chatRefs,
@@ -1035,6 +1047,14 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     setModelOverride(null);
   }, []);
 
+  const handleNativeRuntimeOptionsChange = useCallback((next: NativeRuntimeOptions) => {
+    setNativeRuntimeOptions(next);
+    const runtime = selectedAgentRuntimeRef.current;
+    if (runtime?.kind === 'codex' || runtime?.kind === 'claude') {
+      persistNativeRuntimeOptions(runtime.kind, next);
+    }
+  }, []);
+
   return (
     <div className="flex min-h-0 w-full flex-col h-full">
       {/* Header — home variant shows session switcher + new/history/fullscreen buttons */}
@@ -1304,6 +1324,15 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
                 onProviderChange={handleProviderChange}
                 modelValue={modelOverride}
                 onModelChange={setModelOverride}
+                disabled={isLoading}
+              />
+            )}
+            {mounted && isNativeRuntime && selectedNativeRuntimeKind && (
+              <NativeRuntimeOptionsCapsule
+                runtimeKind={selectedNativeRuntimeKind}
+                value={nativeRuntimeOptions}
+                defaultPermissionMode={chatMode === 'chat' ? 'readonly' : 'agent'}
+                onChange={handleNativeRuntimeOptionsChange}
                 disabled={isLoading}
               />
             )}

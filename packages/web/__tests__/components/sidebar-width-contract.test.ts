@@ -33,18 +33,19 @@ describe('Sidebar width contract', () => {
     expect(sidebarLayout).not.toContain('href={ROUTE_PANEL_HREF.files}');
   });
 
-  it('keeps titlebar actions positioned from the live rail width', () => {
+  it('keeps titlebar actions pinned to the collapsed rail edge while content follows live rail width', () => {
     const titlebarRow = readSource('components/TitlebarRow.tsx');
     const sidebarLayout = readSource('components/SidebarLayout.tsx');
     const globals = readSource('app/globals.css');
 
-    expect(titlebarRow).toContain("left: 'var(--rail-width, 48px)'");
-    expect(titlebarRow).toContain("paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, 48px)))'");
+    expect(titlebarRow).toContain("left: 'var(--titlebar-row-left, 48px)'");
+    expect(titlebarRow).toContain("paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--titlebar-row-left, 48px)))'");
     expect(titlebarRow).toContain('z-app-rail-affordance');
     expect(sidebarLayout).toContain('--rail-width: ${lp.railWidth}px;');
-    expect(titlebarRow).not.toContain('--titlebar-row-left');
-    expect(sidebarLayout).not.toContain('--titlebar-row-left');
-    expect(globals).not.toContain('--titlebar-row-left');
+    expect(sidebarLayout).toContain('--titlebar-row-left: ${RAIL_WIDTH_COLLAPSED}px;');
+    expect(globals).toContain('--titlebar-row-left: 48px;');
+    expect(titlebarRow).not.toContain("left: 'var(--rail-width");
+    expect(titlebarRow).not.toContain('var(--window-controls-left, 0px) - var(--rail-width');
   });
 
   it('keeps Home navigation pending state from re-highlighting the previous route', () => {

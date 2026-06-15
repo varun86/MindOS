@@ -182,6 +182,8 @@ export function createClaudeCodeSdkClient(services: ClaudeCodeSdkClientServices)
         options: {
           cwd: input.cwd,
           outputFormat: 'stream-json',
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.effort ? { effort: input.effort } : {}),
           permissionMode: input.permissionMode ?? 'default',
           ...(services.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: services.pathToClaudeCodeExecutable } : {}),
           ...(services.env ? { env: services.env } : {}),

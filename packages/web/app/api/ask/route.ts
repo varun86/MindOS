@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
-import type { AgentRuntimeIdentity, AskModeApi, RuntimeSessionBinding } from '@/lib/types';
+import type { AgentRuntimeIdentity, AskModeApi, RuntimeSessionBinding, NativeRuntimeOptions, NativeRuntimePermissionMode, NativeRuntimeEffort } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
@@ -177,6 +177,37 @@ function isMindosRuntimeSelection(runtime: unknown): boolean {
   if (!runtime || typeof runtime !== 'object') return false;
   const record = runtime as Partial<AgentRuntimeIdentity>;
   return record.kind === 'mindos';
+}
+
+function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const permissionMode = record.permissionMode === 'readonly' || record.permissionMode === 'agent'
+    ? record.permissionMode as NativeRuntimePermissionMode
+    : undefined;
+  const reasoningEffort = record.reasoningEffort === 'low'
+    || record.reasoningEffort === 'medium'
+    || record.reasoningEffort === 'high'
+    || record.reasoningEffort === 'xhigh'
+    ? record.reasoningEffort as NativeRuntimeEffort
+    : undefined;
+  const modelOverride = typeof record.modelOverride === 'string' && record.modelOverride.trim()
+    ? record.modelOverride.trim()
+    : undefined;
+  return {
+    ...(permissionMode ? { permissionMode } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(modelOverride ? { modelOverride } : {}),
+  };
+}
+
+function effectiveNativePermissionMode(
+  askMode: AskModeApi,
+  fallback: NativeRuntimePermissionMode,
+  runtimeOptions: NativeRuntimeOptions,
+): NativeRuntimePermissionMode {
+  if (askMode === 'organize') return 'readonly';
+  return runtimeOptions.permissionMode ?? fallback;
 }
 
 function getLastUserContent(messages: FrontendMessage[]): string {
@@ -403,6 +434,8 @@ export async function POST(req: NextRequest) {
     providerOverride?: string;
     /** Per-request model override from the inline model picker */
     modelOverride?: string;
+    /** Per-request native runtime controls for Codex / Claude Code. */
+    runtimeOptions?: NativeRuntimeOptions;
     /** MindOS Chat Panel session id for run ledger correlation. */
     chatSessionId?: string;
   };
@@ -422,6 +455,12 @@ export async function POST(req: NextRequest) {
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
   const askMode: AskModeApi = normalizeMindosAskMode(body.mode);
   const permissionPolicy = createMindosAgentPermissionPolicy(askMode);
+  const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions);
+  const nativePermissionMode = effectiveNativePermissionMode(
+    askMode,
+    permissionPolicy.runtimePermissionMode,
+    nativeRuntimeOptions,
+  );
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
     ? body.chatSessionId.trim()
     : undefined;
@@ -505,7 +544,7 @@ export async function POST(req: NextRequest) {
           runtimeId: nativeRuntime.id,
           displayName: nativeRuntime.name,
           cwd: mindRoot,
-          permissionMode: permissionPolicy.runtimePermissionMode,
+          permissionMode: nativePermissionMode,
           inputSummary: externalPrompt,
           metadata: {
             runtimeKind: nativeRuntime.kind,
@@ -534,7 +573,11 @@ export async function POST(req: NextRequest) {
               runtime: nativeRuntime,
               cwd: mindRoot,
               prompt: externalPrompt,
-              permissionMode: permissionPolicy.runtimePermissionMode,
+              permissionMode: nativePermissionMode,
+              ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
+              ...(nativeRuntimeOptions.reasoningEffort
+                ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort }
+                : {}),
               timeoutMs: resolveMindosAgentTimeoutMs(process.env.MINDOS_AGENT_TIMEOUT_MS),
               ...(nativeRuntimeEnv ? { runtimeEnv: nativeRuntimeEnv } : {}),
               signal: req.signal,

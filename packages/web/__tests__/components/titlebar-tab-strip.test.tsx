@@ -14,7 +14,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import TitlebarTabStrip, { computeVisibleCount, TAB_MIN_W } from '@/components/TitlebarTabStrip';
 import { parseActiveTab, tabHref } from '@/hooks/useWorkspaceTabSync';
-import { getTabs, HOME_TAB_KEY, initWorkspaceTabs, openTab, MAX_TABS } from '@/lib/workspace-tabs';
+import { getTabs, initWorkspaceTabs, openTab, MAX_TABS } from '@/lib/workspace-tabs';
 import { getSessionsLoaded, renameSession } from '@/lib/ask-session-store';
 import { endRun, startRun } from '@/lib/ask-run-store';
 import type { ChatSession } from '@/lib/types';
@@ -133,8 +133,8 @@ afterEach(() => {
 // =============================================================================
 
 describe('parseActiveTab', () => {
-  it('maps / to the singleton Home tab', () => {
-    expect(parseActiveTab('/')).toEqual({ kind: 'home', key: HOME_TAB_KEY });
+  it('keeps / as the product Home launcher route, not a workspace tab', () => {
+    expect(parseActiveTab('/')).toBeNull();
   });
 
   it('maps /view/<segments> to a decoded doc key', () => {
@@ -182,13 +182,13 @@ describe('computeVisibleCount', () => {
 // =============================================================================
 
 describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
-  it('opens the singleton Home tab on the product root route', async () => {
+  it('highlights the Home launcher on the product root route without creating a tab', async () => {
     await navigateTo('/');
-    expect(tabTitles()).toEqual(['Home']);
-    expect(getTabs()).toEqual([{ id: 'home:root', kind: 'home', key: HOME_TAB_KEY, title: 'Home' }]);
-    const tab = findTab('Home')!;
-    expect(tab.getAttribute('aria-selected')).toBe('true');
-    expect(closeButtonOf(tab)).toBeNull();
+    expect(tabTitles()).toEqual([]);
+    expect(getTabs()).toEqual([]);
+    const homeButton = document.querySelector<HTMLButtonElement>('[data-titlebar-home-button]');
+    expect(homeButton).not.toBeNull();
+    expect(homeButton!.className).toContain('text-[var(--amber)]');
   });
 
   it('opens a doc route as a replaceable preview tab', async () => {
@@ -497,7 +497,7 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
 
   it('tabHref round-trips with parseActiveTab', () => {
     const docKey = '笔记/日记😀.md';
-    expect(parseActiveTab(tabHref({ kind: 'home', key: HOME_TAB_KEY }))).toEqual({ kind: 'home', key: HOME_TAB_KEY });
+    expect(parseActiveTab(tabHref({ kind: 'home', key: 'root' }))).toBeNull();
     expect(parseActiveTab(tabHref({ kind: 'doc', key: docKey }))).toEqual({ kind: 'doc', key: docKey });
     expect(parseActiveTab(tabHref({ kind: 'chat', key: 'abc-123' }))).toEqual({ kind: 'chat', key: 'abc-123' });
   });

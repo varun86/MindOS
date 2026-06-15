@@ -130,6 +130,8 @@ export type MindosAgentRuntimeAskOptions = {
   cwd: string;
   prompt: string;
   permissionMode?: 'readonly' | 'agent';
+  modelOverride?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   timeoutMs?: number;
   runtimeEnv?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
@@ -397,6 +399,8 @@ async function runClaudeTurnWithClient(
     prompt: options.prompt,
     cwd: options.cwd,
     ...(sessionId ? { sessionId } : {}),
+    ...(options.modelOverride ? { model: options.modelOverride } : {}),
+    ...(options.reasoningEffort ? { effort: options.reasoningEffort } : {}),
     permissionMode: claudeCliPermissionModeForMindosMode(options.permissionMode),
     ...(permissionPrompt ? { permissionPrompt } : {}),
     signal: options.signal,
@@ -430,6 +434,16 @@ function claudeCliPermissionModeForMindosMode(
   return mode === 'readonly' ? 'dontAsk' : 'default';
 }
 
+function codexPermissionOptionsForMindosMode(
+  mode: MindosAgentRuntimeAskOptions['permissionMode'],
+): { approvalPolicy?: string; sandbox?: Record<string, unknown> } {
+  if (mode !== 'readonly') return {};
+  return {
+    approvalPolicy: 'never',
+    sandbox: { mode: 'read-only' },
+  };
+}
+
 async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {
   let client: CodexAppServerClient | undefined;
   let threadId = options.runtime.externalSessionId;
@@ -445,7 +459,10 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
     await client.initialize({ signal: options.signal });
     const thread = threadId
       ? await client.resumeThread({ threadId }, { signal: options.signal })
-      : await client.startThread({ cwd: options.cwd }, { signal: options.signal });
+      : await client.startThread({
+        cwd: options.cwd,
+        ...(options.modelOverride ? { model: options.modelOverride } : {}),
+      }, { signal: options.signal });
     threadId = thread.threadId;
     options.send({
       type: 'runtime_binding',
@@ -464,6 +481,9 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
         threadId,
         cwd: options.cwd,
         input: [{ type: 'text', text: options.prompt }],
+        ...(options.modelOverride ? { model: options.modelOverride } : {}),
+        ...(options.reasoningEffort ? { effort: options.reasoningEffort } : {}),
+        ...codexPermissionOptionsForMindosMode(options.permissionMode),
         signal: options.signal,
       });
       for await (const notification of iterateWithNativeRuntimeAbort(turnNotifications, options.signal)) {

@@ -4,9 +4,10 @@
  * workspace-tabs — module-level store for the titlebar workspace tab strip
  * (wiki/specs/spec-titlebar-row.md, Phase 2).
  *
- * Tabs are the durable working set: the product Home (kind 'home'), documents
- * (kind 'doc', key = mind-root relative path), and chat sessions (kind 'chat',
- * key = session id). The store is the single in-memory source of truth;
+ * Tabs are the durable working set for documents (kind 'doc', key = mind-root
+ * relative path) and chat sessions (kind 'chat', key = session id). Product
+ * Home is a titlebar launcher, not a persisted workspace tab. The store is the
+ * single in-memory source of truth;
  * localStorage is a per-root mirror (`mindos.workspaceTabs.v1:<rootId>`) read
  * once at init and written behind a debounce — same single-reader strategy as
  * useLeftPanel, no cross-tab sync.
@@ -61,7 +62,7 @@ function isKept(tab: WorkspaceTab): boolean {
 }
 
 function userTabCount(tabList: WorkspaceTab[]): number {
-  return tabList.filter((tab) => tab.kind !== 'home').length;
+  return tabList.length;
 }
 
 function schedulePersist() {
@@ -90,11 +91,13 @@ function parseStoredTabs(raw: string | null): WorkspaceTab[] {
       if (typeof item !== 'object' || item === null) continue;
       const { kind, key, title, pinned } = item as Record<string, unknown>;
       if (kind !== 'home' && kind !== 'doc' && kind !== 'chat') continue;
+      // Legacy versions persisted Home as a tab. Home now lives only as the
+      // circular titlebar launcher, so old entries must not rehydrate.
+      if (kind === 'home') continue;
       if (typeof key !== 'string' || key.length === 0) continue;
-      if (kind === 'home' && key !== HOME_TAB_KEY) continue;
       if (typeof title !== 'string') continue;
       if (pinned === false) continue;
-      if (kind !== 'home' && userTabCount(valid) >= MAX_TABS) continue;
+      if (userTabCount(valid) >= MAX_TABS) continue;
       const id = tabId(kind, key);
       if (seen.has(id)) continue;
       seen.add(id);
@@ -151,10 +154,12 @@ export function openTab(
   title: string,
   options: { pinned?: boolean } = {},
 ): WorkspaceTab | null {
-  if (kind === 'home' && key !== HOME_TAB_KEY) return null;
+  // Home is intentionally not part of the tab model anymore. Keep accepting
+  // the kind in public types for old callers/tests, but never create it.
+  if (kind === 'home') return null;
   const id = tabId(kind, key);
   const existing = tabs.find((t) => t.id === id);
-  const pinned = kind === 'home' || kind === 'chat' || options.pinned !== false;
+  const pinned = kind === 'chat' || options.pinned !== false;
   if (existing) {
     if (pinned && existing.pinned === false) {
       const next = tabs.map((tab) => (tab.id === id ? { id, kind, key, title } : tab));
@@ -173,9 +178,9 @@ export function openTab(
       return previewTab;
     }
   }
-  if (kind !== 'home' && userTabCount(tabs) >= MAX_TABS) return null;
+  if (userTabCount(tabs) >= MAX_TABS) return null;
   const tab: WorkspaceTab = pinned ? { id, kind, key, title } : { id, kind, key, title, pinned: false };
-  emit(kind === 'home' ? [tab, ...tabs] : [...tabs, tab]);
+  emit([...tabs, tab]);
   return tab;
 }
 
@@ -192,7 +197,6 @@ export function keepTab(id: string): WorkspaceTab | null {
 
 export function closeTab(id: string) {
   if (!tabs.some((t) => t.id === id)) return;
-  if (id === tabId('home', HOME_TAB_KEY)) return;
   emit(tabs.filter((t) => t.id !== id));
 }
 

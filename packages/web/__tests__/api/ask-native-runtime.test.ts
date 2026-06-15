@@ -197,6 +197,11 @@ describe('/api/ask native runtime routing', () => {
       },
       providerOverride: 'anthropic',
       modelOverride: 'claude-test',
+      runtimeOptions: {
+        modelOverride: 'gpt-5.4-codex',
+        reasoningEffort: 'high',
+        permissionMode: 'readonly',
+      },
       mode: 'agent',
       chatSessionId: 'chat-native-1',
     }));
@@ -211,7 +216,9 @@ describe('/api/ask native runtime routing', () => {
       binaryPath: '/usr/local/bin/codex',
       externalSessionId: 'thr_existing',
     });
-    expect(capturedNativeOptions?.permissionMode).toBe('agent');
+    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
+    expect(capturedNativeOptions?.reasoningEffort).toBe('high');
     expect(capturedNativeOptions?.prompt).toContain('MindOS Turn Context');
     expect(capturedNativeOptions?.prompt).toContain('Use the attached context');
     expect(capturedNativeOptions?.prompt).toContain('current.md');
@@ -230,7 +237,7 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Codex',
         status: 'completed',
         chatSessionId: 'chat-native-1',
-        permissionMode: 'agent',
+        permissionMode: 'readonly',
         outputSummary: 'native ok',
         metadata: expect.objectContaining({
           runtimeKind: 'codex',
@@ -356,6 +363,53 @@ describe('/api/ask native runtime routing', () => {
 
     expect(capturedNativeOptions?.runtime.kind).toBe('codex');
     expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+  });
+
+  it('forces organize mode to readonly even when native runtime options request agent permissions', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Organize safely' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      runtimeOptions: { permissionMode: 'agent', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
+      mode: 'organize',
+    }));
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
+    expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
+  });
+
+  it('ignores invalid native runtime permission options and passes Claude reasoning effort', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Use Claude' }],
+      selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
+      runtimeOptions: {
+        permissionMode: 'write-everywhere',
+        modelOverride: 'claude-sonnet-4-20250514',
+        reasoningEffort: 'xhigh',
+      },
+      mode: 'agent',
+    }));
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedNativeOptions?.runtime.kind).toBe('claude');
+    expect(capturedNativeOptions?.permissionMode).toBe('agent');
+    expect(capturedNativeOptions?.modelOverride).toBe('claude-sonnet-4-20250514');
+    expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
   });
 
   it('does not resume a native runtime when the matching session binding is non-active', async () => {

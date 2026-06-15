@@ -57,9 +57,9 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
   it('binds geometry to the shell CSS variables', () => {
     const el = render();
     const style = el.getAttribute('style') ?? '';
-    expect(style).toContain('left: var(--rail-width, 48px)');
+    expect(style).toContain('left: var(--titlebar-row-left, 48px)');
     expect(style).toContain('height: var(--app-titlebar-h)');
-    expect(style).toContain('max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, 48px)))');
+    expect(style).toContain('max(0px, calc(var(--window-controls-left, 0px) - var(--titlebar-row-left, 48px)))');
   });
 
   it('paints above the expanding rail so leading titlebar buttons stay clickable', () => {
@@ -71,14 +71,14 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect(titlebarSource).not.toContain('className="titlebar-row fixed top-0 right-0 z-30');
   });
 
-  it('is draggable and animates in sync with the rail (200ms ease-out)', () => {
+  it('is draggable without tying the leading controls to rail expansion animation', () => {
     const el = render();
     // jsdom does not serialize -webkit-app-region into the style attribute;
     // React assigns it as a camelCase expando on the style object
     expect((el.style as unknown as Record<string, string>).WebkitAppRegion).toBe('drag');
     const style = el.getAttribute('style') ?? '';
-    expect(style).toMatch(/transition:[^;]*left 200ms ease-out/);
-    expect(style).toMatch(/transition:[^;]*padding-left 200ms ease-out/);
+    expect(style).not.toMatch(/transition:[^;]*left 200ms ease-out/);
+    expect(style).not.toMatch(/transition:[^;]*padding-left 200ms ease-out/);
   });
 
   it('hosts the tab strip and reserves >=110px of pure drag space at the right end', () => {
@@ -176,6 +176,7 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // Variables default to 0 (browser/win/linux/old shell = zero diff)
     expect(css).toContain('--app-titlebar-h: 0px');
     expect(css).toContain('--window-controls-left: 0px');
+    expect(css).toContain('--titlebar-row-left: 48px');
     // Rail offset exists only for the mac traffic lights: 0 by default so the
     // rail logo sits in the first row on browser/win/linux desktops
     expect(css).toMatch(/:root\s*\{[^}]*--rail-titlebar-offset:\s*0px/);

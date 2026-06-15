@@ -699,6 +699,11 @@ describe('AskContent ACP session binding', () => {
 
   it('sends a native Codex runtime selection without legacy ACP routing', async () => {
     mockPersistedProviderModel = { provider: 'openai', model: 'gpt-test' };
+    localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'high',
+      permissionMode: 'readonly',
+    }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
       name: 'Codex',
@@ -723,6 +728,10 @@ describe('AskContent ACP session binding', () => {
     await act(async () => {
       selectButton.click();
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-native-runtime-options]')).not.toBeNull();
 
     const form = host.querySelector('form') as HTMLFormElement;
     await act(async () => {
@@ -741,6 +750,11 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
     expect(requestBody).not.toHaveProperty('providerOverride');
     expect(requestBody).not.toHaveProperty('modelOverride');
+    expect(requestBody.runtimeOptions).toEqual({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'high',
+      permissionMode: 'readonly',
+    });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
 
     await act(async () => {
@@ -750,6 +764,11 @@ describe('AskContent ACP session binding', () => {
 
   it('preselects a native runtime from an opener and submits it without legacy ACP routing', async () => {
     mockActiveSession = emptySession;
+    localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'xhigh',
+      permissionMode: 'readonly',
+    }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
       name: 'Codex',
@@ -795,21 +814,31 @@ describe('AskContent ACP session binding', () => {
     const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
+    expect(requestBody.runtimeOptions).toEqual({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'xhigh',
+      permissionMode: 'readonly',
+    });
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it('uses the last selected runtime when opened without an explicit runtime', async () => {
-    mockSessions = [];
-    mockActiveSession = null;
-    mockActiveSessionId = null;
+  it('uses the last selected runtime and its persisted options when opened without an explicit runtime', async () => {
+    mockSessions = [emptySession];
+    mockActiveSession = emptySession;
+    mockActiveSessionId = emptySession.id;
     localStorage.setItem(LAST_AGENT_RUNTIME_STORAGE_KEY, JSON.stringify({
       id: 'codex',
       name: 'Codex',
       kind: 'codex',
       binaryPath: '/usr/local/bin/codex',
+    }));
+    localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'high',
+      permissionMode: 'agent',
     }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
@@ -824,7 +853,7 @@ describe('AskContent ACP session binding', () => {
     const root = createRoot(host);
 
     await act(async () => {
-      root.render(<AskContent visible variant="panel" />);
+      root.render(<AskContent visible variant="panel" initialMessage="continue last runtime" />);
     });
 
     await act(async () => {
@@ -839,6 +868,27 @@ describe('AskContent ACP session binding', () => {
     });
     expect(host.querySelector('[data-testid="runtime-switcher"]')?.textContent).toBe('Codex');
 
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
+    expect(askCall).toBeTruthy();
+    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.selectedAcpAgent).toBeNull();
+    expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
+    expect(requestBody.runtimeOptions).toEqual({
+      modelOverride: 'gpt-5.4-codex',
+      reasoningEffort: 'high',
+      permissionMode: 'agent',
+    });
+
     await act(async () => {
       root.unmount();
     });
@@ -846,6 +896,11 @@ describe('AskContent ACP session binding', () => {
 
   it('sends a native Claude Code runtime selection without legacy ACP routing', async () => {
     mockPersistedProviderModel = { provider: 'anthropic', model: 'claude-test' };
+    localStorage.setItem('mindos-native-runtime-options.v1:claude', JSON.stringify({
+      modelOverride: 'claude-sonnet-4-20250514',
+      reasoningEffort: 'medium',
+      permissionMode: 'agent',
+    }));
     mockNativeRuntimeDescriptors = [{
       id: 'claude',
       name: 'Claude Code',
@@ -869,6 +924,10 @@ describe('AskContent ACP session binding', () => {
     await act(async () => {
       selectButton.click();
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-native-runtime-options]')).not.toBeNull();
 
     const form = host.querySelector('form') as HTMLFormElement;
     await act(async () => {
@@ -887,6 +946,11 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.selectedRuntime).toEqual({ id: 'claude', name: 'Claude Code', kind: 'claude' });
     expect(requestBody).not.toHaveProperty('providerOverride');
     expect(requestBody).not.toHaveProperty('modelOverride');
+    expect(requestBody.runtimeOptions).toEqual({
+      modelOverride: 'claude-sonnet-4-20250514',
+      reasoningEffort: 'medium',
+      permissionMode: 'agent',
+    });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude' });
 
     await act(async () => {

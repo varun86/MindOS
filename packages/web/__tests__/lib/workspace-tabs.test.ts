@@ -52,15 +52,15 @@ describe('tabId', () => {
 });
 
 describe('openTab', () => {
-  it('opens the singleton Home tab at the start of the working set', () => {
+  it('does not create a product Home workspace tab', () => {
     openTab('doc', 'notes/a.md', 'A');
 
     const home = openTab('home', HOME_TAB_KEY, 'Home');
     const again = openTab('home', HOME_TAB_KEY, 'Home');
 
-    expect(home).toEqual({ id: 'home:root', kind: 'home', key: HOME_TAB_KEY, title: 'Home' });
-    expect(again).toBe(home);
-    expect(getTabs().map((t) => t.id)).toEqual(['home:root', 'doc:notes/a.md']);
+    expect(home).toBeNull();
+    expect(again).toBeNull();
+    expect(getTabs().map((t) => t.id)).toEqual(['doc:notes/a.md']);
   });
 
   it('rejects non-singleton Home keys', () => {
@@ -183,14 +183,13 @@ describe('MAX_TABS limit', () => {
     expect(getTabs().at(-1)!.id).toBe('doc:notes/overflow.md');
   });
 
-  it('does not count the system Home tab against the user tab cap', () => {
+  it('ignores legacy Home opens at the tab cap', () => {
     fillToMax();
 
     const home = openTab('home', HOME_TAB_KEY, 'Home');
 
-    expect(home).not.toBeNull();
-    expect(getTabs()).toHaveLength(MAX_TABS + 1);
-    expect(getTabs()[0]).toMatchObject({ kind: 'home', key: HOME_TAB_KEY });
+    expect(home).toBeNull();
+    expect(getTabs()).toHaveLength(MAX_TABS);
     expect(openTab('doc', 'notes/overflow.md', 'Overflow')).toBeNull();
   });
 });
@@ -206,15 +205,15 @@ describe('closeTab / closeByKey', () => {
     expect(getTabs().map((t) => t.id)).toEqual(['doc:a.md', 'doc:b.md']);
   });
 
-  it('keeps the system Home tab when close is requested', () => {
-    openTab('home', HOME_TAB_KEY, 'Home');
+  it('treats Home close requests as no-ops because Home is a launcher', () => {
+    openTab('doc', 'a.md', 'A');
     const before = getTabs();
 
     closeTab('home:root');
     closeByKey('home', HOME_TAB_KEY);
 
     expect(getTabs()).toBe(before);
-    expect(getTabs()).toEqual([{ id: 'home:root', kind: 'home', key: HOME_TAB_KEY, title: 'Home' }]);
+    expect(getTabs()).toEqual([{ id: 'doc:a.md', kind: 'doc', key: 'a.md', title: 'A' }]);
   });
 
   it('closeByKey removes the tab addressed by (kind, key)', () => {
@@ -478,8 +477,9 @@ describe('corrupt storage recovery', () => {
     expect(getTabs()).toEqual([]);
   });
 
-  it('drops items with an invalid kind, empty key, or non-string title and keeps valid ones', () => {
+  it('drops items with an invalid kind, legacy Home, empty key, or non-string title and keeps valid ones', () => {
     localStorage.setItem(storageKeyFor('root-a'), JSON.stringify([
+      { kind: 'home', key: HOME_TAB_KEY, title: 'Home' },
       { kind: 'doc', key: 'good.md', title: 'Good' },
       { kind: 'folder', key: 'bad-kind', title: 'X' },
       { kind: 'doc', key: '', title: 'empty key' },

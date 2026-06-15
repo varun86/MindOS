@@ -7,8 +7,9 @@
  * Mounted exactly once inside TitlebarTabStrip. Responsibilities:
  *   1. Bind the tab store to the current mind root and trigger the initial
  *      session list fetch (refreshSessions has no selection side-effects).
- *   2. Watch the pathname: / opens/focuses the singleton Home tab,
- *      /view/<path> opens a doc tab, /chat/<id> opens a chat tab. Documents
+ *   2. Watch the pathname: /view/<path> opens a doc tab, /chat/<id> opens a
+ *      chat tab. Product Home stays a launcher action, not a workspace tab.
+ *      Documents
  *      opened from ordinary routes are preview tabs by default; Home and chat
  *      sessions are kept tabs. A null return from openTab means the 50-tab cap
  *      was hit → limit toast, once per attempted key.
@@ -23,7 +24,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import {
-  HOME_TAB_KEY,
   initWorkspaceTabs,
   openTab,
   readDomRootId,
@@ -52,13 +52,13 @@ function safeDecode(segment: string): string {
 
 /**
  * Derive the would-be active tab from a pathname.
- * `/` → home, `/view/<segments>` → doc (key = decoded path), `/chat/<id>`
- * (id !== 'new') → chat. Everything else (place routes) → null: tabs render
+ * `/view/<segments>` → doc (key = decoded path), `/chat/<id>` (id !== 'new')
+ * → chat. Product Home (`/`) and place routes → null: tabs render
  * dimmed, none selected.
  */
 export function parseActiveTab(pathname: string | null | undefined): { kind: WorkspaceTabKind; key: string } | null {
   if (!pathname) return null;
-  if (pathname === '/') return { kind: 'home', key: HOME_TAB_KEY };
+  if (pathname === '/') return null;
   if (pathname.startsWith('/view/')) {
     const rest = pathname.slice('/view/'.length);
     if (!rest) return null;
@@ -126,7 +126,6 @@ export function useWorkspaceTabSync(): WorkspaceTabSyncState {
     const active = parseActiveTab(pathname);
     if (!active) return;
     const title = (() => {
-      if (active.kind === 'home') return tRef.current.workspaceTabs.homeTab;
       if (active.kind === 'doc') return active.key.split('/').pop() || active.key;
 
       const session = sessionsRef.current.find((s) => s.id === active.key);
@@ -134,7 +133,7 @@ export function useWorkspaceTabSync(): WorkspaceTabSyncState {
     })();
     const opened = openTab(active.kind, active.key, title, { pinned: active.kind !== 'doc' });
     if (opened) {
-      if (active.kind !== 'home') limitToastKeyRef.current = null;
+      limitToastKeyRef.current = null;
       return;
     }
     // 50-tab cap: toast once per attempted key, not on every re-render.

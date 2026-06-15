@@ -26,6 +26,8 @@ export type ClaudeCodeCliClient = {
     prompt: string;
     cwd: string;
     sessionId?: string;
+    model?: string;
+    effort?: 'low' | 'medium' | 'high' | 'xhigh';
     permissionMode?: ClaudeCodeCliPermissionMode;
     permissionPrompt?: ClaudeCodeCliPermissionPrompt;
     signal?: AbortSignal;
@@ -155,6 +157,8 @@ export function createClaudeCodeCliStdioTransport(options: {
 function buildClaudeCodeCliArgs(input: {
   prompt: string;
   sessionId?: string;
+  model?: string;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh';
   permissionMode?: ClaudeCodeCliPermissionMode;
   permissionPrompt?: ClaudeCodeCliPermissionPrompt;
 }): string[] {
@@ -165,6 +169,8 @@ function buildClaudeCodeCliArgs(input: {
     '--verbose',
     '--permission-mode',
     input.permissionMode ?? 'default',
+    ...(input.model ? ['--model', input.model] : []),
+    ...(input.effort ? ['--effort', input.effort] : []),
     ...(input.sessionId ? ['--resume', input.sessionId] : []),
     ...(input.permissionPrompt ? [
       '--mcp-config',

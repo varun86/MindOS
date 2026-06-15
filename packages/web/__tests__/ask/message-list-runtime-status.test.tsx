@@ -53,9 +53,51 @@ describe('MessageList runtime status rendering', () => {
 
     expect(html).toContain('group/message');
     expect(html).toContain('absolute right-3 top-full');
+    expect(html).toContain('data-message-action-dock');
     expect(html).toContain('md:group-hover/message:opacity-100');
+    expect(html).not.toContain('content-visibility:auto');
     expect(html).not.toContain('mt-2 flex justify-start');
     expect(html).not.toContain('mt-2 flex justify-end');
+  });
+
+  it('does not render empty native runtime streaming placeholders for routine statuses', () => {
+    const messages: Message[] = [
+      {
+        role: 'user',
+        content: 'OK',
+      },
+      {
+        role: 'assistant',
+        content: '',
+        agentId: 'codex',
+        agentName: 'Codex',
+        agentKind: 'codex',
+        parts: [
+          {
+            type: 'runtime-status',
+            runtime: 'codex',
+            message: 'Starting Codex locally.',
+          },
+        ],
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MessageList
+        messages={messages}
+        isLoading
+        loadingPhase="thinking"
+        emptyPrompt="Empty"
+        suggestions={[]}
+        onSuggestionClick={() => {}}
+        labels={labels}
+      />,
+    );
+
+    expect(html).toContain('OK');
+    expect(html).not.toContain('Starting Codex locally.');
+    expect(html).not.toContain('Thinking');
+    expect(html).not.toContain('/agent-icons/openai.svg');
   });
 
   it('renders visible runtime status as a compact status card without assistant text', () => {
@@ -127,6 +169,35 @@ describe('MessageList runtime status rendering', () => {
     expect(html).not.toContain('Claude Code is connected and working in this chat.');
     expect(html).not.toContain('Starting Codex locally.');
     expect(html).not.toContain('role="status"');
+  });
+
+  it('cleans up empty assistant placeholders even when they are not native runtime messages', () => {
+    const messages: Message[] = [
+      {
+        role: 'user',
+        content: 'hello',
+      },
+      {
+        role: 'assistant',
+        content: '',
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        loadingPhase="streaming"
+        emptyPrompt="Empty"
+        suggestions={[]}
+        onSuggestionClick={() => {}}
+        labels={labels}
+      />,
+    );
+
+    expect(html).toContain('hello');
+    expect(html).not.toContain('prose-panel');
+    expect(html).not.toContain('/agent-icons/mindos.svg');
   });
 
   it('keeps native runtime logos without repeating identity badges inside assistant messages', () => {

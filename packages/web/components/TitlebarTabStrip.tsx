@@ -21,7 +21,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ChevronDown, FileText, Home as HomeIcon, Loader2, MessageSquare, Pin, Plus, X } from 'lucide-react';
 import { closeTab, keepTab, type WorkspaceTab } from '@/lib/workspace-tabs';
 import { tabHref, useWorkspaceTabSync } from '@/hooks/useWorkspaceTabSync';
@@ -74,6 +74,7 @@ function TabKindIcon({ kind, className = 'shrink-0' }: { kind: WorkspaceTab['kin
 export default function TitlebarTabStrip() {
   const { tabs, activeTabId, running, unread } = useWorkspaceTabSync();
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useLocale();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -160,7 +161,7 @@ export default function TitlebarTabStrip() {
   // Place routes: no active tab → the working set renders dimmed but intact
   // (indicators keep full opacity — a background run must stay noticeable).
   const dimmed = activeTabId === null;
-  const homeLauncherActive = tabs.some((tab) => tab.id === activeTabId && tab.kind === 'home');
+  const homeLauncherActive = pathname === '/';
 
   const renderTab = (tab: WorkspaceTab, index: number) => {
     const isActive = tab.id === activeTabId;

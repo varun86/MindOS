@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Settings, Menu, X, FolderInput } from 'lucide-react';
-import ActivityBar from './ActivityBar';
+import ActivityBar, { RAIL_WIDTH_COLLAPSED } from './ActivityBar';
 import TitlebarRow from './TitlebarRow';
 import Panel from './Panel';
 import FileTree from './FileTree';
@@ -1027,6 +1027,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         @media (min-width: 768px) {
           :root {
             --rail-width: ${lp.railWidth}px;
+            --titlebar-row-left: ${RAIL_WIDTH_COLLAPSED}px;
             --content-left-offset: ${panelOpen && effectivePanelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`};
             --right-panel-width: ${ap.askMaximized && effectiveAskPanelOpen ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${effectiveAskPanelOpen ? ap.askPanelWidth : 0}px`};
             --right-agent-detail-width: ${agentDockOpen ? agentDetailWidth : 0}px;

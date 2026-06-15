@@ -140,6 +140,10 @@ export type CodexAppServerClient = {
     threadId: string;
     input: CodexTurnInput;
     cwd?: string;
+    model?: string;
+    effort?: string;
+    approvalPolicy?: string;
+    sandbox?: unknown;
     signal?: AbortSignal;
   }): AsyncIterable<CodexAppServerNotification>;
   interruptTurn?(input: { threadId: string; turnId?: string }): Promise<void>;
@@ -358,6 +362,10 @@ export function createCodexAppServerClient(
         threadId: input.threadId,
         input: input.input,
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.effort ? { effort: input.effort } : {}),
+        ...(input.approvalPolicy ? { approvalPolicy: input.approvalPolicy } : {}),
+        ...(input.sandbox ? { sandbox: input.sandbox } : {}),
       };
       await request('turn/start', params, input.signal);
       for await (const notification of notifications) {
