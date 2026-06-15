@@ -253,10 +253,42 @@ describe('ActivityBar rail navigation', () => {
       home?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
 
-    expect(mockPanelChange).toHaveBeenCalledWith('files');
+    expect(mockPanelChange).toHaveBeenCalledWith(null);
     expect(mockRouterPush).toHaveBeenCalledWith('/');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/wiki');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/echo/imprint');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('keeps Settings shortcut out of the expanded rail row', async () => {
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const settingsButton = host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
+    expect(settingsButton).not.toBeNull();
+    expect(settingsButton?.textContent).toContain('Settings');
+    expect(settingsButton?.textContent).not.toContain('⌘,');
 
     await act(async () => {
       root.unmount();

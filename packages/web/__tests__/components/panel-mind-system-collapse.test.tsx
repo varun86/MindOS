@@ -7,9 +7,12 @@ import type { MindSystemSlot } from '@/lib/mind-system';
 import type { FileNode } from '@/lib/types';
 
 const mockPush = vi.fn();
+const routeState = vi.hoisted(() => ({
+  pathname: '/wiki',
+}));
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/wiki',
+  usePathname: () => routeState.pathname,
   useRouter: () => ({ push: mockPush }),
 }));
 
@@ -141,6 +144,7 @@ describe('Panel Mind System collapse', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    routeState.pathname = '/wiki';
     localStorage.clear();
     root = null;
     vi.stubGlobal('fetch', vi.fn(async () => ({
@@ -267,10 +271,12 @@ describe('Panel Mind System collapse', () => {
     expect(mockPush).toHaveBeenCalledWith('/view/MIND_DAO');
   });
 
-  it('opens the top New menu toward the panel content instead of under the rail', async () => {
+  it('opens the top New menu toward the panel content and puts Import first', async () => {
     await act(async () => {
       root = renderPanel(host);
     });
+
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Import file"]')).toBeNull();
 
     const newButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.getAttribute('aria-label') === 'New' || button.getAttribute('aria-label') === '新建');
@@ -285,8 +291,50 @@ describe('Panel Mind System collapse', () => {
     expect(menu).not.toBeNull();
     expect(menu?.className).toContain('left-0');
     expect(menu?.className).not.toContain('right-0');
-    expect(menu?.textContent).toContain('New file');
-    expect(menu?.textContent).toContain('New Space');
+    const items = Array.from(menu!.querySelectorAll<HTMLButtonElement>('button')).map(button => button.textContent?.trim());
+    expect(items).toEqual(['Import file', 'New file', 'New Space']);
+  });
+
+  it('keeps Inbox out of the Files header More menu', async () => {
+    await act(async () => {
+      root = renderPanel(host);
+    });
+
+    const moreButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.getAttribute('aria-label') === 'More' || button.getAttribute('aria-label') === '更多');
+    expect(moreButton).not.toBeNull();
+
+    await act(async () => {
+      moreButton?.click();
+      await Promise.resolve();
+    });
+
+    const moreMenu = host.querySelector<HTMLElement>('.files-panel-header-more-action > div');
+    expect(moreMenu).not.toBeNull();
+    expect(moreMenu?.textContent).not.toContain('Inbox');
+    expect(moreMenu?.textContent).toContain('Content changes');
+    expect(moreMenu?.textContent).toContain('Trash');
+  });
+
+  it('uses rounded active states for Mind System instead of vertical bars', async () => {
+    routeState.pathname = '/view/MIND_DAO';
+    localStorage.setItem(MIND_SYSTEM_COLLAPSED_KEY, '0');
+
+    await act(async () => {
+      root = renderPanel(host);
+    });
+
+    const toggle = getMindSystemToggle(host);
+    expect(toggle.className).toContain('rounded-md');
+    expect(toggle.className).toContain('border-[var(--amber)]/25');
+    expect(toggle.querySelector('[class*="rounded-r-full"]')).toBeNull();
+
+    const openButton = host.querySelector<HTMLButtonElement>('[data-mind-system-sidebar-open="dao"]');
+    expect(openButton).not.toBeNull();
+    expect(openButton?.getAttribute('aria-current')).toBe('page');
+    expect(openButton?.className).toContain('rounded-md');
+    expect(openButton?.className).toContain('bg-[var(--amber-subtle)]');
+    expect(openButton?.querySelector('[class*="rounded-r-full"]')).toBeNull();
   });
 
   it('loads the Inbox badge count through the normalized Inbox client contract', async () => {

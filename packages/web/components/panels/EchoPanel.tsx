@@ -15,7 +15,7 @@ interface EchoPanelProps {
   onMaximize?: () => void;
 }
 
-export default function EchoPanel({ active, maximized, onMaximize }: EchoPanelProps) {
+export default function EchoPanel({ active }: EchoPanelProps) {
   const { t } = useLocale();
   const e = t.panels.echo;
   const pathname = usePathname() ?? '';
@@ -28,7 +28,7 @@ export default function EchoPanel({ active, maximized, onMaximize }: EchoPanelPr
 
   return (
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
-      <PanelHeader title={e.title} maximized={maximized} onMaximize={onMaximize} />
+      <PanelHeader title={e.title} />
       <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
         <div className="flex flex-col gap-0.5 py-1.5">
           {ECHO_SEGMENT_ORDER.map((segment) => {

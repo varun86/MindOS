@@ -329,7 +329,7 @@ export default function ActivityBar({
               return;
             }
             startTransition(() => {
-              onPanelChange('files');
+              onPanelChange(null);
               if (!isHome) {
                 router.push('/');
               }
@@ -436,7 +436,6 @@ export default function ActivityBar({
           <RailButton
             icon={<Settings size={18} />}
             label={t.sidebar.settingsTitle}
-            shortcut="⌘,"
             expanded={expanded}
             onClick={() => debounced('action:settings', onSettingsClick)}
             badge={hasUpdate ? (

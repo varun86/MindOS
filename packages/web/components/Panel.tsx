@@ -322,6 +322,18 @@ export default function Panel({
                     onClick={() => {
                       startTransition(() => {
                         setNewPopover(false);
+                        onImport?.();
+                      });
+                    }}
+                  >
+                    <Import size={14} className="shrink-0 text-[var(--amber)]" />
+                    {t.sidebar.importFile}
+                  </button>
+                  <button
+                    className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
+                    onClick={() => {
+                      startTransition(() => {
+                        setNewPopover(false);
                         router.push('/view/Untitled.md');
                       });
                     }}
@@ -339,16 +351,6 @@ export default function Panel({
                 </div>
               )}
             </div>
-            {/* Import */}
-            <button
-              type="button"
-              onClick={() => onImport?.()}
-              className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
-              aria-label={t.sidebar.importFile}
-              title={t.sidebar.importFile}
-            >
-              <Import size={13} />
-            </button>
             {/* Refresh */}
             <button
               type="button"
@@ -417,21 +419,6 @@ export default function Panel({
                   ref={morePopoverRef}
                   className="absolute top-full right-0 mt-1 min-w-[172px] bg-card border border-border rounded-lg shadow-lg py-1 z-50"
                 >
-                  <button
-                    className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
-                    onClick={() => {
-                      startTransition(() => {
-                        setMorePopover(false);
-                        router.push('/capture');
-                      });
-                    }}
-                  >
-                    <Inbox size={14} className="shrink-0 text-[var(--amber)]" />
-                    <span className="flex-1">{t.sidebar.capture}</span>
-                    {inboxCount > 0 && (
-                      <span className="text-2xs font-medium tabular-nums px-1.5 py-px rounded-full bg-[var(--amber)]/10 text-[var(--amber)]/70">{inboxCount}</span>
-                    )}
-                  </button>
                   <button
                     className="hit-target-box w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground transition-colors text-left [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:0px]"
                     onClick={() => {
@@ -584,15 +571,12 @@ function BuiltInMindSpaces({
         data-hit-active={expanded ? 'true' : undefined}
         aria-expanded={!collapsed}
         aria-controls={MIND_SYSTEM_SLOT_LIST_ID}
-        className={`hit-target-box relative mb-1 flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:0px] ${
+        className={`hit-target-box relative mb-1 flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-radius:var(--radius-md)] ${
           collapsed
-            ? '[--hit-target-hover-bg:var(--muted)]'
-            : '[--hit-target-active-bg:var(--amber-subtle)] [--hit-target-hover-bg:var(--amber-dim)]'
+            ? 'rounded-md border border-transparent [--hit-target-hover-bg:var(--muted)]'
+            : 'rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-hover-bg:var(--amber-dim)]'
         }`}
       >
-        {expanded && (
-          <span className="pointer-events-none absolute bottom-[20%] left-0 top-[20%] w-[3px] rounded-r-full bg-[var(--amber)]" aria-hidden="true" />
-        )}
         <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
           collapsed
             ? 'bg-[var(--amber)]/8 text-[var(--amber)]/70'
@@ -622,13 +606,12 @@ function BuiltInMindSpaces({
                 data-mind-system-sidebar-open={item.key}
                 data-hit-active={active ? 'true' : undefined}
                 aria-current={active ? 'page' : undefined}
-                className={`hit-target-box relative flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-radius:0px] ${
-                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                className={`hit-target-box relative flex w-full min-w-0 items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-radius:var(--radius-md)] ${
+                  active
+                    ? 'rounded-md bg-[var(--amber-subtle)] text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {active && (
-                  <span className="pointer-events-none absolute bottom-[20%] left-0 top-[20%] w-[3px] rounded-r-full bg-[var(--amber)]" aria-hidden="true" />
-                )}
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border bg-background/40 text-[11px] font-semibold ${
                   active ? 'border-[var(--amber)]/35 text-[var(--amber)]' : 'border-border text-[var(--amber)]'
                 }`}>

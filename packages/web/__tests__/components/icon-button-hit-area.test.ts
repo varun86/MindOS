@@ -61,7 +61,7 @@ describe('icon button hit areas', () => {
     expect(agentsPanelSource).not.toContain('className="p-1 rounded hover:bg-muted');
   });
 
-  it('keeps the files panel more button visible before depth controls on narrow headers', () => {
+  it('keeps files panel header actions compact without hiding depth controls', () => {
     const source = readSource('components/Panel.tsx');
     const headerSource = readSource('components/panels/PanelHeader.tsx');
     const css = readSource('app/globals.css');
@@ -73,8 +73,8 @@ describe('icon button hit areas', () => {
     expect(source).toContain('files-panel-header-depth-actions');
     expect(source).toContain('files-panel-header-more-action');
     expect(css).toContain('@container (max-width: 272px)');
-    expect(css).toContain('.files-panel-header-depth-actions');
-    expect(css).toContain('display: none;');
+    expect(css).toContain('.files-panel-header-actions');
+    expect(css).not.toContain('.files-panel-header-depth-actions {\n    display: none;');
   });
 
   it('keeps built-in Mind System sidebar controls on rectangular hit targets', () => {
@@ -82,10 +82,11 @@ describe('icon button hit areas', () => {
 
     expect(source).toContain('data-hit-active={expanded ? \'true\' : undefined}');
     expect(source).toContain('hit-target-box relative mb-1 flex w-full items-center gap-2');
-    expect(source).not.toContain('hit-target-box relative mb-1 flex w-full items-center gap-2 border border-transparent');
-    expect(source).toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
+    expect(source).toContain('rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)]');
+    expect(source).not.toContain('w-[3px] rounded-r-full bg-[var(--amber)]');
     expect(source).toContain('data-mind-system-sidebar-open={item.key}');
     expect(source).toContain('hit-target-box relative flex w-full min-w-0 items-center gap-2');
+    expect(source).toContain('rounded-md bg-[var(--amber-subtle)] text-foreground');
   });
 
   it('keeps file tree row controls on stable hit targets', () => {

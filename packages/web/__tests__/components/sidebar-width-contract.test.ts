@@ -48,7 +48,7 @@ describe('Sidebar width contract', () => {
     expect(titlebarRow).not.toContain('var(--window-controls-left, 0px) - var(--rail-width');
   });
 
-  it('keeps Home navigation pending state from re-highlighting the previous route', () => {
+  it('keeps Home navigation pending state from re-highlighting route sections', () => {
     const sidebarLayout = readSource('components/SidebarLayout.tsx');
     const activityBar = readSource('components/ActivityBar.tsx');
 
@@ -57,6 +57,8 @@ describe('Sidebar width contract', () => {
     expect(sidebarLayout).toContain('const [pendingHomeNav, setPendingHomeNav]');
     expect(sidebarLayout).toContain('const homeNavPending = pendingHomeNav?.fromPathname === pathname');
     expect(sidebarLayout).toContain('suppressRouteActive={homeNavPending}');
+    expect(sidebarLayout).toContain('setPendingHomeNav(pathname !== \'/\' ? { fromPathname: pathname, panel: nextPanel } : null)');
+    expect(activityBar).toContain('onPanelChange(null)');
   });
 
   it('wires the titlebar sidebar button to the left panel, not the rail width', () => {

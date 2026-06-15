@@ -43,4 +43,13 @@ describe('EchoPanel sidebar navigation', () => {
     expect(html).toMatch(/<a(?![^>]*aria-current="page")[^>]*href="\/echo\/imprint"/);
     expect(html).toMatch(/<a(?![^>]*aria-current="page")[^>]*href="\/echo\/self"/);
   });
+
+  it('does not expose a fullscreen control in the Echo sidebar header', () => {
+    routeState.pathname = '/echo/imprint';
+
+    const html = renderToStaticMarkup(<EchoPanel active maximized={false} onMaximize={() => {}} />);
+
+    expect(html).not.toContain('Maximize panel');
+    expect(html).not.toContain('Restore panel');
+  });
 });

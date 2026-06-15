@@ -83,7 +83,7 @@ export default function NativeRuntimeOptionsCapsule({
   const modelOverride = value.modelOverride ?? '';
   const [draftModel, setDraftModel] = useState(modelOverride);
   const inputRef = useRef<HTMLInputElement>(null);
-  const defaultModelLabel = runtimeKind === 'codex' ? 'Codex default' : 'Claude default';
+  const defaultModelLabel = 'Default';
   const placeholder = runtimeKind === 'codex' ? 'gpt-5.4-codex' : 'sonnet';
 
   useEffect(() => {

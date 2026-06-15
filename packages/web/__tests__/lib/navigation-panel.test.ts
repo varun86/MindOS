@@ -158,10 +158,10 @@ describe('navigation panel route recovery', () => {
     expect(getPendingHomePanel('/wiki', pending)).toBeNull();
   });
 
-  it('restores the files panel whenever home is clicked', () => {
+  it('keeps rail sections inactive whenever home is clicked', () => {
     const panels = [null, 'files', 'capture', 'search', 'echo', 'agents', 'discover', 'workflows'] as const;
     for (const panel of panels) {
-      expect(getHomeClickPanel(panel)).toBe('files');
+      expect(getHomeClickPanel(panel)).toBeNull();
     }
   });
 

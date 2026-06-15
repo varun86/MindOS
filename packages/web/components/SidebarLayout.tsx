@@ -791,7 +791,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       >
         {isPanelMounted('echo') && (
           <div className={`flex flex-col h-full ${activeLeftPanel === 'echo' ? '' : 'hidden'}`}>
-            <EchoPanel active={activeLeftPanel === 'echo'} maximized={effectivePanelMaximized} onMaximize={lp.handlePanelMaximize} />
+            <EchoPanel active={activeLeftPanel === 'echo'} />
           </div>
         )}
         {isPanelMounted('capture') && (

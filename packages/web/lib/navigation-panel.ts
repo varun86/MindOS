@@ -122,7 +122,7 @@ export function getEffectivePanelMaximized(
 }
 
 export function getHomeClickPanel(_activeLeftPanel: PanelId | null): PanelId | null {
-  return 'files';
+  return null;
 }
 
 export function recoverStaleCapturePanel(

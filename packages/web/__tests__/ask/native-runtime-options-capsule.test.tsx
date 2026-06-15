@@ -40,7 +40,9 @@ describe('NativeRuntimeOptionsCapsule', () => {
   it('uses titled capsule dropdowns for effort and model override', () => {
     const view = renderCapsule();
 
-    expect(view.host.textContent).toContain('Codex default');
+    expect(view.host.textContent).toContain('Default');
+    expect(view.host.textContent).not.toContain('Codex default');
+    expect(view.host.textContent).not.toContain('Claude default');
     expect(view.host.textContent).toContain('Medium');
 
     const effortButton = Array.from(view.host.querySelectorAll('button'))
@@ -62,7 +64,7 @@ describe('NativeRuntimeOptionsCapsule', () => {
     expect(view.onChange).toHaveBeenLastCalledWith({ reasoningEffort: 'high' });
 
     const modelButton = Array.from(view.host.querySelectorAll('button'))
-      .find((button) => button.textContent?.includes('Codex default')) as HTMLButtonElement;
+      .find((button) => button.textContent?.includes('Default')) as HTMLButtonElement;
     expect(modelButton).toBeTruthy();
 
     act(() => {
