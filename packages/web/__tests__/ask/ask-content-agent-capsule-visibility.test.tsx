@@ -154,8 +154,10 @@ vi.mock('@/components/ask/AskHeader', () => ({
 }));
 vi.mock('@/components/ask/FileChip', () => ({ default: () => null }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
-  default: () => <div data-testid="mode-capsule">mode</div>,
-  getPersistedMode: () => 'agent',
+  default: () => <div data-testid="permission-capsule">permission</div>,
+  getPersistedPermissionLevel: () => 'ask',
+  permissionLevelToAskMode: (level: string) => level === 'read' ? 'chat' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
 }));
 vi.mock('@/components/ask/ProviderModelCapsule', () => ({
   default: () => <div data-testid="provider-capsule">provider</div>,
@@ -188,7 +190,7 @@ describe('AskContent runtime selector placement', () => {
       await Promise.resolve();
     });
 
-    expect(host.querySelector('[data-testid="mode-capsule"]')).toBeTruthy();
+    expect(host.querySelector('[data-testid="permission-capsule"]')).toBeTruthy();
     expect(host.querySelector('[data-testid="provider-capsule"]')).toBeTruthy();
     expect(host.querySelector('[data-testid="runtime-switcher"]')?.textContent).toBe('MindOS');
     expect(host.querySelector('[data-testid="agent-selector"]')).toBeNull();

@@ -185,6 +185,17 @@ function childStatusBadges(summary: ChildStatusSummary): Array<{ label: string; 
   return badges;
 }
 
+function shouldRenderTimeline(runs: AgentRunTimelineRecord[], events: AgentRunTimelineEvent[]): boolean {
+  if (runs.some((run) => run.agentKind !== 'native-runtime')) return true;
+  if (runs.some((run) => run.status === 'failed' || run.status === 'timed_out' || run.status === 'canceled' || Boolean(run.error))) {
+    return true;
+  }
+  return events.some((event) => (
+    event.visibility !== 'debug' &&
+    (event.category === 'error' || event.status === 'failed' || event.status === 'timed_out' || event.status === 'canceled')
+  ));
+}
+
 function AgentRunRow({
   node,
   depth,
@@ -341,6 +352,7 @@ const AgentRunTimeline = memo(function AgentRunTimeline({ part }: { part: AgentR
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
 
   if (runs.length === 0) return null;
+  if (!shouldRenderTimeline(runs, part.events ?? [])) return null;
 
   const activeCount = runs.filter((run) => !TERMINAL_STATUSES.has(run.status)).length;
   const toggleRoot = (id: string) => {

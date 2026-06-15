@@ -367,7 +367,7 @@ describe('selectVisibleAgentRunTimeline', () => {
     expect(timeline).toBeNull();
   });
 
-  it('shows native-runtime turns with actionable tool events and strips text/status noise', () => {
+  it('suppresses native-runtime tool events that already render inline in the message', () => {
     const run = nativeRun();
     const timeline = selectVisibleAgentRunTimeline({
       payload: {
@@ -402,11 +402,10 @@ describe('selectVisibleAgentRunTimeline', () => {
       now: 1300,
     });
 
-    expect(timeline?.runs.map((item) => item.id)).toEqual(['native-run-1']);
-    expect(timeline?.events?.map((event) => event.id)).toEqual(['tool-started']);
+    expect(timeline).toBeNull();
   });
 
-  it('shows native-runtime permission, question, and error events while stripping status noise', () => {
+  it('keeps native-runtime errors visible while stripping inline permission and question events', () => {
     const run = nativeRun();
     const timeline = selectVisibleAgentRunTimeline({
       payload: {
@@ -449,11 +448,7 @@ describe('selectVisibleAgentRunTimeline', () => {
     });
 
     expect(timeline?.runs.map((item) => item.id)).toEqual(['native-run-1']);
-    expect(timeline?.events?.map((event) => event.id)).toEqual([
-      'permission-requested',
-      'question-started',
-      'runtime-error',
-    ]);
+    expect(timeline?.events?.map((event) => event.id)).toEqual(['runtime-error']);
   });
 
   it('keeps failed native-runtime turns visible even when no tool event was recorded', () => {

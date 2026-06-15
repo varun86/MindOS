@@ -1,14 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-/**
- * Tests for ModeCapsule persistence and mode toggle logic.
- * Since @testing-library/react is unavailable, we test the exported
- * pure functions (getPersistedMode, persistMode) and the toggle behavior.
- */
+const STORAGE_KEY = 'mindos-permission-level.v1';
+const LEGACY_STORAGE_KEY = 'mindos-ask-mode';
 
-const STORAGE_KEY = 'mindos-ask-mode';
-
-describe('ModeCapsule persistence', () => {
+describe('Permission capsule persistence', () => {
   let store: Record<string, string>;
   const fakeStorage = {
     getItem: (key: string) => store[key] ?? null,
@@ -27,69 +22,69 @@ describe('ModeCapsule persistence', () => {
     vi.unstubAllGlobals();
   });
 
-  it('getPersistedMode returns "agent" when no stored value', async () => {
-    const { getPersistedMode } = await import('@/components/ask/ModeCapsule');
+  it('defaults to ask-first permission when no stored value exists', async () => {
+    const { getPersistedPermissionLevel, getPersistedMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionLevel()).toBe('ask');
     expect(getPersistedMode()).toBe('agent');
   });
 
-  it('getPersistedMode returns stored "chat"', async () => {
-    store[STORAGE_KEY] = 'chat';
-    const { getPersistedMode } = await import('@/components/ask/ModeCapsule');
+  it('returns stored permission level values', async () => {
+    store[STORAGE_KEY] = 'read';
+    const { getPersistedPermissionLevel, getPersistedMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionLevel()).toBe('read');
     expect(getPersistedMode()).toBe('chat');
   });
 
-  it('getPersistedMode returns stored "agent"', async () => {
-    store[STORAGE_KEY] = 'agent';
-    const { getPersistedMode } = await import('@/components/ask/ModeCapsule');
-    expect(getPersistedMode()).toBe('agent');
+  it('migrates legacy chat mode to read permission', async () => {
+    store[LEGACY_STORAGE_KEY] = 'chat';
+    const { getPersistedPermissionLevel, getPersistedMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionLevel()).toBe('read');
+    expect(getPersistedMode()).toBe('chat');
+    expect(store[STORAGE_KEY]).toBe('read');
   });
 
-  it('getPersistedMode falls back to "agent" for invalid stored values', async () => {
+  it('migrates legacy agent mode to ask permission', async () => {
+    store[LEGACY_STORAGE_KEY] = 'agent';
+    const { getPersistedPermissionLevel, getPersistedMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionLevel()).toBe('ask');
+    expect(getPersistedMode()).toBe('agent');
+    expect(store[STORAGE_KEY]).toBe('ask');
+  });
+
+  it('falls back to ask permission for invalid stored values', async () => {
     store[STORAGE_KEY] = 'invalid';
-    const { getPersistedMode } = await import('@/components/ask/ModeCapsule');
-    expect(getPersistedMode()).toBe('agent');
+    const { getPersistedPermissionLevel } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionLevel()).toBe('ask');
   });
 
-  it('persistMode stores the mode in localStorage', async () => {
-    const { persistMode } = await import('@/components/ask/ModeCapsule');
+  it('persists permission level and legacy ask mode compatibility value', async () => {
+    const { persistPermissionLevel, persistMode } = await import('@/components/ask/ModeCapsule');
+    persistPermissionLevel('read');
+    expect(store[STORAGE_KEY]).toBe('read');
+    expect(store[LEGACY_STORAGE_KEY]).toBe('chat');
+
+    persistPermissionLevel('full');
+    expect(store[STORAGE_KEY]).toBe('full');
+    expect(store[LEGACY_STORAGE_KEY]).toBe('agent');
+
     persistMode('chat');
-    expect(store[STORAGE_KEY]).toBe('chat');
-    persistMode('agent');
-    expect(store[STORAGE_KEY]).toBe('agent');
+    expect(store[STORAGE_KEY]).toBe('read');
+    expect(store[LEGACY_STORAGE_KEY]).toBe('chat');
   });
 });
 
-describe('Mode toggle logic', () => {
-  it('toggles from agent to chat', () => {
-    const mode = 'agent';
-    const next = mode === 'chat' ? 'agent' : 'chat';
-    expect(next).toBe('chat');
+describe('Permission level mapping', () => {
+  it('maps read permission to chat/readonly runtime behavior', async () => {
+    const { permissionLevelToAskMode, permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
+    expect(permissionLevelToAskMode('read')).toBe('chat');
+    expect(permissionLevelToNativeRuntimePermission('read')).toBe('readonly');
   });
 
-  it('toggles from chat to agent', () => {
-    const mode = 'chat';
-    const next = mode === 'chat' ? 'agent' : 'chat';
-    expect(next).toBe('agent');
-  });
-});
-
-describe('AskMode request body integration', () => {
-  it('chat mode is sent in request body as "chat"', () => {
-    const body = JSON.stringify({ messages: [], mode: 'chat' });
-    const parsed = JSON.parse(body);
-    expect(parsed.mode).toBe('chat');
-  });
-
-  it('agent mode is sent in request body as "agent"', () => {
-    const body = JSON.stringify({ messages: [], mode: 'agent' });
-    const parsed = JSON.parse(body);
-    expect(parsed.mode).toBe('agent');
-  });
-
-  it('default mode when omitted should be treated as agent', () => {
-    const body = JSON.stringify({ messages: [] });
-    const parsed = JSON.parse(body);
-    const askMode = parsed.mode === 'chat' ? 'chat' : 'agent';
-    expect(askMode).toBe('agent');
+  it('maps ask, auto, and full to existing agent runtime behavior', async () => {
+    const { permissionLevelToAskMode, permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
+    for (const level of ['ask', 'auto', 'full'] as const) {
+      expect(permissionLevelToAskMode(level)).toBe('agent');
+      expect(permissionLevelToNativeRuntimePermission(level)).toBe('agent');
+    }
   });
 });

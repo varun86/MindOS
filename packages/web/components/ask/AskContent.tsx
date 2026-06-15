@@ -4,8 +4,12 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } fr
 import { createPortal } from 'react-dom';
 import { Plus, FileText, ImageIcon } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskMode, Message, NativeRuntimeOptions } from '@/lib/types';
-import ModeCapsule, { getPersistedMode } from '@/components/ask/ModeCapsule';
+import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskPermissionLevel, Message, NativeRuntimeOptions } from '@/lib/types';
+import ModeCapsule, {
+  getPersistedPermissionLevel,
+  permissionLevelToAskMode,
+  permissionLevelToNativeRuntimePermission,
+} from '@/components/ask/ModeCapsule';
 import { useAskSession } from '@/hooks/useAskSession';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useImageUpload } from '@/hooks/useImageUpload';
@@ -167,10 +171,15 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const [selectedAgentRuntime, setSelectedAgentRuntime] = useState<SelectedAgentRuntime | null>(null);
   const selectedAgentRuntimeRef = useRef(selectedAgentRuntime);
   const pendingOpenAgentRef = useRef<SelectedAgentRuntime | null>(null);
-  const [chatMode, setChatMode] = useState<AskMode>('agent');
+  const [permissionLevel, setPermissionLevel] = useState<AskPermissionLevel>('ask');
   const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
   const [modelOverride, setModelOverride] = useState<string | null>(null);
   const [nativeRuntimeOptions, setNativeRuntimeOptions] = useState<NativeRuntimeOptions>({});
+  const chatMode = useMemo(() => permissionLevelToAskMode(permissionLevel), [permissionLevel]);
+  const effectiveNativeRuntimeOptions = useMemo<NativeRuntimeOptions>(() => ({
+    ...nativeRuntimeOptions,
+    permissionMode: permissionLevelToNativeRuntimePermission(permissionLevel),
+  }), [nativeRuntimeOptions, permissionLevel]);
 
   const updateSelectedAgentRuntime = useCallback((runtime: AgentRuntimeIdentity | null) => {
     const normalized = normalizeSelectedAgentRuntime(runtime);
@@ -184,7 +193,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   }, []);
 
   useEffect(() => {
-    setChatMode(getPersistedMode());
+    setPermissionLevel(getPersistedPermissionLevel());
     const persisted = getPersistedProviderModel();
     setProviderOverride(persisted.provider);
     setModelOverride(persisted.model);
@@ -402,7 +411,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     chatMode,
     providerOverride,
     modelOverride,
-    nativeRuntimeOptions,
+    nativeRuntimeOptions: effectiveNativeRuntimeOptions,
     activeSessionId: session.activeSessionId,
     onFirstMessage,
     refs: chatRefs,
@@ -1317,7 +1326,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
           {/* Mode + provider selector row + keyboard hint */}
           <div className={cn('relative z-20 flex items-center justify-between border-t border-border/10', isPanel ? 'px-2 pb-1.5 pt-1 gap-1' : 'px-3 pb-2 pt-1.5')}>
             <div className={cn('flex items-center flex-wrap', isPanel ? 'gap-1' : 'gap-2')}>
-              <ModeCapsule mode={chatMode} onChange={setChatMode} disabled={isLoading} />
+              <ModeCapsule mode={permissionLevel} onChange={setPermissionLevel} disabled={isLoading} />
             {mounted && isMindosRuntime && (
               <ProviderModelCapsule
                 providerValue={providerOverride}
@@ -1331,7 +1340,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
               <NativeRuntimeOptionsCapsule
                 runtimeKind={selectedNativeRuntimeKind}
                 value={nativeRuntimeOptions}
-                defaultPermissionMode={chatMode === 'chat' ? 'readonly' : 'agent'}
                 onChange={handleNativeRuntimeOptionsChange}
                 disabled={isLoading}
               />

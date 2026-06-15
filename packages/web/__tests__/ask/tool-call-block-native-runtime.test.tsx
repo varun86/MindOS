@@ -37,7 +37,7 @@ describe('ToolCallBlock native runtime rendering', () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
-  it('renders Claude Code Bash calls as native runtime execution until an approval request arrives', () => {
+  it('keeps Claude Code Bash calls collapsed until an approval request arrives', () => {
     const view = renderToolCall({
       type: 'tool-call',
       toolCallId: 'tool-claude-bash',
@@ -52,8 +52,10 @@ describe('ToolCallBlock native runtime rendering', () => {
 
     expect(view.host.textContent).toContain('Claude Code');
     expect(view.host.textContent).toContain('Bash');
-    expect(view.host.textContent).toContain('mindos file delete "Profile.md"');
-    expect(view.host.textContent).toContain('Running in Claude Code');
+    expect(view.host.textContent).toContain('Delete the profile note');
+    expect(view.host.querySelector('button[aria-expanded="false"]')).toBeTruthy();
+    expect(view.host.textContent).not.toContain('mindos file delete "Profile.md"');
+    expect(view.host.textContent).not.toContain('Running in Claude Code');
     expect(view.host.textContent).not.toContain('Local approval may be required');
     expect(view.host.textContent).not.toContain('permission pipeline');
 
@@ -88,6 +90,7 @@ describe('ToolCallBlock native runtime rendering', () => {
     expect(view.host.textContent).toContain('Codex permission request');
     expect(view.host.textContent).toContain('Allow once');
     expect(view.host.textContent).toContain('Deny');
+    expect(view.host.querySelector('button[aria-expanded="true"]')).toBeTruthy();
 
     const allowButton = Array.from(view.host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Allow once'));
@@ -150,16 +153,26 @@ describe('ToolCallBlock native runtime rendering', () => {
       },
     });
 
-    expect(view.host.textContent).toContain('Approved');
+    expect(view.host.querySelector('button[aria-expanded="false"]')).toBeTruthy();
+    expect(view.host.textContent).not.toContain('Approved');
     const resolvedAllowButton = Array.from(view.host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Allow once'));
-    expect(resolvedAllowButton?.querySelector('.animate-spin')).toBeNull();
+    expect(resolvedAllowButton).toBeUndefined();
+
+    const header = view.host.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    act(() => {
+      header.click();
+    });
+    expect(view.host.textContent).toContain('Approved');
+    const expandedAllowButton = Array.from(view.host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Allow once'));
+    expect(expandedAllowButton?.querySelector('.animate-spin')).toBeNull();
 
     view.cleanup();
     vi.unstubAllGlobals();
   });
 
-  it('renders Codex command output in a native runtime card', () => {
+  it('keeps Codex command output collapsed until the user expands it', () => {
     const view = renderToolCall({
       type: 'tool-call',
       toolCallId: 'tool-codex-bash',
@@ -172,8 +185,15 @@ describe('ToolCallBlock native runtime rendering', () => {
 
     expect(view.host.textContent).toContain('Codex');
     expect(view.host.textContent).toContain('mindos search "permission"');
-    expect(view.host.textContent).toContain('Found 3 notes.');
+    expect(view.host.querySelector('button[aria-expanded="false"]')).toBeTruthy();
+    expect(view.host.textContent).not.toContain('Found 3 notes.');
     expect(view.host.textContent).not.toContain('only mirrors');
+
+    const header = view.host.querySelector('button[aria-expanded]') as HTMLButtonElement;
+    act(() => {
+      header.click();
+    });
+    expect(view.host.textContent).toContain('Found 3 notes.');
 
     view.cleanup();
   });

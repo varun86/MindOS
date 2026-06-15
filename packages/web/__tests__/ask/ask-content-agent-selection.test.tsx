@@ -311,7 +311,9 @@ vi.mock('@/components/ask/ProviderModelCapsule', () => ({
 }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
-  getPersistedMode: () => 'agent',
+  getPersistedPermissionLevel: () => 'ask',
+  permissionLevelToAskMode: (level: string) => level === 'read' ? 'chat' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
 }));
 vi.mock('@/lib/utils', () => ({ cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ') }));
 vi.mock('@/lib/agent/reconnect', () => ({
@@ -753,7 +755,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'readonly',
+      permissionMode: 'agent',
     });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
 
@@ -817,7 +819,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'xhigh',
-      permissionMode: 'readonly',
+      permissionMode: 'agent',
     });
 
     await act(async () => {

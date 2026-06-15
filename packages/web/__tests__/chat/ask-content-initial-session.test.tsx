@@ -7,14 +7,25 @@
  * initialSessionId) keeps calling initSessions unchanged.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import React, { act } from 'react';
+import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import AskContent from '@/components/ask/AskContent';
 import type { ChatSession } from '@/lib/types';
 
 const { mockInitSessions, mockRefreshSessions } = vi.hoisted(() => ({
   mockInitSessions: vi.fn(),
   mockRefreshSessions: vi.fn(() => Promise.resolve()),
+}));
+
+const { mockSubmit, mockStop, mockFirstMessageFired, mockIsLoadingRef, mockAbortRef } = vi.hoisted(() => ({
+  mockSubmit: vi.fn((event?: { preventDefault?: () => void }) => {
+    event?.preventDefault?.();
+  }),
+  mockStop: vi.fn(),
+  mockFirstMessageFired: { current: false },
+  mockIsLoadingRef: { current: false },
+  mockAbortRef: { current: null as AbortController | null },
 }));
 
 const emptySession: ChatSession = {
@@ -29,12 +40,39 @@ vi.mock('@/lib/ask-session-store', async (importOriginal) => {
   return { ...actual, refreshSessions: mockRefreshSessions };
 });
 
-vi.mock('@/lib/stores/locale-store', async () => {
-  const { messages } = await import('@/lib/i18n');
-  return {
-    useLocale: () => ({ locale: 'en' as const, setLocale: vi.fn(), t: messages.en }),
-  };
-});
+vi.mock('@/lib/stores/locale-store', () => ({
+  useLocale: () => ({
+    locale: 'en' as const,
+    setLocale: vi.fn(),
+    t: {
+      ask: {
+        placeholder: 'Ask a question...',
+        send: 'Send',
+        newlineHint: 'new line',
+        attachFileLabel: 'Document',
+        attachImageLabel: 'Image',
+        stopTitle: 'Stop',
+        cancelReconnect: 'Cancel reconnect',
+        connecting: 'connecting',
+        thinking: 'thinking',
+        generating: 'generating',
+        reconnecting: (attempt: number, max: number) => `retry ${attempt}/${max}`,
+        stopped: 'stopped',
+        errorNoResponse: 'no response',
+        concurrentLimit: 'Another run is still active.',
+        emptyPrompt: 'empty',
+        emptyHint: 'empty hint',
+        suggestions: [],
+        copyMessage: 'Copy',
+        editMessage: 'Edit',
+        regenerateMessage: 'Regenerate',
+        sessionRunningRetry: 'That session is still running. Try again after it finishes.',
+      },
+      hints: { attachFile: 'Attach local file' },
+      fileImport: { unsupported: 'Unsupported file type' },
+    },
+  }),
+}));
 
 vi.mock('@/hooks/useAskSession', () => ({
   useAskSession: () => ({
@@ -115,19 +153,85 @@ vi.mock('@/hooks/useNativeRuntimeDetection', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useAskChat', () => ({
+  useAskChat: () => ({
+    isLoading: false,
+    loadingPhase: 'connecting',
+    reconnectAttempt: 0,
+    reconnectMax: 3,
+    agentRunContext: null,
+    submit: mockSubmit,
+    stop: mockStop,
+    firstMessageFired: mockFirstMessageFired,
+    isLoadingRef: mockIsLoadingRef,
+    abortRef: mockAbortRef,
+  }),
+}));
+
+vi.mock('@/hooks/useAgentRunTimeline', () => ({
+  useAgentRunTimeline: vi.fn(),
+}));
+
 vi.mock('@/components/ask/MessageList', () => ({ default: () => <div data-testid="message-list" /> }));
 vi.mock('@/components/ask/MentionPopover', () => ({ default: () => null }));
 vi.mock('@/components/ask/SlashCommandPopover', () => ({ default: () => null }));
 vi.mock('@/components/ask/SessionHistoryPanel', () => ({ default: () => null }));
 vi.mock('@/components/ask/AskHeader', () => ({ default: () => null }));
 vi.mock('@/components/ask/FileChip', () => ({ default: () => null }));
+vi.mock('@/components/ask/AskComposerInput', async () => {
+  const React = await import('react');
+  return {
+    default: function MockAskComposerInput(props: {
+      inputRef: React.MutableRefObject<HTMLTextAreaElement | null>;
+      valueRef: React.MutableRefObject<string>;
+      setterRef: React.MutableRefObject<((value: string) => void) | null>;
+      onValueChange: (value: string, cursorPos?: number) => void;
+      onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
+      onPaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
+      placeholder: string;
+    }) {
+      const [value, setValue] = React.useState(() => props.valueRef.current);
+
+      React.useLayoutEffect(() => {
+        const setter = (next: string) => {
+          props.valueRef.current = next;
+          setValue(next);
+        };
+        props.setterRef.current = setter;
+        return () => {
+          if (props.setterRef.current === setter) props.setterRef.current = null;
+        };
+      }, [props.setterRef, props.valueRef]);
+
+      return (
+        <textarea
+          ref={(el) => {
+            props.inputRef.current = el;
+          }}
+          value={value}
+          onChange={(event) => {
+            const next = event.target.value;
+            props.valueRef.current = next;
+            setValue(next);
+            props.onValueChange(next, event.target.selectionStart ?? undefined);
+          }}
+          onKeyDown={props.onKeyDown}
+          onPaste={props.onPaste}
+          placeholder={props.placeholder}
+        />
+      );
+    },
+  };
+});
 vi.mock('@/components/ask/ProviderModelCapsule', () => ({
   default: () => null,
   getPersistedProviderModel: () => ({ provider: null, model: null }),
 }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
-  getPersistedMode: () => 'agent',
+  getPersistedPermissionLevel: () => 'ask',
+  permissionLevelToAskMode: (level: string) => level === 'read' ? 'chat' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
 }));
 vi.mock('@/lib/agent/stream-consumer', () => ({
   consumeUIMessageStream: () => new Promise(() => {}),
@@ -137,20 +241,22 @@ async function renderAskContent(props: Partial<React.ComponentProps<typeof AskCo
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => {
+  flushSync(() => {
     root.render(<AskContent visible variant="home" {...props} />);
   });
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
   return { host, root };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFirstMessageFired.current = false;
+  mockIsLoadingRef.current = false;
+  mockAbortRef.current = null;
   localStorage.clear();
   document.body.innerHTML = '';
-  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
     ok: true,
     json: async () => ([]),

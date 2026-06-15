@@ -204,6 +204,12 @@ async function fetchAgentRuns(input: {
 function isActionableTimelineEvent(event: AgentRunTimelineEvent): boolean {
   if (event.visibility === 'debug') return false;
   if (
+    event.record?.agentKind === 'native-runtime' &&
+    (event.category === 'tool' || event.category === 'permission' || event.category === 'question')
+  ) {
+    return false;
+  }
+  if (
     event.category === 'tool' ||
     event.category === 'file' ||
     event.category === 'permission' ||

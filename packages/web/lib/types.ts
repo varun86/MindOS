@@ -235,6 +235,9 @@ export type AskMode = 'chat' | 'agent';
 /** All Ask modes including internal ones sent to the API */
 export type AskModeApi = AskMode | 'organize';
 
+/** Chat Panel permission preset shown in the composer controls. */
+export type AskPermissionLevel = 'read' | 'ask' | 'auto' | 'full';
+
 export type NativeRuntimePermissionMode = 'readonly' | 'agent';
 export type NativeRuntimeEffort = 'low' | 'medium' | 'high' | 'xhigh';
 

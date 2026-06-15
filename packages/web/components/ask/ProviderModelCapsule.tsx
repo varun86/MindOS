@@ -512,10 +512,13 @@ export default function ProviderModelCapsule({
       <div
         ref={providerPanelRef}
         role="listbox"
-        aria-label={t.ask?.providerCapsule ?? 'Provider'}
+        aria-label="Model"
         className="w-[260px] rounded-lg border border-border bg-card shadow-lg py-1 animate-in fade-in-0 zoom-in-95 duration-100"
         style={{ maxHeight: '70vh', overflowY: 'auto' }}
       >
+        <div className="border-b border-border/40 px-3 py-2">
+          <div className="text-xs font-semibold text-foreground">Model</div>
+        </div>
         <button
           type="button"
           role="option"

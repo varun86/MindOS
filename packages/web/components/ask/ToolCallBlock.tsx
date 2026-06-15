@@ -570,9 +570,17 @@ export default function ToolCallBlock({ part }: { part: ToolCallPart }) {
   const hasUserQuestion = isAskUserQuestionToolName(displayPart.toolName) || Boolean(displayPart.userQuestion);
   const hasNativeRuntimeTool = isNativeRuntimeTool(displayPart);
   const isDone = displayPart.state === 'done';
-  // Auto-expand diff tools when completed
   const [manualToggle, setManualToggle] = useState<boolean | null>(null);
-  const expanded = manualToggle ?? (hasUserQuestion || hasNativeRuntimeTool || (hasDiff && isDone));
+  const permissionStatus = displayPart.runtimePermission?.status;
+  const permissionWaiting = permissionStatus === 'waiting';
+  const questionWaiting = displayPart.userQuestion?.status === 'waiting';
+  const expanded = manualToggle ?? (permissionWaiting || questionWaiting);
+
+  useEffect(() => {
+    if (permissionStatus && permissionStatus !== 'waiting') {
+      setManualToggle(false);
+    }
+  }, [permissionStatus]);
 
   const IconComponent = isAskUserQuestionToolName(displayPart.toolName)
     ? MessageSquareMore

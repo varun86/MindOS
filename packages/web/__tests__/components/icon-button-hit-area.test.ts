@@ -121,6 +121,7 @@ describe('icon button hit areas', () => {
     // component (streaming-render perf: keystrokes no longer re-render AskContent).
     const composerSource = readSource('components/ask/AskComposerInput.tsx');
     const modeSource = readSource('components/ask/ModeCapsule.tsx');
+    const optionCapsuleSource = readSource('components/ask/AskOptionCapsule.tsx');
     const providerSource = readSource('components/ask/ProviderModelCapsule.tsx');
 
     expect(headerSource).toContain('const headerButtonClass = \'hit-target-box');
@@ -134,7 +135,8 @@ describe('icon button hit areas', () => {
     expect(contentSource).toContain('hit-target-box p-2 text-muted-foreground');
     expect(composerSource).toContain('hit-target-box p-2 disabled:opacity-20');
     expect(contentSource).toContain('hit-target-box flex w-full items-center gap-2.5 px-3 py-2');
-    expect(modeSource).toContain('hit-target-box relative z-10 inline-flex min-h-6');
+    expect(modeSource).toContain('AskOptionCapsule');
+    expect(optionCapsuleSource).toContain('hit-target-box relative z-10 inline-flex min-h-6');
     expect(providerSource).toContain('hit-target-box relative z-10 inline-flex min-h-6');
   });
 
