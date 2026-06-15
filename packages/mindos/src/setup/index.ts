@@ -26,6 +26,7 @@ export type MindosSetupGuideState = {
   template: 'en' | 'zh' | 'empty';
   step1Done: boolean;
   askedAI: boolean;
+  agentPromptDone: boolean;
   nextStepIndex: number;
   walkthroughStep?: number;
   walkthroughDismissed?: boolean;
@@ -208,7 +209,7 @@ export function applyMindosSetupConfig(
     setupPending: false,
     setupPort: undefined,
     disabledSkills: template === 'zh' ? ['mindos'] : ['mindos-zh'],
-    guideState: createGuideState(template),
+    guideState: current.guideState ?? createGuideState(template),
     connectionMode: resolveConnectionMode(current.connectionMode, payload.connectionMode),
   };
 
@@ -238,6 +239,7 @@ export function patchMindosSetupGuideState(
     template: 'en' as const,
     step1Done: false,
     askedAI: false,
+    agentPromptDone: false,
     nextStepIndex: 0,
   };
   const patchRecord = patch as Record<string, unknown>;
@@ -245,6 +247,7 @@ export function patchMindosSetupGuideState(
   if (typeof patchRecord.dismissed === 'boolean') updated.dismissed = patchRecord.dismissed;
   if (typeof patchRecord.step1Done === 'boolean') updated.step1Done = patchRecord.step1Done;
   if (typeof patchRecord.askedAI === 'boolean') updated.askedAI = patchRecord.askedAI;
+  if (typeof patchRecord.agentPromptDone === 'boolean') updated.agentPromptDone = patchRecord.agentPromptDone;
   if (typeof patchRecord.nextStepIndex === 'number' && patchRecord.nextStepIndex >= 0) updated.nextStepIndex = patchRecord.nextStepIndex;
   if (typeof patchRecord.active === 'boolean') updated.active = patchRecord.active;
   if (typeof patchRecord.walkthroughStep === 'number' && patchRecord.walkthroughStep >= 0) updated.walkthroughStep = patchRecord.walkthroughStep;
@@ -298,6 +301,7 @@ function createGuideState(template: string | undefined): MindosSetupGuideState {
     template: template === 'zh' ? 'zh' : template === 'empty' ? 'empty' : 'en',
     step1Done: false,
     askedAI: false,
+    agentPromptDone: false,
     nextStepIndex: 0,
   };
 }

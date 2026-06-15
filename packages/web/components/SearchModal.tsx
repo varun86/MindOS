@@ -33,6 +33,7 @@ import PluginActionModalDialog from '@/components/plugins/PluginActionModalDialo
 import PluginActionMenuDialog from '@/components/plugins/PluginActionMenuDialog';
 import { createSearchResultDragPreview, scheduleSearchResultDragPreviewCleanup } from '@/lib/search-drag-preview';
 import { notifyFilesChanged } from '@/lib/files-changed';
+import { restartWalkthrough } from '@/lib/stores/walkthrough-store';
 
 interface SearchModalProps {
   open: boolean;
@@ -208,11 +209,7 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
         label: t.search.restartWalkthrough,
         icon: <RotateCcw size={15} />,
         execute: () => {
-          fetch('/api/setup', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ walkthroughStep: 0, walkthroughDismissed: false }),
-          }).then(() => {
+          restartWalkthrough().then(() => {
             toast.success(t.search.walkthroughRestarted);
           }).catch(() => {
             toast.error('Failed to restart walkthrough');

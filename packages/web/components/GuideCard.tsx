@@ -5,26 +5,45 @@ import { X, Sparkles, Upload, MessageCircle, ExternalLink, Check, Copy, ChevronD
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/lib/toast';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useLocale } from '@/lib/stores/locale-store';
 import { openAskModal } from '@/hooks/useAskModal';
 import { walkthroughSteps } from './walkthrough/steps';
 import { subscribeFilesChanged } from '@/lib/files-changed';
 import type { GuideState } from '@/lib/settings';
 
-export default function GuideCard() {
+interface GuideCardProps {
+  hasExistingFiles?: boolean;
+}
+
+type SetupGuideResponse = {
+  activeProvider?: string;
+  providerConfigs?: Array<{ id?: string }>;
+  guideState?: GuideState;
+};
+
+function isAiConfigured(data: SetupGuideResponse): boolean {
+  const activeProvider = data.activeProvider;
+  if (!activeProvider || activeProvider === 'skip') return false;
+  return (data.providerConfigs ?? []).some(provider => provider.id === activeProvider);
+}
+
+export default function GuideCard({ hasExistingFiles = false }: GuideCardProps) {
   const { t } = useLocale();
+  const router = useRouter();
   const g = t.guide;
 
   const [guideState, setGuideState] = useState<GuideState | null>(null);
+  const [aiConfigured, setAiConfigured] = useState(false);
   const [expanded, setExpanded] = useState<'import' | 'ai' | 'agent' | null>(null);
-  const [step3Done, setStep3Done] = useState(false);
   const hasAutoExpanded = useRef(false);
 
   const fetchGuideState = useCallback(() => {
     fetch('/api/setup')
       .then(r => r.json())
-      .then(data => {
+      .then((data: SetupGuideResponse) => {
         const gs = data.guideState;
+        setAiConfigured(isAiConfigured(data));
         if (gs?.active && !gs.dismissed) {
           setGuideState(gs);
         } else {
@@ -80,13 +99,22 @@ export default function GuideCard() {
     return subscribeFilesChanged(() => patchGuide({ step1Done: true }));
   }, [guideState, guideState?.step1Done, patchGuide]);
 
+  useEffect(() => {
+    if (!guideState || !hasExistingFiles || guideState.step1Done) return;
+    patchGuide({ step1Done: true });
+  }, [guideState, guideState?.step1Done, hasExistingFiles, patchGuide]);
+
   // ── Step 2: AI verify ──
   const handleStartAI = useCallback(() => {
+    if (!aiConfigured) {
+      router.push('/settings?tab=ai');
+      return;
+    }
     const gs = guideState;
     const isEmpty = gs?.template === 'empty';
     const prompt = isEmpty ? g.ai.promptEmpty : g.ai.prompt;
     openAskModal(prompt, 'guide');
-  }, [guideState, g]);
+  }, [aiConfigured, guideState, g, router]);
 
   // ── Step 3: Cross-agent copy ──
   const handleCopyPrompt = useCallback(async () => {
@@ -95,9 +123,8 @@ export default function GuideCard() {
   }, [g]);
 
   const handleStep3Done = useCallback(() => {
-    setStep3Done(true);
     setExpanded(null);
-    patchGuide({ nextStepIndex: 0 });
+    patchGuide({ agentPromptDone: true, nextStepIndex: 0 });
   }, [patchGuide]);
 
   // ── Next-step prompts ──
@@ -120,10 +147,10 @@ export default function GuideCard() {
       setExpanded('import');
     } else if (!guideState.askedAI) {
       setExpanded('ai');
-    } else if (!step3Done) {
+    } else if (!guideState.agentPromptDone) {
       setExpanded('agent');
     }
-  }, [guideState, step3Done]);
+  }, [guideState]);
 
   // On step completion, auto-advance to next step
   const prevStepRef = useRef({ s1: false, s2: false });
@@ -143,6 +170,7 @@ export default function GuideCard() {
   // ── Auto-dismiss final state ──
   const step1Done = guideState?.step1Done ?? false;
   const step2Done = guideState?.askedAI ?? false;
+  const step3Done = guideState?.agentPromptDone ?? false;
   const nextIdx = guideState?.nextStepIndex ?? 0;
   const allCoreDone = step1Done && step2Done && step3Done;
   const allNextDone = allCoreDone && nextIdx >= g.done.steps.length;
@@ -310,12 +338,12 @@ export default function GuideCard() {
         <div className="overflow-hidden">
           <div className="px-4 pb-3">
             <div className="flex items-center gap-3 pl-6">
-              <p className="text-xs text-muted-foreground flex-1">{g.ai.desc}</p>
+              <p className="text-xs text-muted-foreground flex-1">{aiConfigured ? g.ai.desc : g.ai.configureDesc}</p>
               <button
                 onClick={handleStartAI}
                 className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-md bg-[var(--amber)] text-[var(--amber-foreground)] transition-all hover:opacity-90"
               >
-                {g.ai.cta}
+                {aiConfigured ? g.ai.cta : g.ai.configureCta}
               </button>
             </div>
           </div>
@@ -347,7 +375,7 @@ export default function GuideCard() {
                   onClick={handleStep3Done}
                   className="text-xs px-2 py-1 rounded-md text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-colors"
                 >
-                  {g.skip}
+                  {g.agent.done}
                 </button>
               </div>
             </div>

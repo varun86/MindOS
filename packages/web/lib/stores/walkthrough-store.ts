@@ -21,7 +21,7 @@ export interface WalkthroughStoreState {
 
 /* ── Helpers ── */
 
-const LS_KEY = 'mindos_walkthrough_done';
+export const WALKTHROUGH_DONE_STORAGE_KEY = 'mindos_walkthrough_done';
 
 /**
  * Persist walkthrough state to server AND localStorage.
@@ -32,7 +32,7 @@ const LS_KEY = 'mindos_walkthrough_done';
 function persistStep(step: number, dismissed: boolean) {
   // Local safety net — instant, survives server outage
   if (step >= walkthroughSteps.length || dismissed) {
-    try { localStorage.setItem(LS_KEY, '1'); } catch {}
+    try { localStorage.setItem(WALKTHROUGH_DONE_STORAGE_KEY, '1'); } catch {}
   }
   // Server persist — fire-and-forget (localStorage is the safety net)
   fetch('/api/setup', {
@@ -46,7 +46,30 @@ function persistStep(step: number, dismissed: boolean) {
 
 /** Check if walkthrough was completed/dismissed (fast, sync, local) */
 function isLocallyDone(): boolean {
-  try { return localStorage.getItem(LS_KEY) === '1'; } catch { return false; }
+  try { return localStorage.getItem(WALKTHROUGH_DONE_STORAGE_KEY) === '1'; } catch { return false; }
+}
+
+export async function restartWalkthrough(): Promise<void> {
+  try { localStorage.removeItem(WALKTHROUGH_DONE_STORAGE_KEY); } catch {}
+
+  const res = await fetch('/api/setup', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      guideState: {
+        active: true,
+        dismissed: false,
+        walkthroughStep: 0,
+        walkthroughDismissed: false,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Failed to restart walkthrough (${res.status})`);
+
+  useWalkthroughStore.setState({ status: 'active', currentStep: 0 });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('guide-state-updated'));
+  }
 }
 
 /* ── Store ── */
@@ -113,13 +136,13 @@ export const useWalkthroughStore = create<WalkthroughStoreState>((set, get) => {
           const gs = data.guideState;
           if (!gs) return;
           if (gs.walkthroughDismissed) {
-            try { localStorage.setItem(LS_KEY, '1'); } catch {} // sync local
+            try { localStorage.setItem(WALKTHROUGH_DONE_STORAGE_KEY, '1'); } catch {} // sync local
             return;
           }
 
           // If server says completed (step >= totalSteps), mark locally done
           if (typeof gs.walkthroughStep === 'number' && gs.walkthroughStep >= totalSteps) {
-            try { localStorage.setItem(LS_KEY, '1'); } catch {};
+            try { localStorage.setItem(WALKTHROUGH_DONE_STORAGE_KEY, '1'); } catch {};
             return;
           }
 

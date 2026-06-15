@@ -19,6 +19,17 @@ const mockSettings = {
   authToken: '',
   webPassword: '',
   setupPending: true,
+  guideState: undefined as undefined | {
+    active: boolean;
+    dismissed: boolean;
+    template: 'en' | 'zh' | 'empty';
+    step1Done: boolean;
+    askedAI: boolean;
+    agentPromptDone: boolean;
+    nextStepIndex: number;
+    walkthroughStep?: number;
+    walkthroughDismissed?: boolean;
+  },
 };
 
 let writtenConfig: Record<string, unknown> | null = null;
@@ -47,6 +58,7 @@ beforeEach(() => {
   mockSettings.authToken = '';
   mockSettings.webPassword = '';
   mockSettings.setupPending = true;
+  mockSettings.guideState = undefined;
 });
 
 afterEach(() => {
@@ -275,6 +287,43 @@ describe('POST /api/setup — config writing', () => {
     expect(body.needsRestart).toBe(false);
     expect(body.portChanged).toBe(false);
   });
+
+  it('preserves existing guide state on re-setup', async () => {
+    const existingRoot = path.join(tempDir, 'stable-guide');
+    fs.mkdirSync(existingRoot, { recursive: true });
+    fs.writeFileSync(path.join(existingRoot, 'dummy.md'), 'x');
+    const existingGuideState = {
+      active: true,
+      dismissed: true,
+      template: 'zh' as const,
+      step1Done: true,
+      askedAI: true,
+      agentPromptDone: true,
+      nextStepIndex: 2,
+      walkthroughStep: 3,
+      walkthroughDismissed: false,
+    };
+    mockSettings.setupPending = false;
+    mockSettings.mindRoot = existingRoot;
+    mockSettings.guideState = existingGuideState;
+
+    const { POST } = await importSetupRoute();
+    const req = new NextRequest('http://localhost/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        mindRoot: existingRoot,
+        port: 3456,
+        mcpPort: 8781,
+        template: 'en',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    expect(writtenConfig).not.toBeNull();
+    expect((writtenConfig as Record<string, unknown>).guideState).toEqual(existingGuideState);
+  });
 });
 
 /* ── POST /api/setup — LLM skip mode ───────────────────────────── */
@@ -410,6 +459,7 @@ describe('PATCH /api/setup — guideState', () => {
           dismissed: true,
           step1Done: true,
           askedAI: true,
+          agentPromptDone: true,
           active: true,
           nextStepIndex: 2,
         },
@@ -422,6 +472,7 @@ describe('PATCH /api/setup — guideState', () => {
     expect(body.guideState.dismissed).toBe(true);
     expect(body.guideState.step1Done).toBe(true);
     expect(body.guideState.askedAI).toBe(true);
+    expect(body.guideState.agentPromptDone).toBe(true);
     expect(body.guideState.active).toBe(true);
     expect(body.guideState.nextStepIndex).toBe(2);
   });

@@ -238,6 +238,8 @@ export default function StepReview({
           agentStatuses={agentStatuses}
           needsRestart={needsRestart}
           skillInstallStatus={skillInstallStatus}
+          cliEnabled={cliEnabled}
+          mcpEnabled={mcpEnabled}
           s={s}
         />
       )}
@@ -247,13 +249,15 @@ export default function StepReview({
 
 /* ── Health Check Summary ─────────────────────────────────────────────────── */
 
-function HealthCheckView({ state, selectedAgents, agentStatuses, needsRestart, s, skillInstallStatus = 'pending' }: {
+function HealthCheckView({ state, selectedAgents, agentStatuses, needsRestart, s, skillInstallStatus = 'pending', cliEnabled, mcpEnabled }: {
   state: SetupState;
   selectedAgents: Set<string>;
   agentStatuses: Record<string, AgentInstallStatus>;
   needsRestart: boolean;
   s: SetupMessages;
   skillInstallStatus?: 'pending' | 'installing' | 'ok' | 'error' | 'skipped';
+  cliEnabled: boolean;
+  mcpEnabled: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -275,9 +279,21 @@ function HealthCheckView({ state, selectedAgents, agentStatuses, needsRestart, s
   const kbOk = !!state.mindRoot;
   const aiOk = state.activeProvider !== 'skip' && state.providers.length > 0;
   const successAgents = Object.values(agentStatuses).filter(a => a.state === 'ok').length;
-  const agentsOk = successAgents > 0;
+  const mcpAgentsOk = successAgents > 0;
   const hasToken = !!state.authToken;
   const skillsOk = skillInstallStatus === 'ok';
+  const agentConnectionOk = cliEnabled || mcpAgentsOk;
+  const agentConnectionDetail = (() => {
+    if (cliEnabled && !mcpEnabled) return s.healthAgentsCliReady ?? 'CLI mode is ready.';
+    if (cliEnabled && mcpEnabled && !mcpAgentsOk) {
+      return selectedAgents.size > 0
+        ? (s.healthAgentsPartial ?? 'Configuration in progress...')
+        : (s.healthAgentsCliMcpOptional ?? 'CLI mode is ready. MCP agents can be added later.');
+    }
+    if (mcpAgentsOk) return s.healthAgentsOk?.(successAgents) ?? `${successAgents} agent(s) configured`;
+    if (selectedAgents.size > 0) return s.healthAgentsPartial ?? 'Configuration in progress...';
+    return s.healthAgentsNone ?? 'No agents configured';
+  })();
 
   // Resolve provider display name and model from unified Provider[]
   let providerDisplayName = '';
@@ -314,15 +330,11 @@ function HealthCheckView({ state, selectedAgents, agentStatuses, needsRestart, s
       action: aiOk ? undefined : (s.healthAiAction ?? 'Add an API key in Settings → AI.'),
     },
     {
-      ok: agentsOk,
+      ok: agentConnectionOk,
       icon: <Plug size={14} />,
       title: s.healthAgents ?? 'Agent Connection',
-      detail: agentsOk
-        ? (s.healthAgentsOk?.(successAgents) ?? `${successAgents} agent(s) configured`)
-        : selectedAgents.size > 0
-          ? (s.healthAgentsPartial ?? 'Configuration in progress...')
-          : (s.healthAgentsNone ?? 'No agents configured'),
-      action: agentsOk ? undefined : (s.healthAgentsAction ?? 'You can add agents later in Settings → Connections.'),
+      detail: agentConnectionDetail,
+      action: agentConnectionOk ? undefined : (s.healthAgentsAction ?? 'You can add agents later in Settings → Connections.'),
     },
     ...(selectedAgents.size > 0 ? [{
       ok: skillsOk,

@@ -344,7 +344,9 @@ export default function SetupWizard() {
     setSubmitting(true);
     setError('');
     const presentAgentKeys = new Set(agents.filter(agent => agent.present).map(agent => agent.key));
-    const agentKeys = Array.from(selectedAgents).filter(key => presentAgentKeys.has(key));
+    const agentKeys = connectionMode.mcp
+      ? Array.from(selectedAgents).filter(key => presentAgentKeys.has(key))
+      : [];
 
     // Ensure auth token exists before saving (race: token generation may still be in-flight)
     let finalState = state;

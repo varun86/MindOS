@@ -13,6 +13,7 @@ import { formatBytes, formatUptime } from '@/lib/format';
 import { setShowHiddenFiles } from '@/components/FileTree';
 import { scanExampleFilesAction, cleanupExamplesAction } from '@/lib/actions';
 import WebPortSection from './WebPortSection';
+import { restartWalkthrough } from '@/lib/stores/walkthrough-store';
 
 export function KnowledgeTab({ data, setData, t }: KnowledgeTabProps) {
   const env = data.envOverrides ?? {};
@@ -79,22 +80,10 @@ export function KnowledgeTab({ data, setData, t }: KnowledgeTabProps) {
   }, [guideDismissed]);
 
   const handleRestartWalkthrough = useCallback(() => {
-    apiFetch('/api/setup', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        guideState: {
-          active: true,
-          dismissed: false,
-          walkthroughStep: 0,
-          walkthroughDismissed: false,
-        },
-      }),
-    })
+    restartWalkthrough()
       .then(() => {
         setGuideActive(true);
         setGuideDismissed(false);
-        window.dispatchEvent(new Event('guide-state-updated'));
       })
       .catch(err => console.error('Failed to restart walkthrough:', err));
   }, []);

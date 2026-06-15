@@ -208,7 +208,24 @@ export default function StepAgents({
         </p>
       )}
 
-      {agentsLoading ? (
+      {!connectionMode.mcp ? (
+        connectionMode.cli ? (
+          <div className="rounded-xl border px-4 py-3 flex items-start gap-3" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)' }}>
+              <Terminal size={14} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                {s.agentCliModeTitle}
+              </p>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+                {s.agentCliModeDesc}
+              </p>
+            </div>
+          </div>
+        ) : null
+      ) : agentsLoading ? (
         <div className="flex items-center gap-2 py-4" style={{ color: 'var(--muted-foreground)' }}>
           <Loader2 size={14} className="animate-spin" />
           <span className="text-sm">{s.agentToolsLoading}</span>

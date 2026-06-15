@@ -64,7 +64,7 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
           {/* Guide Card */}
           <div className="flex-shrink-0 px-4 md:px-6 pt-4 pb-6">
             <div className="max-w-4xl mx-auto">
-              <GuideCard />
+              <GuideCard hasExistingFiles={recent.length > 0} />
             </div>
           </div>
 

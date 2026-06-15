@@ -57,6 +57,7 @@ export interface GuideState {
   template: 'en' | 'zh' | 'empty';  // setup 时写入
   step1Done: boolean;     // 至少浏览过 1 个文件
   askedAI: boolean;       // 至少发过 1 条 AI 消息
+  agentPromptDone: boolean; // 已完成跨 Agent 提示词步骤
   nextStepIndex: number;  // 0=C2, 1=C3, 2=C4, 3=全部完成
   walkthroughStep?: number;     // undefined=not started, 0-3=current step, 4=completed
   walkthroughDismissed?: boolean; // user skipped walkthrough
@@ -240,6 +241,7 @@ function parseGuideState(raw: unknown): GuideState | undefined {
     template,
     step1Done: obj.step1Done === true,
     askedAI: obj.askedAI === true,
+    agentPromptDone: obj.agentPromptDone === true,
     nextStepIndex: typeof obj.nextStepIndex === 'number' ? obj.nextStepIndex : 0,
     walkthroughStep: typeof obj.walkthroughStep === 'number' ? obj.walkthroughStep : undefined,
     walkthroughDismissed: typeof obj.walkthroughDismissed === 'boolean' ? obj.walkthroughDismissed : undefined,
