@@ -240,7 +240,7 @@ pnpm run test:release             # release 前全量 build + test + typecheck
 - push / handoff 时必须说明：commit hash、改动范围、已跑测试、未跑测试及原因、PR 链接或 merge 建议。
 
 **验证分层：pre-push 快门 / release 全量门**
-- `git push` 默认调用 `scripts/pre-push-checks.mjs`，按本次 push 的 changed files 选择验证：文档-only 只跑 `git diff --check`；Web 代码跑相关 Vitest + `@mindos/web` typecheck；核心 / mobile / desktop / retrieval 改动跑对应 package 的 test/typecheck；脚本改动补 `node --check` 或 `bash -n`。
+- `git push` 默认调用 `scripts/pre-push-checks.mjs`，按本次 push 的 changed files 选择验证：文档-only 只跑 `git diff --check`；root contract/unit 测试改动只跑对应测试文件；e2e 改动默认只做 Playwright load/list 检查；Web 代码跑相关 Vitest + `@mindos/web` typecheck，Web test-only 改动只跑对应测试文件；核心 / mobile / desktop / retrieval 改动跑对应 package 的 test/typecheck；脚本改动补 `node --check` 或 `bash -n`。
 - 任务分支 push 是交付候选，不等于进入主线；小 feature、UI polish、文档/局部修复默认跑“快门”：受影响测试 + 必要 typecheck + `git diff --check`，UI 改动补 `/tmp/...png` 截图。
 - 快门已通过时，任务分支如果还需跳过 hook，可用 `SKIP_TESTS=1 git push -u origin <task-branch>`；handoff 必须写清已跑命令、截图路径、未跑全量的原因。
 - 跨模块重构、权限/安全/数据迁移、发布包、runtime/协议/同步等高风险改动，不只依赖默认快门；任务分支 push 前也应主动跑相应 full test/build。

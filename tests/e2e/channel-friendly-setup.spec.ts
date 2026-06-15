@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { saveVisualDebugScreenshot } from './visual-debug';
 
 type PlatformFlow = {
   id: string;
@@ -295,7 +296,7 @@ test.describe('Channel friendly setup user flow', () => {
     await expect(page.getByText('Connection options')).toBeVisible();
     await expect(page.getByText('Create bot with BotFather')).toBeVisible();
     await expectQrReady(page);
-    await page.screenshot({ path: '/tmp/channel-friendly-setup-telegram-desktop-polished.png', fullPage: true });
+    await saveVisualDebugScreenshot(page, '/tmp/channel-friendly-setup-telegram-desktop-polished.png', { fullPage: true });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await gotoChannel(page, 'telegram');
@@ -323,7 +324,7 @@ test.describe('Channel friendly setup user flow', () => {
     expect(metrics.mainOverflow).toBe(0);
     expect(metrics.visibleActionOverflow).toBe(0);
 
-    await page.screenshot({ path: '/tmp/channel-friendly-setup-telegram-mobile.png', fullPage: true });
+    await saveVisualDebugScreenshot(page, '/tmp/channel-friendly-setup-telegram-mobile.png', { fullPage: true });
   });
 });
 

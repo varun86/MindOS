@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { buildPrePushCommands, isDocLike, unique } from './pre-push-plan.mjs';
 
 const ZERO_SHA = /^0{40}$/;
 
@@ -25,10 +26,6 @@ function read(command, args) {
   });
   if (result.status !== 0) return '';
   return result.stdout.trim();
-}
-
-function unique(values) {
-  return Array.from(new Set(values.filter(Boolean))).sort();
 }
 
 function parseUpdates(stdin) {
@@ -75,39 +72,6 @@ function fallbackChangedFiles() {
   ]);
 }
 
-function isDocLike(file) {
-  if (/\.(md|mdx|txt)$/i.test(file)) return true;
-  if (/^README(_zh)?\.md$/i.test(file)) return true;
-  if (file === 'AGENTS.md' || file === 'CLAUDE.md') return true;
-  return file.startsWith('wiki/') || file.startsWith('SOP/') || file.startsWith('docs/');
-}
-
-function isWebTestFile(file) {
-  return /^packages\/web\/__tests__\/.*\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file);
-}
-
-function isWebRelatedInput(file) {
-  if (!file.startsWith('packages/web/')) return false;
-  if (isWebTestFile(file)) return false;
-  if (/\.d\.ts$/.test(file)) return false;
-  return /\.(ts|tsx|js|jsx)$/.test(file);
-}
-
-function needsFullWebTest(file) {
-  return [
-    'packages/web/package.json',
-    'packages/web/vitest.config.ts',
-    'packages/web/__tests__/setup.ts',
-    'packages/web/next.config.ts',
-    'packages/web/tsconfig.json',
-  ].includes(file);
-}
-
-function addCommand(commands, key, command, args) {
-  if (commands.some((entry) => entry.key === key)) return;
-  commands.push({ key, command, args });
-}
-
 const stdin = readFileSync(0, 'utf8');
 const updates = parseUpdates(stdin);
 const ranges = updates.map((update) => ({ base: baseFor(update), head: update.localSha }));
@@ -141,88 +105,7 @@ if (changedFiles.every(isDocLike)) {
   process.exit(0);
 }
 
-const commands = [];
-const rootSensitive = changedFiles.some((file) => (
-  file === 'package.json'
-  || file === 'pnpm-lock.yaml'
-  || file === 'pnpm-workspace.yaml'
-  || file === 'turbo.json'
-  || file === 'vitest.config.ts'
-  || file.startsWith('tests/')
-  || file.startsWith('scripts/')
-));
-if (rootSensitive) {
-  addCommand(commands, 'root:quick', 'pnpm', ['run', 'test:quick']);
-}
-
-const changedMjs = changedFiles.filter((file) => file.startsWith('scripts/') && file.endsWith('.mjs'));
-for (const file of changedMjs) {
-  addCommand(commands, `node-check:${file}`, 'node', ['--check', file]);
-}
-
-const changedShell = changedFiles.filter((file) => (
-  file.endsWith('.sh') || file.startsWith('scripts/hooks/')
-));
-for (const file of changedShell) {
-  addCommand(commands, `bash-check:${file}`, 'bash', ['-n', file]);
-}
-
-const webFiles = changedFiles.filter((file) => file.startsWith('packages/web/'));
-if (webFiles.length > 0) {
-  if (webFiles.some(needsFullWebTest)) {
-    addCommand(commands, 'web:test', 'pnpm', ['--filter', '@mindos/web', 'test']);
-  } else {
-    const webTestFiles = unique(webFiles.filter(isWebTestFile).map((file) => file.replace(/^packages\/web\//, '')));
-    const webRelatedInputs = unique(webFiles.filter(isWebRelatedInput).map((file) => file.replace(/^packages\/web\//, '')));
-    if (webTestFiles.length > 0) {
-      addCommand(commands, 'web:test-files', 'pnpm', [
-        '--filter',
-        '@mindos/web',
-        'exec',
-        'vitest',
-        'run',
-        ...webTestFiles,
-        '--passWithNoTests',
-      ]);
-    }
-    if (webRelatedInputs.length > 0) {
-      addCommand(commands, 'web:related', 'pnpm', [
-        '--filter',
-        '@mindos/web',
-        'exec',
-        'vitest',
-        'related',
-        ...webRelatedInputs,
-        '--run',
-        '--passWithNoTests',
-      ]);
-    }
-  }
-
-  if (webFiles.some((file) => /\.(ts|tsx|js|jsx|json)$/.test(file))) {
-    addCommand(commands, 'web:typecheck', 'pnpm', ['--filter', '@mindos/web', 'typecheck']);
-  }
-}
-
-const packageChecks = [
-  { prefix: 'packages/mindos/', filter: '@geminilight/mindos', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/mobile/', filter: '@mindos/mobile', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/desktop/', filter: '@mindos/desktop', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/desktop-tauri/', filter: '@mindos/desktop-tauri', test: false, typecheck: 'type-check' },
-  { prefix: 'packages/browser-extension/', filter: '@mindos/browser-extension', test: false, typecheck: 'type-check' },
-  { prefix: 'packages/retrieval/api/', filter: '@mindos/api', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/retrieval/indexer/', filter: '@mindos/indexer', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/retrieval/search/', filter: '@mindos/search', test: true, typecheck: 'type-check' },
-  { prefix: 'packages/retrieval/vector/', filter: '@mindos/vector', test: true, typecheck: 'type-check' },
-];
-
-for (const check of packageChecks) {
-  if (!changedFiles.some((file) => file.startsWith(check.prefix))) continue;
-  if (check.test) {
-    addCommand(commands, `${check.filter}:test`, 'pnpm', ['--filter', check.filter, 'test']);
-  }
-  addCommand(commands, `${check.filter}:typecheck`, 'pnpm', ['--filter', check.filter, check.typecheck]);
-}
+const commands = buildPrePushCommands(changedFiles);
 
 if (commands.length === 0) {
   console.log('\nNo automatic code test selected for this path set.');
