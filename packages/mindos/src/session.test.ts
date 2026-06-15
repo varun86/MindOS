@@ -333,8 +333,8 @@ describe('MindOS session event contract', () => {
     });
 
     expect(loaded.contextParts).toEqual([
-      '## Attached: a.md\n\ncontent:a.md',
-      '## Current file: current.md\n\ncontent:current.md',
+      '### Attached file from the MindOS knowledge base: a.md\n\ncontent:a.md',
+      '### Current file from the MindOS knowledge base: current.md\n\ncontent:current.md',
     ]);
     expect(loaded.failedFiles).toEqual(['too-big.md']);
   });
@@ -360,7 +360,7 @@ describe('MindOS session event contract', () => {
       prompt: 'Summarize the attached plan.',
       mode: 'chat',
       fileContext: {
-        contextParts: ['## Attached: Plan.md\n\nAlpha plan'],
+        contextParts: ['### Attached file from the MindOS knowledge base: Plan.md\n\nAlpha plan'],
         failedFiles: ['Missing.md'],
       },
       uploadedParts: ['### upload.txt\n\nuploaded content'],
@@ -369,13 +369,13 @@ describe('MindOS session event contract', () => {
 
     expect(prompt).toContain('Summarize the attached plan.');
     expect(prompt).toContain('## MindOS Turn Context');
-    expect(prompt).toContain('MindOS composer mode: chat');
-    expect(prompt).toContain('Treat this as read-oriented unless the user explicitly asks you to modify files.');
+    expect(prompt).not.toContain('MindOS composer mode: chat');
+    expect(prompt).not.toContain('Treat this as read-oriented unless the user explicitly asks you to modify files.');
     expect(prompt).toContain('## MindOS Chat Panel Bridge');
     expect(prompt).toContain('AskUserQuestion');
-    expect(prompt).toContain('## Attached MindOS Context');
-    expect(prompt).toContain('## Attached: Plan.md');
-    expect(prompt).toContain('## Uploaded Files');
+    expect(prompt).toContain('## Attached files from the MindOS knowledge base');
+    expect(prompt).toContain('### Attached file from the MindOS knowledge base: Plan.md');
+    expect(prompt).toContain('## Files uploaded by the user for this request');
     expect(prompt).toContain('### upload.txt');
     expect(prompt).toContain('## Auto-Recalled MindOS Knowledge');
     expect(prompt).toContain('### Recall.md');

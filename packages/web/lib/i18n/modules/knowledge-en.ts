@@ -580,11 +580,11 @@ Read the assistant prompt at ${promptPath} first, then read this space's INSTRUC
     onboardingHint: 'Already have notes? Import files →',
     digestPromptSingle: (name: string, targetSpace?: string) => {
       const loc = targetSpace ? ` under the "${targetSpace}" space` : '';
-      return `The user uploaded "${name}". You MUST:\n1. Read the content from the "USER-UPLOADED FILES" section above\n2. Extract and reorganize the key information into well-structured Markdown notes\n3. Save the result${loc} in the knowledge base — create new files or update existing ones as appropriate\n\nDo NOT just reply with a text summary. You must actually write to the knowledge base.`;
+      return `The user uploaded "${name}". You MUST:\n1. Read the content from the "Files uploaded by the user for this request" section above\n2. Extract and reorganize the key information into well-structured Markdown notes\n3. Save the result${loc} in the knowledge base — create new files or update existing ones as appropriate\n\nDo NOT just reply with a text summary. You must actually write to the knowledge base.`;
     },
     digestPromptMulti: (n: number, targetSpace?: string) => {
       const loc = targetSpace ? ` under the "${targetSpace}" space` : '';
-      return `The user uploaded ${n} files. You MUST:\n1. Read their content from the "USER-UPLOADED FILES" section above\n2. Extract and reorganize the key information into well-structured Markdown notes\n3. Save the results${loc} in the knowledge base — create new files or update existing ones as appropriate\n\nDo NOT just reply with a text summary. You must actually write to the knowledge base.`;
+      return `The user uploaded ${n} files. You MUST:\n1. Read their content from the "Files uploaded by the user for this request" section above\n2. Extract and reorganize the key information into well-structured Markdown notes\n3. Save the results${loc} in the knowledge base — create new files or update existing ones as appropriate\n\nDo NOT just reply with a text summary. You must actually write to the knowledge base.`;
     },
     arrowTo: '→',
     remove: 'Remove',

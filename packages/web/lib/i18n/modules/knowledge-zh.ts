@@ -580,11 +580,11 @@ export const knowledgeZh = {
     onboardingHint: '已有笔记？导入文件到知识库 →',
     digestPromptSingle: (name: string, targetSpace?: string) => {
       const loc = targetSpace ? `"${targetSpace}" 空间下` : '知识库中合适的位置';
-      return `用户上传了「${name}」。你必须：\n1. 从上方「USER-UPLOADED FILES」区域读取文件内容\n2. 提取和重新整理关键信息为结构清晰的 Markdown 笔记\n3. 将整理后的内容保存到${loc}——可以创建新文件，也可以更新已有文件\n\n不要只做文字回复。你必须实际写入知识库。`;
+      return `用户上传了「${name}」。你必须：\n1. 从上方「Files uploaded by the user for this request」区域读取文件内容\n2. 提取和重新整理关键信息为结构清晰的 Markdown 笔记\n3. 将整理后的内容保存到${loc}——可以创建新文件，也可以更新已有文件\n\n不要只做文字回复。你必须实际写入知识库。`;
     },
     digestPromptMulti: (n: number, targetSpace?: string) => {
       const loc = targetSpace ? `"${targetSpace}" 空间下` : '知识库中合适的位置';
-      return `用户上传了 ${n} 个文件。你必须：\n1. 从上方「USER-UPLOADED FILES」区域读取它们的内容\n2. 提取和重新整理关键信息为结构清晰的 Markdown 笔记\n3. 将整理后的内容保存到${loc}——可以创建新文件，也可以更新已有文件\n\n不要只做文字回复。你必须实际写入知识库。`;
+      return `用户上传了 ${n} 个文件。你必须：\n1. 从上方「Files uploaded by the user for this request」区域读取它们的内容\n2. 提取和重新整理关键信息为结构清晰的 Markdown 笔记\n3. 将整理后的内容保存到${loc}——可以创建新文件，也可以更新已有文件\n\n不要只做文字回复。你必须实际写入知识库。`;
     },
     arrowTo: '→',
     remove: '移除',

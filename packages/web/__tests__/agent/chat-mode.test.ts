@@ -98,31 +98,27 @@ describe('CHAT_SYSTEM_PROMPT', () => {
     expect(CHAT_SYSTEM_PROMPT.length).toBeGreaterThan(100);
   });
 
-  it('mentions Chat (Read-Only) mode', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('Chat');
-    expect(CHAT_SYSTEM_PROMPT).toContain('Read-Only');
+  it('shares the unified MindOS prompt with agent surfaces', () => {
+    expect(CHAT_SYSTEM_PROMPT).toBe(AGENT_SYSTEM_PROMPT);
   });
 
-  it('contains anti-hallucination directive', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('Anti-Hallucination');
+  it('contains grounding rules without exposing internal mode labels', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Grounding Rules');
+    expect(CHAT_SYSTEM_PROMPT).not.toContain('Mode: Chat');
+    expect(CHAT_SYSTEM_PROMPT).not.toContain('Agent mode');
+    expect(CHAT_SYSTEM_PROMPT).not.toContain('Working Context');
   });
 
-  it('contains cite-sources directive', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('Cite Sources');
+  it('distinguishes MindOS attachments from user uploads', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Attached files from the MindOS knowledge base');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Files uploaded by the user for this request');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Use uploaded content directly');
   });
 
-  it('instructs to suggest switching to Agent mode for writes', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('Agent mode');
-  });
-
-  it('is significantly shorter than AGENT_SYSTEM_PROMPT', () => {
-    expect(CHAT_SYSTEM_PROMPT.length).toBeLessThan(AGENT_SYSTEM_PROMPT.length);
-  });
-
-  it('does not contain write-related directives', () => {
-    expect(CHAT_SYSTEM_PROMPT).not.toContain('Read-Before-Write');
-    expect(CHAT_SYSTEM_PROMPT).not.toContain('write_file');
-    expect(CHAT_SYSTEM_PROMPT).not.toContain('create_file');
+  it('keeps write behavior conditional on available tools and permissions', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('when the available tools and permissions allow it');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Before modifying an existing file, read it first');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Use only tools that are actually available');
   });
 });
 

@@ -60,14 +60,14 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* simulate route.ts pattern */ }
       }
 
       expect(contextParts).toHaveLength(2);
-      expect(contextParts[0]).toContain('## Attached: file-a.md');
+      expect(contextParts[0]).toContain('### Attached file from the MindOS knowledge base: file-a.md');
       expect(contextParts[0]).toContain('Content A');
-      expect(contextParts[1]).toContain('## Attached: file-b.md');
+      expect(contextParts[1]).toContain('### Attached file from the MindOS knowledge base: file-b.md');
       expect(contextParts[1]).toContain('Content B');
     });
 
@@ -84,7 +84,7 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* */ }
       }
 
@@ -104,7 +104,7 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* silently skip */ }
       }
 
@@ -122,7 +122,7 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* */ }
       }
 
@@ -144,7 +144,7 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* */ }
       }
 
@@ -152,13 +152,13 @@ describe('Ask attached files', () => {
         seen.add(currentFile);
         try {
           const content = truncate(getFileContent(currentFile));
-          contextParts.push(`## Current file: ${currentFile}\n\n${content}`);
+          contextParts.push(`### Current file from the MindOS knowledge base: ${currentFile}\n\n${content}`);
         } catch { /* */ }
       }
 
       expect(contextParts).toHaveLength(2);
-      expect(contextParts[0]).toContain('## Attached: attached.md');
-      expect(contextParts[1]).toContain('## Current file: current.md');
+      expect(contextParts[0]).toContain('### Attached file from the MindOS knowledge base: attached.md');
+      expect(contextParts[1]).toContain('### Current file from the MindOS knowledge base: current.md');
     });
 
     it('currentFile is not duplicated when already in attachedFiles', () => {
@@ -175,7 +175,7 @@ describe('Ask attached files', () => {
         seen.add(filePath);
         try {
           const content = truncate(getFileContent(filePath));
-          contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+          contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
         } catch { /* */ }
       }
 
@@ -183,12 +183,12 @@ describe('Ask attached files', () => {
         seen.add(currentFile);
         try {
           const content = truncate(getFileContent(currentFile));
-          contextParts.push(`## Current file: ${currentFile}\n\n${content}`);
+          contextParts.push(`### Current file from the MindOS knowledge base: ${currentFile}\n\n${content}`);
         } catch { /* */ }
       }
 
       expect(contextParts).toHaveLength(1);
-      expect(contextParts[0]).toContain('## Attached: same.md');
+      expect(contextParts[0]).toContain('### Attached file from the MindOS knowledge base: same.md');
     });
   });
 });

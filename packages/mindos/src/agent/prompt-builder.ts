@@ -163,6 +163,10 @@ export function compactMindosPromptForTokenBudget(prompt: string, options: Compa
     const sectionTokens = options.estimateTokens(section);
     const isAttachment = section.includes('## Attached:')
       || section.includes('## Current file:')
+      || section.includes('Attached files from the MindOS knowledge base')
+      || section.includes('Attached file from the MindOS knowledge base')
+      || section.includes('Current file from the MindOS knowledge base')
+      || section.includes('Files uploaded by the user for this request')
       || section.includes('USER-UPLOADED');
     const isCore = preserved.length === 0;
 
@@ -196,10 +200,16 @@ function formatInitializationStatus(input: {
 
 function appendFileContext(promptParts: string[], context: MindosAskFileContext) {
   if (context.contextParts.length > 0) {
-    promptParts.push(`---\n\nThe user is currently viewing these files:\n\n${context.contextParts.join('\n\n---\n\n')}`);
+    promptParts.push(
+      `---\n\n## Request Context\n\n`
+      + `### Attached files from the MindOS knowledge base\n\n`
+      + `These files already exist in the user's MindOS knowledge base or local workspace. `
+      + `They have stable paths. Cite their paths when using them, and use file tools to re-read or search them only when needed.\n\n`
+      + context.contextParts.join('\n\n---\n\n'),
+    );
   }
   if (context.failedFiles.length > 0) {
-    promptParts.push(`---\n\n⚠️ The following attached files could not be read: ${context.failedFiles.join(', ')}. Inform the user that these files were not loaded.`);
+    promptParts.push(`---\n\n## Unavailable attached files from the MindOS knowledge base\n\nThe following attached files could not be read: ${context.failedFiles.join(', ')}. Inform the user that these files were not loaded.`);
   }
 }
 
@@ -207,18 +217,18 @@ function appendUploadedParts(promptParts: string[], uploadedParts: string[] | un
   if (!uploadedParts || uploadedParts.length === 0) return;
   if (mode === 'agent') {
     promptParts.push(
-      `---\n\n## ⚠️ USER-UPLOADED FILES (ACTIVE ATTACHMENTS)\n\n`
-      + `The user has uploaded the following file(s) in this conversation. `
-      + `Their FULL CONTENT is provided below. You MUST use this content directly when the user refers to these files. `
-      + `Do NOT use read_file or search tools to find them — they exist only here, not in the knowledge base.\n\n`
+      `---\n\n## Files uploaded by the user for this request\n\n`
+      + `The user uploaded the following file(s) in this conversation. `
+      + `Their full content is provided below. Use this content directly when the user refers to these files. `
+      + `Do not use read_file or search tools to find uploaded files unless you first save them into the MindOS knowledge base.\n\n`
       + uploadedParts.join('\n\n---\n\n'),
     );
     return;
   }
 
   promptParts.push(
-    `---\n\n## ⚠️ USER-UPLOADED FILES\n\n`
-    + `Their FULL CONTENT is below. Use this directly — do NOT call read tools on them.\n\n`
+    `---\n\n## Files uploaded by the user for this request\n\n`
+    + `Their full content is below. Use this directly. Do not call read tools on uploaded files unless you first save them into the MindOS knowledge base.\n\n`
     + uploadedParts.join('\n\n---\n\n'),
   );
 }

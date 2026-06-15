@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_SYSTEM_PROMPT,
   CHAT_SYSTEM_PROMPT,
+  MINDOS_SYSTEM_PROMPT,
   ORGANIZE_SYSTEM_PROMPT,
   buildMindosAskSystemPrompt,
   compactMindosPromptForTokenBudget,
@@ -22,30 +23,20 @@ describe('MindOS agent product contract', () => {
   });
 
   it('owns system prompts inside the product runtime', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('You are MindOS');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Read Before Write');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Tool Strategy');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Use tools as the default path for local files');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Do not answer from memory when a tool can verify the current state');
-    expect(AGENT_SYSTEM_PROMPT).toContain('mcp');
-    expect(AGENT_SYSTEM_PROMPT).toContain('configured and allowlisted for MindOS Agent');
-    expect(AGENT_SYSTEM_PROMPT).toContain('the main MindOS Agent owns the final answer');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Delegation / Subagents');
-    expect(AGENT_SYSTEM_PROMPT).toContain('action: "list"');
-    expect(AGENT_SYSTEM_PROMPT).toContain('pass only `name` as the `agent` value');
-    expect(AGENT_SYSTEM_PROMPT).toContain('never include labels like `(builtin)`');
-    expect(AGENT_SYSTEM_PROMPT).toContain('not `action` values');
-    expect(AGENT_SYSTEM_PROMPT).toContain('omit `action` and pass `agent`, `tasks`, or `chain`');
-    expect(AGENT_SYSTEM_PROMPT).toContain('separate from ACP runtimes, A2A agents');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Default to `subagent` when the work is complex and separable');
-    expect(AGENT_SYSTEM_PROMPT).toContain('"parallel", "split", "拆开", "并行", "多个角度"');
-    expect(AGENT_SYSTEM_PROMPT).toContain('2+ independent files, perspectives, verification checks, or subtasks');
-    expect(AGENT_SYSTEM_PROMPT).toContain('Structured Clarification');
-    expect(AGENT_SYSTEM_PROMPT).toContain('ask_user_question');
-    expect(CHAT_SYSTEM_PROMPT).toContain('Read-Only');
-    expect(CHAT_SYSTEM_PROMPT).not.toContain('Delegation / Subagents');
-    expect(CHAT_SYSTEM_PROMPT).not.toContain('ask_user_question');
-    expect(CHAT_SYSTEM_PROMPT.length).toBeLessThan(AGENT_SYSTEM_PROMPT.length);
+    expect(MINDOS_SYSTEM_PROMPT).toContain('You are MindOS');
+    expect(AGENT_SYSTEM_PROMPT).toBe(MINDOS_SYSTEM_PROMPT);
+    expect(CHAT_SYSTEM_PROMPT).toBe(MINDOS_SYSTEM_PROMPT);
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Before modifying an existing file, read it first');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Use tools as the default path');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Attached files from the MindOS knowledge base');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Files uploaded by the user for this request');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Use uploaded content directly');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Available skills may be listed');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Use subagents only when the work is complex and separable');
+    expect(MINDOS_SYSTEM_PROMPT).toContain('Do not expose hidden reasoning');
+    expect(MINDOS_SYSTEM_PROMPT).not.toContain('Mode: Chat');
+    expect(MINDOS_SYSTEM_PROMPT).not.toContain('Agent mode');
+    expect(MINDOS_SYSTEM_PROMPT).not.toContain('Working Context');
     expect(ORGANIZE_SYSTEM_PROMPT).toContain('organizing information');
   });
 
@@ -66,7 +57,10 @@ describe('MindOS agent product contract', () => {
         error: filePath === 'README.md' ? undefined : 'missing',
       }),
       loadFileContext: () => ({
-        contextParts: ['## Attached: Space/a.md\n\nAlpha', '## Current file: Space/current.md\n\nCurrent'],
+        contextParts: [
+          '### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha',
+          '### Current file from the MindOS knowledge base: Space/current.md\n\nCurrent',
+        ],
         failedFiles: ['missing.md'],
       }),
     });
@@ -75,9 +69,11 @@ describe('MindOS agent product contract', () => {
     expect(prompt).toContain('mind_root=/tmp/mind');
     expect(prompt).toContain('## Knowledge Base Structure');
     expect(prompt).toContain('Current UTC Time: 2026-01-02T03:04:05.000Z');
-    expect(prompt).toContain('## Attached: Space/a.md');
+    expect(prompt).toContain('## Request Context');
+    expect(prompt).toContain('### Attached files from the MindOS knowledge base');
+    expect(prompt).toContain('### Attached file from the MindOS knowledge base: Space/a.md');
     expect(prompt).toContain('missing.md');
-    expect(prompt).toContain('USER-UPLOADED FILES');
+    expect(prompt).toContain('Files uploaded by the user for this request');
   });
 
   it('builds agent prompts with product-owned initialization and recall policy', async () => {
@@ -107,7 +103,7 @@ describe('MindOS agent product contract', () => {
       formatLocalTime: () => 'Friday, January 2, 2026 at 11:04:05 AM GMT+8',
       readKnowledgeFile: () => ({ ok: false, content: '', truncated: false, error: 'unused' }),
       loadFileContext: () => ({
-        contextParts: ['## Attached: Space/a.md\n\nAlpha'],
+        contextParts: ['### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha'],
         failedFiles: [],
       }),
       recallKnowledge: async () => [{ path: 'Recall.md', content: 'recalled content' }],
@@ -125,8 +121,8 @@ describe('MindOS agent product contract', () => {
     const prompt = [
       'core prompt',
       'low priority section ' + 'x'.repeat(200),
-      '## Attached: a.md\n\n' + 'a'.repeat(200),
-      '## USER-UPLOADED FILES\n\n' + 'u'.repeat(200),
+      '### Attached file from the MindOS knowledge base: a.md\n\n' + 'a'.repeat(200),
+      '## Files uploaded by the user for this request\n\n' + 'u'.repeat(200),
     ].join('\n\n---\n\n');
 
     const compacted = compactMindosPromptForTokenBudget(prompt, {
@@ -135,8 +131,8 @@ describe('MindOS agent product contract', () => {
     });
 
     expect(compacted).toContain('core prompt');
-    expect(compacted).toContain('## Attached: a.md');
-    expect(compacted).toContain('## USER-UPLOADED FILES');
+    expect(compacted).toContain('Attached file from the MindOS knowledge base: a.md');
+    expect(compacted).toContain('Files uploaded by the user for this request');
     expect(compacted).not.toContain('low priority section');
   });
 });

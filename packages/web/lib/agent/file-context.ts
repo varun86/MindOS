@@ -23,7 +23,7 @@ export function loadAttachedFileContext(
       seen.add(filePath);
       try {
         const content = truncate(getFileContent(filePath));
-        contextParts.push(`## Attached: ${filePath}\n\n${content}`);
+        contextParts.push(`### Attached file from the MindOS knowledge base: ${filePath}\n\n${content}`);
       } catch (err) {
         console.warn(
           `[ask] ${mode}: failed to read attached file "${filePath}":`,
@@ -38,7 +38,7 @@ export function loadAttachedFileContext(
     seen.add(currentFile);
     try {
       const content = truncate(getFileContent(currentFile));
-      contextParts.push(`## Current file: ${currentFile}\n\n${content}`);
+      contextParts.push(`### Current file from the MindOS knowledge base: ${currentFile}\n\n${content}`);
     } catch (err) {
       console.warn(
         `[ask] ${mode}: failed to read currentFile "${currentFile}":`,

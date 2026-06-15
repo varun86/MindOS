@@ -469,7 +469,7 @@ export function loadMindosAskFileContext(
   const seen = new Set<string>();
   let cumulativeSize = 0;
 
-  function appendFile(filePath: string, label: 'Attached' | 'Current file') {
+  function appendFile(filePath: string, label: 'Attached file from the MindOS knowledge base' | 'Current file from the MindOS knowledge base') {
     if (seen.has(filePath)) return;
     seen.add(filePath);
 
@@ -486,16 +486,16 @@ export function loadMindosAskFileContext(
     try {
       const raw = services.readFile(filePath);
       const content = services.truncate ? services.truncate(raw) : raw;
-      contextParts.push(`## ${label}: ${filePath}\n\n${content}`);
+      contextParts.push(`### ${label}: ${filePath}\n\n${content}`);
       cumulativeSize = validation.newCumulativeSize;
     } catch (error) {
-      services.warn?.(`[ask] ${mode}: failed to read ${label === 'Attached' ? 'attached file' : 'currentFile'} "${filePath}":`, error);
+      services.warn?.(`[ask] ${mode}: failed to read ${label.startsWith('Attached') ? 'attached file' : 'currentFile'} "${filePath}":`, error);
       failedFiles.push(filePath);
     }
   }
 
-  for (const filePath of attachedFiles ?? []) appendFile(filePath, 'Attached');
-  if (currentFile) appendFile(currentFile, 'Current file');
+  for (const filePath of attachedFiles ?? []) appendFile(filePath, 'Attached file from the MindOS knowledge base');
+  if (currentFile) appendFile(currentFile, 'Current file from the MindOS knowledge base');
 
   return { contextParts, failedFiles };
 }
@@ -535,7 +535,7 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 
   if (modeGuidance) {
     contextSections.push([
-      '## MindOS Runtime Mode',
+      '## MindOS Request Guidance',
       modeGuidance,
     ].join('\n'));
   }
@@ -547,8 +547,8 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 
   if (input.fileContext?.contextParts.length) {
     contextSections.push([
-      '## Attached MindOS Context',
-      'The following content was explicitly attached from the MindOS knowledge base for this turn.',
+      '## Attached files from the MindOS knowledge base',
+      'The following content already exists in MindOS and was explicitly attached for this turn. Cite stable paths when using it.',
       '',
       input.fileContext.contextParts.join('\n\n---\n\n'),
     ].join('\n'));
@@ -556,8 +556,8 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 
   if (input.uploadedParts?.length) {
     contextSections.push([
-      '## Uploaded Files',
-      'The user uploaded the following file content in MindOS for this turn.',
+      '## Files uploaded by the user for this request',
+      'The user uploaded the following file content for this turn. It may not exist in the MindOS knowledge base yet; use it directly unless it is saved first.',
       '',
       input.uploadedParts.join('\n\n---\n\n'),
     ].join('\n'));
@@ -592,14 +592,8 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 }
 
 function getExternalRuntimeModeGuidance(mode: MindosExternalRuntimePromptInput['mode']): string | null {
-  if (mode === 'chat') {
-    return 'MindOS composer mode: chat. Treat this as read-oriented unless the user explicitly asks you to modify files.';
-  }
   if (mode === 'organize') {
-    return 'MindOS composer mode: organize. Prioritize classification, cleanup, and knowledge organization tasks.';
-  }
-  if (mode === 'agent') {
-    return 'MindOS composer mode: agent. The user expects you to complete the requested task using your local runtime capabilities.';
+    return 'Prioritize classification, cleanup, and knowledge organization. Use uploaded or selected materials as source material for well-structured MindOS notes when tools and permissions allow it.';
   }
   return null;
 }
