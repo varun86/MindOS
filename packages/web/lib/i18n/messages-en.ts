@@ -7,6 +7,7 @@ import { settingsEn } from './modules/settings-en';
 import { onboardingEn } from './modules/onboarding-en';
 import { featuresEn } from './modules/features-en';
 import { workspaceTabsEn } from './modules/workspace-tabs-en';
+import { skillMarketEn } from './modules/skill-market-en';
 import { exploreEn } from './generated/explore-i18n-en.generated';
 
 /**
@@ -29,5 +30,6 @@ export const en = {
   ...onboardingEn,
   ...featuresEn,
   ...workspaceTabsEn,
+  ...skillMarketEn,
   explore: exploreEn,
 } as const;

@@ -76,6 +76,39 @@ describe('i18n plugin market keys', () => {
   });
 });
 
+describe('i18n skill market keys', () => {
+  it('keeps the Discover entry and skill market page copy aligned in en and zh', () => {
+    expect(en.panels.discover.skillMarket).toBe('Skill Market');
+    expect(en.panels.discover.skillMarketDesc).toContain('AI agents');
+    expect(zh.panels.discover.skillMarket).toBe('技能市场');
+    expect(zh.panels.discover.skillMarketDesc).toContain('AI 智能体');
+
+    for (const messages of [en, zh]) {
+      const s = messages.skillMarket;
+      expect(s.title).toBeTruthy();
+      expect(s.subtitle).toBeTruthy();
+      expect(s.sourceBadge).toBeTruthy();
+      expect(s.reviewBadge).toBeTruthy();
+      expect(s.cliBadge).toBeTruthy();
+      expect(s.manageAction).toBeTruthy();
+      expect(s.searchPlaceholder).toBeTruthy();
+      expect(s.searchAction).toBeTruthy();
+      expect(s.refreshAction).toBeTruthy();
+      expect(s.resultNote).toBeTruthy();
+      expect(s.cacheState('fresh')).toBeTruthy();
+      expect(s.cacheState('stale')).toBeTruthy();
+      expect(s.queryLabel('github')).toBeTruthy();
+      expect(s.skippedNotice(2)).toBeTruthy();
+      expect(s.showingCount(1, 2)).toBeTruthy();
+      expect(s.showMore(12)).toBeTruthy();
+      expect(s.installsLabel(1000)).toBeTruthy();
+      expect(s.copyCommand).toBeTruthy();
+      expect(s.copiedCommand).toBeTruthy();
+      expect(s.inspectSourceHint).toBeTruthy();
+    }
+  });
+});
+
 describe('i18n walkthrough keys', () => {
   const w = en.walkthrough;
 

@@ -9,6 +9,7 @@ import { settingsZh } from './modules/settings-zh';
 import { onboardingZh } from './modules/onboarding-zh';
 import { featuresZh } from './modules/features-zh';
 import { workspaceTabsZh } from './modules/workspace-tabs-zh';
+import { skillMarketZh } from './modules/skill-market-zh';
 import { exploreZh } from './generated/explore-i18n-zh.generated';
 
 /**
@@ -29,5 +30,6 @@ export const zh: Widen<typeof en> = {
   ...onboardingZh,
   ...featuresZh,
   ...workspaceTabsZh,
+  ...skillMarketZh,
   explore: exploreZh,
 };

@@ -84,9 +84,10 @@ export default function DiscoverPanel({ active, maximized, onMaximize }: Discove
             href="/explore/plugins"
           />
           <PanelNavRow
-            icon={<Zap size={14} className="text-muted-foreground" />}
+            icon={<Zap size={14} className="text-[var(--amber)]" />}
             title={d.skillMarket}
-            badge={<ComingSoonBadge label={d.comingSoon} />}
+            subtitle={d.skillMarketDesc}
+            href="/explore/skills"
           />
           <PanelNavRow
             icon={<LayoutTemplate size={14} className="text-muted-foreground" />}
