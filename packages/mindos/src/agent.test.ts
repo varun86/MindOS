@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MINDOS_AGENT_PROMPT_ASSET_URL,
   MINDOS_AGENT_MANIFEST,
   MINDOS_SYSTEM_PROMPT,
   ORGANIZE_SYSTEM_PROMPT,
@@ -27,6 +28,7 @@ describe('MindOS agent product contract', () => {
     expect(MINDOS_AGENT_MANIFEST).toMatchObject({ id: 'mindos', name: 'MindOS' });
     expect(MINDOS_SYSTEM_PROMPT).toContain('You are MindOS');
     expect(loadMindosAgentPrompt()).toBe(MINDOS_SYSTEM_PROMPT);
+    expect(loadMindosAgentPrompt({ asset: MINDOS_AGENT_PROMPT_ASSET_URL })).toBe(MINDOS_SYSTEM_PROMPT);
     expect(MINDOS_SYSTEM_PROMPT).toContain('Before modifying an existing file, read it first');
     expect(MINDOS_SYSTEM_PROMPT).toContain('Use tools as the default path');
     expect(MINDOS_SYSTEM_PROMPT).toContain('Attached files from the MindOS knowledge base');

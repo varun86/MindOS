@@ -1,15 +1,36 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const MINDOS_AGENT_PROMPT_ASSET_URL = new URL('./agent-prompt.txt', import.meta.url);
-export const MINDOS_AGENT_PROMPT_ASSET_PATH = fileURLToPath(MINDOS_AGENT_PROMPT_ASSET_URL);
+export const MINDOS_AGENT_PROMPT_ASSET_PATH = normalizePromptAssetPath(MINDOS_AGENT_PROMPT_ASSET_URL);
 
 export type LoadMindosAgentPromptOptions = {
   asset?: URL | string;
 };
 
+function resolveNextStaticMediaAsset(assetPath: string): string | null {
+  if (!assetPath.startsWith('/_next/static/media/')) return null;
+  const filename = path.basename(assetPath);
+  const candidates = [
+    ...(typeof __dirname === 'string' ? [path.join(__dirname, 'static', 'media', filename)] : []),
+    path.join(process.cwd(), '.next', 'server', 'chunks', 'static', 'media', filename),
+    path.join(process.cwd(), 'server', 'chunks', 'static', 'media', filename),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? assetPath;
+}
+
+function normalizePromptAssetPath(asset: URL | string): string {
+  const assetPath = typeof asset === 'string' ? asset : asset.toString();
+  return resolveNextStaticMediaAsset(assetPath)
+    ?? (assetPath.startsWith('file:') ? fileURLToPath(assetPath) : assetPath);
+}
+
 export function loadMindosAgentPrompt(options: LoadMindosAgentPromptOptions = {}): string {
-  const content = readFileSync(options.asset ?? MINDOS_AGENT_PROMPT_ASSET_URL, 'utf-8').trim();
+  const assetPath = options.asset === undefined
+    ? MINDOS_AGENT_PROMPT_ASSET_PATH
+    : normalizePromptAssetPath(options.asset);
+  const content = readFileSync(assetPath, 'utf-8').trim();
   if (!content) {
     throw new Error('MindOS agent prompt asset is empty.');
   }
