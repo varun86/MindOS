@@ -24,7 +24,6 @@ import type {
   ObsidianCommunityCatalogItem,
   ObsidianCommunityPluginPreflight,
 } from '@/lib/obsidian-compat/community-catalog';
-import type { PluginCatalogCounts, PluginCatalogItem } from '@/lib/plugins/catalog';
 import { notifyObsidianPluginPackagesChanged } from '@/lib/plugins/events';
 import {
   applyCommunityInstallToCatalog,
@@ -39,16 +38,8 @@ import {
   type CommunityPreflightState,
   type ObsidianCommunityCatalogResponse,
   type ObsidianCommunityInstallResponse,
-  type PluginCatalogResponse,
   type PluginsCopy,
 } from '@/components/settings/PluginsTabModel';
-
-interface LocalCatalogState {
-  loading: boolean;
-  plugins: PluginCatalogItem[];
-  counts: PluginCatalogCounts | null;
-  error?: string;
-}
 
 interface CommunityCatalogCacheInfo {
   state: 'fresh' | 'refreshed' | 'stale';
@@ -76,12 +67,6 @@ function marketFilterMatches(filter: MarketFilter, plugin: ObsidianCommunityCata
 export default function PluginMarketContent() {
   const { t } = useLocale();
   const copy = t.settings.plugins;
-  const [localCatalog, setLocalCatalog] = useState<LocalCatalogState>({
-    loading: false,
-    plugins: [],
-    counts: null,
-  });
-  const [localCatalogRequested, setLocalCatalogRequested] = useState(false);
   const [communityInput, setCommunityInput] = useState('');
   const [communityQuery, setCommunityQuery] = useState('');
   const [communityCatalog, setCommunityCatalog] = useState<ObsidianCommunityCatalog | null>(null);
@@ -93,45 +78,12 @@ export default function PluginMarketContent() {
   const [communityInstalls, setCommunityInstalls] = useState<Record<string, CommunityInstallState>>({});
   const [marketFilter, setMarketFilter] = useState<MarketFilter>('all');
   const [visibleCount, setVisibleCount] = useState(MARKET_INITIAL_VISIBLE_COUNT);
-  const localCatalogAbortRef = useRef<AbortController | null>(null);
   const communityCatalogAbortRef = useRef<AbortController | null>(null);
   const communityCatalogCacheRef = useRef(new Map<string, ObsidianCommunityCatalogResponse>());
   const communityCatalogInFlightKeyRef = useRef<string | null>(null);
   const communityLoadSeqRef = useRef(0);
   const communityPreflightsRef = useRef<Record<string, CommunityPreflightState>>({});
   const communityPreflightAbortRefs = useRef(new Map<string, AbortController>());
-
-  const loadLocalCatalog = useCallback(async () => {
-    setLocalCatalogRequested(true);
-    localCatalogAbortRef.current?.abort();
-    const controller = new AbortController();
-    localCatalogAbortRef.current = controller;
-    setLocalCatalog((current) => ({ ...current, loading: true, error: undefined }));
-    try {
-      const data = await apiFetch<PluginCatalogResponse>('/api/plugins/catalog', {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      if (localCatalogAbortRef.current !== controller) return;
-      setLocalCatalog({
-        loading: false,
-        plugins: Array.isArray(data.plugins) ? data.plugins : [],
-        counts: data.counts ?? null,
-      });
-    } catch (err) {
-      if (isAbortError(err) || localCatalogAbortRef.current !== controller) return;
-      setLocalCatalog({
-        loading: false,
-        plugins: [],
-        counts: null,
-        error: err instanceof Error ? err.message : copy.marketLocalLoadFailed,
-      });
-    } finally {
-      if (localCatalogAbortRef.current === controller) {
-        localCatalogAbortRef.current = null;
-      }
-    }
-  }, [copy.marketLocalLoadFailed]);
 
   const loadCommunityCatalog = useCallback(async (query: string, options: { force?: boolean } = {}) => {
     const normalizedQuery = query.trim();
@@ -201,7 +153,6 @@ export default function PluginMarketContent() {
   }, [communityPreflights]);
 
   useEffect(() => () => {
-    localCatalogAbortRef.current?.abort();
     communityCatalogAbortRef.current?.abort();
     communityPreflightAbortRefs.current.forEach((controller) => controller.abort());
     communityPreflightAbortRefs.current.clear();
@@ -287,7 +238,6 @@ export default function PluginMarketContent() {
         },
       }));
       notifyObsidianPluginPackagesChanged();
-      void loadLocalCatalog();
     } catch (err) {
       setCommunityInstalls((current) => ({
         ...current,
@@ -297,14 +247,8 @@ export default function PluginMarketContent() {
         },
       }));
     }
-  }, [copy, loadLocalCatalog]);
+  }, [copy]);
 
-  const localPreview = useMemo(
-    () => localCatalog.plugins
-      .filter((plugin) => plugin.source === 'obsidian' || plugin.status === 'blocked' || plugin.status === 'error')
-      .slice(0, 4),
-    [localCatalog.plugins],
-  );
   const communityPlugins = communityCatalog?.plugins ?? [];
   const filteredCommunityPlugins = useMemo(
     () => communityPlugins.filter((plugin) => marketFilterMatches(marketFilter, plugin)),
@@ -363,16 +307,36 @@ export default function PluginMarketContent() {
 
   return (
     <main className="min-h-full bg-background text-foreground">
-      <div className="mx-auto w-full max-w-[72rem] px-4 py-6 md:px-6 md:py-8">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/explore"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeft size={14} />
-            {copy.marketBackToExplore}
-          </Link>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="content-width px-4 py-8 md:px-6 md:py-10">
+        <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <Link
+              href="/explore"
+              className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowLeft size={14} />
+              {copy.marketBackToExplore}
+            </Link>
+            <div className="flex items-center gap-2">
+              <div className="h-5 w-1 rounded-full bg-[var(--amber)]" />
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                {copy.marketTitle}
+              </h1>
+            </div>
+            <p className="mt-3 max-w-3xl pl-4 text-sm leading-relaxed text-muted-foreground">
+              {copy.marketSubtitle}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 pl-4">
+              <span className="inline-flex h-6 items-center gap-1.5 rounded-md border border-border bg-card/60 px-2 font-mono text-2xs text-muted-foreground">
+                <Puzzle size={11} />
+                {copy.marketSourceBadge}
+              </span>
+              <span className="inline-flex h-6 items-center rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] px-2 font-mono text-2xs text-[var(--amber-text)]">
+                {copy.communityReadOnlyBadge}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 md:pt-11">
             <Link
               href="/settings?tab=plugins&panel=import"
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -388,31 +352,9 @@ export default function PluginMarketContent() {
               {copy.marketManageAction}
             </Link>
           </div>
-        </div>
-
-        <header className="mb-5">
-          <div className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber)]">
-                <Puzzle size={16} />
-              </span>
-              <span className="rounded-md border border-border bg-card/60 px-2 py-1 font-mono text-2xs text-muted-foreground">
-                {copy.marketSourceBadge}
-              </span>
-              <span className="rounded-md border border-success/25 bg-success/10 px-2 py-1 font-mono text-2xs text-success">
-                {copy.communityReadOnlyBadge}
-              </span>
-            </div>
-            <h1 className="text-3xl font-semibold tracking-normal text-foreground md:text-4xl">
-              {copy.marketTitle}
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              {copy.marketSubtitle}
-            </p>
-          </div>
         </header>
 
-        <section className="mb-4 rounded-lg border border-border bg-card/45 p-3 md:p-4">
+        <section className="mb-4 rounded-xl border border-border/60 bg-card/65 p-4 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
           <form
             className="flex flex-col gap-2 md:flex-row md:items-center"
             onSubmit={(event) => {
@@ -507,7 +449,10 @@ export default function PluginMarketContent() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">{copy.communityOfficialSource}</h2>
+                <h2 className="text-sm font-semibold text-foreground">{copy.marketplaceTitle}</h2>
+                <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                  {copy.marketSourceBadge}
+                </span>
                 <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
                   {communityQuery ? copy.communityQueryLabel(communityQuery) : copy.communityDefaultQueryLabel}
                 </span>
@@ -616,15 +561,6 @@ export default function PluginMarketContent() {
           )}
         </section>
 
-        <LocalSnapshot
-          copy={copy}
-          requested={localCatalogRequested}
-          loading={localCatalog.loading}
-          counts={localCatalog.counts}
-          plugins={localPreview}
-          error={localCatalog.error}
-          onRefresh={loadLocalCatalog}
-        />
       </div>
     </main>
   );
@@ -657,95 +593,6 @@ function MarketSkeletonRows() {
     </div>
   );
 }
-
-const LocalSnapshot = memo(function LocalSnapshot({
-  copy,
-  requested,
-  loading,
-  counts,
-  plugins,
-  error,
-  onRefresh,
-}: {
-  copy: PluginsCopy;
-  requested: boolean;
-  loading: boolean;
-  counts: PluginCatalogCounts | null;
-  plugins: PluginCatalogItem[];
-  error?: string;
-  onRefresh: () => void;
-}) {
-  return (
-    <aside className="mt-4 rounded-lg border border-border/80 bg-muted/25 px-3 py-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-            <PackageCheck size={14} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-foreground">{copy.marketLocalTitle}</p>
-            <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
-              {requested ? copy.marketLocalDesc : copy.marketLocalDeferred}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          {counts && (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground">
-                {copy.pluginsMetric} <span className="font-mono font-semibold tabular-nums text-foreground">{counts.total}</span>
-              </span>
-              <span className="rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground">
-                {copy.obsidianMetric} <span className="font-mono font-semibold tabular-nums text-[var(--amber-text)]">{counts.bySource.obsidian}</span>
-              </span>
-              <span className="rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground">
-                {copy.surfacesMetric} <span className="font-mono font-semibold tabular-nums text-foreground">{counts.surfaces.total}</span>
-              </span>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2 text-2xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            {requested ? copy.surfaceInventoryRefresh : copy.marketLocalLoadAction}
-          </button>
-        </div>
-      </div>
-      {error && (
-        <p role="alert" className="mt-3 rounded-md border border-error/25 bg-error/10 px-3 py-2 text-2xs text-error">
-          {copy.marketLocalLoadFailed}: {error}
-        </p>
-      )}
-      {!error && requested && !loading && (
-        <div className="mt-3 space-y-1.5">
-          {plugins.length === 0 ? (
-            <p className="rounded-md border border-border/70 bg-background/55 px-3 py-2 text-2xs text-muted-foreground">
-              {copy.marketLocalEmpty}
-            </p>
-          ) : (
-          plugins.map((plugin) => (
-            <div
-              key={`${plugin.source}:${plugin.id}`}
-              className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/55 px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-foreground">{plugin.name}</p>
-                <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">{plugin.id}</p>
-              </div>
-              <span className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-                {copy.catalogStatus(plugin.status)}
-              </span>
-            </div>
-          ))
-        )}
-        </div>
-      )}
-    </aside>
-  );
-});
 
 const MarketPluginRow = memo(function MarketPluginRow({
   copy,

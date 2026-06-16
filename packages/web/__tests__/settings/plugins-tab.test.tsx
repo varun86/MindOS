@@ -47,9 +47,9 @@ const t = {
   settings: {
     plugins: {
       title: 'Plugins',
-      managerTitle: 'Plugin Manager',
-      managerSubtitle: 'Manage plugin layers.',
-      browseMarketAction: 'Browse Plugin Market',
+      managerTitle: 'Plugin extensions',
+      managerSubtitle: 'Manage local extensions.',
+      browseMarketAction: 'Open Market',
       sectionNavLabel: 'Plugin manager sections',
       installedTab: 'Installed',
       communityTab: 'Community',
@@ -129,7 +129,7 @@ const t = {
       pluginViewsDesc: 'Views live here',
       communityTitle: 'Obsidian Community',
       communityDesc: 'Browse official plugins',
-      communityReadOnlyBadge: 'gated install',
+      communityReadOnlyBadge: 'check first',
       communitySearchPlaceholder: 'Search community plugins',
       communitySearchAction: 'Search',
       communityRefreshAction: 'Refresh',
@@ -139,7 +139,7 @@ const t = {
       communityProblemMetric: 'issues',
       communityLoadFailed: 'Could not load community catalog',
       communitySkippedNotice: (n: number) => `${n} skipped`,
-      communityOfficialSource: 'Official Obsidian index',
+      communityOfficialSource: 'Community plugins',
       communityDefaultQueryLabel: 'Default community list',
       communityQueryLabel: (query: string) => `Search: ${query}`,
       communityLoading: 'Loading catalog',
@@ -240,7 +240,7 @@ const t = {
       communityUpdateApplyConfirm: (name: string, version: string) => `Apply ${name} ${version}?`,
       marketTitle: 'Plugin Market',
       marketSubtitle: 'Find plugins safely.',
-      marketSourceBadge: 'Official index',
+      marketSourceBadge: 'Obsidian index',
       marketBackToExplore: 'Explore',
       marketImportAction: 'Import local',
       marketManageAction: 'Manage installed',
@@ -259,10 +259,10 @@ const t = {
       marketFilterIssues: 'Needs attention',
       marketShowingCount: (shown: number, total: number) => `Showing ${shown} of ${total}`,
       marketShowMore: (n: number) => `Show ${n} more`,
-      marketLocalTitle: 'Local snapshot',
+      marketLocalTitle: 'Installed locally',
       marketLocalDesc: 'Local plugin inventory.',
       marketLocalDeferred: 'Load local inventory on demand.',
-      marketLocalLoadAction: 'Load snapshot',
+      marketLocalLoadAction: 'Load local plugins',
       marketLocalEmpty: 'No local plugins.',
       marketLocalLoadFailed: 'Could not load local plugin inventory',
       marketplaceTitle: 'Community marketplace',
@@ -925,16 +925,12 @@ describe('PluginsTab', () => {
   it('groups built-in extensions and imported Obsidian plugins under the installed panel', async () => {
     const { host, root } = await renderTab();
 
-    expect(host.textContent).toContain('Plugin Manager');
+    expect(host.textContent).toContain('Plugin extensions');
     expect(host.textContent).toContain('Built-in extensions');
     expect(host.textContent).toContain('Markdown');
     expect(host.textContent).toContain('Daily notes');
     expect(host.textContent).toContain('Obsidian plugin host');
     expect(host.textContent).toContain('3');
-    expect(host.textContent).toContain('plugins');
-    expect(host.textContent).toContain('Obsidian');
-    expect(host.textContent).toContain('5');
-    expect(host.textContent).toContain('surfaces');
     expect(host.textContent).toContain('1 surface');
     expect(host.textContent).toContain('2 surfaces');
     expect(host.querySelector('[data-testid="obsidian-import"]')).toBeNull();
@@ -994,7 +990,6 @@ describe('PluginsTab', () => {
     });
 
     expect(host.textContent).toContain('4');
-    expect(host.textContent).toContain('7');
     expect(host.textContent).toContain('3 surfaces');
     expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
 
@@ -1041,7 +1036,7 @@ describe('PluginsTab', () => {
     await cleanup(root, host);
   });
 
-  it('browses the gated Obsidian community catalog and installs after preflight confirmation', async () => {
+  it('browses the checked Obsidian community catalog and installs after preflight confirmation', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const packageChanged = vi.fn();
     window.addEventListener('mindos:obsidian-plugin-packages-changed', packageChanged);
@@ -1059,8 +1054,8 @@ describe('PluginsTab', () => {
 
       expect(mocks.apiFetch).toHaveBeenCalledWith('/api/obsidian/community-catalog?limit=80', { cache: 'no-store' });
       expect(host.textContent).toContain('Obsidian Community');
-      expect(host.textContent).toContain('gated install');
-      expect(host.textContent).toContain('Official Obsidian index');
+      expect(host.textContent).toContain('check first');
+      expect(host.textContent).toContain('Community plugins');
       expect(host.textContent).toContain('Dataview');
       expect(host.textContent).toContain('QuickAdd');
       expect(host.textContent).toContain('Desktop Only');

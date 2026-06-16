@@ -18,35 +18,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const localCatalogResponse = {
-  ok: true,
-  plugins: [
-    {
-      id: 'dataview',
-      source: 'obsidian',
-      name: 'Dataview',
-      tags: [],
-      builtin: false,
-      core: false,
-      enabled: true,
-      loaded: true,
-      status: 'loaded',
-      surfaces: { total: 3, available: 3, recorded: 0, blocked: 0, disabled: 0, byKind: { command: 2 } },
-    },
-  ],
-  counts: {
-    total: 3,
-    enabled: 3,
-    disabled: 0,
-    loaded: 1,
-    blocked: 0,
-    errors: 0,
-    bySource: { obsidian: 1, 'mindos-renderer': 2 },
-    buckets: { all: 3, mindos: 2, obsidian: 1, disabled: 0, problem: 0 },
-    surfaces: { total: 5, available: 5, recorded: 0, blocked: 0, disabled: 0, byKind: { command: 2 } },
-  },
-};
-
 const communityCatalogResponse = {
   ok: true,
   skipped: [],
@@ -191,7 +162,6 @@ describe('PluginMarketContent', () => {
     document.body.appendChild(host);
     root = createRoot(host);
     mocks.apiFetch.mockImplementation(async (url: string, opts?: RequestInit) => {
-      if (url === '/api/plugins/catalog') return localCatalogResponse;
       if (url === '/api/obsidian/community-catalog?limit=80') return communityCatalogResponse;
       if (url === '/api/obsidian/community-catalog?limit=80&q=data') {
         return {
@@ -247,12 +217,13 @@ describe('PluginMarketContent', () => {
       expect.objectContaining({ cache: 'no-store' }),
     );
     expect(host.textContent).toContain('Plugin Market');
-    expect(host.textContent).toContain('Official Obsidian index');
+    expect(host.textContent).toContain('Obsidian index');
+    expect(host.textContent).toContain('check first');
+    expect(host.textContent).toContain('Community plugins');
     expect(host.textContent).toContain('Dataview');
     expect(host.textContent).toContain('QuickAdd');
-    expect(host.textContent).toContain('Local snapshot');
-    expect(host.textContent).toContain('Load the local inventory only when you need installed-package details.');
-    expect(host.textContent).not.toContain('Plugin Manager');
+    expect(host.textContent).not.toContain('Local snapshot');
+    expect(host.textContent).not.toContain('Plugin extensions');
     expect(host.textContent).not.toContain('Read-only update plan');
 
     const links = Array.from(host.querySelectorAll('a')).map((link) => link.getAttribute('href'));
@@ -345,39 +316,14 @@ describe('PluginMarketContent', () => {
       expect(packageChanged).toHaveBeenCalledTimes(1);
       expect(host.textContent).toContain('Installed locally (1.0.0). Manage it from Installed to enable it.');
       expect(host.querySelector('[data-plugin-market-manage="quickadd"]')).toBeTruthy();
-      expect(mocks.apiFetch).toHaveBeenCalledWith(
+      expect(mocks.apiFetch).not.toHaveBeenCalledWith(
         '/api/plugins/catalog',
-        expect.objectContaining({ cache: 'no-store' }),
+        expect.anything(),
       );
     } finally {
       window.removeEventListener('mindos:obsidian-plugin-packages-changed', packageChanged);
       confirmSpy.mockRestore();
     }
-  });
-
-  it('loads the local snapshot on demand and does not show empty state when local load fails', async () => {
-    mocks.apiFetch.mockImplementation(async (url: string) => {
-      if (url === '/api/obsidian/community-catalog?limit=80') return communityCatalogResponse;
-      if (url === '/api/plugins/catalog') throw new Error('disk unavailable');
-      throw new Error(`Unexpected apiFetch call: ${url}`);
-    });
-
-    await act(async () => {
-      root.render(<PluginMarketContent />);
-      await flushPluginMarketPromises();
-    });
-
-    const localLoad = Array.from(host.querySelectorAll('button'))
-      .find((button) => button.textContent?.includes('Load snapshot')) as HTMLButtonElement;
-    expect(localLoad).toBeTruthy();
-
-    await act(async () => {
-      localLoad.click();
-      await flushPluginMarketPromises();
-    });
-
-    expect(host.textContent).toContain('Could not load local plugin inventory: disk unavailable');
-    expect(host.textContent).not.toContain('No imported or problem plugins are visible yet.');
   });
 
   it('shows a retry action when the community catalog load fails', async () => {

@@ -1,15 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { ExternalLink, type LucideIcon } from 'lucide-react';
+import { ExternalLink, Puzzle, type LucideIcon } from 'lucide-react';
 import type { PluginsCopy } from './PluginsTabModel';
 import type { PluginPanel } from './types';
-
-interface PluginManagerStats {
-  total: number;
-  obsidian: number;
-  surfaces: number;
-}
 
 export interface PluginManagerNavItem {
   id: PluginPanel;
@@ -20,7 +14,6 @@ export interface PluginManagerNavItem {
 
 interface PluginManagerHeaderProps {
   copy: PluginsCopy;
-  managerStats: PluginManagerStats;
   panel: PluginPanel;
   panels: PluginManagerNavItem[];
   onPanelChange: (panel: PluginPanel) => void;
@@ -28,48 +21,35 @@ interface PluginManagerHeaderProps {
 
 export function PluginManagerHeader({
   copy,
-  managerStats,
   panel,
   panels,
   onPanelChange,
 }: PluginManagerHeaderProps) {
   return (
-    <header className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase text-muted-foreground">{copy.title}</p>
-          <h2 className="mt-1 text-lg font-semibold text-foreground">{copy.managerTitle}</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">{copy.managerSubtitle}</p>
-        </div>
-
-        <div className="flex min-w-0 flex-col items-stretch gap-2 sm:items-end">
-          <Link
-            href="/explore/plugins"
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ExternalLink size={13} />
-            {copy.browseMarketAction}
-          </Link>
-          <div className="grid min-w-0 grid-cols-3 overflow-hidden rounded-xl border border-border bg-card/50 text-center sm:min-w-72">
-            <div className="px-3 py-2">
-              <div className="font-mono text-sm font-semibold tabular-nums text-foreground">{managerStats.total}</div>
-              <div className="text-2xs text-muted-foreground">{copy.pluginsMetric}</div>
-            </div>
-            <div className="border-l border-border px-3 py-2">
-              <div className="font-mono text-sm font-semibold tabular-nums text-[var(--amber-text)]">{managerStats.obsidian}</div>
-              <div className="text-2xs text-muted-foreground">{copy.obsidianMetric}</div>
-            </div>
-            <div className="border-l border-border px-3 py-2">
-              <div className="font-mono text-sm font-semibold tabular-nums text-foreground">{managerStats.surfaces}</div>
-              <div className="text-2xs text-muted-foreground">{copy.surfacesMetric}</div>
-            </div>
+    <header className="rounded-xl border border-border/60 bg-card/65 p-4 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
+            <Puzzle size={15} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{copy.managerTitle}</h3>
+            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">{copy.managerSubtitle}</p>
           </div>
         </div>
+
+        <Link
+          href="/explore/plugins"
+          className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ExternalLink size={13} />
+          {copy.browseMarketAction}
+        </Link>
       </div>
 
       <nav
         aria-label={copy.sectionNavLabel}
-        className="inline-flex max-w-full overflow-hidden rounded-xl border border-border bg-muted/30 p-1"
+        className="mt-4 flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/70 bg-muted/25 p-1"
       >
         {panels.map((item) => {
           const Icon = item.icon;
@@ -80,7 +60,7 @@ export function PluginManagerHeader({
               type="button"
               aria-pressed={active}
               onClick={() => onPanelChange(item.id)}
-              className={`inline-flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`inline-flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 active
                   ? 'bg-background text-foreground shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_8%,transparent)]'
                   : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'

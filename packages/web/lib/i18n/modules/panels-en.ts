@@ -172,7 +172,7 @@ export const panelsEn = {
       useCases: 'Use Cases',
       useCasesDesc: 'Try MindOS scenarios hands-on',
       pluginMarket: 'Plugin Market',
-      pluginMarketDesc: 'Browse and install community plugins',
+      pluginMarketDesc: 'Find and check community plugins',
       skillMarket: 'Skill Market',
       skillMarketDesc: 'Add new abilities to your AI agents',
       spaceTemplates: 'Space Templates',
