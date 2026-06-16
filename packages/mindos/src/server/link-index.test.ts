@@ -153,12 +153,93 @@ describe('server link index cache', () => {
     const snapshot = getLinkSnapshot(services);
     expect(snapshot.files).toEqual(['image-note.md', 'source.md', 'target.md']);
     expect(snapshot.hits).toEqual([
-      expect.objectContaining({ source: 'source.md', target: 'target.md', snippet: 'See [[target]].', resolution: 'resolved' }),
+      expect.objectContaining({
+        source: 'source.md',
+        target: 'target.md',
+        snippet: 'See [[target]].',
+        resolution: 'resolved',
+        line: 1,
+        column: 5,
+      }),
     ]);
+    expect(snapshot.edgeAggregates).toEqual([
+      expect.objectContaining({ source: 'source.md', target: 'target.md', kind: 'wiki', count: 1 }),
+    ]);
+    expect(snapshot.outgoingEdgesBySource.get('source.md')).toHaveLength(1);
+    expect(snapshot.incomingEdgesByTarget.get('target.md')).toHaveLength(1);
     expect(snapshot.fileMetadata.get('target.md')).toMatchObject({ title: 'Target' });
     expect(snapshot.backlinksByTarget.get('target.md')?.get('source.md')).toEqual(new Set(['See [[target]].']));
     // Same version → identical snapshot instance (no re-scan).
     expect(getLinkSnapshot(services)).toBe(snapshot);
+  });
+
+  it('skips frontmatter, fenced code, and inline code while preserving link metadata', () => {
+    const library: Library = new Map([
+      [
+        'root.md',
+        [
+          '---',
+          'related: [[Frontmatter Ghost]]',
+          'tags: [alpha]',
+          '---',
+          '# Root',
+          '`[[Inline Code]]` and [[Target#Heading|Read target]].',
+          '```md',
+          '[[Fence Ghost]]',
+          '```',
+          '[Target label](Target.md#^block-id)',
+          '[[#Local Section]]',
+        ].join('\n'),
+      ],
+      ['Target.md', '# Target'],
+    ]);
+    const services = createServices(library, { getTreeVersion: () => 5 });
+
+    const snapshot = getLinkSnapshot(services);
+
+    expect(snapshot.fileMetadata.get('root.md')).toMatchObject({ tags: ['alpha'] });
+    expect(snapshot.hits.map((hit) => hit.rawTarget).sort()).toEqual(['', 'Target', 'Target.md']);
+    expect(snapshot.hits).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: 'root.md',
+        target: 'Target.md',
+        kind: 'wiki',
+        displayText: 'Read target',
+        targetSubpath: { type: 'heading', value: 'Heading' },
+        line: 6,
+      }),
+      expect.objectContaining({
+        source: 'root.md',
+        target: 'Target.md',
+        kind: 'markdown',
+        displayText: 'Target label',
+        targetSubpath: { type: 'block', value: 'block-id' },
+        line: 10,
+      }),
+      expect.objectContaining({
+        source: 'root.md',
+        target: 'root.md',
+        kind: 'wiki',
+        targetSubpath: { type: 'heading', value: 'Local Section' },
+        line: 11,
+      }),
+    ]));
+    expect(snapshot.hits.some((hit) => hit.rawTarget.includes('Ghost'))).toBe(false);
+    expect(snapshot.hits.some((hit) => hit.rawTarget.includes('Inline Code'))).toBe(false);
+
+    const graph = handleGraph(new URLSearchParams('scope=local&path=root.md&depth=1'), services).body as GraphData;
+    expect(graph.edges).toEqual([
+      expect.objectContaining({
+        source: 'root.md',
+        target: 'Target.md',
+        kind: 'mixed',
+        count: 2,
+        subpaths: expect.arrayContaining([
+          { type: 'heading', value: 'Heading' },
+          { type: 'block', value: 'block-id' },
+        ]),
+      }),
+    ]);
   });
 
   it('exposes unresolved, ambiguous, duplicate, and metadata details for graph rendering', () => {
@@ -184,7 +265,12 @@ describe('server link index cache', () => {
     expect(graph.edges).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: 'root.md', target: 'Existing.md', kind: 'wiki', count: 2, unresolved: false }),
       expect.objectContaining({ source: 'root.md', target: 'Missing.md', kind: 'wiki', unresolved: true }),
-      expect.objectContaining({ source: 'root.md', target: 'Dup.md', ambiguous: true }),
+      expect.objectContaining({
+        source: 'root.md',
+        target: 'Dup.md',
+        ambiguous: true,
+        candidates: ['Other/Dup.md', 'Space/Dup.md'],
+      }),
       expect.objectContaining({ source: 'root.md', target: 'Folder/Child.md', kind: 'markdown' }),
     ]));
     expect(graph.edges.some((edge) => edge.target === 'photo.png')).toBe(false);

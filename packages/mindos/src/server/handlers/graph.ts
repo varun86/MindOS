@@ -4,16 +4,17 @@ import { queryValue, type MindosRequestQuery } from '../context.js';
 import {
   getLinkSnapshot,
   normalizeTargetPath,
-  type LinkHit,
-  type LinkKind,
+  type LinkAggregateKind,
+  type LinkEdgeAggregate,
   type LinkScanServices,
+  type LinkTargetSubpath,
 } from '../link-index.js';
 import { json, publicCacheHeaders, type MindosServerResponse } from '../response.js';
 
 export type GraphScope = 'global' | 'local';
 export type GraphDirection = 'both' | 'incoming' | 'outgoing';
 export type GraphNodeType = 'note' | 'missing';
-export type GraphEdgeKind = LinkKind | 'mixed';
+export type GraphEdgeKind = LinkAggregateKind;
 
 export interface GraphNode {
   id: string;
@@ -27,6 +28,7 @@ export interface GraphNode {
   outDegree: number;
   degree: number;
   isMissing: boolean;
+  isAmbiguous: boolean;
   isCurrent?: boolean;
 }
 
@@ -39,6 +41,8 @@ export interface GraphEdge {
   snippets: string[];
   unresolved: boolean;
   ambiguous: boolean;
+  candidates: string[];
+  subpaths: LinkTargetSubpath[];
 }
 
 export interface GraphData {
@@ -118,38 +122,22 @@ type ParsedGraphOptions = {
   includeOrphans: boolean;
 };
 
-type EdgeAggregate = {
-  source: string;
-  target: string;
-  kind: GraphEdgeKind;
-  count: number;
-  snippets: Set<string>;
-  unresolved: boolean;
-  ambiguous: boolean;
-};
-
 function buildGraphData(services: GraphHandlerServices, options: ParsedGraphOptions): GraphData {
   const snapshot = getLinkSnapshot(services);
   const fileSet = new Set(snapshot.files);
-  const edgeMap = new Map<string, EdgeAggregate>();
-  for (const hit of snapshot.hits) {
-    if (hit.source === hit.target) continue;
-    if (!options.includeUnresolved && hit.resolution !== 'resolved') continue;
-    aggregateEdge(edgeMap, hit);
-  }
-
-  const allEdges = [...edgeMap.values()]
+  const allEdges = snapshot.edgeAggregates
+    .filter((edge) => isGraphEdgeVisible(edge, options.includeUnresolved))
     .map(toGraphEdge)
     .sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target) || a.kind.localeCompare(b.kind));
 
-  const allNodeIds = new Set(snapshot.files);
+  const allNodeIds = options.includeUnresolved ? new Set(snapshot.nodeIds) : new Set(snapshot.files);
   for (const edge of allEdges) {
     allNodeIds.add(edge.source);
     allNodeIds.add(edge.target);
   }
 
   const scopedNodeIds = options.scope === 'local' && options.path
-    ? buildLocalNodeIds(options.path, options.depth, options.direction, allEdges)
+    ? buildLocalNodeIds(options.path, options.depth, options.direction, options.includeUnresolved, snapshot)
     : allNodeIds;
   if (options.scope === 'local' && options.path) scopedNodeIds.add(options.path);
 
@@ -213,39 +201,24 @@ function clampInteger(value: string | undefined, fallback: number, min: number, 
   return Math.min(max, Math.max(min, parsed));
 }
 
-function aggregateEdge(edgeMap: Map<string, EdgeAggregate>, hit: LinkHit): void {
-  const key = `${hit.source}\0${hit.target}`;
-  const existing = edgeMap.get(key);
-  if (!existing) {
-    edgeMap.set(key, {
-      source: hit.source,
-      target: hit.target,
-      kind: hit.kind,
-      count: 1,
-      snippets: new Set(hit.snippet ? [hit.snippet] : []),
-      unresolved: hit.resolution === 'unresolved',
-      ambiguous: hit.resolution === 'ambiguous',
-    });
-    return;
-  }
-
-  existing.count += 1;
-  if (existing.kind !== hit.kind) existing.kind = 'mixed';
-  if (hit.snippet) existing.snippets.add(hit.snippet);
-  existing.unresolved ||= hit.resolution === 'unresolved';
-  existing.ambiguous ||= hit.resolution === 'ambiguous';
+function isGraphEdgeVisible(edge: LinkEdgeAggregate, includeUnresolved: boolean): boolean {
+  if (edge.source === edge.target) return false;
+  if (!includeUnresolved && (edge.unresolved || edge.ambiguous)) return false;
+  return true;
 }
 
-function toGraphEdge(edge: EdgeAggregate): GraphEdge {
+function toGraphEdge(edge: LinkEdgeAggregate): GraphEdge {
   return {
     id: `${edge.source}\0${edge.target}`,
     source: edge.source,
     target: edge.target,
     kind: edge.kind,
     count: edge.count,
-    snippets: [...edge.snippets].slice(0, 3),
+    snippets: edge.snippets.slice(0, 3),
     unresolved: edge.unresolved,
     ambiguous: edge.ambiguous,
+    candidates: edge.candidates,
+    subpaths: edge.subpaths,
   };
 }
 
@@ -253,24 +226,15 @@ function buildLocalNodeIds(
   rootPath: string,
   depth: number,
   direction: GraphDirection,
-  edges: GraphEdge[],
+  includeUnresolved: boolean,
+  snapshot: ReturnType<typeof getLinkSnapshot>,
 ): Set<string> {
-  const adjacency = new Map<string, Set<string>>();
-  for (const edge of edges) {
-    if (direction === 'both' || direction === 'outgoing') {
-      addAdjacent(adjacency, edge.source, edge.target);
-    }
-    if (direction === 'both' || direction === 'incoming') {
-      addAdjacent(adjacency, edge.target, edge.source);
-    }
-  }
-
   const visited = new Set<string>([rootPath]);
   const queue: Array<{ id: string; depth: number }> = [{ id: rootPath, depth: 0 }];
   while (queue.length > 0) {
     const current = queue.shift();
     if (!current || current.depth >= depth) continue;
-    for (const neighbor of adjacency.get(current.id) ?? []) {
+    for (const neighbor of getAdjacentNodeIds(current.id, direction, includeUnresolved, snapshot)) {
       if (visited.has(neighbor)) continue;
       visited.add(neighbor);
       queue.push({ id: neighbor, depth: current.depth + 1 });
@@ -279,13 +243,29 @@ function buildLocalNodeIds(
   return visited;
 }
 
-function addAdjacent(adjacency: Map<string, Set<string>>, source: string, target: string): void {
-  let neighbors = adjacency.get(source);
-  if (!neighbors) {
-    neighbors = new Set();
-    adjacency.set(source, neighbors);
+function getAdjacentNodeIds(
+  nodeId: string,
+  direction: GraphDirection,
+  includeUnresolved: boolean,
+  snapshot: ReturnType<typeof getLinkSnapshot>,
+): string[] {
+  const ids = new Set<string>();
+
+  if (direction === 'both' || direction === 'outgoing') {
+    for (const edge of snapshot.outgoingEdgesBySource.get(nodeId) ?? []) {
+      if (!isGraphEdgeVisible(edge, includeUnresolved)) continue;
+      ids.add(edge.target);
+    }
   }
-  neighbors.add(target);
+
+  if (direction === 'both' || direction === 'incoming') {
+    for (const edge of snapshot.incomingEdgesByTarget.get(nodeId) ?? []) {
+      if (!isGraphEdgeVisible(edge, includeUnresolved)) continue;
+      ids.add(edge.source);
+    }
+  }
+
+  return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
 function buildGraphNode(
@@ -303,6 +283,7 @@ function buildGraphNode(
   }
 
   const isMissing = !fileSet.has(id);
+  const isAmbiguous = edges.some((edge) => edge.target === id && edge.ambiguous);
   return {
     id,
     path: id,
@@ -315,6 +296,7 @@ function buildGraphNode(
     outDegree,
     degree: inDegree + outDegree,
     isMissing,
+    isAmbiguous,
     isCurrent: id === currentPath,
   };
 }

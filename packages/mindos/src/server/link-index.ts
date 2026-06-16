@@ -13,6 +13,11 @@ export type LinkKind = 'wiki' | 'markdown';
 
 export type LinkResolution = 'resolved' | 'unresolved' | 'ambiguous';
 
+export type LinkTargetSubpath = {
+  type: 'heading' | 'block';
+  value: string;
+};
+
 export type LinkHit = {
   source: string;
   target: string;
@@ -20,6 +25,25 @@ export type LinkHit = {
   kind: LinkKind;
   rawTarget: string;
   resolution: LinkResolution;
+  displayText?: string;
+  targetSubpath?: LinkTargetSubpath;
+  line: number;
+  column: number;
+  candidates?: string[];
+};
+
+export type LinkAggregateKind = LinkKind | 'mixed';
+
+export type LinkEdgeAggregate = {
+  source: string;
+  target: string;
+  kind: LinkAggregateKind;
+  count: number;
+  snippets: string[];
+  unresolved: boolean;
+  ambiguous: boolean;
+  candidates: string[];
+  subpaths: LinkTargetSubpath[];
 };
 
 export type FileLinkMetadata = {
@@ -41,8 +65,16 @@ export type LinkSnapshot = {
   files: string[];
   /** Lightweight metadata extracted during the same file scan. */
   fileMetadata: Map<string, FileLinkMetadata>;
-  /** Every resolved link occurrence with its source line snippet. */
+  /** Every note-link occurrence with its source line snippet. */
   hits: LinkHit[];
+  /** Aggregated source -> target note-link edges, cached per tree version. */
+  edgeAggregates: LinkEdgeAggregate[];
+  /** Outgoing edge lookup for local graph traversal. */
+  outgoingEdgesBySource: Map<string, LinkEdgeAggregate[]>;
+  /** Incoming edge lookup for local graph traversal. */
+  incomingEdgesByTarget: Map<string, LinkEdgeAggregate[]>;
+  /** All markdown files plus unresolved/ambiguous graph targets. */
+  nodeIds: Set<string>;
   /** Backlink lookup table: target -> source -> unique snippets. */
   backlinksByTarget: Map<string, Map<string, Set<string>>>;
 };
@@ -107,7 +139,23 @@ export function buildLinkSnapshot(services: LinkScanServices): LinkSnapshot {
     }
   }
 
-  return { files, fileMetadata, hits, backlinksByTarget };
+  const {
+    edgeAggregates,
+    outgoingEdgesBySource,
+    incomingEdgesByTarget,
+    nodeIds,
+  } = buildEdgeIndexes(files, hits);
+
+  return {
+    files,
+    fileMetadata,
+    hits,
+    edgeAggregates,
+    outgoingEdgesBySource,
+    incomingEdgesByTarget,
+    nodeIds,
+    backlinksByTarget,
+  };
 }
 
 export function normalizeTargetPath(value: string | undefined): string | undefined {
@@ -166,33 +214,163 @@ function extractLinkHits(
 ): LinkHit[] {
   const hits: LinkHit[] = [];
   const sourceDir = posix.dirname(source);
-  const lines = content.split(/\r?\n/);
+  const lines = collectScannableLines(content);
 
   for (const line of lines) {
-    const snippet = line.trim();
+    const snippet = line.original.trim();
     if (!snippet) continue;
 
-    const wikiRe = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+    const wikiRe = /!?\[\[([^\]\n]+)\]\]/g;
     let match: RegExpExecArray | null;
-    while ((match = wikiRe.exec(line)) !== null) {
-      const target = resolveLinkTarget(match[1], sourceDir, fileSet, basenameMap, false, 'wiki');
-      if (target) hits.push({ source, snippet, kind: 'wiki', rawTarget: match[1]?.trim() ?? '', ...target });
+    while ((match = wikiRe.exec(line.text)) !== null) {
+      const parsed = parseWikiTarget(match[1]);
+      const target = parsed.targetText
+        ? resolveLinkTarget(parsed.targetText, sourceDir, fileSet, basenameMap, false, 'wiki')
+        : { target: source, resolution: 'resolved' as const };
+      if (target) {
+        hits.push({
+          source,
+          snippet,
+          kind: 'wiki',
+          rawTarget: parsed.targetText,
+          displayText: parsed.displayText,
+          targetSubpath: parsed.subpath,
+          line: line.number,
+          column: match.index + 1,
+          ...target,
+        });
+      }
     }
 
-    const markdownRe = /\[[^\]]+\]\(([^)#]+)(?:#[^)]+)?\)/g;
-    while ((match = markdownRe.exec(line)) !== null) {
-      if (match.index > 0 && line[match.index - 1] === '!') continue;
-      const target = resolveLinkTarget(match[1], sourceDir, fileSet, basenameMap, true, 'markdown');
-      if (target) hits.push({ source, snippet, kind: 'markdown', rawTarget: match[1]?.trim() ?? '', ...target });
+    const markdownRe = /!?\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+    while ((match = markdownRe.exec(line.text)) !== null) {
+      if (match[0].startsWith('!')) continue;
+      const parsed = parseMarkdownTarget(match[1], match[2]);
+      const target = resolveLinkTarget(parsed.targetText, sourceDir, fileSet, basenameMap, true, 'markdown');
+      if (target) {
+        hits.push({
+          source,
+          snippet,
+          kind: 'markdown',
+          rawTarget: parsed.targetText,
+          displayText: parsed.displayText,
+          targetSubpath: parsed.subpath,
+          line: line.number,
+          column: match.index + 1,
+          ...target,
+        });
+      }
     }
   }
 
   return hits;
 }
 
+type ScannableLine = {
+  original: string;
+  text: string;
+  number: number;
+};
+
+function collectScannableLines(content: string): ScannableLine[] {
+  const rawLines = content.split(/\r?\n/);
+  const lines: ScannableLine[] = [];
+  let inFrontmatter = rawLines[0]?.trim() === '---';
+  let inFence = false;
+  let fenceChar: '`' | '~' | null = null;
+  let fenceLength = 0;
+
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const original = rawLines[index] ?? '';
+    const trimmed = original.trim();
+
+    if (inFrontmatter) {
+      if (index > 0 && trimmed === '---') inFrontmatter = false;
+      continue;
+    }
+
+    const fenceMatch = original.match(/^\s*(`{3,}|~{3,})/);
+    if (inFence) {
+      if (fenceMatch && fenceChar && fenceMatch[1]?.startsWith(fenceChar) && fenceMatch[1].length >= fenceLength) {
+        inFence = false;
+        fenceChar = null;
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceMatch) {
+      const marker = fenceMatch[1] ?? '';
+      fenceChar = marker[0] as '`' | '~';
+      fenceLength = marker.length;
+      inFence = true;
+      continue;
+    }
+
+    lines.push({
+      original,
+      text: maskInlineCode(original),
+      number: index + 1,
+    });
+  }
+
+  return lines;
+}
+
+function maskInlineCode(line: string): string {
+  return line.replace(/`+[^`]*?`+/g, (match) => ' '.repeat(match.length));
+}
+
+type ParsedTarget = {
+  targetText: string;
+  displayText?: string;
+  subpath?: LinkTargetSubpath;
+};
+
+function parseWikiTarget(raw: string | undefined): ParsedTarget {
+  const value = raw?.trim() ?? '';
+  const [targetAndSubpath = '', alias] = value.split('|');
+  const { targetText, subpath } = splitSubpath(targetAndSubpath.trim());
+  return {
+    targetText,
+    displayText: alias?.trim() || undefined,
+    subpath,
+  };
+}
+
+function parseMarkdownTarget(label: string | undefined, rawDestination: string | undefined): ParsedTarget {
+  let destination = rawDestination?.trim() ?? '';
+  const bracketed = destination.match(/^<([^>]+)>$/)?.[1];
+  if (bracketed) destination = bracketed.trim();
+  destination = destination.replace(/\s+["'][^"']*["']\s*$/, '').trim();
+
+  const { targetText, subpath } = splitSubpath(destination);
+  return {
+    targetText,
+    displayText: label?.trim() || undefined,
+    subpath,
+  };
+}
+
+function splitSubpath(value: string): { targetText: string; subpath?: LinkTargetSubpath } {
+  const hashIndex = value.indexOf('#');
+  if (hashIndex === -1) return { targetText: value.trim() };
+
+  const targetText = value.slice(0, hashIndex).trim();
+  const rawSubpath = value.slice(hashIndex + 1).trim();
+  if (!rawSubpath) return { targetText };
+
+  if (rawSubpath.startsWith('^')) {
+    const block = rawSubpath.slice(1).trim();
+    return block ? { targetText, subpath: { type: 'block', value: block } } : { targetText };
+  }
+
+  return { targetText, subpath: { type: 'heading', value: rawSubpath } };
+}
+
 type ResolvedLinkTarget = {
   target: string;
   resolution: LinkResolution;
+  candidates?: string[];
 };
 
 function resolveLinkTarget(
@@ -229,10 +407,86 @@ function resolveLinkTarget(
     if (match) return { target: match, resolution: 'resolved' };
   }
   if (basenameMatches && basenameMatches.length > 1) {
-    return { target: toProbableMarkdownTarget(target, sourceDir, relativeToSource), resolution: 'ambiguous' };
+    return {
+      target: toProbableMarkdownTarget(target, sourceDir, relativeToSource),
+      resolution: 'ambiguous',
+      candidates: [...basenameMatches].sort((a, b) => a.localeCompare(b)),
+    };
   }
 
   return { target: toProbableMarkdownTarget(target, sourceDir, relativeToSource), resolution: 'unresolved' };
+}
+
+function buildEdgeIndexes(files: string[], hits: LinkHit[]): {
+  edgeAggregates: LinkEdgeAggregate[];
+  outgoingEdgesBySource: Map<string, LinkEdgeAggregate[]>;
+  incomingEdgesByTarget: Map<string, LinkEdgeAggregate[]>;
+  nodeIds: Set<string>;
+} {
+  const edgeMap = new Map<string, LinkEdgeAggregate>();
+  const nodeIds = new Set(files);
+
+  for (const hit of hits) {
+    nodeIds.add(hit.source);
+    nodeIds.add(hit.target);
+    const key = `${hit.source}\0${hit.target}`;
+    const existing = edgeMap.get(key);
+    if (!existing) {
+      edgeMap.set(key, {
+        source: hit.source,
+        target: hit.target,
+        kind: hit.kind,
+        count: 1,
+        snippets: hit.snippet ? [hit.snippet] : [],
+        unresolved: hit.resolution === 'unresolved',
+        ambiguous: hit.resolution === 'ambiguous',
+        candidates: hit.candidates ? [...hit.candidates] : [],
+        subpaths: hit.targetSubpath ? [hit.targetSubpath] : [],
+      });
+      continue;
+    }
+
+    existing.count += 1;
+    if (existing.kind !== hit.kind) existing.kind = 'mixed';
+    if (hit.snippet && !existing.snippets.includes(hit.snippet) && existing.snippets.length < 3) {
+      existing.snippets.push(hit.snippet);
+    }
+    existing.unresolved ||= hit.resolution === 'unresolved';
+    existing.ambiguous ||= hit.resolution === 'ambiguous';
+    if (hit.candidates) {
+      for (const candidate of hit.candidates) {
+        if (!existing.candidates.includes(candidate)) existing.candidates.push(candidate);
+      }
+      existing.candidates.sort((a, b) => a.localeCompare(b));
+    }
+    if (hit.targetSubpath && !existing.subpaths.some((subpath) => (
+      subpath.type === hit.targetSubpath?.type && subpath.value === hit.targetSubpath.value
+    ))) {
+      existing.subpaths.push(hit.targetSubpath);
+    }
+  }
+
+  const edgeAggregates = [...edgeMap.values()]
+    .sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target) || a.kind.localeCompare(b.kind));
+  const outgoingEdgesBySource = new Map<string, LinkEdgeAggregate[]>();
+  const incomingEdgesByTarget = new Map<string, LinkEdgeAggregate[]>();
+
+  for (const edge of edgeAggregates) {
+    addEdgeIndex(outgoingEdgesBySource, edge.source, edge);
+    addEdgeIndex(incomingEdgesByTarget, edge.target, edge);
+  }
+
+  return { edgeAggregates, outgoingEdgesBySource, incomingEdgesByTarget, nodeIds };
+}
+
+function addEdgeIndex(
+  index: Map<string, LinkEdgeAggregate[]>,
+  key: string,
+  edge: LinkEdgeAggregate,
+): void {
+  const values = index.get(key) ?? [];
+  values.push(edge);
+  index.set(key, values);
 }
 
 function toProbableMarkdownTarget(target: string, sourceDir: string, relativeToSource: boolean): string {
@@ -273,9 +527,10 @@ function extractTags(content: string): string[] {
     if (singleTag) addTag(tags, singleTag);
   }
 
+  const scannableContent = collectScannableLines(content).map((line) => line.text).join('\n');
   const inlineTagRe = /(^|\s)#([\p{L}\p{N}_/-]+)/gu;
   let match: RegExpExecArray | null;
-  while ((match = inlineTagRe.exec(content)) !== null) addTag(tags, match[2]);
+  while ((match = inlineTagRe.exec(scannableContent)) !== null) addTag(tags, match[2]);
 
   return [...tags].sort((a, b) => a.localeCompare(b));
 }

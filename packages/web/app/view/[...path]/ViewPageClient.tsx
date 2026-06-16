@@ -612,6 +612,8 @@ export default function ViewPageClient({
                   ] as const).map(m => (
                     <button
                       key={m.id}
+                      aria-label={m.label}
+                      title={m.label}
                       onClick={() => {
                         // Use startTransition to mark state updates as non-urgent
                         startTransition(() => {
