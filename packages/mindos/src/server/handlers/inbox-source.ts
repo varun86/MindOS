@@ -51,8 +51,13 @@ export function extractInboxSourceMetadata(markdownPrefix: string): InboxSourceM
   const frontmatter = parseLeadingScalarFrontmatter(markdownPrefix);
   if (!frontmatter) return undefined;
 
-  const sourceUrl = firstNonEmpty(frontmatter.source, frontmatter.url, frontmatter.canonical_url);
-  const domain = normalizeSourceHostname(sourceUrl ?? frontmatter.domain ?? frontmatter.site);
+  const sourceUrl = firstValidSourceUrl(
+    frontmatter.source_url,
+    frontmatter.url,
+    frontmatter.canonical_url,
+    frontmatter.source,
+  );
+  const domain = normalizeSourceHostname(sourceUrl);
   if (!sourceUrl || !domain) return undefined;
 
   const platformFromFrontmatter = normalizePlatformId(frontmatter.source_platform ?? frontmatter.platform);
@@ -96,6 +101,23 @@ function normalizePlatformId(input: string | null | undefined): InboxSourcePlatf
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
   return values.find(value => typeof value === 'string' && value.trim().length > 0)?.trim();
+}
+
+function firstValidSourceUrl(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.toString();
+      }
+    } catch {
+      // Legacy `source` may contain integration names such as "readwise";
+      // those are not source URLs and should not create web source metadata.
+    }
+  }
+  return undefined;
 }
 
 function parseLeadingScalarFrontmatter(content: string): Record<string, string> | null {

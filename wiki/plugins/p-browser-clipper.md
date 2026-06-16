@@ -50,9 +50,11 @@
 ```markdown
 ---
 title: "How to Build a Second Brain"
-url: https://example.com/article
-clipped_at: 2026-04-12
-author: Tiago Forte
+type: material
+status: active
+source_type: web
+source_url: "https://example.com/article"
+captured_at: 2026-04-12T10:30:00Z
 ---
 
 # How to Build a Second Brain

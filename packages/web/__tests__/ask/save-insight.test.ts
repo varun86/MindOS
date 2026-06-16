@@ -62,11 +62,16 @@ describe('cleanInsightContent', () => {
 });
 
 describe('formatInsightMarkdown', () => {
-  it('wraps content with metadata header', () => {
+  it('wraps content with canonical frontmatter', () => {
     const result = formatInsightMarkdown('Analysis content here', new Date('2026-04-09T10:30:00Z'));
     expect(result).toContain('Analysis content here');
-    expect(result).toContain('2026-04-09');
-    expect(result).toMatch(/^> Saved from MindOS Ask/m);
+    expect(result).toMatch(/^---\n/);
+    expect(result).toContain('title: Saved insight - 2026-04-09');
+    expect(result).toContain('type: note');
+    expect(result).toContain('status: active');
+    expect(result).toContain('created: 2026-04-09');
+    expect(result).toContain('source_type: ask');
+    expect(result).toContain('captured_at: 2026-04-09T10:30:00.000Z');
   });
 
   it('handles multi-line content', () => {
@@ -78,7 +83,7 @@ describe('formatInsightMarkdown', () => {
 
   it('produces valid markdown', () => {
     const result = formatInsightMarkdown('test', new Date('2026-04-09'));
-    expect(result.startsWith('>')).toBe(true);
+    expect(result.startsWith('---')).toBe(true);
     expect(result).toContain('\n\ntest');
   });
 });

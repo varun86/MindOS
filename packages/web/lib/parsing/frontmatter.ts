@@ -56,6 +56,27 @@ function normalizeValue(value: unknown, seen = new WeakSet<object>()): Frontmatt
   return String(value);
 }
 
+function trimSerializableValue(value: FrontmatterValue | undefined): FrontmatterValue | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => trimSerializableValue(item))
+      .filter((item): item is FrontmatterValue => item !== undefined);
+    return items.length > 0 ? items : undefined;
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value as { [key: string]: FrontmatterValue })
+      .map(([key, nested]) => [key, trimSerializableValue(nested)] as const)
+      .filter((entry): entry is readonly [string, FrontmatterValue] => entry[1] !== undefined);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  }
+  return value;
+}
+
 function findFrontmatterFenceBounds(content: string): FrontmatterFenceBounds | null {
   const opening = content.match(OPENING_FENCE_RE);
   if (!opening?.[0]) return null;
@@ -114,4 +135,23 @@ export function splitMarkdownFrontmatter(content: string): SplitMarkdownFrontmat
       })),
     },
   };
+}
+
+export function serializeMarkdownFrontmatter(fields: Record<string, FrontmatterValue | undefined>): string {
+  const cleaned = Object.fromEntries(
+    Object.entries(fields)
+      .map(([key, value]) => [key, trimSerializableValue(value)] as const)
+      .filter((entry): entry is readonly [string, FrontmatterValue] => entry[1] !== undefined),
+  );
+
+  if (Object.keys(cleaned).length === 0) return '';
+
+  const serialized = yaml.dump(cleaned, {
+    lineWidth: -1,
+    noRefs: true,
+    schema: yaml.JSON_SCHEMA,
+    sortKeys: false,
+  }).trimEnd();
+
+  return `---\n${serialized}\n---\n`;
 }

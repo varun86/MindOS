@@ -117,8 +117,12 @@ describe('clipUrl', () => {
     expect(result.url).toBe('https://example.com/article');
     expect(result.markdown).toContain('# Test Article');
     expect(result.markdown).toContain('---');
-    expect(result.markdown).toMatch(/source:.*example\.com\/article/);
-    expect(result.markdown).toContain('source_domain: example.com');
+    expect(result.markdown).toContain('type: material');
+    expect(result.markdown).toContain('source_type: web');
+    expect(result.markdown).toMatch(/source_url:.*example\.com\/article/);
+    expect(result.markdown).toContain('captured_at:');
+    expect(result.markdown).not.toContain('source_domain:');
+    expect(result.markdown).not.toContain('clipped:');
     expect(result.mode).toBe('article');
     expect(result.wordCount).toBeGreaterThan(0);
   });
@@ -324,9 +328,14 @@ describe('clipUrl', () => {
 
     expect(result.markdown).toMatch(/^---\n/);
     expect(result.markdown).toContain('title: Frontmatter Test');
-    expect(result.markdown).toMatch(/source:.*blog\.example\.com\/post\/123/);
-    expect(result.markdown).toContain('source_domain: blog.example.com');
-    expect(result.markdown).toContain('clipped:');
+    expect(result.markdown).toContain('type: material');
+    expect(result.markdown).toContain('status: active');
+    expect(result.markdown).toMatch(/created: \d{4}-\d{2}-\d{2}/);
+    expect(result.markdown).toMatch(/source_url:.*blog\.example\.com\/post\/123/);
+    expect(result.markdown).toContain('captured_at:');
+    expect(result.markdown).not.toContain('source_domain:');
+    expect(result.markdown).not.toContain('author:');
+    expect(result.markdown).not.toContain('clipped:');
     expect(result.siteName).toBe('blog.example.com');
   });
 
@@ -347,7 +356,7 @@ describe('clipUrl', () => {
     const result = await clipUrl('https://www.youtube.com/watch?v=abc');
 
     expect(result.markdown).toContain('source_platform: youtube');
-    expect(result.markdown).toContain('source_domain: youtube.com');
+    expect(result.markdown).not.toContain('source_domain:');
     expect(result.siteName).toBe('YouTube');
   });
 
@@ -356,8 +365,13 @@ describe('clipUrl', () => {
 
     expect(result.mode).toBe('link');
     expect(result.fileName).toBe('Bilibili link.md');
+    expect(result.markdown).toContain('type: material');
+    expect(result.markdown).toContain('source_type: web');
+    expect(result.markdown).toMatch(/source_url:.*bilibili\.com\/video\/BV123/);
     expect(result.markdown).toContain('source_platform: bilibili');
-    expect(result.markdown).toContain('clip_status: link-only');
+    expect(result.markdown).toContain('captured_at:');
+    expect(result.markdown).not.toContain('source_domain:');
+    expect(result.markdown).not.toContain('clip_status:');
   });
 
   it('handles CJK content word count', async () => {

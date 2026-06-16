@@ -2,6 +2,7 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
 import { detectSourcePlatform } from '@/lib/link-preview/source-platforms';
+import { serializeMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
 
 export interface WebClipResult {
   title: string;
@@ -114,24 +115,11 @@ function sanitizeFileName(title: string): string {
     || 'Untitled';
 }
 
-function buildFrontmatter(meta: Record<string, string | null | undefined>): string {
-  const lines = ['---'];
-  const yamlReserved = /^(true|false|null|yes|no|on|off|~)$/i;
-  const yamlSpecialStart = /^[*&!@`>|%-]/;
-
-  for (const [key, val] of Object.entries(meta)) {
-    if (val == null || val === '') continue;
-    const clean = val.replace(/[\r\n]+/g, ' ').trim();
-    const needsQuote = clean.includes(':') || clean.includes('#') || clean.includes("'")
-      || clean.includes('"') || clean.includes('[') || clean.includes('{')
-      || yamlReserved.test(clean) || yamlSpecialStart.test(clean);
-    const safe = needsQuote
-      ? `"${clean.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-      : clean;
-    lines.push(`${key}: ${safe}`);
-  }
-  lines.push('---', '');
-  return lines.join('\n');
+function formatLocalDate(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function createTurndown(): TurndownService {
@@ -261,15 +249,17 @@ async function readHtmlClipFromResponse(res: Response, requestedUrl: string): Pr
   const bodyMd = turndown.turndown(content);
   const platform = detectSourcePlatform(finalUrl);
 
-  const savedAt = new Date().toISOString();
-  const fm = buildFrontmatter({
+  const savedDate = new Date();
+  const savedAt = savedDate.toISOString();
+  const fm = serializeMarkdownFrontmatter({
     title,
-    source: finalUrl,
+    type: 'material',
+    status: 'active',
+    created: formatLocalDate(savedDate),
+    source_type: 'web',
+    source_url: finalUrl,
     source_platform: platform?.id,
-    source_domain: hostname,
-    author: article?.byline || null,
-    site: article?.siteName || platform?.label || hostname,
-    clipped: savedAt,
+    captured_at: savedAt,
   });
 
   const markdown = `${fm}# ${title}\n\n${bodyMd}\n`;
@@ -488,15 +478,17 @@ export function createFallbackWebClip(url: string): WebClipResult {
   const platform = detectSourcePlatform(url);
   const siteName = platform?.label || hostname;
   const title = `${siteName} link`;
-  const savedAt = new Date().toISOString();
-  const fm = buildFrontmatter({
+  const savedDate = new Date();
+  const savedAt = savedDate.toISOString();
+  const fm = serializeMarkdownFrontmatter({
     title,
-    source: parsed.toString(),
+    type: 'material',
+    status: 'active',
+    created: formatLocalDate(savedDate),
+    source_type: 'web',
+    source_url: parsed.toString(),
     source_platform: platform?.id,
-    source_domain: hostname,
-    site: siteName,
-    clipped: savedAt,
-    clip_status: 'link-only',
+    captured_at: savedAt,
   });
 
   return {

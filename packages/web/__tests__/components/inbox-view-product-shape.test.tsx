@@ -597,15 +597,20 @@ describe('InboxView product shape', () => {
             content: [
               '---',
               'title: Clip',
-              'source: "https://github.com/GeminiLight/MindOS"',
+              'type: material',
+              'source_type: web',
+              'source_url: "https://github.com/GeminiLight/MindOS"',
+              'source_platform: github',
+              'captured_at: "2026-06-10T10:00:00.000Z"',
               '---',
               '',
               '***',
               'title: Clip',
-              'source: "https://github.com/GeminiLight/MindOS"',
-              'author: GeminiLight',
-              'site: github.com',
-              'clipped: "2026-06-10T10:00:00.000Z"',
+              'type: material',
+              'source_type: web',
+              'source_url: "https://github.com/GeminiLight/MindOS"',
+              'source_platform: github',
+              'captured_at: "2026-06-10T10:00:00.000Z"',
               '----------------------------------------',
               '',
               '# Clip',
@@ -653,8 +658,8 @@ describe('InboxView product shape', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/file?path=Inbox%2Fclip.md&op=read_file');
     expect(host.textContent).toContain('Content preview');
     expect(host.textContent).toContain('Preview body line from the saved capture.');
-    expect(host.textContent).not.toContain('source:');
-    expect(host.textContent).not.toContain('clipped:');
+    expect(host.textContent).not.toContain('source_url:');
+    expect(host.textContent).not.toContain('captured_at:');
 
     await act(async () => {
       root.unmount();

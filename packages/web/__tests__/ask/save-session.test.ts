@@ -23,7 +23,12 @@ describe('generateSessionPath', () => {
 describe('formatSessionContent', () => {
   it('formats full conversation with role headers', () => {
     const result = formatSessionContent(mockMessages, 'full', new Date('2026-04-10'));
-    expect(result).toContain('> Saved session from MindOS Ask');
+    expect(result).toMatch(/^---\n/);
+    expect(result).toContain('title: Saved session - 2026-04-10');
+    expect(result).toContain('type: log');
+    expect(result).toContain('status: active');
+    expect(result).toContain('created: 2026-04-10');
+    expect(result).toContain('source_type: session');
     expect(result).toContain('### **User**');
     expect(result).toContain('What is React?');
     expect(result).toContain('### **Assistant**');
@@ -47,7 +52,8 @@ describe('formatSessionContent', () => {
 
   it('handles empty messages array', () => {
     const result = formatSessionContent([], 'full', new Date('2026-04-10'));
-    expect(result).toContain('> Saved session from MindOS Ask');
+    expect(result).toContain('title: Saved session - 2026-04-10');
+    expect(result).toContain('type: log');
   });
 });
 

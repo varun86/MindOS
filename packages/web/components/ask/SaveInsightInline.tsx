@@ -138,7 +138,7 @@ function SaveInsightForm({
     try {
       const content = mode === 'create'
         ? formatInsightMarkdown(cleaned)
-        : `\n\n---\n\n${formatInsightMarkdown(cleaned)}`;
+        : `\n\n---\n\n${cleaned}`;
 
       await apiFetch('/api/file', {
         method: 'POST',

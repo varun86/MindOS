@@ -41,7 +41,7 @@ function stripGeneratedCaptureHeader(content: string): string {
   if (separatorIndex < headerStart + 2 || separatorIndex - headerStart > 24) return content;
 
   const headerLines = lines.slice(headerStart + 1, separatorIndex);
-  const hasCaptureMetadata = headerLines.some(line => /^(title|source|url|author|site|platform|clipped):/i.test(line.trim()));
+  const hasCaptureMetadata = headerLines.some(line => /^(title|description|type|status|created|tags|aliases|source_type|source_url|source_platform|captured_at|source|url|author|site|platform|clipped|clipped_at|saved_at):/i.test(line.trim()));
   return hasCaptureMetadata ? lines.slice(separatorIndex + 1).join('\n') : content;
 }
 

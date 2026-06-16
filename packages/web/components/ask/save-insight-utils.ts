@@ -1,5 +1,13 @@
 import { stripThinkingTags } from '@/hooks/useAiOrganize';
+import { serializeMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
 import type { Message } from '@/lib/types';
+
+function formatLocalDate(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 /**
  * Generate a default file path for saving an insight.
@@ -34,10 +42,16 @@ export function cleanInsightContent(raw: string): string {
 
 /** Wrap insight content with a metadata header for the saved file. */
 export function formatInsightMarkdown(content: string, date: Date = new Date()): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `> Saved from MindOS Ask · ${yyyy}-${mm}-${dd}\n\n${content}`;
+  const created = formatLocalDate(date);
+  const frontmatter = serializeMarkdownFrontmatter({
+    title: `Saved insight - ${created}`,
+    type: 'note',
+    status: 'active',
+    created,
+    source_type: 'ask',
+    captured_at: date.toISOString(),
+  });
+  return `${frontmatter}\n${content}`;
 }
 
 // ─── Session-level save utilities ────────────────────────────────────────────
@@ -63,10 +77,15 @@ export function formatSessionContent(
   format: SessionSaveFormat,
   date: Date = new Date(),
 ): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  const header = `> Saved session from MindOS Ask · ${yyyy}-${mm}-${dd}`;
+  const created = formatLocalDate(date);
+  const frontmatter = serializeMarkdownFrontmatter({
+    title: `Saved session - ${created}`,
+    type: 'log',
+    status: 'active',
+    created,
+    source_type: 'session',
+    captured_at: date.toISOString(),
+  });
 
   if (format === 'full') {
     const parts = messages.map((m) => {
@@ -75,7 +94,7 @@ export function formatSessionContent(
       const roleLabel = m.role === 'user' ? '**User**' : '**Assistant**';
       return `### ${roleLabel}\n\n${cleaned}`;
     }).filter(Boolean);
-    return `${header}\n\n${parts.join('\n\n---\n\n')}`;
+    return `${frontmatter}\n${parts.join('\n\n---\n\n')}`;
   }
 
   if (format === 'ai-only') {
@@ -83,7 +102,7 @@ export function formatSessionContent(
       .filter((m) => m.role === 'assistant')
       .map((m) => stripThinkingTags(m.content).trim())
       .filter(Boolean);
-    return `${header}\n\n${parts.join('\n\n---\n\n')}`;
+    return `${frontmatter}\n${parts.join('\n\n---\n\n')}`;
   }
 
   // 'summary' format — caller should pass pre-generated summary as a single-message array

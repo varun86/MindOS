@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { hasMarkdownFrontmatterFence, splitMarkdownFrontmatter } from '@/lib/parsing/frontmatter';
+import {
+  hasMarkdownFrontmatterFence,
+  serializeMarkdownFrontmatter,
+  splitMarkdownFrontmatter,
+} from '@/lib/parsing/frontmatter';
 
 describe('splitMarkdownFrontmatter', () => {
   it('extracts leading YAML frontmatter and returns the markdown body', () => {
@@ -96,5 +100,59 @@ meta: &meta
     expect(hasMarkdownFrontmatterFence('---\r\ntitle: Windows\r\n---\r\n\r\n# Body')).toBe(true);
     expect(hasMarkdownFrontmatterFence('# Body\n\n---\nnot frontmatter\n---')).toBe(false);
     expect(hasMarkdownFrontmatterFence('---\ntitle: missing close\n\n# Body')).toBe(false);
+  });
+});
+
+describe('serializeMarkdownFrontmatter', () => {
+  it('writes canonical YAML frontmatter and preserves field order', () => {
+    expect(serializeMarkdownFrontmatter({
+      title: 'Saved insight - 2026-04-09',
+      type: 'note',
+      status: 'active',
+      created: '2026-04-09',
+      source_type: 'ask',
+      captured_at: '2026-04-09T10:30:00.000Z',
+    })).toBe([
+      '---',
+      'title: Saved insight - 2026-04-09',
+      'type: note',
+      'status: active',
+      'created: 2026-04-09',
+      'source_type: ask',
+      'captured_at: 2026-04-09T10:30:00.000Z',
+      '---',
+      '',
+    ].join('\n'));
+  });
+
+  it('omits empty values recursively without emitting legacy null placeholders', () => {
+    expect(serializeMarkdownFrontmatter({
+      title: 'Clip',
+      description: '   ',
+      tags: ['web', '', ' reading '],
+      source_url: undefined,
+      nested: {
+        keep: 'value',
+        drop: '',
+      },
+    })).toBe([
+      '---',
+      'title: Clip',
+      'tags:',
+      '  - web',
+      '  - reading',
+      'nested:',
+      '  keep: value',
+      '---',
+      '',
+    ].join('\n'));
+  });
+
+  it('returns an empty string when no frontmatter fields remain', () => {
+    expect(serializeMarkdownFrontmatter({
+      title: '',
+      source_url: undefined,
+      tags: [],
+    })).toBe('');
   });
 });
