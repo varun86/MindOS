@@ -81,6 +81,18 @@ function useStableHandler<Args extends unknown[]>(fn: ((...args: Args) => void) 
 // (min-h-7) so the scrollbar stays accurate before rows are first rendered.
 const ROW_CONTENT_VISIBILITY = '[content-visibility:auto] [contain-intrinsic-block-size:auto_28px]';
 
+let markdownEditorWarmup: Promise<unknown> | null = null;
+
+function warmMarkdownEditorChunkIfNeeded() {
+  if (markdownEditorWarmup) return;
+  if (typeof window === 'undefined') return;
+  const mode = window.localStorage.getItem('md-view-mode');
+  if (mode && mode !== 'wysiwyg') return;
+  markdownEditorWarmup = import('@/components/WysiwygEditor').catch(() => {
+    markdownEditorWarmup = null;
+  });
+}
+
 // ─── NewFileInline ────────────────────────────────────────────────────────────
 
 function NewFileInline({ dirPath, depth, onDone }: { dirPath: string; depth: number; onDone: () => void }) {
@@ -454,6 +466,7 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
 }) {
   const router = useRouter();
   const smoothPush = useSmoothRouterPush();
+  const href = useMemo(() => `/view/${encodePath(node.path)}`, [node.path]);
   // Subscribed boolean: this row only re-renders when it becomes (in)active.
   const isActive = useIsActiveFile(node.path);
   const [renaming, setRenaming] = useState(false);
@@ -467,12 +480,57 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
   const isProtected = !node.path.includes('/') && UNDELETABLE_FILES.has(node.name);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [opening, setOpening] = useState(false);
+  const openingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchedHrefRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!isActive || !opening) return;
+    setOpening(false);
+    if (openingTimerRef.current) {
+      clearTimeout(openingTimerRef.current);
+      openingTimerRef.current = null;
+    }
+  }, [isActive, opening]);
+
+  useEffect(() => {
+    return () => {
+      if (openingTimerRef.current) clearTimeout(openingTimerRef.current);
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    };
+  }, []);
+
+  const warmRoute = useCallback(() => {
+    if (prefetchedHrefRef.current === href) return;
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      prefetchTimerRef.current = null;
+      prefetchedHrefRef.current = href;
+      router.prefetch?.(href);
+      if (node.extension === '.md') warmMarkdownEditorChunkIfNeeded();
+    }, 80);
+  }, [href, node.extension, router]);
 
   const handleClick = useCallback(() => {
     if (renaming) return;
-    smoothPush(`/view/${encodePath(node.path)}`);
+    if (!isActive) {
+      setOpening(true);
+      if (openingTimerRef.current) clearTimeout(openingTimerRef.current);
+      openingTimerRef.current = setTimeout(() => {
+        setOpening(false);
+        openingTimerRef.current = null;
+      }, 1200);
+    }
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+    prefetchedHrefRef.current = href;
+    router.prefetch?.(href);
+    smoothPush(href);
     onNavigate?.();
-  }, [smoothPush, node.path, onNavigate, renaming]);
+  }, [href, isActive, router, smoothPush, onNavigate, renaming]);
 
   const startRename = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -538,16 +596,20 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
       <button
         onClick={handleClick}
         onContextMenu={handleContextMenu}
+        onPointerEnter={warmRoute}
+        onFocus={warmRoute}
         draggable
         onDragStart={handleDragStart}
         data-filepath={node.path}
         data-hit-active={isActive ? 'true' : undefined}
+        data-file-opening={opening ? 'true' : undefined}
+        aria-busy={opening ? 'true' : undefined}
         className={`
           hit-target-box w-full flex min-h-7 items-center gap-1.5 px-2 text-left
           text-sm transition-colors duration-100 cursor-default pr-16
           ${ROW_CONTENT_VISIBILITY}
           [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--accent)] [--hit-target-radius:var(--radius-sm)]
-          ${isActive
+          ${isActive || opening
             ? 'text-foreground'
             : 'text-muted-foreground hover:text-foreground'
           }

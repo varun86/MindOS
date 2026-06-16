@@ -9,10 +9,11 @@ import type { FileNode } from '@/lib/types';
 const nav = vi.hoisted(() => ({ pathname: '/' }));
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
+const mockPrefetch = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => nav.pathname,
-  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh, prefetch: mockPrefetch }),
 }));
 
 // ─── Icon render counters (probe for row re-renders) ────────────────────────
@@ -175,6 +176,27 @@ describe('FileTree navigation re-render scope', () => {
     const f1 = host.querySelector('[data-filepath="S/f1.md"]');
     expect(f0?.getAttribute('data-hit-active')).toBeNull();
     expect(f1?.getAttribute('data-hit-active')).toBe('true');
+  });
+
+  it('marks only the clicked file row as opening before route work finishes', async () => {
+    const { default: FileTree } = await import('@/components/FileTree');
+    const tree = buildSpaceTree();
+
+    await render(<FileTree nodes={tree} />);
+
+    const f0 = host.querySelector('[data-filepath="S/f0.md"]');
+    const f1 = host.querySelector('[data-filepath="S/f1.md"]') as HTMLButtonElement | null;
+    expect(f0?.getAttribute('data-file-opening')).toBeNull();
+    expect(f1?.getAttribute('data-file-opening')).toBeNull();
+
+    await act(async () => {
+      f1?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(f0?.getAttribute('data-file-opening')).toBeNull();
+    expect(f1?.getAttribute('data-file-opening')).toBe('true');
+    expect(f1?.getAttribute('aria-busy')).toBe('true');
+    expect(mockPrefetch).toHaveBeenCalledWith('/view/S/f1.md');
   });
 
   it('does not re-render directory rows when navigating between files inside them', async () => {

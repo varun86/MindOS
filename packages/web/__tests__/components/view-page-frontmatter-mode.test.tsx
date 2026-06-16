@@ -4,6 +4,10 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ViewPageClient from '@/app/view/[...path]/ViewPageClient';
 
+const mocks = vi.hoisted(() => ({
+  twemojiToNative: vi.fn((value: string) => value),
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -72,7 +76,7 @@ vi.mock('@/lib/stores/editor-theme-store', () => ({
   useEditorTheme: () => 'default',
 }));
 vi.mock('@/lib/twemoji', () => ({
-  twemojiToNative: (value: string) => value,
+  twemojiToNative: mocks.twemojiToNative,
 }));
 vi.mock('@/lib/plugins/client', () => ({
   fetchPluginViewSurfacesForExtension: vi.fn().mockResolvedValue([]),
@@ -98,6 +102,16 @@ describe('ViewPageClient frontmatter markdown mode', () => {
     document.body.removeChild(host);
   });
 
+  async function flushDeferredFileBody() {
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const raf = window.requestAnimationFrame
+          ?? ((cb: FrameRequestCallback) => window.setTimeout(() => cb(performance.now()), 0));
+        raf(() => raf(() => resolve()));
+      });
+    });
+  }
+
   it('opens markdown with frontmatter in view mode without mounting the editor pane', async () => {
     await act(async () => {
       root.render(
@@ -109,6 +123,11 @@ describe('ViewPageClient frontmatter markdown mode', () => {
         />,
       );
     });
+
+    expect(host.querySelector('[data-file-body-warmup]')).not.toBeNull();
+    expect(mocks.twemojiToNative).not.toHaveBeenCalled();
+
+    await flushDeferredFileBody();
 
     const editor = host.querySelector('[data-testid="markdown-editor"]');
     const view = host.querySelector('[data-testid="markdown-view"]');
@@ -128,6 +147,11 @@ describe('ViewPageClient frontmatter markdown mode', () => {
         />,
       );
     });
+
+    expect(host.querySelector('[data-file-body-warmup]')).not.toBeNull();
+    expect(mocks.twemojiToNative).not.toHaveBeenCalled();
+
+    await flushDeferredFileBody();
 
     const editor = host.querySelector('[data-testid="markdown-editor"]');
     const view = host.querySelector('[data-testid="markdown-view"]');

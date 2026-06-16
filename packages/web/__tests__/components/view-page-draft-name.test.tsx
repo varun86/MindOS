@@ -101,6 +101,16 @@ describe('ViewPageClient draft file names', () => {
     document.body.removeChild(host);
   });
 
+  async function flushDeferredFileBody() {
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        const raf = window.requestAnimationFrame
+          ?? ((cb: FrameRequestCallback) => window.setTimeout(() => cb(performance.now()), 0));
+        raf(() => raf(() => resolve()));
+      });
+    });
+  }
+
   it('allows consecutive dots inside a draft file name', async () => {
     const createDraftAction = vi.fn().mockResolvedValue(undefined);
 
@@ -118,6 +128,10 @@ describe('ViewPageClient draft file names', () => {
         />,
       );
     });
+
+    expect(host.querySelector('[data-file-body-warmup]')).not.toBeNull();
+
+    await flushDeferredFileBody();
 
     const nameInput = host.querySelector('input[placeholder="Untitled.md"]') as HTMLInputElement | null;
     expect(nameInput).not.toBeNull();

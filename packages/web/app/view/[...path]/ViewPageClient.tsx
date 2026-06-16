@@ -44,6 +44,59 @@ interface ViewPageClientProps {
   createDraftAction?: (targetPath: string, content: string) => Promise<void>;
 }
 
+function useDeferredFileBodyReady(filePath: string): boolean {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setReady(false);
+    let cancelled = false;
+    let firstFrame: number | null = null;
+    let secondFrame: number | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = () => {
+      if (!cancelled) setReady(true);
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(finish);
+      });
+    } else {
+      fallbackTimer = setTimeout(finish, 0);
+    }
+
+    return () => {
+      cancelled = true;
+      if (firstFrame !== null) window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [filePath]);
+
+  return ready;
+}
+
+function FileBodyWarmup({ isMarkdown, editing }: { isMarkdown: boolean; editing: boolean }) {
+  return (
+    <div className="content-width" aria-busy="true" data-file-body-warmup>
+      <div className="space-y-5 animate-pulse">
+        <div className="h-4 w-44 rounded bg-muted/80" />
+        {isMarkdown && editing ? (
+          <div className="h-[52vh] rounded-xl border border-border bg-muted/35" />
+        ) : (
+          <div className="space-y-3">
+            <div className="h-3.5 w-full rounded bg-muted/70" />
+            <div className="h-3.5 w-11/12 rounded bg-muted/70" />
+            <div className="h-3.5 w-3/4 rounded bg-muted/70" />
+            <div className="mt-5 h-28 rounded-lg border border-border/60 bg-muted/35" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ViewPageClient({
   filePath,
   content,
@@ -76,6 +129,7 @@ export default function ViewPageClient({
     'mp4', 'webm', 'mov', 'mkv',
   ].includes(extension);
   const isMarkdown = extension === 'md';
+  const fileBodyReady = useDeferredFileBodyReady(filePath);
   const initialContentHasFrontmatter = useMemo(
     () => isMarkdown && hasMarkdownFrontmatterFence(content),
     [isMarkdown, content],
@@ -91,8 +145,8 @@ export default function ViewPageClient({
   const [editContent, setEditContent] = useState(content);
   const [savedContent, setSavedContent] = useState(content);
   const normalizedSavedMarkdown = useMemo(
-    () => isMarkdown ? twemojiToNative(savedContent) : savedContent,
-    [isMarkdown, savedContent],
+    () => isMarkdown && fileBodyReady ? twemojiToNative(savedContent) : savedContent,
+    [isMarkdown, fileBodyReady, savedContent],
   );
   const keepCurrentTab = useCallback(() => {
     keepTab(`doc:${filePath}`);
@@ -761,7 +815,9 @@ export default function ViewPageClient({
 
       {/* Content */}
       <div className="flex-1 py-6 md:py-8">
-        {isMarkdown && !showRenderer ? (
+        {!fileBodyReady ? (
+          <FileBodyWarmup isMarkdown={isMarkdown} editing={editing} />
+        ) : isMarkdown && !showRenderer ? (
           <>
             {editing && (
               <div className="content-width">
