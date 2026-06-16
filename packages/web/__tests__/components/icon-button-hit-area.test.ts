@@ -82,8 +82,11 @@ describe('icon button hit areas', () => {
   });
 
   it('keeps built-in Mind System sidebar controls on rectangular hit targets', () => {
-    const source = readSource('components/Panel.tsx');
+    const panelSource = readSource('components/Panel.tsx');
+    const source = readSource('components/panels/MindSystemSidebarSection.tsx');
 
+    expect(panelSource).toContain('<MindSystemSidebarSection');
+    expect(panelSource).toContain('slots={mindSystemSlots}');
     expect(source).toContain("data-hit-active={expanded || activeSlotKey ? 'true' : undefined}");
     expect(source).toContain('hit-target-box relative mb-1 flex w-full items-center gap-2');
     expect(source).toContain('[--hit-target-active-bg:var(--amber-subtle)]');
