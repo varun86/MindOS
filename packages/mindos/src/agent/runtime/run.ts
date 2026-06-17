@@ -14,6 +14,7 @@ import {
   type ClaudeCodeSdkModule,
 } from './claude-code-sdk.js';
 import {
+  buildCodexTurnInput,
   createCodexAppServerClient,
   createCodexAppServerStdioTransport,
   mapCodexAppServerNotificationToSseEvents,
@@ -21,6 +22,7 @@ import {
   type CodexAppServerServerRequest,
 } from './codex-app-server.js';
 import { compactRuntimeFailureMessage } from './runtime-errors.js';
+import type { MindosSelectedSkill } from '../selected-skills.js';
 
 export type MindosNativeAgentRuntimeKind = 'codex' | 'claude';
 
@@ -129,6 +131,7 @@ export type MindosAgentRuntimeAskOptions = {
   runtime: MindosAgentRuntimeSelection;
   cwd: string;
   prompt: string;
+  selectedSkills?: MindosSelectedSkill[];
   permissionMode?: 'readonly' | 'agent';
   modelOverride?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
@@ -398,6 +401,7 @@ async function runClaudeTurnWithClient(
   const turnEvents = resolvedClient.client.startTurn({
     prompt: options.prompt,
     cwd: options.cwd,
+    selectedSkills: options.selectedSkills,
     ...(sessionId ? { sessionId } : {}),
     ...(options.modelOverride ? { model: options.modelOverride } : {}),
     ...(options.reasoningEffort ? { effort: options.reasoningEffort } : {}),
@@ -480,7 +484,10 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
       const turnNotifications = client.startTurn({
         threadId,
         cwd: options.cwd,
-        input: [{ type: 'text', text: options.prompt }],
+        input: buildCodexTurnInput({
+          prompt: options.prompt,
+          selectedSkills: options.selectedSkills,
+        }),
         ...(options.modelOverride ? { model: options.modelOverride } : {}),
         ...(options.reasoningEffort ? { effort: options.reasoningEffort } : {}),
         ...codexPermissionOptionsForMindosMode(options.permissionMode),

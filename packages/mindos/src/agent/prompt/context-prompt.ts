@@ -1,4 +1,8 @@
 import type { MindosAskFileContext, MindosAskMode } from '../../session/index.js';
+import {
+  normalizeMindosSelectedSkills,
+  type MindosSelectedSkill,
+} from '../selected-skills.js';
 
 export type MindosAskPromptMessage = {
   role?: unknown;
@@ -21,6 +25,10 @@ export type MindosAskInitializationContext = {
 
 export type BuildMindosContextPromptInput = {
   prompt: string;
+  /**
+   * @deprecated Prompt mode is no longer rendered into common turn context.
+   * Runtime/profile selection owns mode-specific behavior.
+   */
   mode?: MindosAskMode;
   mindRoot?: string;
   currentFile?: string;
@@ -31,7 +39,15 @@ export type BuildMindosContextPromptInput = {
   messages?: MindosAskPromptMessage[];
   agentInitialization?: MindosAskInitializationContext;
   activeRecall?: MindosAskActiveRecallConfig;
+  selectedSkills?: MindosSelectedSkill[];
+  /**
+   * @deprecated Use selectedSkills. Kept for the current single-skill UI/API.
+   */
   selectedSkillName?: string;
+  /**
+   * @deprecated The Chat Panel bridge is runtime-specific and is no longer
+   * rendered by the common turn-context prompt.
+   */
   includeChatPanelBridge?: boolean;
 };
 
@@ -54,53 +70,58 @@ export type CompactMindosPromptOptions = {
   onStrip?: (section: string, tokens: number) => void;
 };
 
-type MindosContextPromptSection = {
+export type MindosContextPromptSection = {
   title: string;
   content: string | string[];
+};
+
+export type MindosTurnContext = {
+  prompt: string;
+  sections: MindosContextPromptSection[];
+  selectedSkills: MindosSelectedSkill[];
 };
 
 export async function buildMindosContextPrompt(
   input: BuildMindosContextPromptInput,
   services: BuildMindosContextPromptServices = {},
 ): Promise<string> {
+  return renderMindosContextPrompt(await buildMindosTurnContext(input, services));
+}
+
+export async function buildMindosTurnContext(
+  input: BuildMindosContextPromptInput,
+  services: BuildMindosContextPromptServices = {},
+): Promise<MindosTurnContext> {
   const prompt = input.prompt.trim();
   const mode = input.mode ?? 'agent';
   const fileContext = input.fileContext ?? services.loadFileContext?.(input.attachedFiles, input.currentFile, mode);
   const recalledKnowledge = input.recalledKnowledge ?? await recallMindosKnowledge(input, services);
   const contextSections: MindosContextPromptSection[] = [];
-  const modeGuidance = getMindosContextModeGuidance(mode);
-
-  if (modeGuidance) {
-    contextSections.push({
-      title: 'MindOS Request Guidance',
-      content: modeGuidance,
-    });
-  }
 
   contextSections.push({
     title: 'Current Time Context',
     content: formatMindosAskTimeContext(services, { includeUnix: true }).replace(/^## Current Time Context\n\n?/, ''),
   });
 
-  if (input.includeChatPanelBridge !== false) {
-    contextSections.push({
-      title: 'MindOS Chat Panel Bridge',
-      content: 'If the available tools include `AskUserQuestion`, use it for user confirmations or structured choices that affect the next action. Keep questions concise and include concrete options.',
-    });
-  }
-
-  appendActiveSkillRequestSection(contextSections, input.selectedSkillName);
   appendInitializationContext(contextSections, input);
   appendFileContextSections(contextSections, fileContext);
   appendUploadedContextSections(contextSections, input.uploadedParts);
   appendRecalledKnowledgeSections(contextSections, recalledKnowledge);
 
-  if (contextSections.length === 0) return prompt;
-  return [
+  return {
     prompt,
+    sections: contextSections,
+    selectedSkills: normalizeMindosSelectedSkills(input.selectedSkills, input.selectedSkillName),
+  };
+}
+
+export function renderMindosContextPrompt(context: MindosTurnContext): string {
+  if (context.sections.length === 0) return context.prompt;
+  return [
+    context.prompt,
     '---',
     '## MindOS Turn Context',
-    ...contextSections.map(renderSection),
+    ...context.sections.map(renderSection),
   ].filter(Boolean).join('\n\n');
 }
 
@@ -204,30 +225,6 @@ async function recallMindosKnowledge(
 function renderSection(section: MindosContextPromptSection): string {
   const content = Array.isArray(section.content) ? section.content.filter(Boolean).join('\n\n') : section.content;
   return `## ${section.title}\n\n${content.trim()}`;
-}
-
-function getMindosContextModeGuidance(mode: MindosAskMode): string | null {
-  if (mode === 'organize') {
-    return 'Prioritize classification, cleanup, and knowledge organization. Use uploaded or selected materials as source material for well-structured MindOS notes when tools and permissions allow it.';
-  }
-  return null;
-}
-
-function appendActiveSkillRequestSection(
-  sections: MindosContextPromptSection[],
-  selectedSkillName: string | undefined,
-): void {
-  const skillName = selectedSkillName?.trim();
-  if (!skillName) return;
-  const loadSkillCall = `load_skill(${JSON.stringify(skillName)})`;
-  sections.push({
-    title: 'Active Skill Request',
-    content: [
-      `The user selected the skill "${skillName}" for this turn.`,
-      `Immediately call \`${loadSkillCall}\` to load the skill's full content before acting.`,
-      'Follow the loaded skill instructions for this request. Do not ask which skill the user meant; they already selected it.',
-    ],
-  });
 }
 
 function appendInitializationContext(

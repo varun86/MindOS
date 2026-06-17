@@ -370,8 +370,8 @@ describe('MindOS session event contract', () => {
     expect(prompt).toContain('## MindOS Turn Context');
     expect(prompt).not.toContain('MindOS composer mode: chat');
     expect(prompt).not.toContain('Treat this as read-oriented unless the user explicitly asks you to modify files.');
-    expect(prompt).toContain('## MindOS Chat Panel Bridge');
-    expect(prompt).toContain('AskUserQuestion');
+    expect(prompt).not.toContain('## MindOS Chat Panel Bridge');
+    expect(prompt).not.toContain('AskUserQuestion');
     expect(prompt).toContain('## Attached files from the MindOS knowledge base');
     expect(prompt).toContain('### Attached file from the MindOS knowledge base: Plan.md');
     expect(prompt).toContain('## Files uploaded by the user for this request');

@@ -16,6 +16,7 @@ import type {
   MindosRuntimeUserQuestionResult,
 } from './run.js';
 import type { ClaudeCodeCliClient } from './claude-code-cli.js';
+import { mindosSelectedSkillNames } from '../selected-skills.js';
 
 export type ClaudeCodeSdkQuery = AsyncIterable<Record<string, unknown>> & {
   interrupt?(): Promise<void>;
@@ -177,6 +178,7 @@ export function createClaudeCodeSdkClient(services: ClaudeCodeSdkClientServices)
     async *startTurn(input) {
       const state: ClaudeCodeSdkState = { emittedText: false, emittedDone: false };
       let lastSessionId: string | null = null;
+      const selectedSkillNames = mindosSelectedSkillNames(input.selectedSkills);
       queryHandle = services.sdk.query({
         prompt: input.prompt,
         options: {
@@ -185,6 +187,7 @@ export function createClaudeCodeSdkClient(services: ClaudeCodeSdkClientServices)
           ...(input.model ? { model: input.model } : {}),
           ...(input.effort ? { effort: input.effort } : {}),
           permissionMode: input.permissionMode ?? 'default',
+          ...(selectedSkillNames.length > 0 ? { skills: selectedSkillNames } : {}),
           ...(services.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: services.pathToClaudeCodeExecutable } : {}),
           ...(services.env ? { env: services.env } : {}),
           ...(input.sessionId ? { resume: input.sessionId } : {}),

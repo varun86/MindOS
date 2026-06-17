@@ -48,8 +48,10 @@ import {
   appendSseEventToAgentRun,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
+  normalizeMindosSelectedSkills,
   type MindosAskInitializationContext,
 } from '@geminilight/mindos/agent';
+import { renderMindosPiSelectedSkillPrompt } from '@geminilight/mindos/agent/mindos-pi';
 import {
   resolveSkillFile,
   resolveSkillReference,
@@ -535,7 +537,7 @@ export async function POST(req: NextRequest) {
   // These are already truncated client-side (80K limit), so only apply a generous
   // server-side cap to guard against malformed requests.
   const uploadedParts = createMindosUploadedFileParts(uploadedFiles);
-  const selectedSkillName = getLastUserSkillName(messages);
+  const selectedSkills = normalizeMindosSelectedSkills(undefined, getLastUserSkillName(messages));
 
   if (verifiedNativeRuntime || selectedAcpAgent) {
     const mindRoot = getMindRoot();
@@ -557,12 +559,11 @@ export async function POST(req: NextRequest) {
     }
     const externalPrompt = await buildMindosContextPrompt({
       prompt: lastUserContent,
-      mode: askMode,
       mindRoot,
       fileContext,
       uploadedParts,
       recalledKnowledge,
-      selectedSkillName,
+      selectedSkills,
     });
 
     return createAskSseResponse((send) => runWithAgentRunContext({ chatSessionId }, async () => {
@@ -604,6 +605,7 @@ export async function POST(req: NextRequest) {
               runtime: nativeRuntime,
               cwd: mindRoot,
               prompt: externalPrompt,
+              selectedSkills,
               permissionMode: nativePermissionMode,
               ...(nativeRuntimeOptions.modelOverride ? { modelOverride: nativeRuntimeOptions.modelOverride } : {}),
               ...(nativeRuntimeOptions.reasoningEffort
@@ -861,9 +863,8 @@ export async function POST(req: NextRequest) {
       cwd: mindRoot,
     },
   });
-  const turnPrompt = await buildMindosContextPrompt({
+  const commonTurnPrompt = await buildMindosContextPrompt({
     prompt: lastUserContent,
-    mode: askMode,
     mindRoot,
     currentFile,
     attachedFiles,
@@ -871,12 +872,13 @@ export async function POST(req: NextRequest) {
     messages: mindosUiMessages,
     agentInitialization,
     activeRecall: agentConfig.activeRecall,
-    selectedSkillName,
+    selectedSkills,
   }, {
     loadFileContext: loadAttachedFileContext,
     recallKnowledge: (query, options) => performActiveRecall(mindRoot, query, options),
     warn: (message, error) => console.warn(message, error),
   });
+  const turnPrompt = renderMindosPiSelectedSkillPrompt(commonTurnPrompt, selectedSkills);
   let systemPrompt = systemPromptBase;
 
   // Log system prompt size for diagnosing context truncation issues (e.g. Ollama)

@@ -844,6 +844,54 @@ describe('agent runtime adapters: Codex app-server', () => {
     ]);
   });
 
+  it('wraps selected skills as Codex text markers', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: 'Summarize this repo.',
+      selectedSkills: [{ name: 'super-researcher', source: 'user-selected' }],
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: '$super-researcher\n\nSummarize this repo.' }],
+      },
+    });
+  });
+
+  it('normalizes slash skill markers to Codex dollar markers', async () => {
+    const transport = createFakeCodexTransport();
+    await runMindosAgentRuntimeAskSession({
+      runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+      cwd: '/tmp/mind',
+      prompt: '/super-researcher Summarize this repo.',
+      selectedSkills: [{ name: 'super-researcher', source: 'user-selected' }],
+      send: () => {},
+      services: {
+        createCodexClient: () => createCodexAppServerClient(transport),
+      },
+    });
+
+    expect(transport.sent).toContainEqual({
+      method: 'turn/start',
+      id: 3,
+      params: {
+        threadId: 'thr-new',
+        cwd: '/tmp/mind',
+        input: [{ type: 'text', text: '$super-researcher Summarize this repo.' }],
+      },
+    });
+  });
+
   it('resumes an existing Codex thread when the runtime carries an external session id', async () => {
     const transport = createFakeCodexTransport();
     await runMindosAgentRuntimeAskSession({

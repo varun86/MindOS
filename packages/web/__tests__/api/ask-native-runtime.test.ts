@@ -219,10 +219,13 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedNativeOptions?.permissionMode).toBe('readonly');
     expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
     expect(capturedNativeOptions?.reasoningEffort).toBe('high');
+    expect(capturedNativeOptions?.selectedSkills).toEqual([
+      { name: 'third-party', source: 'user-selected' },
+    ]);
     expect(capturedNativeOptions?.prompt).toContain('MindOS Turn Context');
     expect(capturedNativeOptions?.prompt).toContain('Use the attached context');
-    expect(capturedNativeOptions?.prompt).toContain('## Active Skill Request');
-    expect(capturedNativeOptions?.prompt).toContain('load_skill("third-party")');
+    expect(capturedNativeOptions?.prompt).not.toContain('## Active Skill Request');
+    expect(capturedNativeOptions?.prompt).not.toContain('load_skill("third-party")');
     expect(capturedNativeOptions?.prompt).toContain('current.md');
     expect(capturedNativeOptions?.prompt).toContain('Current file body');
     expect(capturedNativeOptions?.prompt).toContain('attached.md');

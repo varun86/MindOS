@@ -17,13 +17,17 @@ export {
 } from './system-prompt.js';
 
 export {
+  buildMindosTurnContext,
   buildMindosContextPrompt,
   compactMindosPromptForTokenBudget,
   formatMindosAskTimeContext,
+  renderMindosContextPrompt,
   type BuildMindosContextPromptInput,
   type BuildMindosContextPromptServices,
   type CompactMindosPromptOptions,
   type MindosAskActiveRecallConfig,
   type MindosAskInitializationContext,
   type MindosAskPromptMessage,
+  type MindosContextPromptSection,
+  type MindosTurnContext,
 } from './context-prompt.js';

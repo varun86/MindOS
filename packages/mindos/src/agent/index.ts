@@ -23,10 +23,12 @@ export {
 
 export {
   MINDOS_AGENT_MANIFEST,
+  buildMindosTurnContext,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
   compactMindosPromptForTokenBudget,
   formatMindosAskTimeContext,
+  renderMindosContextPrompt,
   type BuildMindosContextPromptInput,
   type BuildMindosContextPromptServices,
   type BuildMindosSystemPromptInput,
@@ -35,9 +37,18 @@ export {
   type MindosAskActiveRecallConfig,
   type MindosAskInitializationContext,
   type MindosAskPromptMessage,
+  type MindosContextPromptSection,
   type MindosPromptSection,
   type MindosSystemPromptEnvironment,
+  type MindosTurnContext,
 } from './prompt/index.js';
+
+export {
+  mindosSelectedSkillNames,
+  normalizeMindosSelectedSkills,
+  type MindosSelectedSkill,
+  type MindosSelectedSkillSource,
+} from './selected-skills.js';
 
 export * from './ledger/index.js';
 export * from './bridges/index.js';

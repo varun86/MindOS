@@ -9,6 +9,10 @@ import type {
   MindosPiResourceLoaderAdapter,
 } from '../mindos-pi/resource-types.js';
 import type { MindosExecutableTool } from '../tool/executable-tool.js';
+import {
+  renderMindosContextPrompt,
+  type MindosContextPromptSection,
+} from '../prompt/context-prompt.js';
 
 export { redactSensitiveObject, redactSensitiveText } from './redaction.js';
 export type {
@@ -547,72 +551,53 @@ export type MindosExternalRuntimePromptInput = {
 
 export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePromptInput): string {
   const prompt = input.prompt.trim();
-  const contextSections: string[] = [];
-  const modeGuidance = getExternalRuntimeModeGuidance(input.mode);
-
-  if (modeGuidance) {
-    contextSections.push([
-      '## MindOS Request Guidance',
-      modeGuidance,
-    ].join('\n'));
-  }
-
-  contextSections.push([
-    '## MindOS Chat Panel Bridge',
-    'If the available tools include `AskUserQuestion`, use it for user confirmations or structured choices that affect the next action. Keep questions concise and include concrete options.',
-  ].join('\n'));
+  const sections: MindosContextPromptSection[] = [];
 
   if (input.fileContext?.contextParts.length) {
-    contextSections.push([
-      '## Attached files from the MindOS knowledge base',
-      'The following content already exists in MindOS and was explicitly attached for this turn. Cite stable paths when using it.',
-      '',
-      input.fileContext.contextParts.join('\n\n---\n\n'),
-    ].join('\n'));
+    sections.push({
+      title: 'Attached files from the MindOS knowledge base',
+      content: [
+        'The following content already exists in MindOS and was explicitly attached for this turn. Cite stable paths when using it.',
+        input.fileContext.contextParts.join('\n\n---\n\n'),
+      ],
+    });
   }
 
   if (input.uploadedParts?.length) {
-    contextSections.push([
-      '## Files uploaded by the user for this request',
-      'The user uploaded the following file content for this turn. It may not exist in the MindOS knowledge base yet; use it directly unless it is saved first.',
-      '',
-      input.uploadedParts.join('\n\n---\n\n'),
-    ].join('\n'));
+    sections.push({
+      title: 'Files uploaded by the user for this request',
+      content: [
+        'The user uploaded the following file content for this turn. It may not exist in the MindOS knowledge base yet; use it directly unless it is saved first.',
+        input.uploadedParts.join('\n\n---\n\n'),
+      ],
+    });
   }
 
   if (input.recalledKnowledge?.length) {
     const block = input.recalledKnowledge
       .map((item) => `### ${item.path}\n\n${item.content}`)
       .join('\n\n---\n\n');
-    contextSections.push([
-      '## Auto-Recalled MindOS Knowledge',
-      'MindOS found these related notes for the user request. Cite file paths when relying on them.',
-      '',
-      block,
-    ].join('\n'));
+    sections.push({
+      title: 'Auto-Recalled MindOS Knowledge',
+      content: [
+        'MindOS found these related notes for the user request. Cite file paths when relying on them.',
+        block,
+      ],
+    });
   }
 
   if (input.fileContext?.failedFiles.length) {
-    contextSections.push([
-      '## Unavailable MindOS Context',
-      `These attached files could not be loaded: ${input.fileContext.failedFiles.join(', ')}`,
-    ].join('\n'));
+    sections.push({
+      title: 'Unavailable MindOS Context',
+      content: `These attached files could not be loaded: ${input.fileContext.failedFiles.join(', ')}`,
+    });
   }
 
-  if (contextSections.length === 0) return prompt;
-  return [
+  return renderMindosContextPrompt({
     prompt,
-    '---',
-    '## MindOS Turn Context',
-    ...contextSections,
-  ].filter(Boolean).join('\n\n');
-}
-
-function getExternalRuntimeModeGuidance(mode: MindosExternalRuntimePromptInput['mode']): string | null {
-  if (mode === 'organize') {
-    return 'Prioritize classification, cleanup, and knowledge organization. Use uploaded or selected materials as source material for well-structured MindOS notes when tools and permissions allow it.';
-  }
-  return null;
+    sections,
+    selectedSkills: [],
+  });
 }
 
 export function safeParseMindosJsonObject(raw: string | undefined): Record<string, unknown> {

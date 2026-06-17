@@ -8,6 +8,7 @@ import {
   sanitizeToolOutput,
   type MindOSSSEvent,
 } from '../session/index.js';
+import type { MindosSelectedSkill } from '../selected-skills.js';
 
 export type ClaudeCodeCliTransport = {
   run(args: string[], options: { cwd: string; signal?: AbortSignal }): AsyncIterable<string>;
@@ -25,6 +26,7 @@ export type ClaudeCodeCliClient = {
   startTurn(input: {
     prompt: string;
     cwd: string;
+    selectedSkills?: MindosSelectedSkill[];
     sessionId?: string;
     model?: string;
     effort?: 'low' | 'medium' | 'high' | 'xhigh';

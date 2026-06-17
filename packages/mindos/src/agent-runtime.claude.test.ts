@@ -209,6 +209,7 @@ describe('agent runtime adapters: Claude Code', () => {
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Review this.',
+      selectedSkills: [{ name: 'doc-review', source: 'user-selected' }],
       modelOverride: 'claude-sonnet-4-20250514',
       reasoningEffort: 'high',
       runtimeEnv: { PATH: '/usr/bin', CLAUDE_CODE_OAUTH_TOKEN: 'runtime-token' } as NodeJS.ProcessEnv,
@@ -226,6 +227,7 @@ describe('agent runtime adapters: Claude Code', () => {
         model: 'claude-sonnet-4-20250514',
         effort: 'high',
         permissionMode: 'default',
+        skills: ['doc-review'],
         pathToClaudeCodeExecutable: '/usr/local/bin/claude',
         env: {
           PATH: '/usr/bin',
@@ -412,6 +414,7 @@ describe('agent runtime adapters: Claude Code', () => {
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Delete it.',
+      selectedSkills: [{ name: 'doc-review', source: 'user-selected' }],
       send: () => {},
       services: {
         loadClaudeSdk: () => sdk,
@@ -762,8 +765,11 @@ describe('agent runtime adapters: Claude Code', () => {
       },
     });
 
-    expect(transport.argv).toContain('--permission-prompt-tool');
-    expect(transport.argv).toContain('mcp__mindos_runtime_permission__mindos_runtime_permission');
+    const argv = transport.argv ?? [];
+    expect(argv).toContain('--permission-prompt-tool');
+    expect(argv).toContain('mcp__mindos_runtime_permission__mindos_runtime_permission');
+    expect(argv).not.toContain('--skills');
+    expect(argv[argv.length - 1]).toBe('Delete it.');
   });
 
   it('maps Claude Code Bash tool use into a native runtime tool event', async () => {

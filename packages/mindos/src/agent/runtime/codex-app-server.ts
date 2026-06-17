@@ -9,6 +9,10 @@ import {
 } from '../session/index.js';
 import { buildCodexAppServerEnv } from './codex-env.js';
 import { compactRuntimeFailureMessage } from './runtime-errors.js';
+import {
+  mindosSelectedSkillNames,
+  type MindosSelectedSkill,
+} from '../selected-skills.js';
 
 export type CodexAppServerClientInfo = {
   name: string;
@@ -149,6 +153,46 @@ export type CodexAppServerClient = {
   interruptTurn?(input: { threadId: string; turnId?: string }): Promise<void>;
   close?(): void | Promise<void>;
 };
+
+export function buildCodexTurnInput(input: {
+  prompt: string;
+  selectedSkills?: MindosSelectedSkill[];
+}): CodexTurnInput {
+  return [{
+    type: 'text',
+    text: renderCodexTextWithSkillMarkers(input.prompt, input.selectedSkills),
+  }];
+}
+
+export function renderCodexTextWithSkillMarkers(
+  prompt: string,
+  selectedSkills: MindosSelectedSkill[] | undefined,
+): string {
+  const skillNames = mindosSelectedSkillNames(selectedSkills);
+  if (skillNames.length === 0) return prompt;
+
+  let text = prompt;
+  for (const skillName of skillNames) {
+    text = text.replace(
+      new RegExp(`(^|\\s)/${escapeRegExp(skillName)}(?=\\s|$)`, 'g'),
+      (_match, prefix: string) => `${prefix}$${skillName}`,
+    );
+  }
+
+  const missingMarkers = skillNames.filter((skillName) => (
+    !new RegExp(`(^|\\s)\\$${escapeRegExp(skillName)}(?=\\s|$)`).test(text)
+  ));
+  if (missingMarkers.length === 0) return text;
+
+  return [
+    missingMarkers.map((skillName) => `$${skillName}`).join(' '),
+    text.trim(),
+  ].filter(Boolean).join('\n\n');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 type PendingRequest = {
   method: string;

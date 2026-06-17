@@ -7,12 +7,15 @@ import {
   MINDOS_AGENT_MANIFEST,
   MINDOS_SYSTEM_PROMPT,
   ORGANIZE_SYSTEM_PROMPT,
+  buildMindosTurnContext,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
   compactMindosPromptForTokenBudget,
   defineMindosAgent,
   loadMindosAgentPrompt,
+  renderMindosContextPrompt,
 } from './agent/index.js';
+import { renderMindosPiSelectedSkillPrompt } from './agent/mindos-pi/index.js';
 
 describe('MindOS agent product contract', () => {
   it('validates agent descriptors', () => {
@@ -101,10 +104,9 @@ describe('MindOS agent product contract', () => {
     expect(prompt).not.toContain('### Recall.md');
   });
 
-  it('builds turn context prompts with initialization, files, uploads, and recall', async () => {
+  it('builds turn context prompts with initialization, files, uploads, recall, and no runtime activation', async () => {
     const prompt = await buildMindosContextPrompt({
       prompt: 'find project alpha',
-      mode: 'agent',
       mindRoot: '/tmp/mind',
       currentFile: 'Space/current.md',
       attachedFiles: ['Space/a.md'],
@@ -118,7 +120,7 @@ describe('MindOS agent product contract', () => {
         truncationWarnings: ['skill.mindos was truncated'],
         initContextBlocks: ['## bootstrap_instruction\n\nAlways cite files.'],
       },
-      selectedSkillName: 'third-party',
+      selectedSkills: [{ name: 'third-party', source: 'user-selected' }],
       activeRecall: {
         enabled: true,
         maxTokens: 1000,
@@ -139,10 +141,10 @@ describe('MindOS agent product contract', () => {
     expect(prompt).toContain('## MindOS Turn Context');
     expect(prompt).toContain('Current UTC Time: 2026-01-02T03:04:05.000Z');
     expect(prompt).toContain('Unix Timestamp: 1767323045');
-    expect(prompt).toContain('## MindOS Chat Panel Bridge');
-    expect(prompt).toContain('## Active Skill Request');
-    expect(prompt).toContain('The user selected the skill "third-party" for this turn.');
-    expect(prompt).toContain('load_skill("third-party")');
+    expect(prompt).not.toContain('## MindOS Chat Panel Bridge');
+    expect(prompt).not.toContain('## Active Skill Request');
+    expect(prompt).not.toContain('The user selected the skill "third-party" for this turn.');
+    expect(prompt).not.toContain('load_skill("third-party")');
     expect(prompt).toContain('Initialization issues:');
     expect(prompt).toContain('bootstrap.config_json: failed');
     expect(prompt).toContain('## bootstrap_instruction');
@@ -156,16 +158,27 @@ describe('MindOS agent product contract', () => {
     expect(prompt).not.toContain(MINDOS_SYSTEM_PROMPT);
   });
 
-  it('escapes selected skill names in active skill requests', async () => {
-    const prompt = await buildMindosContextPrompt({
+  it('builds structured turn context separately from rendering', async () => {
+    const context = await buildMindosTurnContext({
       prompt: 'use it',
-      selectedSkillName: 'skill "quoted"',
+      selectedSkillName: 'third-party',
     }, {
       now: () => new Date('2026-01-02T03:04:05.000Z'),
       formatLocalTime: () => 'Friday, January 2, 2026 at 11:04:05 AM GMT+8',
     });
 
-    expect(prompt).toContain('## Active Skill Request');
+    expect(context.prompt).toBe('use it');
+    expect(context.selectedSkills).toEqual([{ name: 'third-party', source: 'user-selected' }]);
+    expect(context.sections.map((section) => section.title)).toEqual(['Current Time Context']);
+    expect(renderMindosContextPrompt(context)).toContain('## Current Time Context');
+    expect(renderMindosContextPrompt(context)).not.toContain('load_skill');
+  });
+
+  it('renders selected skill activation only for MindOS Pi prompts', () => {
+    const prompt = renderMindosPiSelectedSkillPrompt('use it', [{ name: 'skill "quoted"' }]);
+
+    expect(prompt).toContain('## MindOS Pi Selected Skills');
+    expect(prompt).toContain('The user selected the skill "skill \\"quoted\\"" for this turn.');
     expect(prompt).toContain('load_skill("skill \\"quoted\\"")');
   });
 
