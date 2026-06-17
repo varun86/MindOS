@@ -84,7 +84,7 @@ describe('StudioContent', () => {
     expect(host.querySelector('aside[aria-label="Studio"]')).toBeNull();
   });
 
-  it('renders the unified Studio panel with Overview and Recent Projects', async () => {
+  it('renders the unified Studio panel with Overview and Projects', async () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -94,7 +94,7 @@ describe('StudioContent', () => {
     });
 
     expect(host.textContent).toContain('Overview');
-    expect(host.textContent).toContain('Recent Projects');
+    expect(host.textContent).toContain('Projects');
     expect(host.querySelector('a[href="/studio"]')).not.toBeNull();
     expect(host.querySelector('a[href="/studio/launch-practice"]')).not.toBeNull();
   });

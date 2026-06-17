@@ -111,9 +111,9 @@ function ChoiceSection({
   onChange: (value: string) => void;
 }) {
   return (
-    <section className="rounded-xl border border-border/60 bg-background/45 p-3.5">
+    <section className="rounded-lg border border-border/60 bg-background/45 p-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
           {icon}
         </div>
         <div className="min-w-0">
@@ -127,7 +127,7 @@ function ChoiceSection({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {options.map((option) => {
           const selected = value.trim() === option.value;
           return (
@@ -138,7 +138,7 @@ function ChoiceSection({
               aria-pressed={selected}
               onClick={() => onChange(option.value)}
               className={cn(
-                'group inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'group inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 selected
                   ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
                   : 'border-border/60 bg-card/45 hover:border-[var(--amber)]/45 hover:bg-card/80',
@@ -157,7 +157,7 @@ function ChoiceSection({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="h-8 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
         />
       </label>
     </section>
@@ -253,7 +253,7 @@ export default function StudioNewProjectDialog({
         aria-modal="true"
         aria-labelledby="studio-new-project-title"
         onSubmit={submit}
-        className="flex max-h-[min(920px,calc(100dvh-32px))] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+        className="flex max-h-[min(880px,calc(100dvh-32px))] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border/70 px-5 py-4">
           <div className="min-w-0">
@@ -276,7 +276,57 @@ export default function StudioNewProjectDialog({
           </button>
         </div>
 
-        <div className="grid min-h-0 gap-4 overflow-y-auto px-5 py-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid min-h-0 gap-4 overflow-y-auto px-5 py-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="min-w-0 lg:sticky lg:top-0 lg:self-start">
+            <div className="rounded-xl border border-border/60 bg-background/45 p-4">
+              <h3 className="text-sm font-semibold text-foreground">{copy.projectDetailsTitle}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{copy.projectDetailsDescription}</p>
+
+              <div className="mt-4 grid gap-3">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">{copy.titleLabel}</span>
+                  <input
+                    autoFocus
+                    value={draft.title}
+                    onChange={(event) => updateDraft('title', event.target.value)}
+                    placeholder={copy.titlePlaceholder}
+                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
+                  />
+                </label>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">{copy.goalLabel}</span>
+                  <textarea
+                    value={draft.goal}
+                    onChange={(event) => updateDraft('goal', event.target.value)}
+                    placeholder={copy.goalPlaceholder}
+                    rows={4}
+                    className="min-h-24 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-border/60 bg-card/45 p-3">
+                <div className="text-[11px] font-semibold text-muted-foreground">{copy.selectedSummary}</div>
+                <dl className="mt-2 space-y-2 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="text-muted-foreground">{copy.workAreaLabel}</dt>
+                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.workArea || copy.workAreaPlaceholder}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
+                    <dt className="text-muted-foreground">{copy.spaceLabel}</dt>
+                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.space || copy.spacePlaceholder}</dd>
+                  </div>
+                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
+                    <dt className="text-muted-foreground">{copy.kitLabel}</dt>
+                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.kit || copy.kitPlaceholder}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              {error ? <p className="mt-3 text-xs font-medium text-destructive">{error}</p> : null}
+            </div>
+          </aside>
+
           <div className="min-w-0 space-y-3">
             <p className="text-xs leading-relaxed text-muted-foreground">{copy.setupDescription}</p>
             <ChoiceSection
@@ -313,56 +363,6 @@ export default function StudioNewProjectDialog({
               onChange={(value) => updateDraft('kit', value)}
             />
           </div>
-
-          <aside className="min-w-0 lg:sticky lg:top-0 lg:self-start">
-            <div className="rounded-xl border border-border/60 bg-background/45 p-4">
-              <h3 className="text-sm font-semibold text-foreground">{copy.projectDetailsTitle}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{copy.projectDetailsDescription}</p>
-
-              <div className="mt-4 grid gap-3">
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">{copy.titleLabel}</span>
-                  <input
-                    autoFocus
-                    value={draft.title}
-                    onChange={(event) => updateDraft('title', event.target.value)}
-                    placeholder={copy.titlePlaceholder}
-                    className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-                  />
-                </label>
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">{copy.goalLabel}</span>
-                  <textarea
-                    value={draft.goal}
-                    onChange={(event) => updateDraft('goal', event.target.value)}
-                    placeholder={copy.goalPlaceholder}
-                    rows={5}
-                    className="min-h-28 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 rounded-lg border border-border/60 bg-card/45 p-3">
-                <div className="text-[11px] font-semibold text-muted-foreground">{copy.selectedSummary}</div>
-                <dl className="mt-2 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-3">
-                    <dt className="text-muted-foreground">{copy.workAreaLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.workArea || copy.workAreaPlaceholder}</dd>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
-                    <dt className="text-muted-foreground">{copy.spaceLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.space || copy.spacePlaceholder}</dd>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
-                    <dt className="text-muted-foreground">{copy.kitLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.kit || copy.kitPlaceholder}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              {error ? <p className="mt-3 text-xs font-medium text-destructive">{error}</p> : null}
-            </div>
-          </aside>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border/70 px-5 py-4">

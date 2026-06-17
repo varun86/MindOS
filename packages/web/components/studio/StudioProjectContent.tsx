@@ -38,40 +38,28 @@ import StudioNewProjectDialog from './StudioNewProjectDialog';
 
 const COPY = {
   en: {
-    title: 'Studio',
-    overview: 'Overview',
-    recentProjects: 'Recent Projects',
-    newProject: 'New Project',
     back: 'Studio',
     missingTitle: 'Project not found',
     missingText: 'This Project may have been archived or created in another browser profile.',
     returnStudio: 'Back to Studio',
     newSession: 'New Session',
-    sessions: 'Sessions',
-    historicalSessions: 'Historical Sessions',
-    sessionsHint: 'Messages, artifacts, runs, and review.',
+    historicalSessions: 'Session history',
+    sessionsHint: 'Work, artifacts, and review trail.',
     noSessions: 'No Sessions yet.',
     untitledSession: 'Untitled Session',
-    showSessions: 'Show sessions',
-    hideSessions: 'Hide sessions',
-    context: 'Context',
     space: 'Space',
     kits: 'AI Kits',
     workArea: 'Work Area',
     cadence: 'Cadence',
     nextAction: 'Next action',
-    progress: 'Progress',
     sessionMetric: 'Sessions',
     reviewMetric: 'Review',
-    kitMetric: 'Kits',
-    stageMetric: 'Stage',
     review: 'Review queue',
     growth: 'Growth',
     artifact: 'Artifact',
-    status: 'Status',
     updated: 'Updated',
     createTitle: 'New Project',
-    createDescription: 'Choose where this Project works, remembers, and starts.',
+    createDescription: 'Set the goal, work area, memory, and AI.',
     titleLabel: 'Project name',
     goalLabel: 'Goal',
     spaceLabel: 'Mind Space',
@@ -86,7 +74,7 @@ const COPY = {
     create: 'Create Project',
     required: 'Add a project name and goal.',
     setupTitle: 'Project setup',
-    setupDescription: 'Start with files, then memory, then AI.',
+    setupDescription: 'Pick defaults for new Sessions.',
     workAreaDescription: 'Drafts and artifacts land here.',
     spaceDescription: 'Long-term context for this Project.',
     kitDescription: 'Default AI capability for new Sessions.',
@@ -97,40 +85,28 @@ const COPY = {
     fromRecentProject: 'Recent Project',
   },
   zh: {
-    title: 'Studio',
-    overview: 'Overview',
-    recentProjects: 'Recent Projects',
-    newProject: '新建 Project',
     back: 'Studio',
     missingTitle: '找不到 Project',
     missingText: '这个 Project 可能已归档，或是在另一个浏览器配置里创建的。',
     returnStudio: '返回 Studio',
     newSession: '新建 Session',
-    sessions: 'Sessions',
-    historicalSessions: '历史 Sessions',
-    sessionsHint: '保存 messages、artifacts、runs 和复盘。',
+    historicalSessions: 'Session 历史',
+    sessionsHint: '工作、产物和复盘记录。',
     noSessions: '还没有 Session。',
     untitledSession: '未命名 Session',
-    showSessions: '展开 Sessions',
-    hideSessions: '收起 Sessions',
-    context: '上下文',
     space: 'Space',
     kits: 'AI Kits',
     workArea: 'Work Area',
     cadence: '节奏',
     nextAction: '下一步',
-    progress: '进度',
     sessionMetric: 'Sessions',
     reviewMetric: '待复盘',
-    kitMetric: 'AI Kits',
-    stageMetric: '阶段',
     review: 'Review queue',
     growth: '可复用经验',
     artifact: '产物',
-    status: '状态',
     updated: '更新',
     createTitle: '新建 Project',
-    createDescription: '先选工作位置、记忆位置和默认 AI。',
+    createDescription: '设定目标、工作区、记忆和 AI。',
     titleLabel: 'Project 名称',
     goalLabel: '目标',
     spaceLabel: 'Mind Space',
@@ -145,7 +121,7 @@ const COPY = {
     create: '创建 Project',
     required: '需要填写 Project 名称和目标。',
     setupTitle: 'Project 设置',
-    setupDescription: '先文件，再记忆，最后 AI。',
+    setupDescription: '为新 Session 选择默认设置。',
     workAreaDescription: '草稿和产物放这里。',
     spaceDescription: '这个 Project 的长期上下文。',
     kitDescription: '新 Session 默认使用的 AI 能力。',
@@ -200,14 +176,34 @@ function ProjectMetric({
   value: string | number;
 }) {
   return (
-    <div className="rounded-lg border border-border/55 bg-card/45 px-3 py-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="rounded-lg border border-border/55 bg-background/45 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
           {icon}
         </span>
         {label}
       </div>
-      <div className="mt-3 text-lg font-semibold text-foreground [font-variant-numeric:tabular-nums]">{value}</div>
+      <div className="mt-2 text-base font-semibold text-foreground [font-variant-numeric:tabular-nums]">{value}</div>
+    </div>
+  );
+}
+
+function SetupChip({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border/55 bg-background/45 px-3 py-2.5">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+        <span className="text-[var(--amber)]">{icon}</span>
+        {label}
+      </div>
+      <div className="truncate text-sm font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -274,7 +270,7 @@ function MissingProject({ copy }: { copy: ProjectCopy }) {
   return (
     <div className="flex min-h-[calc(100dvh-var(--app-titlebar-h)-5rem)] items-center justify-center">
       <div className="w-full max-w-3xl rounded-xl border border-border/60 bg-card/55 p-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{copy.missingTitle}</h1>
+        <h1 className="text-2xl font-semibold text-foreground">{copy.missingTitle}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{copy.missingText}</p>
         <Link
           href="/studio"
@@ -365,57 +361,62 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
 
   return (
     <StudioShell>
-      <div className="min-w-0">
-        <header className="border-b border-border/60 pb-6">
-          <Link
-            href="/studio"
-            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeft size={15} />
-            {copy.back}
-          </Link>
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
-            <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-card/70 px-2 text-[11px] font-medium text-muted-foreground">
-                  {stageLabel(project.stage, locale)}
-                </span>
-                <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
+      <div className="min-w-0 space-y-5">
+        <header className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
+          <div className="p-5">
+            <Link
+              href="/studio"
+              className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowLeft size={15} aria-hidden="true" />
+              {copy.back}
+            </Link>
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-card/70 px-2 text-[11px] font-medium text-muted-foreground">
+                    {stageLabel(project.stage, locale)}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
+                </div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  {localized.title}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
+
+                <div className="mt-4 rounded-lg border border-border/55 bg-background/45 p-3">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="font-medium text-muted-foreground">{copy.nextAction}</span>
+                    <span className="font-medium text-foreground [font-variant-numeric:tabular-nums]">{project.progress}%</span>
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed text-foreground">{localized.nextAction}</p>
+                  <div className="mt-3">
+                    <ProgressBar value={project.progress} />
+                  </div>
+                </div>
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                {localized.title}
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <Link
-                href={`/chat/new?projectId=${encodeURIComponent(project.id)}`}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <MessageSquarePlus size={15} />
-                {copy.newSession}
-              </Link>
-              <div className="rounded-lg border border-border/60 bg-card/55 px-3 py-2">
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-muted-foreground">{copy.progress}</span>
-                  <span className="font-medium text-foreground [font-variant-numeric:tabular-nums]">{project.progress}%</span>
-                </div>
-                <div className="mt-2">
-                  <ProgressBar value={project.progress} />
-                </div>
+              <div className="flex flex-col gap-3">
+                <Link
+                  href={`/chat/new?projectId=${encodeURIComponent(project.id)}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <MessageSquarePlus size={15} aria-hidden="true" />
+                  {copy.newSession}
+                </Link>
+                <ProjectMetric icon={<MessageSquarePlus size={13} aria-hidden="true" />} label={copy.sessionMetric} value={displaySessions.length} />
+                <ProjectMetric icon={<ListChecks size={13} aria-hidden="true" />} label={copy.reviewMetric} value={project.reviewItems.length} />
               </div>
             </div>
           </div>
+
+          <div className="grid gap-2 border-t border-border/60 bg-background/20 p-4 md:grid-cols-3">
+            <SetupChip icon={<BookOpenText size={13} aria-hidden="true" />} label={copy.space} value={localized.space} />
+            <SetupChip icon={<Zap size={13} aria-hidden="true" />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
+            <SetupChip icon={<FolderOpen size={13} aria-hidden="true" />} label={copy.workArea} value={localized.workArea} />
+          </div>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ProjectMetric icon={<MessageSquarePlus size={13} />} label={copy.sessionMetric} value={displaySessions.length} />
-          <ProjectMetric icon={<ListChecks size={13} />} label={copy.reviewMetric} value={project.reviewItems.length} />
-          <ProjectMetric icon={<Zap size={13} />} label={copy.kitMetric} value={localized.kits.length || 1} />
-          <ProjectMetric icon={<Target size={13} />} label={copy.stageMetric} value={stageLabel(project.stage, locale)} />
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 space-y-6">
             <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
               <div className="border-b border-border/60 px-4 py-4">
@@ -431,51 +432,40 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
               )}
             </section>
 
-            <section className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border/60 bg-card/45 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <ListChecks size={15} className="text-[var(--amber)]" />
-                  <h2 className="text-sm font-semibold text-foreground">{copy.review}</h2>
-                </div>
-                <div className="space-y-2">
-                  {localized.reviewItems.map((item) => (
-                    <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-                      <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-card/45 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Target size={15} className="text-[var(--amber)]" />
-                  <h2 className="text-sm font-semibold text-foreground">{copy.growth}</h2>
-                </div>
-                <div className="space-y-2">
-                  {localized.lessons.map((item) => (
-                    <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-                      <ArrowRight size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
           </div>
 
-          <aside className="space-y-4">
+          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
             <section className="rounded-xl border border-border/60 bg-card/45 p-4">
-              <h2 className="text-sm font-semibold text-foreground">{copy.context}</h2>
-              <div className="mt-3">
-                <ScopeRow icon={<BookOpenText size={14} />} label={copy.space} value={localized.space} />
-                <ScopeRow icon={<Zap size={14} />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
-                <ScopeRow icon={<FolderOpen size={14} />} label={copy.workArea} value={localized.workArea} />
-                <ScopeRow icon={<Clock3 size={14} />} label={copy.cadence} value={localized.cadence} />
+              <div className="mb-3 flex items-center gap-2">
+                <ListChecks size={15} className="text-[var(--amber)]" aria-hidden="true" />
+                <h2 className="text-sm font-semibold text-foreground">{copy.review}</h2>
+              </div>
+              <div className="space-y-2">
+                {localized.reviewItems.map((item) => (
+                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+                    <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" aria-hidden="true" />
+                    <span>{item}</span>
+                  </div>
+                ))}
               </div>
             </section>
             <section className="rounded-xl border border-border/60 bg-card/45 p-4">
-              <h2 className="text-sm font-semibold text-foreground">{copy.nextAction}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-foreground">{localized.nextAction}</p>
+              <div className="mb-3 flex items-center gap-2">
+                <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
+                <h2 className="text-sm font-semibold text-foreground">{copy.growth}</h2>
+              </div>
+              <div className="space-y-2">
+                {localized.lessons.map((item) => (
+                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+                    <ArrowRight size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" aria-hidden="true" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-xl border border-border/60 bg-card/45 p-4">
+              <h2 className="text-sm font-semibold text-foreground">{copy.cadence}</h2>
+              <ScopeRow icon={<Clock3 size={14} aria-hidden="true" />} label={copy.cadence} value={localized.cadence} />
             </section>
           </aside>
         </section>

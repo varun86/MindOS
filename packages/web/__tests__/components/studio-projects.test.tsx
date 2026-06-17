@@ -55,7 +55,7 @@ describe('Studio Project UI', () => {
 
     expect(view.host.textContent).toContain('New Project');
     expect(view.host.textContent).not.toContain('Recent Projects');
-    expect(view.host.textContent).toContain('Projects keep context');
+    expect(view.host.textContent).toContain('Projects carry context');
     expect(view.host.textContent).toContain('Launch Practice');
     expect(view.host.textContent).not.toContain('Start from a setup');
     expect(view.host.textContent).not.toContain('Suggested setup');
@@ -73,7 +73,7 @@ describe('Studio Project UI', () => {
     const view = await render(<StudioProjectContent projectId="launch-practice" />);
 
     expect(view.host.textContent).toContain('Launch Practice');
-    expect(view.host.textContent).toContain('Historical Sessions');
+    expect(view.host.textContent).toContain('Session history');
     expect(view.host.textContent).toContain('Launch brief review');
     expect(view.host.textContent).toContain('Product Strategy');
     expect(view.host.textContent).toContain('Research Kit');

@@ -31,7 +31,7 @@ const COPY = {
     title: 'Studio',
     overview: 'Overview',
     newProject: 'New Project',
-    recentProjects: 'Recent Projects',
+    recentProjects: 'Projects',
     sessions: 'Sessions',
     noSessions: 'No Sessions',
     untitledSession: 'Untitled Session',
@@ -42,7 +42,7 @@ const COPY = {
     title: 'Studio',
     overview: 'Overview',
     newProject: '新建 Project',
-    recentProjects: 'Recent Projects',
+    recentProjects: 'Projects',
     sessions: 'Sessions',
     noSessions: '暂无 Session',
     untitledSession: '未命名 Session',
@@ -228,12 +228,22 @@ export default function StudioPanel({ active }: StudioPanelProps) {
 
   return (
     <div className={`flex h-full flex-col ${active ? '' : 'hidden'}`}>
-      <PanelHeader title={copy.title} />
+      <PanelHeader title={copy.title}>
+        <button
+          type="button"
+          title={copy.newProject}
+          aria-label={copy.newProject}
+          onClick={() => window.dispatchEvent(new Event(STUDIO_NEW_PROJECT_REQUESTED_EVENT))}
+          className="hit-target-box inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors duration-75 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+        >
+          <Plus size={13} aria-hidden="true" />
+        </button>
+      </PanelHeader>
       <div className="flex-1 overflow-y-auto px-3 py-3">
         <div className="px-1">
           <PanelNavRow
             href="/studio"
-            icon={<LayoutDashboard size={14} />}
+            icon={<LayoutDashboard size={14} aria-hidden="true" />}
             title={copy.overview}
             active={!currentProjectId}
             activeVariant="rail"
@@ -241,7 +251,7 @@ export default function StudioPanel({ active }: StudioPanelProps) {
         </div>
 
         <nav className="mt-4" aria-label={copy.recentProjects}>
-          <p className="mb-1.5 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground/50">
+          <p className="mb-1.5 px-1 text-2xs font-medium uppercase text-muted-foreground/50">
             {copy.recentProjects}
           </p>
           <div className="space-y-1">
@@ -264,17 +274,6 @@ export default function StudioPanel({ active }: StudioPanelProps) {
             })}
           </div>
         </nav>
-
-        <div className="mt-4 px-1">
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event(STUDIO_NEW_PROJECT_REQUESTED_EVENT))}
-            className="flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-[var(--amber)]/45 hover:bg-[var(--amber-subtle)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Plus size={13} aria-hidden="true" />
-            {copy.newProject}
-          </button>
-        </div>
       </div>
     </div>
   );
