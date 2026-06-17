@@ -8,7 +8,6 @@ export type MindosKbWriteScope = 'none' | 'organize' | 'all';
 export type MindosExtensionScope =
   | 'kb'
   | 'ask-user-question'
-  | 'web-search'
   | 'pi-web-access'
   | 'user-extensions'
   | 'pi-mcp-adapter'
@@ -83,7 +82,6 @@ export const MINDOS_ORGANIZE_KB_TOOL_NAMES = [
 const SAFE_EXTENSION_SCOPES = [
   'kb',
   'ask-user-question',
-  'web-search',
   'pi-web-access',
 ] as const satisfies readonly MindosExtensionScope[];
 

@@ -265,4 +265,3 @@ describe('tools: get_recent', () => {
 
 // web_search and web_fetch tools have been removed from knowledgeBaseTools.
 // They are now provided by the pi-web-access extension (registered via pi.registerTool()).
-// See __tests__/lib/web-search.test.ts for provider-level tests.

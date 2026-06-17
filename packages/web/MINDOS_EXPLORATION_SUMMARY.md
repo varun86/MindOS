@@ -35,7 +35,7 @@ This document provides a high-level summary of the MindOS codebase exploration c
 - **For RAG**: Would need to add embedding client + lightweight vector store
 
 ### 5. Feature Organization
-- **Pattern**: Optional features are modular (e.g., web-search in lib/agent/)
+- **Pattern**: Optional agent capabilities are modular (e.g., pi extension entries exposed from `lib/agent/mindos-pi-runtime-host.ts`)
 - **Settings Features**: Get UI tab + API route wiring
 - **Example**: KnowledgeTab (git sync settings)
 
@@ -203,7 +203,7 @@ rag?: RagConfig;
    - `__tests__/api/settings.test.ts` - Testing pattern
 
 3. **OPTIONAL**:
-   - `lib/agent/web-search.ts` - Example optional feature
+   - `lib/agent/mindos-pi-runtime-host.ts` - Agent extension exposure pattern
    - `lib/sync-config.ts` - Persistence utilities
 
 ---

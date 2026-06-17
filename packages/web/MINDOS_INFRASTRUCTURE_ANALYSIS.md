@@ -614,22 +614,21 @@ export interface SearchResult {
 
 ## 5. FEATURE ORGANIZATION PATTERNS
 
-### 5.1 Optional Feature Example: Web Search
+### 5.1 Optional Feature Example: Agent Extension Tools
 
-**Location:** `lib/agent/web-search.ts`
+**Location:** `lib/agent/mindos-pi-runtime-host.ts` plus extension entries such as `node_modules/pi-web-access/index.ts`
 
 **Pattern:**
-- Standalone module (not integrated by default)
-- Called explicitly by agent when needed
-- No settings UI (always available if agent uses it)
-- No API key management (free, no auth)
+- External agent capabilities are registered through pi extension entries.
+- The runtime host decides which extension paths are exposed for each permission policy.
+- Tool provider config is kept in a provider-owned config bridge, e.g. `lib/web-search-config.ts` keeps `~/.mindos/web-search.json` synced to `~/.pi/web-search.json`.
 
 **Structure:**
 ```
 lib/agent/
-├── web-search.ts      (implementation)
-├── providers.ts       (provider metadata)
-└── index.ts           (exports)
+├── mindos-pi-runtime-host.ts  (extension exposure)
+├── kb-extension.ts            (MindOS KB tools)
+└── providers.ts               (LLM provider metadata)
 ```
 
 ### 5.2 Optional Settings Feature
@@ -729,4 +728,3 @@ app/api/
 - [ ] Add env var support: `RAG_EMBEDDING_PROVIDER`, `RAG_EMBEDDING_API_KEY`
 - [ ] Wire up settings validation tests
 - [ ] Add migration logic for future config format changes
-

@@ -63,9 +63,6 @@ export function getMindosWebPiRuntimePaths(input: {
   if (hasMindosExtensionScope(policy, 'ask-user-question')) {
     additionalExtensionPaths.push(path.join(webAppDir, 'lib', 'agent', 'ask-user-question-bridge-extension.ts'));
   }
-  if (hasMindosExtensionScope(policy, 'web-search')) {
-    additionalExtensionPaths.push(path.join(webAppDir, 'lib', 'agent', 'web-search-extension.ts'));
-  }
   if (hasMindosExtensionScope(policy, 'pi-web-access')) {
     additionalExtensionPaths.push(path.join(webAppDir, 'node_modules', 'pi-web-access', 'index.ts'));
   }
@@ -153,10 +150,6 @@ export function createWebMindosPiRuntimeHostServices(
     },
     onExtensionLoadErrors: (errors) => {
       for (const entry of errors) {
-        // Known benign overlap: pi-web-access also ships a web_search tool;
-        // our dedicated web-search-extension registers first and wins (it is
-        // settings/provider aware). Everything else is a real load failure.
-        if (entry.error.includes('Tool "web_search" conflicts with')) continue;
         console.error(`[ask] extension failed to load: ${entry.path}: ${entry.error}`);
       }
     },

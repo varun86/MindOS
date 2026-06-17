@@ -113,7 +113,6 @@ describe('pi-subagents built-in extension', () => {
         const readonlyExtensionList = readonlyPaths.additionalExtensionPaths.join('\n');
         expect(readonlyExtensionList).toContain('kb-extension');
         expect(readonlyExtensionList).toContain('ask-user-question-bridge-extension');
-        expect(readonlyExtensionList).toContain('web-search-extension');
         expect(readonlyExtensionList).toContain('pi-web-access');
         expect(readonlyExtensionList).not.toContain('pi-mcp-adapter');
         expect(readonlyExtensionList).not.toContain('subagent-ledger-extension');
@@ -123,7 +122,7 @@ describe('pi-subagents built-in extension', () => {
         const organizePaths = getMindosWebPiRuntimePaths({ ...base, mode: 'organize' });
         const organizeExtensionList = organizePaths.additionalExtensionPaths.join('\n');
         expect(organizeExtensionList).toContain('kb-extension');
-        expect(organizeExtensionList).toContain('web-search-extension');
+        expect(organizeExtensionList).toContain('pi-web-access');
         expect(organizeExtensionList).not.toContain('pi-mcp-adapter');
         expect(organizeExtensionList).not.toContain('subagent-ledger-extension');
         expect(organizeExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
@@ -132,7 +131,7 @@ describe('pi-subagents built-in extension', () => {
         const agentPaths = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
         const agentExtensionList = agentPaths.additionalExtensionPaths.join('\n');
         expect(agentExtensionList).toContain('kb-extension');
-        expect(agentExtensionList).toContain('web-search-extension');
+        expect(agentExtensionList).toContain('pi-web-access');
         expect(agentExtensionList).not.toContain('pi-mcp-adapter');
         expect(agentExtensionList).not.toContain('mindos-mcp-adapter-extension');
         expect(agentExtensionList).toContain('subagent-ledger-extension');

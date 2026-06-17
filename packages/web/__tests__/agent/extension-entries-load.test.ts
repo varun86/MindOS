@@ -19,7 +19,7 @@ const webAppDir = path.resolve(__dirname, '..', '..');
 const ENTRIES = [
   'lib/agent/kb-extension.ts',
   'lib/agent/ask-user-question-bridge-extension.ts',
-  'lib/agent/web-search-extension.ts',
+  'node_modules/pi-web-access/index.ts',
   'lib/agent/subagent-ledger-extension.ts',
   'lib/im/index.ts',
   'lib/schedule-prompt/index.ts',
@@ -69,6 +69,19 @@ describe('pi extension entries load in the production jiti module graph', () => 
     for (const required of ['read_file', 'write_file', 'search', 'list_files']) {
       expect(toolNames).toContain(required);
     }
+  });
+
+  it('uses pi-web-access as the only web search/fetch extension provider', () => {
+    const webAccess = loaded.find((extension) => extension.path.includes(path.join('node_modules', 'pi-web-access')));
+    expect(webAccess).toBeDefined();
+    const toolNames = [...webAccess!.tools.keys()];
+    expect(toolNames).toEqual(expect.arrayContaining([
+      'web_search',
+      'code_search',
+      'fetch_content',
+      'get_search_content',
+    ]));
+    expect(loaded.some((extension) => extension.path.endsWith('web-search-extension.ts'))).toBe(false);
   });
 
   it('keeps every entry file free of direct webpack-land path-alias imports', () => {
