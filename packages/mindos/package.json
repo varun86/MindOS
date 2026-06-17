@@ -77,6 +77,14 @@
       "types": "./dist/agent/prompt/*.d.ts",
       "import": "./dist/agent/prompt/*.js"
     },
+    "./agent/pi": {
+      "types": "./dist/agent/pi/index.d.ts",
+      "import": "./dist/agent/pi/index.js"
+    },
+    "./agent/pi/*": {
+      "types": "./dist/agent/pi/*.d.ts",
+      "import": "./dist/agent/pi/*.js"
+    },
     "./agent/tool": {
       "types": "./dist/agent/tool/index.d.ts",
       "import": "./dist/agent/tool/index.js"
@@ -92,6 +100,14 @@
     "./agent-runtime": {
       "types": "./dist/agent-runtime.d.ts",
       "import": "./dist/agent-runtime.js"
+    },
+    "./agent-runtime/adapters": {
+      "types": "./dist/agent-runtime/adapters/index.d.ts",
+      "import": "./dist/agent-runtime/adapters/index.js"
+    },
+    "./agent-runtime/adapters/*": {
+      "types": "./dist/agent-runtime/adapters/*.d.ts",
+      "import": "./dist/agent-runtime/adapters/*.js"
     },
     "./agent-runtime/runtime-env": {
       "types": "./dist/agent-runtime/runtime-env.d.ts",

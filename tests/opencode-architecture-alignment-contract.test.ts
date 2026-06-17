@@ -70,6 +70,18 @@ describe('OpenCode architecture alignment', () => {
       types: './dist/agent.d.ts',
       import: './dist/agent.js',
     });
+    expect(pkg.exports?.['./agent/pi']).toEqual({
+      types: './dist/agent/pi/index.d.ts',
+      import: './dist/agent/pi/index.js',
+    });
+    expect(pkg.exports?.['./agent-runtime/adapters']).toEqual({
+      types: './dist/agent-runtime/adapters/index.d.ts',
+      import: './dist/agent-runtime/adapters/index.js',
+    });
+    expect(pkg.exports?.['./agent-runtime/adapters/*']).toEqual({
+      types: './dist/agent-runtime/adapters/*.d.ts',
+      import: './dist/agent-runtime/adapters/*.js',
+    });
     expect(pkg.files).toContain('dist/');
   });
 
@@ -138,7 +150,9 @@ describe('OpenCode architecture alignment', () => {
     const agent = readText('packages/mindos/src/agent.ts');
     const askRoute = readText('packages/web/app/api/ask/route.ts');
     const headlessAgent = readText('packages/web/lib/agent/headless.ts');
-    const piRuntimeAdapter = readText('packages/mindos/src/session/pi-coding-agent-runtime.ts');
+    const piRuntimeAdapter = readText('packages/mindos/src/agent/pi/runtime.ts');
+    const piRuntimeCompat = readText('packages/mindos/src/session/pi-coding-agent-runtime.ts');
+    const mindosRuntimeAdapter = readText('packages/mindos/src/agent-runtime/adapters/mindos.ts');
     const streamConsumer = readText('packages/web/lib/agent/stream-consumer.ts');
     const toAgentMessages = readText('packages/web/lib/agent/to-agent-messages.ts');
 
@@ -170,7 +184,11 @@ describe('OpenCode architecture alignment', () => {
     expect(readText('packages/mindos/src/agent/index.ts')).toContain('buildMindosSystemPrompt');
     expect(readText('packages/mindos/src/agent/index.ts')).toContain('buildMindosContextPrompt');
     expect(readText('packages/mindos/src/agent/index.ts')).toContain('compactMindosPromptForTokenBudget');
+    expect(readText('packages/mindos/src/agent/index.ts')).not.toContain("from './pi/index.js'");
     expect(existsSync(resolve(root, 'packages/mindos/src/agent/prompt/context-prompt.ts'))).toBe(true);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/runtime.ts'))).toBe(true);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/extension-tools.ts'))).toBe(true);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent-runtime/adapters/mindos.ts'))).toBe(true);
     expect(readText('packages/mindos/src/agent/prompt/system-prompt.ts')).toContain('buildMindosSystemPrompt');
     expect(readText('packages/mindos/src/agent/prompt/system-prompt.ts')).not.toContain('buildMindosContextPrompt');
     expect(readText('packages/mindos/src/agent/prompt/context-prompt.ts')).toContain('buildMindosContextPrompt');
@@ -199,14 +217,15 @@ describe('OpenCode architecture alignment', () => {
     expect(askRoute).toContain('buildMindosSystemPrompt');
     expect(askRoute).toContain('buildMindosContextPrompt');
     expect(askRoute).not.toContain("from '@geminilight/mindos/session/pi-coding-agent'");
-    expect(askRoute).toContain("await import('@geminilight/mindos/session/pi-coding-agent')");
-    expect(askRoute).toContain('createMindosPiCodingAgentRuntime');
+    expect(askRoute).not.toContain("await import('@geminilight/mindos/session/pi-coding-agent')");
+    expect(askRoute).toContain("await import('@geminilight/mindos/agent-runtime/adapters/mindos')");
+    expect(askRoute).toContain('createMindosAgentRuntime');
     expect(askRoute).toContain('const externalPrompt = await buildMindosContextPrompt');
     expect(askRoute).toContain('const turnPrompt = await buildMindosContextPrompt');
     expect(askRoute).toContain('prompt: externalPrompt');
     expect(askRoute).toContain('prompt: turnPrompt');
     expect(askRoute.indexOf('if (selectedNativeRuntime || selectedAcpAgent)')).toBeLessThan(
-      askRoute.indexOf("await import('@geminilight/mindos/session/pi-coding-agent')"),
+      askRoute.indexOf("await import('@geminilight/mindos/agent-runtime/adapters/mindos')"),
     );
     // Native-only SDKs must load through the bundler-proof native import: a
     // static `import ... from` (or even a plain dynamic import) lets Next.js
@@ -216,19 +235,23 @@ describe('OpenCode architecture alignment', () => {
     const claudeSdkAdapter = readText('packages/mindos/src/agent-runtime/claude-code-sdk.ts');
     expect(nativeImportHelper).toContain("new Function('specifier', 'return import(specifier)')");
     expect(piRuntimeAdapter).toContain('@earendil-works/pi-coding-agent');
-    expect(piRuntimeAdapter).toContain("import { nativeImport } from '../foundation/native-import.js'");
+    expect(piRuntimeAdapter).toContain("import { nativeImport } from '../../foundation/native-import.js'");
     expect(piRuntimeAdapter).not.toMatch(/^import\s*\{[^}]*\}\s*from '@earendil-works\/pi-coding-agent';/m);
     expect(piRuntimeAdapter).not.toContain("from '@mariozechner/pi-coding-agent'");
+    expect(piRuntimeCompat).toContain("from '../agent/pi/runtime.js'");
     expect(claudeSdkAdapter).toContain("import { nativeImport } from '../foundation/native-import.js'");
     expect(claudeSdkAdapter).not.toContain("import('@anthropic-ai/claude-agent-sdk')");
     expect(claudeSdkAdapter).not.toMatch(/^const requireFromHere = createRequire/m);
     expect(piRuntimeAdapter).toContain('createMindosPiAgentRuntime');
     expect(piRuntimeAdapter).toContain('compactMindosPromptForTokenBudget');
+    expect(mindosRuntimeAdapter).toContain('createMindosAgentRuntimeAdapter');
+    expect(mindosRuntimeAdapter).toContain('createMindosAgentRuntime');
+    expect(mindosRuntimeAdapter).toContain('createMindosPiCodingAgentRuntime');
     expect(existsSync(resolve(root, 'packages/web/lib/agent/mindos-pi-runtime-adapter.ts'))).toBe(false);
     expect(headlessAgent).not.toContain("from '@mariozechner/pi-coding-agent'");
     expect(headlessAgent).not.toContain('createAgentSession');
     expect(headlessAgent).not.toContain('DefaultResourceLoader');
-    expect(headlessAgent).toContain('createMindosPiCodingAgentRuntime');
+    expect(headlessAgent).toContain('createMindosAgentRuntime');
     expect(askRoute).not.toContain("from '@/lib/agent/prompt'");
     // Wave 4 (spec-agent-core-consolidation): the SSE parsing engine sank
     // into the core stream consumer; the web file is a thin adapter that

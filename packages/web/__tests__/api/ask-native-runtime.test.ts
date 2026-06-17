@@ -115,8 +115,8 @@ vi.mock('@/lib/acp/session', () => ({
   closeSession: vi.fn(),
 }));
 
-vi.mock('@geminilight/mindos/session/pi-coding-agent', () => ({
-  createMindosPiCodingAgentRuntime: vi.fn(() => {
+vi.mock('@geminilight/mindos/agent-runtime/adapters/mindos', () => ({
+  createMindosAgentRuntime: vi.fn(() => {
     throw new Error('pi runtime should not initialize for native runtime requests');
   }),
 }));
