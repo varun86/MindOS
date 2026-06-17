@@ -658,7 +658,7 @@ export default function ViewPageClient({
     <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
       {/* Top bar */}
       <div
-        className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center transition-[width] duration-200"
+        className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[var(--workspace-header-h)] flex items-center transition-[width] duration-200"
         style={{
           background: 'var(--background)',
           width: 'calc(100% + var(--toc-extra-right, 0px))',

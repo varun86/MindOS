@@ -78,7 +78,7 @@ function AgentsPanelLoading() {
   const p = t.panels.agents;
   return (
     <div className="flex h-full flex-col">
-      <div className="h-[46px] shrink-0 border-b border-border px-4 flex items-center">
+      <div className="h-[var(--workspace-header-h)] shrink-0 border-b border-border px-4 flex items-center">
         <span className="text-sm font-medium text-foreground">{p.title}</span>
       </div>
       <div className="flex-1 px-3 py-3" aria-busy="true" aria-label={p.title}>

@@ -118,8 +118,8 @@ describe('titlebar geometry contract (no content may slide under the fixed row)'
     const registry: Record<string, string[]> = {
       'app/view/[...path]/ViewPageClient.tsx': ['sticky top-[52px] md:top-[var(--app-titlebar-h)]'],
       'components/DirView.tsx': ['sticky top-[52px] md:top-[var(--app-titlebar-h)]'],
-      // floats just below the 46px-tall /view header
-      'components/FindInPage.tsx': ['sticky top-[98px] md:top-[calc(var(--app-titlebar-h)+46px)]'],
+      // floats just below the shared /view header
+      'components/FindInPage.tsx': ['sticky top-[calc(52px+var(--workspace-header-h))] md:top-[calc(var(--app-titlebar-h)+var(--workspace-header-h))]'],
       // 24px breathing room below the row (was top-[70px] pre-titlebar)
       'components/InboxView.tsx': ['lg:sticky lg:top-[calc(var(--app-titlebar-h)+24px)]'],
       // help TOC (was top-24 = 96px)

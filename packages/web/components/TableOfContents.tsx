@@ -55,7 +55,8 @@ function parseHeadings(content: string): Heading[] {
   return headings;
 }
 
-const TOPBAR_H = 46;
+const VIEW_HEADER_FALLBACK_H = 40;
+const VIEW_HEADER_CSS_VAR = 'var(--workspace-header-h)';
 const NAV_W = 212;
 const TOC_COLLAPSED_KEY = 'mindos.toc.collapsed';
 const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';
@@ -67,8 +68,16 @@ function titlebarOffset(): number {
   return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--app-titlebar-h'), 10) || 0;
 }
 
+function viewHeaderHeight(): number {
+  if (typeof document === 'undefined') return VIEW_HEADER_FALLBACK_H;
+  const topbar = document.querySelector<HTMLElement>('.view-page-topbar');
+  const measured = topbar ? Math.round(topbar.getBoundingClientRect().height) : 0;
+  if (measured > 0) return measured;
+  return titlebarOffset() || VIEW_HEADER_FALLBACK_H;
+}
+
 function scrollOffset(): number {
-  return titlebarOffset() + TOPBAR_H + 12;
+  return titlebarOffset() + viewHeaderHeight() + 12;
 }
 
 /**
@@ -115,6 +124,11 @@ function findHeadingElements(headings: Heading[]): (HTMLElement | null)[] {
   }
 
   return headings.map(() => null);
+}
+
+function findHeadingElementById(heading: Heading | undefined): HTMLElement | null {
+  if (!heading?.id) return null;
+  return document.getElementById(heading.id);
 }
 
 interface TableOfContentsProps {
@@ -219,12 +233,15 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
   if (headings.length < 2) return null;
 
   const handleClick = (e: React.MouseEvent, idx: number) => {
-    e.preventDefault();
     // Re-find elements in case DOM changed since observer setup
     const els = findHeadingElements(headings);
     headingElsRef.current = els;
-    const el = els[idx];
-    if (!el) return;
+    const el = els[idx] ?? findHeadingElementById(headings[idx]);
+    if (!el) {
+      setActiveIdx(idx);
+      return;
+    }
+    e.preventDefault();
     const top = el.getBoundingClientRect().top + window.scrollY - scrollOffset();
     window.scrollTo({ top, behavior: 'smooth' });
     setActiveIdx(idx);
@@ -235,7 +252,7 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
       {/* Collapse / expand toggle — separate from aside so it stays visible */}
       <button
         onClick={handleCollapsedToggle}
-        className="hidden xl:flex fixed z-10 top-[calc(var(--app-titlebar-h)+46px)] flex items-center justify-center w-5 h-8 rounded-l-md border border-r-0 border-border hover:bg-muted transition-colors"
+        className="hidden xl:flex fixed z-10 top-[calc(var(--app-titlebar-h)+var(--workspace-header-h))] flex items-center justify-center w-5 h-8 rounded-l-md border border-r-0 border-border hover:bg-muted transition-colors"
         style={{
           right: `calc(var(--right-panel-width, 0px) + ${collapsed ? 0 : NAV_W}px)`,
           background: 'var(--background)',
@@ -254,8 +271,8 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
       <aside
         className="hidden xl:flex flex-col fixed z-10 overflow-hidden"
         style={{
-          top: `calc(var(--app-titlebar-h) + ${TOPBAR_H}px)`,
-          height: `calc(100vh - var(--app-titlebar-h) - ${TOPBAR_H}px)`,
+          top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR})`,
+          height: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR})`,
           width: NAV_W,
           right: 'var(--right-panel-width, 0px)',
           transform: collapsed ? `translateX(${NAV_W}px)` : 'translateX(0)',

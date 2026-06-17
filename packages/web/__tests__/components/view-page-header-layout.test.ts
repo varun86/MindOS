@@ -8,8 +8,10 @@ describe('ViewPageClient header layout', () => {
     const source = fs.readFileSync(filePath, 'utf8');
 
     expect(source).toContain('className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border');
+    expect(source).toContain('h-[var(--workspace-header-h)]');
     expect(source).toContain('className="view-header-row w-full min-w-0 flex items-center justify-between gap-3 h-full"');
     expect(source).not.toContain('className="content-width flex items-center justify-between gap-2 h-full"');
+    expect(source).not.toContain('h-[46px] flex items-center transition-[width]');
   });
 
   it('lets the header span the TOC reserve without squeezing the breadcrumb', () => {

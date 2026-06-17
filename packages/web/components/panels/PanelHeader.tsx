@@ -16,7 +16,7 @@ export default function PanelHeader({
   onMaximize?: () => void;
 }) {
   return (
-    <div className="panel-header relative z-10 flex h-[var(--app-titlebar-h)] min-h-10 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+    <div className="panel-header relative z-10 flex h-[var(--workspace-header-h)] shrink-0 items-center justify-between gap-2 border-b border-border px-4">
       <span className="relative z-10 min-w-0 shrink truncate text-xs text-muted-foreground uppercase tracking-wider">{title}</span>
       <div className="relative z-10 flex shrink-0 items-center gap-1">
         {children}

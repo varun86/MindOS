@@ -842,6 +842,7 @@ input[type="radio"].form-radio:focus-visible {
    alive when a mac shell window is zoomed below 768px. */
 :root {
   --app-titlebar-h: 0px;
+  --workspace-header-h: max(var(--app-titlebar-h), 40px);
   --window-controls-left: 0px;
   /* Pushes the rail logo below the traffic lights — mac shell only. Browser /
      win / linux desktops keep 0 so the logo sits in the first row. */
