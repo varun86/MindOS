@@ -1,22 +1,23 @@
 # Chrome Web Store — Listing Copy
 
 ## Short Description (max 132 chars)
-Save any web page to your MindOS knowledge base — one click, beautifully formatted Markdown.
+Save web pages and AI chat sessions to MindOS — one click, clean Markdown.
 
 ## Detailed Description
 
-MindOS Web Clipper saves any web page to your local MindOS knowledge base as clean, well-formatted Markdown — with one click.
+MindOS Web Clipper saves web pages and supported AI chat sessions to your local MindOS knowledge base as clean, well-formatted Markdown — with one click.
 
 **How it works:**
 1. Click the MindOS icon or press Ctrl+Shift+M
 2. Choose a folder in your knowledge base
 3. Click "Save to MindOS"
 
-The page content is automatically extracted, cleaned (ads and navigation removed), and converted to Markdown with metadata.
+The page content is automatically extracted, cleaned (ads and navigation removed), and converted to Markdown with metadata. On ChatGPT, Claude, Gemini, DeepSeek, Kimi, Qwen, Zhipu GLM, and MiniMax pages, the extension captures the current conversation transcript.
 
 **Features:**
 - Smart content extraction powered by Mozilla Readability
-- Clean Markdown output with YAML frontmatter (title, source URL, author, date)
+- AI chat session capture for ChatGPT, Claude, Gemini, DeepSeek, Kimi, Qwen, Zhipu GLM, and MiniMax
+- Clean Markdown output with MindOS YAML source metadata
 - Choose which folder to save to
 - Edit the title before saving
 - Right-click context menu: "Save to MindOS"

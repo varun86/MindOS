@@ -2,7 +2,7 @@
   "name": "@mindos/browser-extension",
   "version": "0.1.6",
   "private": true,
-  "description": "MindOS Web Clipper — save any web page to your knowledge base",
+  "description": "MindOS Web Clipper — save web pages and AI chat sessions to your knowledge base",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",

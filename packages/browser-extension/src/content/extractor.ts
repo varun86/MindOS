@@ -2,9 +2,30 @@
 /* Injected on demand by popup via chrome.scripting.executeScript() */
 
 import { Readability } from '@mozilla/readability';
+import { extractAiConversationContent } from './ai-conversation';
 
 /** Extract article content from the current page */
 function extractPageContent() {
+  const aiConversation = extractAiConversationContent(document, window.location.href);
+  if (aiConversation) {
+    return {
+      title: aiConversation.title,
+      byline: null,
+      excerpt: `AI conversation captured from ${aiConversation.sourcePlatformLabel}`,
+      content: aiConversation.content,
+      textContent: aiConversation.textContent,
+      siteName: aiConversation.siteName,
+      url: window.location.href,
+      savedAt: new Date().toISOString(),
+      wordCount: aiConversation.wordCount,
+      captureType: 'ai-conversation',
+      sourceType: 'session',
+      sourcePlatform: aiConversation.sourcePlatform,
+      sourcePlatformLabel: aiConversation.sourcePlatformLabel,
+      messageCount: aiConversation.messageCount,
+    };
+  }
+
   // Clone document so Readability mutations don't affect the live page
   const docClone = document.cloneNode(true) as Document;
 
@@ -35,6 +56,8 @@ function extractPageContent() {
     url: window.location.href,
     savedAt: new Date().toISOString(),
     wordCount,
+    captureType: 'web-page',
+    sourceType: 'web',
   };
 }
 

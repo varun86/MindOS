@@ -87,13 +87,14 @@ export async function saveToInbox(
   config: ClipperConfig,
   fileName: string,
   markdown: string,
+  source = 'web-clipper',
 ): Promise<FileApiResponse> {
   try {
     const res = await apiFetch(config, '/api/inbox', {
       method: 'POST',
       body: JSON.stringify({
         files: [{ name: fileName, content: markdown, encoding: 'text' }],
-        source: 'web-clipper',
+        source,
       }),
     });
     let data: any;
@@ -120,12 +121,13 @@ export async function createFile(
   space: string,
   fileName: string,
   content: string,
+  source = 'web-clipper',
 ): Promise<FileApiResponse> {
   const path = space ? `${space.replace(/\/+$/, '')}/${fileName}` : fileName;
   try {
     const res = await apiFetch(config, '/api/file', {
       method: 'POST',
-      body: JSON.stringify({ op: 'create_file', path, content, source: 'web-clipper' }),
+      body: JSON.stringify({ op: 'create_file', path, content, source }),
     });
     let data: any;
     try {

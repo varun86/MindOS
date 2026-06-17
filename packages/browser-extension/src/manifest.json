@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "MindOS Web Clipper",
   "version": "0.1.6",
-  "description": "Save any web page to your MindOS knowledge base — one click, beautifully formatted Markdown.",
+  "description": "Save web pages and AI chat sessions to your MindOS Inbox — one click, clean Markdown.",
   "icons": {
     "16": "icons/icon-16.svg",
     "32": "icons/icon-32.svg",

@@ -4,7 +4,7 @@
 
 ## Overview
 
-MindOS Web Clipper is a browser extension that saves web pages to your local MindOS knowledge base. It is designed with privacy as a core principle.
+MindOS Web Clipper is a browser extension that saves web pages and supported AI chat sessions to your local MindOS knowledge base. It is designed with privacy as a core principle.
 
 ## Data Collection
 
@@ -27,10 +27,10 @@ This data never leaves your device and is only used to communicate with your own
 
 ## Data Transmission
 
-When you clip a web page, the extension:
+When you clip a web page or supported AI chat session, the extension:
 
 1. Reads the content of the current browser tab (only when you explicitly click "Save")
-2. Converts the content to Markdown format
+2. Converts the page content or conversation transcript to Markdown format
 3. Sends the Markdown to your local MindOS instance via HTTP
 
 **All communication is between your browser and your own computer.** No data is sent to any third-party server, cloud service, or external API.
@@ -40,7 +40,7 @@ When you clip a web page, the extension:
 | Permission | Why it's needed |
 |-----------|----------------|
 | `storage` | Save your MindOS URL and auth token locally |
-| `activeTab` | Read the current page content when you click "Save" |
+| `activeTab` | Read the current page or AI chat content when you click "Save" |
 | `scripting` | Inject the content extraction script into the current page |
 | `contextMenus` | Add "Save to MindOS" to the right-click menu |
 | `host_permissions` (localhost/LAN) | Send saved content to your local MindOS instance |

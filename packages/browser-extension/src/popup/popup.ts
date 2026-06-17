@@ -30,6 +30,7 @@ const btnConnect = $<HTMLButtonElement>('btn-connect');
 
 // Clip
 const clipTitle = $<HTMLInputElement>('clip-title');
+const clipSourceLabel = $<HTMLParagraphElement>('clip-source-label');
 const clipSiteBadge = $<HTMLSpanElement>('clip-site');
 const clipSiteText = $<HTMLSpanElement>('clip-site-text');
 const clipWordsBadge = $<HTMLSpanElement>('clip-words');
@@ -204,19 +205,25 @@ function showClipView(errorMsg?: string, dirsErrorMsg?: string) {
 
   if (extractedContent) {
     clipTitle.value = extractedContent.title;
+    clipSourceLabel.textContent = extractedContent.captureType === 'ai-conversation'
+      ? 'AI conversation'
+      : 'Current page';
 
     try {
       const host = new URL(extractedContent.url).hostname.replace(/^www\./, '');
-      clipSiteText.textContent = host;
+      clipSiteText.textContent = extractedContent.sourcePlatformLabel || host;
       clipSiteBadge.style.display = '';
     } catch {
       clipSiteBadge.style.display = 'none';
     }
 
-    clipWordsText.textContent = `${extractedContent.wordCount.toLocaleString()} words`;
+    clipWordsText.textContent = extractedContent.captureType === 'ai-conversation' && extractedContent.messageCount != null
+      ? `${extractedContent.messageCount.toLocaleString()} messages`
+      : `${extractedContent.wordCount.toLocaleString()} words`;
     clipWordsBadge.style.display = '';
   } else {
     clipTitle.value = '';
+    clipSourceLabel.textContent = 'Current page';
     clipSiteBadge.style.display = 'none';
     clipWordsBadge.style.display = 'none';
   }
@@ -415,8 +422,8 @@ btnSave.addEventListener('click', async () => {
 
     // Route to Inbox API or File API based on user choice
     const result = isInbox
-      ? await saveToInbox(config, doc.fileName, doc.markdown)
-      : await createFile(config, selectedPath, doc.fileName, doc.markdown);
+      ? await saveToInbox(config, doc.fileName, doc.markdown, doc.source)
+      : await createFile(config, selectedPath, doc.fileName, doc.markdown, doc.source);
 
     if (result.error) {
       showError(clipError, result.error);

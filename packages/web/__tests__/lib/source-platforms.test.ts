@@ -1,5 +1,11 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectSourcePlatform, normalizeSourceHostname } from '@/lib/link-preview/source-platforms';
+import {
+  detectSourcePlatform,
+  getSourcePlatformDefinition,
+  normalizeSourceHostname,
+} from '@/lib/link-preview/source-platforms';
 
 describe('source platform detection', () => {
   it('detects mainstream social and reference domains', () => {
@@ -12,6 +18,24 @@ describe('source platform detection', () => {
     expect(detectSourcePlatform('https://twitter.com/user/status/1')?.id).toBe('x');
     expect(detectSourcePlatform('https://mp.weixin.qq.com/s/example')?.id).toBe('wechat');
     expect(detectSourcePlatform('https://arxiv.org/abs/2401.00001')?.id).toBe('arxiv');
+  });
+
+  it('detects mainstream AI chat domains and reuses bundled agent icons where available', () => {
+    expect(detectSourcePlatform('https://chatgpt.com/c/abc')?.id).toBe('chatgpt');
+    expect(detectSourcePlatform('https://chat.openai.com/c/abc')?.id).toBe('chatgpt');
+    expect(detectSourcePlatform('https://claude.ai/chat/abc')?.id).toBe('claude');
+    expect(detectSourcePlatform('https://gemini.google.com/app/abc')?.id).toBe('gemini');
+    expect(detectSourcePlatform('https://chat.deepseek.com/a/chat/s/abc')?.id).toBe('deepseek');
+    expect(detectSourcePlatform('https://kimi.moonshot.cn/chat/abc')?.id).toBe('kimi');
+    expect(detectSourcePlatform('https://chat.qwen.ai/c/abc')?.id).toBe('qwen');
+    expect(detectSourcePlatform('https://chatglm.cn/main/alltoolsdetail')?.id).toBe('zhipu');
+    expect(detectSourcePlatform('https://chat.minimax.io/chat/abc')?.id).toBe('minimax');
+
+    for (const id of ['chatgpt', 'claude', 'gemini', 'kimi', 'qwen']) {
+      const iconPath = getSourcePlatformDefinition(id)?.iconPath;
+      expect(iconPath, id).toBeTruthy();
+      expect(existsSync(join(process.cwd(), 'public', iconPath!))).toBe(true);
+    }
   });
 
   it('normalizes hosts without treating arbitrary text as a source', () => {

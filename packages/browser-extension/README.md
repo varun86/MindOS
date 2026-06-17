@@ -1,9 +1,9 @@
 <h1 align="center">MindOS Web Clipper</h1>
 
 <p align="center">
-  Save any web page to your MindOS knowledge base — one click, clean Markdown.
+  Save any web page or AI chat session to your MindOS knowledge base — one click, clean Markdown.
   <br/>
-  <b>一键保存任意网页到 MindOS 知识库 — 干净的 Markdown 格式。</b>
+  <b>一键保存任意网页或 AI 对话到 MindOS 知识库 — 干净的 Markdown 格式。</b>
 </p>
 
 <p align="center">
@@ -35,17 +35,34 @@ Done. You'll see the MindOS icon in your toolbar.
 - **Right-click** → "Save to MindOS" on any page
 - **Keyboard shortcut**: `Ctrl+Shift+M` (Mac: `Cmd+Shift+M`)
 
-Choose a folder, edit the title if needed, and hit **Save to MindOS**.
+Choose a folder, edit the title if needed, and hit **Save to MindOS**. On supported AI chat pages, MindOS captures the visible conversation transcript instead of generic article text.
+
+### AI chat capture
+
+The clipper recognizes active conversations on:
+
+- ChatGPT (`chatgpt.com`, `chat.openai.com`)
+- Claude (`claude.ai`)
+- Gemini (`gemini.google.com`)
+- DeepSeek (`chat.deepseek.com`)
+- Kimi (`kimi.moonshot.cn`, `kimi.com`)
+- Qwen / Tongyi (`chat.qwen.ai`, `tongyi.aliyun.com`, `qianwen.aliyun.com`)
+- Zhipu GLM (`chatglm.cn`, `z.ai`, `chat.z.ai`)
+- MiniMax / Hailuo (`chat.minimax.io`, `minimax.io`, `hailuoai.com`)
+
+AI conversations are saved as `type: log` with `source_type: session`, `source_url`, `source_platform`, and `captured_at` frontmatter, then staged in Inbox by default.
 
 ### What gets saved
 
 ```yaml
 ---
 title: Article Title
-source: https://example.com/article
-author: Author Name
-site: example.com
-saved: 2025-01-15T10:30:00Z
+type: material
+status: active
+created: 2026-06-17
+source_type: web
+source_url: https://example.com/article
+captured_at: 2026-06-17T10:30:00Z
 ---
 
 # Article Title
@@ -56,7 +73,8 @@ Clean markdown content...
 ### Features
 
 - Smart content extraction (Mozilla Readability — strips ads, nav, etc.)
-- YAML frontmatter with metadata (title, source URL, author, site, date)
+- AI chat session capture for ChatGPT, Claude, Gemini, DeepSeek, Kimi, Qwen, Zhipu GLM, and MiniMax
+- YAML frontmatter with MindOS source metadata
 - Space/folder selector
 - Editable title before saving
 - Dark mode (follows system)
@@ -94,17 +112,34 @@ Clean markdown content...
 - **右键菜单** → "Save to MindOS"
 - **快捷键**：`Ctrl+Shift+M`（Mac：`Cmd+Shift+M`）
 
-选择目标文件夹，可编辑标题，然后点 **Save to MindOS**。
+选择目标文件夹，可编辑标题，然后点 **Save to MindOS**。在已支持的 AI 对话页里，插件会优先保存当前会话转写，而不是把页面当普通文章抽取。
+
+### AI 对话捕获
+
+当前支持：
+
+- ChatGPT (`chatgpt.com`, `chat.openai.com`)
+- Claude (`claude.ai`)
+- Gemini (`gemini.google.com`)
+- DeepSeek (`chat.deepseek.com`)
+- Kimi (`kimi.moonshot.cn`, `kimi.com`)
+- Qwen / 通义千问 (`chat.qwen.ai`, `tongyi.aliyun.com`, `qianwen.aliyun.com`)
+- Zhipu GLM / 智谱清言 (`chatglm.cn`, `z.ai`, `chat.z.ai`)
+- MiniMax / 海螺 (`chat.minimax.io`, `minimax.io`, `hailuoai.com`)
+
+AI 对话会写成 `type: log`，并带上 `source_type: session`、`source_url`、`source_platform` 和 `captured_at`，默认进入 Inbox 暂存。
 
 ### 保存内容示例
 
 ```yaml
 ---
 title: 文章标题
-source: https://example.com/article
-author: 作者名
-site: example.com
-saved: 2025-01-15T10:30:00Z
+type: material
+status: active
+created: 2026-06-17
+source_type: web
+source_url: https://example.com/article
+captured_at: 2026-06-17T10:30:00Z
 ---
 
 # 文章标题
@@ -115,7 +150,8 @@ saved: 2025-01-15T10:30:00Z
 ### 功能特性
 
 - 智能内容提取（Mozilla Readability — 自动去除广告、导航栏等）
-- YAML 元数据（标题、来源 URL、作者、站点、日期）
+- AI 对话捕获：ChatGPT、Claude、Gemini、DeepSeek、Kimi、Qwen、智谱 GLM、MiniMax
+- YAML 元数据（MindOS 来源字段）
 - 知识库文件夹选择器
 - 保存前可编辑标题
 - 暗色模式（跟随系统）
@@ -147,7 +183,8 @@ src/
 ├── background/
 │   └── service-worker.ts      # Context menu + keyboard shortcut
 ├── content/
-│   └── extractor.ts           # Readability content extraction
+│   ├── extractor.ts           # Readability + AI conversation extraction
+│   └── ai-conversation.ts     # AI chat platform profiles
 ├── popup/
 │   ├── popup.html             # Extension popup
 │   ├── popup.css              # MindOS brand styles

@@ -78,8 +78,8 @@ Chrome Web Store requires 1-5 screenshots (1280x800 or 640x400 pixels).
 When prompted, paste these:
 
 - **storage**: "Stores the user's MindOS server URL and authentication token locally so the extension can connect to their MindOS instance."
-- **activeTab**: "Reads the current page content when the user explicitly clicks Save, to extract the article text for conversion to Markdown."
-- **scripting**: "Injects the content extraction script into the active tab to parse the page using Mozilla Readability when the user triggers a clip."
+- **activeTab**: "Reads the current page or supported AI chat content when the user explicitly clicks Save, to extract the content for conversion to Markdown."
+- **scripting**: "Injects the content extraction script into the active tab to parse the page using Mozilla Readability or supported AI chat transcript selectors when the user triggers a clip."
 - **contextMenus**: "Adds a 'Save to MindOS' option to the browser's right-click context menu for quick access."
 - **host_permissions (localhost/LAN IPs)**: "Communicates with the user's local MindOS instance to save clipped content. MindOS runs on localhost or local network — no external servers are contacted."
 

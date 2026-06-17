@@ -7,7 +7,15 @@ export type InboxSourcePlatformId =
   | 'reddit'
   | 'x'
   | 'wechat'
-  | 'arxiv';
+  | 'arxiv'
+  | 'chatgpt'
+  | 'claude'
+  | 'gemini'
+  | 'deepseek'
+  | 'kimi'
+  | 'qwen'
+  | 'zhipu'
+  | 'minimax';
 
 export interface InboxSourcePlatform {
   id: InboxSourcePlatformId;
@@ -35,6 +43,14 @@ const SOURCE_PLATFORMS: InboxSourcePlatform[] = [
   { id: 'x', label: 'X', domains: ['x.com', 'twitter.com'] },
   { id: 'wechat', label: 'WeChat', domains: ['mp.weixin.qq.com', 'weixin.qq.com'] },
   { id: 'arxiv', label: 'arXiv', domains: ['arxiv.org'] },
+  { id: 'chatgpt', label: 'ChatGPT', domains: ['chatgpt.com', 'chat.openai.com'] },
+  { id: 'claude', label: 'Claude', domains: ['claude.ai'] },
+  { id: 'gemini', label: 'Gemini', domains: ['gemini.google.com'] },
+  { id: 'deepseek', label: 'DeepSeek', domains: ['chat.deepseek.com', 'deepseek.com'] },
+  { id: 'kimi', label: 'Kimi', domains: ['kimi.moonshot.cn', 'kimi.com'] },
+  { id: 'qwen', label: 'Qwen', domains: ['chat.qwen.ai', 'tongyi.aliyun.com', 'qianwen.aliyun.com'] },
+  { id: 'zhipu', label: 'Zhipu GLM', domains: ['chatglm.cn', 'z.ai', 'chat.z.ai', 'bigmodel.cn'] },
+  { id: 'minimax', label: 'MiniMax', domains: ['chat.minimax.io', 'minimax.io', 'chat.minimaxi.com', 'hailuoai.com'] },
 ];
 
 const PLATFORM_BY_ID = new Map(SOURCE_PLATFORMS.map(platform => [platform.id, platform]));
@@ -95,6 +111,13 @@ function normalizePlatformId(input: string | null | undefined): InboxSourcePlatf
   const normalized = input.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
   if (normalized === 'twitter') return 'x';
   if (normalized === 'xhs' || normalized === 'rednote') return 'xiaohongshu';
+  if (normalized === 'openai' || normalized === 'gpt') return 'chatgpt';
+  if (normalized === 'anthropic') return 'claude';
+  if (normalized === 'google-gemini' || normalized === 'bard') return 'gemini';
+  if (normalized === 'moonshot') return 'kimi';
+  if (normalized === 'tongyi' || normalized === 'tongyi-qianwen' || normalized === 'qianwen') return 'qwen';
+  if (normalized === 'glm' || normalized === 'chatglm' || normalized === 'z-ai') return 'zhipu';
+  if (normalized === 'hailuo') return 'minimax';
   if (PLATFORM_BY_ID.has(normalized as InboxSourcePlatformId)) return normalized as InboxSourcePlatformId;
   return null;
 }

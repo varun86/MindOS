@@ -7,7 +7,15 @@ export type SourcePlatformId =
   | 'reddit'
   | 'x'
   | 'wechat'
-  | 'arxiv';
+  | 'arxiv'
+  | 'chatgpt'
+  | 'claude'
+  | 'gemini'
+  | 'deepseek'
+  | 'kimi'
+  | 'qwen'
+  | 'zhipu'
+  | 'minimax';
 
 export interface SourcePlatformDefinition {
   id: SourcePlatformId;
@@ -75,6 +83,59 @@ export const SOURCE_PLATFORMS: SourcePlatformDefinition[] = [
     label: 'arXiv',
     domains: ['arxiv.org'],
     fallback: 'ar',
+  },
+  {
+    id: 'chatgpt',
+    label: 'ChatGPT',
+    domains: ['chatgpt.com', 'chat.openai.com'],
+    iconPath: '/agent-icons/openai.svg',
+    fallback: 'GPT',
+  },
+  {
+    id: 'claude',
+    label: 'Claude',
+    domains: ['claude.ai'],
+    iconPath: '/agent-icons/claude.svg',
+    fallback: 'Cl',
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    domains: ['gemini.google.com'],
+    iconPath: '/agent-icons/gemini.svg',
+    fallback: 'Ge',
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    domains: ['chat.deepseek.com', 'deepseek.com'],
+    fallback: 'DS',
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi',
+    domains: ['kimi.moonshot.cn', 'kimi.com'],
+    iconPath: '/agent-icons/kimi-cli.png',
+    fallback: 'K',
+  },
+  {
+    id: 'qwen',
+    label: 'Qwen',
+    domains: ['chat.qwen.ai', 'tongyi.aliyun.com', 'qianwen.aliyun.com'],
+    iconPath: '/agent-icons/qwen-code.svg',
+    fallback: 'Q',
+  },
+  {
+    id: 'zhipu',
+    label: 'Zhipu GLM',
+    domains: ['chatglm.cn', 'z.ai', 'chat.z.ai', 'bigmodel.cn'],
+    fallback: 'GLM',
+  },
+  {
+    id: 'minimax',
+    label: 'MiniMax',
+    domains: ['chat.minimax.io', 'minimax.io', 'chat.minimaxi.com', 'hailuoai.com'],
+    fallback: 'MM',
   },
 ];
 
