@@ -8,13 +8,22 @@ import {
   TextInput,
   FlatList,
   Pressable,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  EmptyState,
+  MindScreen,
+} from '@/components/ui/MobileScaffold';
 import { mindosClient } from '@/lib/api-client';
+import {
+  canRunSearch,
+  getNormalizedSearchQuery,
+  getSearchEmptyState,
+  getSearchErrorMessage,
+} from '@/lib/search-state';
+import { colors, hairlineWidth, hitSlop, radius, spacing, typography } from '@/lib/theme';
 import type { SearchResult } from '@/lib/types';
 
 const DEBOUNCE_MS = 400;
@@ -25,17 +34,27 @@ export default function SearchScreen() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [error, setError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setSearched(false); return; }
+    const normalized = getNormalizedSearchQuery(q);
+    if (!canRunSearch(normalized)) {
+      setResults([]);
+      setError('');
+      setSearched(Boolean(normalized));
+      return;
+    }
+
     setLoading(true);
     setSearched(true);
+    setError('');
     try {
-      const data = await mindosClient.search(q.trim());
+      const data = await mindosClient.search(normalized);
       setResults(data);
-    } catch {
+    } catch (e) {
       setResults([]);
+      setError(getSearchErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -45,10 +64,11 @@ export default function SearchScreen() {
   const handleChangeText = useCallback((text: string) => {
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.trim().length >= 2) {
+    if (canRunSearch(text)) {
       debounceRef.current = setTimeout(() => doSearch(text), DEBOUNCE_MS);
-    } else if (!text.trim()) {
+    } else {
       setResults([]);
+      setError('');
       setSearched(false);
     }
   }, [doSearch]);
@@ -66,12 +86,13 @@ export default function SearchScreen() {
 
   /** Highlight query match in snippet */
   function renderSnippet(snippet: string) {
-    if (!query.trim()) return <Text style={styles.resultSnippet}>{snippet}</Text>;
-    const idx = snippet.toLowerCase().indexOf(query.trim().toLowerCase());
+    const normalized = getNormalizedSearchQuery(query);
+    if (!normalized) return <Text style={styles.resultSnippet}>{snippet}</Text>;
+    const idx = snippet.toLowerCase().indexOf(normalized.toLowerCase());
     if (idx === -1) return <Text style={styles.resultSnippet} numberOfLines={2}>{snippet}</Text>;
     const before = snippet.slice(0, idx);
-    const match = snippet.slice(idx, idx + query.trim().length);
-    const after = snippet.slice(idx + query.trim().length);
+    const match = snippet.slice(idx, idx + normalized.length);
+    const after = snippet.slice(idx + normalized.length);
     return (
       <Text style={styles.resultSnippet} numberOfLines={2}>
         {before}<Text style={styles.highlight}>{match}</Text>{after}
@@ -79,83 +100,151 @@ export default function SearchScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['left', 'right']}>
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={18} color="#78716c" />
-        <TextInput
-          style={styles.input}
-          value={query}
-          onChangeText={handleChangeText}
-          placeholder="Search your knowledge base..."
-          placeholderTextColor="#78716c"
-          returnKeyType="search"
-          onSubmitEditing={handleSubmit}
-          autoCorrect={false}
-        />
-        {query.length > 0 && (
-          <Pressable onPress={() => { setQuery(''); setResults([]); setSearched(false); }} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color="#78716c" />
-          </Pressable>
-        )}
-      </View>
+  const emptyState = getSearchEmptyState({
+    query,
+    searched,
+    loading,
+    resultCount: results.length,
+    error,
+  });
 
-      {loading ? (
-        <ActivityIndicator color="#c8873a" style={{ marginTop: 40 }} />
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => item.path}
-          keyboardDismissMode="on-drag"
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.resultRow}
-              onPress={() => router.push(`/view/${item.path}` as any)}
-            >
+  return (
+    <MindScreen>
+      <FlatList
+        data={results}
+        keyExtractor={(item) => item.path}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={18} color={colors.textSubtle} />
+              <TextInput
+                style={styles.input}
+                value={query}
+                onChangeText={handleChangeText}
+                placeholder="Search notes, files, or phrases"
+                placeholderTextColor={colors.textSubtle}
+                returnKeyType="search"
+                onSubmitEditing={handleSubmit}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {loading ? (
+                <Ionicons name="sync-outline" size={18} color={colors.amber} />
+              ) : query.length > 0 ? (
+                <Pressable
+                  onPress={() => {
+                    setQuery('');
+                    setResults([]);
+                    setError('');
+                    setSearched(false);
+                  }}
+                  hitSlop={hitSlop}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.textSubtle} />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
+            onPress={() => router.push(`/view/${item.path}` as any)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${item.path}`}
+          >
+            <View style={styles.resultIcon}>
+              <Ionicons name="document-text-outline" size={18} color={colors.amber} />
+            </View>
+            <View style={styles.resultCopy}>
               <Text style={styles.resultPath} numberOfLines={1}>{item.path}</Text>
               {renderSnippet(item.snippet)}
-            </Pressable>
-          )}
-          ListEmptyComponent={
-            searched ? (
-              <View style={styles.empty}>
-                <Ionicons name="search-outline" size={48} color="#44403c" />
-                <Text style={styles.emptyText}>No results found for "{query}"</Text>
-              </View>
-            ) : (
-              <View style={styles.empty}>
-                <Ionicons name="search-outline" size={48} color="#44403c" />
-                <Text style={styles.emptyText}>Search across all your notes</Text>
-              </View>
-            )
-          }
-        />
-      )}
-    </SafeAreaView>
+            </View>
+          </Pressable>
+        )}
+        ListEmptyComponent={
+          emptyState ? (
+            <EmptyState
+              icon={emptyState.icon as any}
+              title={emptyState.title}
+              message={emptyState.message}
+              actionLabel={emptyState.actionLabel}
+              onAction={emptyState.actionLabel ? () => doSearch(query) : undefined}
+              loading={loading}
+            />
+          ) : null
+        }
+      />
+    </MindScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1917' },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#292524',
-    borderRadius: 10,
-    margin: 16,
-    paddingHorizontal: 12,
-    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    minHeight: 48,
+    gap: spacing.sm,
   },
-  input: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#fafaf9' },
+  input: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    fontSize: typography.bodyLarge,
+    color: colors.text,
+  },
   resultRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#292524',
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
-  resultPath: { fontSize: 13, color: '#c8873a', marginBottom: 4 },
-  resultSnippet: { fontSize: 14, color: '#d6d3d1', lineHeight: 20 },
-  highlight: { color: '#c8873a', fontWeight: '600' },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { fontSize: 15, color: '#78716c', textAlign: 'center', paddingHorizontal: 32 },
+  resultRowPressed: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  resultIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.amberSoft,
+    marginTop: 2,
+  },
+  resultCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  resultPath: {
+    fontSize: typography.caption,
+    color: colors.amber,
+    marginBottom: spacing.xs,
+    fontWeight: '700',
+  },
+  resultSnippet: {
+    fontSize: typography.body,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  highlight: {
+    color: colors.amber,
+    fontWeight: '700',
+  },
 });
