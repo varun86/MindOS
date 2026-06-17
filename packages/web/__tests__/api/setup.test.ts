@@ -46,9 +46,19 @@ vi.mock('@/lib/template', () => ({
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, 'README.md'), '# Hello', 'utf-8');
   }),
+  applySpaceKits: vi.fn((kits: string[], _root: string, locale: 'en' | 'zh') => ({
+    installed: kits.map((id) => ({
+      id,
+      version: 1,
+      locale,
+      copied: [`${id}/README.md`],
+      skipped: [],
+    })),
+  })),
 }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-setup-test-'));
   writtenConfig = null;
   // Reset mockSettings for each test
@@ -323,6 +333,55 @@ describe('POST /api/setup — config writing', () => {
     expect(res.status).toBe(200);
     expect(writtenConfig).not.toBeNull();
     expect((writtenConfig as Record<string, unknown>).guideState).toEqual(existingGuideState);
+  });
+
+  it('applies selected Space Kits with explicit locale', async () => {
+    const templateModule = await import('@/lib/template');
+    const { POST } = await importSetupRoute();
+    const mindRoot = path.join(tempDir, 'space-kits');
+    const req = new NextRequest('http://localhost/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        mindRoot,
+        template: 'empty',
+        spaceKits: ['product', 'social', 'product'],
+        spaceKitLocale: 'zh',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(templateModule.applySpaceKits).toHaveBeenCalledWith(['product', 'social'], mindRoot, 'zh');
+    expect(body.installedSpaceKits).toEqual([
+      { id: 'product', version: 1, locale: 'zh', copied: ['product/README.md'], skipped: [] },
+      { id: 'social', version: 1, locale: 'zh', copied: ['social/README.md'], skipped: [] },
+    ]);
+  });
+
+  it('rejects invalid Space Kits before copying templates or kits', async () => {
+    const templateModule = await import('@/lib/template');
+    const { POST } = await importSetupRoute();
+    const req = new NextRequest('http://localhost/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        mindRoot: path.join(tempDir, 'invalid-space-kit'),
+        template: 'en',
+        spaceKits: ['product', '../bad'],
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('Invalid space kit: ../bad');
+    expect(templateModule.applyTemplate).not.toHaveBeenCalled();
+    expect(templateModule.applySpaceKits).not.toHaveBeenCalled();
+    expect(writtenConfig).toBeNull();
   });
 });
 

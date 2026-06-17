@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "research",
+  "version": 1,
+  "files": {
+    "en": [
+      "Research/README.md",
+      "Research/INSTRUCTION.md"
+    ],
+    "zh": [
+      "科研/README.md",
+      "科研/INSTRUCTION.md"
+    ]
+  }
+}

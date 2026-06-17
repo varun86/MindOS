@@ -78,7 +78,7 @@ describe('ProviderSelect settings mode', () => {
     });
 
     expect(host.textContent).toContain('OpenAI');
-    expect(host.textContent).toContain('Skip for now');
+    expect(host.textContent).toContain('Skip');
 
     const anthropicButton = Array.from(host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Anthropic'));

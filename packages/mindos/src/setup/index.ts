@@ -32,6 +32,19 @@ export type MindosSetupGuideState = {
   walkthroughDismissed?: boolean;
 };
 
+export const SPACE_KIT_IDS = ['life', 'social', 'learning', 'content', 'product', 'research'] as const;
+
+export type MindosSetupSpaceKitId = typeof SPACE_KIT_IDS[number];
+export type MindosSetupSpaceKitLocale = 'en' | 'zh';
+
+export type MindosSetupSpaceKitInstallResult = {
+  id: MindosSetupSpaceKitId;
+  version?: number;
+  locale: MindosSetupSpaceKitLocale;
+  copied: string[];
+  skipped: string[];
+};
+
 export type MindosSetupSettings = {
   ai: MindosSetupAiConfig;
   mindRoot: string;
@@ -60,9 +73,15 @@ export type MindosSetupServices = {
   homeDir?: () => string;
   platform?: () => NodeJS.Platform | string;
   pathSep?: () => string;
+  env?: () => Record<string, string | undefined>;
   existsSync?: (target: string) => boolean;
   mkdirSync?: (target: string) => void;
   applyTemplate?: (template: string, mindRoot: string) => { ok: true } | { error: string; status?: number };
+  applySpaceKits?: (
+    spaceKits: MindosSetupSpaceKitId[],
+    mindRoot: string,
+    locale: MindosSetupSpaceKitLocale,
+  ) => { ok: true; installed: MindosSetupSpaceKitInstallResult[] } | { error: string; status?: number };
   expandPathHome?: (input: string) => string;
   validateMindRootPath?: (absPath: string) => PathValidationResult;
   isProviderId?: (value: string) => boolean;
@@ -81,6 +100,14 @@ export type MindosSetupStatePayload = {
   activeProvider: string;
   providerConfigs: Array<Omit<MindosSetupProvider, 'apiKey'> & { apiKeyMask: string }>;
   guideState: MindosSetupGuideState | null;
+};
+
+export type MindosSetupApplyPayload = {
+  ok: true;
+  portChanged: boolean;
+  needsRestart: boolean;
+  newPort: number;
+  installedSpaceKits?: MindosSetupSpaceKitInstallResult[];
 };
 
 const DEFAULT_PROVIDER_PRESETS: Record<string, MindosSetupProviderPreset> = {
@@ -116,8 +143,7 @@ export function buildMindosSetupState(
 ): MindosServerResponse<MindosSetupStatePayload> {
   const settings = normalizeSetupSettings(services.readSettings());
   const home = getHomeDir(services);
-  const sep = services.pathSep?.() ?? path.sep;
-  const defaultMindRoot = settings.mindRoot || [home, 'MindOS', 'mind'].join(sep);
+  const defaultMindRoot = settings.mindRoot || toHomeRelativePath(resolveDefaultMindRoot(services), home, services);
   const providerConfigs = settings.ai.providers.map((provider) => ({
     id: provider.id,
     name: provider.name,
@@ -144,7 +170,7 @@ export function buildMindosSetupState(
 export function applyMindosSetupConfig(
   body: unknown,
   services: MindosSetupServices,
-): MindosServerResponse<{ ok: true; portChanged: boolean; needsRestart: boolean; newPort: number } | { error: string; errorZh?: string; unsafePath?: true }> {
+): MindosServerResponse<MindosSetupApplyPayload | { error: string; errorZh?: string; unsafePath?: true }> {
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
   const mindRoot = typeof payload.mindRoot === 'string' ? payload.mindRoot : '';
   if (!mindRoot) {
@@ -171,6 +197,11 @@ export function applyMindosSetupConfig(
   }
 
   const template = typeof payload.template === 'string' ? payload.template : undefined;
+  const selectedSpaceKits = normalizeSpaceKitSelection(payload.spaceKits);
+  if ('error' in selectedSpaceKits) {
+    return json({ error: selectedSpaceKits.error }, { status: 400 });
+  }
+  const spaceKitLocale = normalizeSpaceKitLocale(payload.spaceKitLocale, template);
   const exists = (services.existsSync ?? existsSync)(resolvedRoot);
   if (template) {
     const result = applyTemplate(template, resolvedRoot, services);
@@ -179,6 +210,15 @@ export function applyMindosSetupConfig(
     }
   } else if (!exists) {
     (services.mkdirSync ?? ((target: string) => mkdirSync(target, { recursive: true })))(resolvedRoot);
+  }
+
+  let installedSpaceKits: MindosSetupSpaceKitInstallResult[] | undefined;
+  if (selectedSpaceKits.ids.length > 0) {
+    const result = applySpaceKits(selectedSpaceKits.ids, resolvedRoot, spaceKitLocale, services);
+    if ('error' in result) {
+      return json({ error: result.error }, { status: result.status ?? 500 });
+    }
+    installedSpaceKits = result.installed;
   }
 
   const current = normalizeSetupSettings(services.readSettings());
@@ -219,6 +259,7 @@ export function applyMindosSetupConfig(
     portChanged: webPort !== currentPort,
     needsRestart,
     newPort: webPort,
+    installedSpaceKits,
   });
 }
 
@@ -285,6 +326,72 @@ function getHomeDir(services: MindosSetupServices): string {
   return services.homeDir?.() ?? homedir();
 }
 
+export function resolveDefaultMindRoot(services: MindosSetupServices): string {
+  const home = getHomeDir(services);
+  const sep = services.pathSep?.() ?? path.sep;
+  const currentPlatform = services.platform?.() ?? platform();
+  const env = services.env?.() ?? process.env;
+  const docsDir = resolveDocumentsDir(home, sep, currentPlatform, env);
+  if (docsDir && shouldUseDocumentsDir(docsDir, currentPlatform, services)) {
+    return [docsDir, 'MindOS', 'mind'].join(sep);
+  }
+  return [home, 'MindOS', 'mind'].join(sep);
+}
+
+function toHomeRelativePath(target: string, home: string, services: MindosSetupServices): string {
+  if (!target || !home) return target;
+  const sep = services.pathSep?.() ?? path.sep;
+  const normalizedHome = stripTrailingSeparators(home, sep);
+  const normalizedTarget = stripTrailingSeparators(target, sep);
+  const lowerHome = normalizedHome.toLowerCase();
+  const lowerTarget = normalizedTarget.toLowerCase();
+  if (lowerTarget === lowerHome) return '~';
+  const homeWithSep = `${normalizedHome}${sep}`;
+  if (lowerTarget.startsWith(homeWithSep.toLowerCase())) {
+    return `~${sep}${normalizedTarget.slice(homeWithSep.length)}`;
+  }
+  return target;
+}
+
+function stripTrailingSeparators(value: string, sep: string): string {
+  let current = value;
+  while (current.length > 1 && (current.endsWith('/') || current.endsWith('\\') || current.endsWith(sep))) {
+    current = current.slice(0, -1);
+  }
+  return current;
+}
+
+function resolveDocumentsDir(
+  home: string,
+  sep: string,
+  currentPlatform: NodeJS.Platform | string,
+  env: Record<string, string | undefined>,
+): string {
+  if (currentPlatform === 'win32') return [home, 'Documents'].join(sep);
+  if (currentPlatform === 'linux' && env.XDG_DOCUMENTS_DIR?.trim()) {
+    return expandEnvHome(env.XDG_DOCUMENTS_DIR.trim(), home);
+  }
+  return [home, 'Documents'].join(sep);
+}
+
+function expandEnvHome(value: string, home: string): string {
+  if (value === '$HOME') return home;
+  if (value.startsWith('$HOME/')) return path.join(home, value.slice('$HOME/'.length));
+  if (value === '~') return home;
+  if (value.startsWith('~/') || value.startsWith('~\\')) return path.join(home, value.slice(2));
+  return value;
+}
+
+function shouldUseDocumentsDir(
+  docsDir: string,
+  currentPlatform: NodeJS.Platform | string,
+  services: MindosSetupServices,
+): boolean {
+  if (currentPlatform === 'darwin' || currentPlatform === 'win32') return true;
+  const exists = services.existsSync ?? existsSync;
+  return exists(docsDir);
+}
+
 function applyTemplate(template: string, mindRoot: string, services: MindosSetupServices): { ok: true } | { error: string; status?: number } {
   if (services.applyTemplate) return services.applyTemplate(template, mindRoot);
   const response = handleInitPost({ template }, { mindRoot });
@@ -292,6 +399,18 @@ function applyTemplate(template: string, mindRoot: string, services: MindosSetup
     return { error: (response.body as { error?: string } | undefined)?.error ?? `Failed to apply template: ${template}`, status: response.status };
   }
   return { ok: true };
+}
+
+function applySpaceKits(
+  spaceKits: MindosSetupSpaceKitId[],
+  mindRoot: string,
+  locale: MindosSetupSpaceKitLocale,
+  services: MindosSetupServices,
+): { ok: true; installed: MindosSetupSpaceKitInstallResult[] } | { error: string; status?: number } {
+  if (!services.applySpaceKits) {
+    return { error: 'Space kit installer is not available in this runtime', status: 501 };
+  }
+  return services.applySpaceKits(spaceKits, mindRoot, locale);
 }
 
 function createGuideState(template: string | undefined): MindosSetupGuideState {
@@ -315,6 +434,26 @@ function resolveConnectionMode(current: MindosSetupSettings['connectionMode'], i
     }
   }
   return fallback;
+}
+
+function normalizeSpaceKitSelection(input: unknown): { ids: MindosSetupSpaceKitId[] } | { error: string } {
+  if (input === undefined) return { ids: [] };
+  if (!Array.isArray(input)) return { error: 'spaceKits must be an array' };
+  const seen = new Set<MindosSetupSpaceKitId>();
+  for (const item of input) {
+    if (!isSpaceKitId(item)) return { error: `Invalid space kit: ${String(item)}` };
+    seen.add(item);
+  }
+  return { ids: [...seen] };
+}
+
+function normalizeSpaceKitLocale(input: unknown, template: string | undefined): MindosSetupSpaceKitLocale {
+  if (input === 'zh' || input === 'en') return input;
+  return template === 'zh' ? 'zh' : 'en';
+}
+
+function isSpaceKitId(value: unknown): value is MindosSetupSpaceKitId {
+  return typeof value === 'string' && (SPACE_KIT_IDS as readonly string[]).includes(value);
 }
 
 function mergeSetupAiConfig(

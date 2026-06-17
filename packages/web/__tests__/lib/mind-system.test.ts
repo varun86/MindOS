@@ -9,7 +9,7 @@ import {
   listMindSystemSlots,
   mindSystemPathExists,
 } from '@/lib/mind-system';
-import { applyTemplate } from '@/lib/template';
+import { applySpaceKits, applyTemplate } from '@/lib/template';
 
 describe('mind-system registry', () => {
   it('creates the hidden mind-system registry without creating visible content folders', () => {
@@ -145,6 +145,47 @@ describe('mind-system registry', () => {
       expect(fs.existsSync(path.join(mindRoot, 'README.md'))).toBe(true);
       expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO', 'README.md'))).toBe(true);
       expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'))).toBe(true);
+    } finally {
+      cleanupMindRoot(mindRoot);
+    }
+  });
+
+  it('applies Space Kits with skip-existing and relative receipt paths', () => {
+    const mindRoot = mkTempMindRoot();
+    try {
+      const existingReadme = path.join(mindRoot, '产品', 'README.md');
+      fs.mkdirSync(path.dirname(existingReadme), { recursive: true });
+      fs.writeFileSync(existingReadme, '# Custom product space', 'utf-8');
+
+      const result = applySpaceKits(['product', 'social'], mindRoot, 'zh');
+
+      expect(result.installed).toMatchObject([
+        { id: 'product', locale: 'zh', copied: ['产品/INSTRUCTION.md'], skipped: ['产品/README.md'] },
+        { id: 'social', locale: 'zh', copied: ['社交/README.md', '社交/INSTRUCTION.md'], skipped: [] },
+      ]);
+      expect(fs.readFileSync(existingReadme, 'utf-8')).toBe('# Custom product space');
+      expect(fs.existsSync(path.join(mindRoot, '社交', 'README.md'))).toBe(true);
+
+      const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
+      const receiptText = fs.readFileSync(receiptPath, 'utf-8');
+      expect(receiptText).not.toContain(mindRoot);
+      const receipt = JSON.parse(receiptText) as { installed: Array<{ id: string; copied: string[]; skipped: string[] }> };
+      expect(receipt.installed.map(item => item.id)).toEqual(['product', 'social']);
+      expect(receipt.installed[0].skipped).toEqual(['产品/README.md']);
+    } finally {
+      cleanupMindRoot(mindRoot);
+    }
+  });
+
+  it('replaces the receipt entry when the same Space Kit locale is installed again', () => {
+    const mindRoot = mkTempMindRoot();
+    try {
+      applySpaceKits(['product'], mindRoot, 'en');
+      applySpaceKits(['product'], mindRoot, 'en');
+
+      const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
+      const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf-8')) as { installed: Array<{ id: string; locale: string }> };
+      expect(receipt.installed.filter(item => item.id === 'product' && item.locale === 'en')).toHaveLength(1);
     } finally {
       cleanupMindRoot(mindRoot);
     }

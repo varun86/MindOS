@@ -30,11 +30,18 @@ export function handleSetupPatch(
 }
 
 export type {
+  MindosSetupApplyPayload,
   MindosSetupAiConfig,
   MindosSetupGuideState,
   MindosSetupProvider,
   MindosSetupProviderPreset,
+  MindosSetupSpaceKitId,
+  MindosSetupSpaceKitInstallResult,
+  MindosSetupSpaceKitLocale,
   MindosSetupServices,
   MindosSetupSettings,
   MindosSetupStatePayload,
+} from '../../setup/index.js';
+export {
+  SPACE_KIT_IDS,
 } from '../../setup/index.js';

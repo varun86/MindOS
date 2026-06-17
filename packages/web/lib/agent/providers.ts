@@ -135,7 +135,7 @@ export const PROVIDER_PRESETS: Record<ProviderId, ProviderPreset> = {
     supportsThinking: true,
     supportsListModels: true,
     signupUrl: 'https://platform.deepseek.com/api_keys',
-    category: 'more',
+    category: 'primary',
   },
   zai: {
     id: 'zai',
@@ -166,14 +166,14 @@ export const PROVIDER_PRESETS: Record<ProviderId, ProviderPreset> = {
   },
   'kimi-coding': {
     id: 'kimi-coding',
-    name: 'Kimi Coding',
-    nameZh: 'Kimi Coding (月之暗面)',
-    shortLabel: 'Kimi Coding',
+    name: 'Kimi',
+    nameZh: 'Kimi',
+    shortLabel: 'Kimi',
     defaultModel: 'kimi-k2-thinking',
     supportsBaseUrl: false,
     supportsThinking: true,
     supportsListModels: false,
-    category: 'more',
+    category: 'primary',
   },
   cerebras: {
     id: 'cerebras',

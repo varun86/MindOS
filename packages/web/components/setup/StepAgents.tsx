@@ -33,13 +33,14 @@ export interface StepAgentsProps {
   agentStatuses: Record<string, AgentInstallStatus>;
   s: SetupMessages;
   settingsMcp: McpMessages;
+  compact?: boolean;
 }
 
 export default function StepAgents({
   agents, agentsLoading, selectedAgents, setSelectedAgents,
   connectionMode, setConnectionMode,
   agentTransport, setAgentTransport, agentScope, setAgentScope,
-  agentStatuses, s, settingsMcp,
+  agentStatuses, s, settingsMcp, compact = false,
 }: StepAgentsProps) {
   const toggleAgent = (key: string) => {
     const agent = agents.find(a => a.key === key);
@@ -119,7 +120,7 @@ export default function StepAgents({
 
   const renderAgentRow = (agent: AgentEntry, i: number) => (
     <label key={agent.key}
-      className={`flex items-center gap-3 px-4 py-3 transition-colors ${agent.present ? 'cursor-pointer hover:bg-muted/50' : 'cursor-not-allowed opacity-60'}`}
+      className={`flex items-center gap-3 ${compact ? 'px-3 py-2.5' : 'px-4 py-3'} transition-colors ${agent.present ? 'cursor-pointer hover:bg-muted/50' : 'cursor-not-allowed opacity-60'}`}
       style={{
         background: i % 2 === 0 ? 'var(--card)' : 'transparent',
         borderTop: i > 0 ? '1px solid var(--border)' : undefined,
@@ -143,15 +144,22 @@ export default function StepAgents({
   );
 
   return (
-    <div className="space-y-5">
+    <div className={compact ? 'space-y-3' : 'space-y-5'}>
       {/* Connection Mode Toggle */}
       <div className="space-y-2">
-        <p className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
-          {s.connectionModeTitle}
-        </p>
-        <div className="grid grid-cols-2 gap-3">
+        {!compact && (
+          <p className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
+            {s.connectionModeTitle}
+          </p>
+        )}
+        {compact && (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {s.agentRecommendationHint}
+          </p>
+        )}
+        <div className={`grid grid-cols-2 ${compact ? 'gap-2' : 'gap-3'}`}>
           <label
-            className="flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all"
+            className={`flex cursor-pointer border transition-colors ${compact ? 'items-center gap-2 rounded-lg px-3 py-2' : 'items-start gap-3 rounded-xl px-4 py-3'}`}
             style={{
               borderColor: connectionMode.cli ? 'var(--amber)' : 'var(--border)',
               background: connectionMode.cli ? 'color-mix(in srgb, var(--amber) 6%, transparent)' : 'transparent',
@@ -160,19 +168,19 @@ export default function StepAgents({
               type="checkbox"
               checked={connectionMode.cli}
               onChange={() => setConnectionMode(prev => ({ ...prev, cli: !prev.cli }))}
-              className="form-check mt-0.5"
+              className={compact ? 'form-check' : 'form-check mt-0.5'}
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                <Terminal size={13} className="shrink-0" /> CLI
+                <Terminal size={13} className="shrink-0" style={{ color: connectionMode.cli ? 'var(--amber)' : 'var(--muted-foreground)' }} /> CLI
               </div>
-              <p className="text-2xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+              <p className={`${compact ? 'hidden sm:block' : 'block'} text-2xs mt-0.5`} style={{ color: 'var(--muted-foreground)' }}>
                 {s.connectionModeCliHint}
               </p>
             </div>
           </label>
           <label
-            className="flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all"
+            className={`flex cursor-pointer border transition-colors ${compact ? 'items-center gap-2 rounded-lg px-3 py-2' : 'items-start gap-3 rounded-xl px-4 py-3'}`}
             style={{
               borderColor: connectionMode.mcp ? 'var(--amber)' : 'var(--border)',
               background: connectionMode.mcp ? 'color-mix(in srgb, var(--amber) 6%, transparent)' : 'transparent',
@@ -181,13 +189,13 @@ export default function StepAgents({
               type="checkbox"
               checked={connectionMode.mcp}
               onChange={() => setConnectionMode(prev => ({ ...prev, mcp: !prev.mcp }))}
-              className="form-check mt-0.5"
+              className={compact ? 'form-check' : 'form-check mt-0.5'}
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-                <Plug size={13} className="shrink-0" /> MCP
+                <Plug size={13} className="shrink-0" style={{ color: connectionMode.mcp ? 'var(--amber)' : 'var(--muted-foreground)' }} /> MCP
               </div>
-              <p className="text-2xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+              <p className={`${compact ? 'hidden sm:block' : 'block'} text-2xs mt-0.5`} style={{ color: 'var(--muted-foreground)' }}>
                 {s.connectionModeMcpHint}
               </p>
             </div>
@@ -203,23 +211,25 @@ export default function StepAgents({
           <span>{s.agentToolsHintNone}</span>
         </div>
       ) : (
-        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          {!connectionMode.mcp && connectionMode.cli ? s.agentToolsHintCliOnly : s.agentToolsHint}
-        </p>
+        (!compact || connectionMode.mcp) && (
+          <p className={compact ? 'text-xs leading-relaxed' : 'text-sm'} style={{ color: 'var(--muted-foreground)' }}>
+            {!connectionMode.mcp && connectionMode.cli ? s.agentToolsHintCliOnly : s.agentToolsHint}
+          </p>
+        )
       )}
 
       {!connectionMode.mcp ? (
-        connectionMode.cli ? (
-          <div className="rounded-xl border px-4 py-3 flex items-start gap-3" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+        connectionMode.cli && !compact ? (
+          <div className={`${compact ? 'rounded-lg px-3 py-2' : 'rounded-xl px-4 py-3'} border flex items-start gap-3`} style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+            <div className={`${compact ? 'h-6 w-6' : 'h-7 w-7'} rounded-lg flex items-center justify-center shrink-0`}
               style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)' }}>
-              <Terminal size={14} />
+              <Terminal size={compact ? 13 : 14} />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+              <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium`} style={{ color: 'var(--foreground)' }}>
                 {s.agentCliModeTitle}
               </p>
-              <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
                 {s.agentCliModeDesc}
               </p>
             </div>

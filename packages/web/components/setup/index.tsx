@@ -1,17 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Sparkles, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { useLocale } from '@/lib/stores/locale-store';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/lib/toast';
-import type { SetupState, SetupProvider, PortStatus, AgentEntry, AgentInstallStatus, ConnectionMode } from './types';
-import { type ProviderId, isProviderId, PROVIDER_PRESETS } from '@/lib/agent/providers';
-import { generateProviderId } from '@/lib/custom-endpoints';
-import { TOTAL_STEPS, STEP_KB, STEP_AI, STEP_AGENTS, STEP_REVIEW } from './constants';
-import StepKB from './StepKB';
+import type { AgentEntry, AgentInstallStatus, ConnectionMode, SetupState, SetupProvider, PortStatus } from './types';
+import type { ProviderId } from '@/lib/agent/providers';
+import { TOTAL_STEPS, STEP_MIND_SPACE, STEP_AI, STEP_REVIEW } from './constants';
+import StepMindSpace from './StepMindSpace';
 import StepAI from './StepAI';
-import StepAgents from './StepAgents';
 import StepReview from './StepReview';
 import { RestartButton } from './StepReview';
 import StepDots from './StepDots';
@@ -45,8 +44,6 @@ function parseInstallResult(
   };
 }
 
-// ─── Phase runners (pure async, no setState — results consumed by caller) ────
-
 /** Phase 1: Save setup config. Returns whether restart is needed. Throws on failure. */
 async function saveConfig(state: SetupState, connectionMode?: { cli: boolean; mcp: boolean }): Promise<boolean> {
   const isSkip = state.activeProvider === 'skip' || state.providers.length === 0;
@@ -57,6 +54,8 @@ async function saveConfig(state: SetupState, connectionMode?: { cli: boolean; mc
   const payload = {
     mindRoot: state.mindRoot,
     template: state.template || undefined,
+    spaceKits: state.spaceKits,
+    spaceKitLocale: state.spaceKitLocale,
     port: state.webPort,
     mcpPort: state.mcpPort,
     authToken: state.authToken,
@@ -113,7 +112,7 @@ async function installSkills(
   agentKeys: string[],
 ): Promise<boolean> {
   if (agentKeys.length === 0) return true;
-  
+
   try {
     const res = await fetch('/api/mcp/install-skill', {
       method: 'POST',
@@ -131,16 +130,28 @@ async function installSkills(
   }
 }
 
+async function requestSetupToken(): Promise<string> {
+  const res = await fetch('/api/setup/generate-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  const data = await res.json();
+  return typeof data.token === 'string' ? data.token : '';
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function SetupWizard() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const s = t.setup;
 
   const [step, setStep] = useState(0);
   const [state, setState] = useState<SetupState>({
-    mindRoot: '~/MindOS/mind',
-    template: 'en',
+    mindRoot: '~/Documents/MindOS/mind',
+    template: '',
+    spaceKits: ['life', 'social', 'learning'],
+    spaceKitLocale: locale === 'zh' ? 'zh' : 'en',
     activeProvider: 'skip',
     providers: [],
     webPort: 3456,
@@ -149,6 +160,7 @@ export default function SetupWizard() {
     webPassword: '',
   });
   const [homeDir, setHomeDir] = useState('~');
+  const [platformName, setPlatformName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
@@ -158,7 +170,6 @@ export default function SetupWizard() {
   const [webPortStatus, setWebPortStatus] = useState<PortStatus>({ checking: false, available: null, isSelf: false, suggestion: null });
   const [mcpPortStatus, setMcpPortStatus] = useState<PortStatus>({ checking: false, available: null, isSelf: false, suggestion: null });
   const [pathUnsafe, setPathUnsafe] = useState(false); // Track if mindRoot is in a dangerous location
-
   const [agents, setAgents] = useState<AgentEntry[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
@@ -175,6 +186,7 @@ export default function SetupWizard() {
       .then(r => r.json())
       .then(data => {
         if (data.homeDir) setHomeDir(data.homeDir);
+        if (data.platform) setPlatformName(data.platform);
 
         setState(prev => {
           // Load providers from server (new unified Provider[] format)
@@ -204,21 +216,22 @@ export default function SetupWizard() {
             providers: loadedProviders,
           };
         });
-        // Generate a new token only if none exists yet
         if (!data.authToken) {
-          fetch('/api/setup/generate-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-            .then(r => r.json())
-            .then(tokenData => { if (tokenData.token) setState(p => ({ ...p, authToken: tokenData.token })); })
+          requestSetupToken()
+            .then((authToken) => {
+              setState(prev => ({
+                ...prev,
+                authToken: authToken || prev.authToken,
+              }));
+            })
             .catch(e => console.warn('[SetupWizard] Token generation failed:', e));
         }
       })
       .catch(e => {
         console.warn('[SetupWizard] Failed to load config, generating token as fallback:', e);
-        // Fallback: generate token on failure
-        fetch('/api/setup/generate-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-          .then(r => r.json())
-          .then(data => { if (data.token) setState(prev => ({ ...prev, authToken: data.token })); })
-          .catch(e2 => console.warn('[SetupWizard] Fallback token generation also failed:', e2));
+        requestSetupToken()
+          .then((authToken) => setState(prev => ({ ...prev, authToken })))
+          .catch(e2 => console.warn('[SetupWizard] Fallback secret generation also failed:', e2));
       });
   }, []);
 
@@ -231,9 +244,9 @@ export default function SetupWizard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Load agents when entering Agents step (exclude builtin — MindOS itself)
+  // Load agents when entering the AI step advanced section can expose MCP setup.
   useEffect(() => {
-    if (step === STEP_AGENTS && !agentsLoaded && !agentsLoading) {
+    if (step === STEP_AI && !agentsLoaded && !agentsLoading) {
       setAgentsLoading(true);
       fetch('/api/mcp/agents')
         .then(r => r.json())
@@ -272,18 +285,6 @@ export default function SetupWizard() {
     setState(prev => ({ ...prev, [key]: val }));
   }, []);
 
-  const generateToken = useCallback(async (seed?: string) => {
-    try {
-      const res = await fetch('/api/setup/generate-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed: seed || undefined }),
-      });
-      const data = await res.json();
-      if (data.token) setState(prev => ({ ...prev, authToken: data.token }));
-    } catch (e) { console.warn('[SetupWizard] generateToken failed:', e); }
-  }, []);
-
   const copyToken = useCallback(() => {
     copyToClipboard(state.authToken).then((ok) => {
       if (ok) toast.copy();
@@ -299,6 +300,7 @@ export default function SetupWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ port }),
+        signal: AbortSignal.timeout(5000),
       });
       const data = await res.json();
       const available = data.available ?? null;
@@ -321,21 +323,17 @@ export default function SetupWizard() {
   const portConflict = state.webPort === state.mcpPort;
 
   const canNext = () => {
-    if (step === STEP_KB) {
-      // KB path required + password required + path must be safe
+    if (step === STEP_MIND_SPACE) {
       if (pathUnsafe) return false;
-      return state.mindRoot.trim().length > 0 && state.webPassword.trim().length > 0;
+      return state.mindRoot.trim().length > 0;
     }
     if (step === STEP_AI) {
-      // Ports validation (only when Advanced is open and ports were modified)
+      // Port validation should not stall the main flow while hidden background checks run.
       if (portConflict) return false;
-      if (webPortStatus.checking || mcpPortStatus.checking) return false;
       // Allow next if ports haven't been checked yet (user didn't open Advanced)
       if (webPortStatus.available === false || mcpPortStatus.available === false) return false;
+      if (!connectionMode.cli && !connectionMode.mcp) return false;
       return true;
-    }
-    if (step === STEP_AGENTS) {
-      return connectionMode.cli || connectionMode.mcp;
     }
     return true;
   };
@@ -348,20 +346,20 @@ export default function SetupWizard() {
       ? Array.from(selectedAgents).filter(key => presentAgentKeys.has(key))
       : [];
 
-    // Ensure auth token exists before saving (race: token generation may still be in-flight)
+    // Ensure auth token exists before saving. Web Password is optional.
     let finalState = state;
-    if (!state.authToken) {
-      try {
-        const res = await fetch('/api/setup/generate-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        const data = await res.json();
-        if (data.token) {
-          finalState = { ...state, authToken: data.token };
-          setState(finalState);
-        }
-      } catch { /* proceed without — server will generate one */ }
+    const secretPatch: Partial<SetupState> = {};
+    try {
+      if (!finalState.authToken) secretPatch.authToken = await requestSetupToken();
+      if (secretPatch.authToken) {
+        finalState = { ...finalState, ...secretPatch };
+        setState(finalState);
+      }
+    } catch {
+      // Server-side setup still validates and writes the config; surface any
+      // final failure from saveConfig instead of blocking here.
     }
 
-    // Phase 1: Save config
     setSetupPhase('saving');
     let restartNeeded = false;
     try {
@@ -374,7 +372,6 @@ export default function SetupWizard() {
       return;
     }
 
-    // Phase 2: Install MCP config to agents (only when MCP mode is enabled)
     if (connectionMode.mcp && agentKeys.length > 0) {
       setSetupPhase('agents');
       const initialStatuses: Record<string, AgentInstallStatus> = {};
@@ -392,11 +389,10 @@ export default function SetupWizard() {
       }
     }
 
-    // Phase 3: Install skills to selected agents ⭐ NEW
     if (agentKeys.length > 0) {
       setSetupPhase('skills');
       setSkillInstallStatus('installing');
-      const skillName = finalState.template === 'zh' ? 'mindos-zh' : 'mindos';
+      const skillName = finalState.spaceKitLocale === 'zh' ? 'mindos-zh' : 'mindos';
       try {
         const skillOk = await installSkills(skillName, agentKeys);
         setSkillInstallStatus(skillOk ? 'ok' : 'error');
@@ -445,50 +441,60 @@ export default function SetupWizard() {
       role="dialog" aria-modal="true" aria-labelledby="setup-title"
       style={{ background: 'var(--background)' }}>
       {/* Sticky header: logo + step dots */}
-      <div className="sticky top-0 z-10 pt-6 pb-3 px-6" style={{ background: 'var(--background)' }}>
-        <div className="max-w-xl mx-auto">
+      <div className="sticky top-0 z-10 border-b border-border/40 px-6 pb-3 pt-6 shadow-[0_1px_0_0_color-mix(in_srgb,var(--background)_70%,transparent)]" style={{ background: 'color-mix(in srgb, var(--background) 94%, transparent)' }}>
+        <div className="max-w-2xl mx-auto">
           <div className="text-center mb-3">
             <div className="inline-flex items-center gap-2">
-              <Sparkles size={18} style={{ color: 'var(--amber)' }} />
+              <Logo id="setup" className="h-5 w-10" />
               <h1 id="setup-title" className="text-2xl font-brand" style={{ color: 'var(--foreground)' }}>
                 MindOS
               </h1>
             </div>
           </div>
           <div className="flex justify-center">
-            <StepDots step={step} setStep={setStep} stepTitles={s.stepTitles} disabled={submitting || completed} numberedSteps={STEP_REVIEW} />
+            <StepDots step={step} setStep={setStep} stepTitles={s.stepTitles} disabled={submitting || completed} numberedSteps={TOTAL_STEPS} />
           </div>
         </div>
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 w-full max-w-xl mx-auto px-6 pb-8">
+      <div className="mx-auto w-full max-w-2xl flex-1 px-6 pb-8 pt-7">
         <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--foreground)' }}>
-          {step === STEP_REVIEW ? `✓ ${s.stepTitles[step]}` : s.stepTitles[step]}
+          {s.stepTitles[step]}
         </h2>
 
-        {step === 0 && <StepKB state={state} update={update} t={t} homeDir={homeDir} />}
-        {step === 1 && (
+        {step === STEP_MIND_SPACE && (
+          <StepMindSpace
+            state={state}
+            update={update}
+            t={t}
+            homeDir={homeDir}
+            platformName={platformName}
+            webPortStatus={webPortStatus}
+            setWebPortStatus={setWebPortStatus}
+            checkPort={checkPort}
+          />
+        )}
+        {step === STEP_AI && (
           <StepAI state={state} update={update} s={s} onCopyToken={copyToken}
             webPortStatus={webPortStatus} mcpPortStatus={mcpPortStatus}
             setWebPortStatus={setWebPortStatus} setMcpPortStatus={setMcpPortStatus}
             checkPort={checkPort} portConflict={portConflict}
-          />
-        )}
-        {step === 2 && (
-          <StepAgents
             agents={agents} agentsLoading={agentsLoading}
             selectedAgents={selectedAgents} setSelectedAgents={setSelectedAgents}
             connectionMode={connectionMode} setConnectionMode={setConnectionMode}
             agentTransport={agentTransport} setAgentTransport={setAgentTransport}
             agentScope={agentScope} setAgentScope={setAgentScope}
-            agentStatuses={agentStatuses} s={s} settingsMcp={t.settings.mcp}
+            agentStatuses={agentStatuses}
+            settingsMcp={t.settings.mcp}
           />
         )}
-        {step === 3 && (
+        {step === STEP_REVIEW && (
           <StepReview
-            state={state} selectedAgents={selectedAgents}
-            agentStatuses={agentStatuses} onRetryAgent={retryAgent}
+            state={state}
+            selectedAgents={selectedAgents}
+            agentStatuses={agentStatuses}
+            onRetryAgent={retryAgent}
             error={error} needsRestart={needsRestart}
             s={s}
             setupPhase={setupPhase}

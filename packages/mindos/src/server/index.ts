@@ -428,14 +428,19 @@ export {
   handleSetupGet,
   handleSetupPatch,
   handleSetupPost,
+  type MindosSetupApplyPayload,
   type MindosSetupAiConfig,
   type MindosSetupGuideState,
   type MindosSetupProvider,
   type MindosSetupProviderPreset,
+  type MindosSetupSpaceKitId,
+  type MindosSetupSpaceKitInstallResult,
+  type MindosSetupSpaceKitLocale,
   type MindosSetupServices,
   type MindosSetupSettings,
   type MindosSetupStatePayload,
   type SetupWizardServices,
+  SPACE_KIT_IDS,
 } from './handlers/setup.js';
 
 export {

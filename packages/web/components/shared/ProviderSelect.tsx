@@ -33,11 +33,16 @@ export default function ProviderSelect({
   // clicking an unconfigured protocol template.
   const { primary: primaryItems, local: localItems, more: moreItems } = groups;
   const secondaryItems = [...localItems, ...moreItems];
+  const secondaryExampleIds = (['groq', 'openrouter', 'ollama'] as ProviderId[])
+    .filter(id => secondaryItems.includes(id));
+  const secondaryExamples = secondaryExampleIds
+    .map(id => locale === 'zh' ? PROVIDER_PRESETS[id].nameZh : PROVIDER_PRESETS[id].name)
+    .join(', ');
 
   /* ── Compact tab button ── */
   const renderCompactTab = (id: ProviderId) => {
     const preset = PROVIDER_PRESETS[id];
-    const displayName = locale === 'zh' ? preset.nameZh : preset.name;
+    const displayName = compact ? preset.shortLabel : (locale === 'zh' ? preset.nameZh : preset.name);
     const isSelected = value === id;
     const isConfigured = configuredProviders?.has(id);
 
@@ -46,9 +51,9 @@ export default function ProviderSelect({
         key={id}
         type="button"
         onClick={() => onChange(id)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors text-sm ${
           isSelected
-            ? 'border-[var(--amber)] bg-[var(--amber-subtle)] shadow-sm'
+            ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
             : 'border-border/50 hover:border-border hover:bg-muted/30'
         }`}
       >
@@ -60,6 +65,38 @@ export default function ProviderSelect({
         )}
         {isSelected && (
           <CheckCircle2 size={14} className="ml-auto shrink-0" style={{ color: 'var(--amber)' }} />
+        )}
+      </button>
+    );
+  };
+
+  const renderCompactSkip = () => {
+    const isSelected = value === 'skip';
+    return (
+      <button
+        key="skip"
+        type="button"
+        onClick={() => onChange('skip')}
+        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+          isSelected
+            ? ''
+            : 'border-border/50 hover:border-border hover:bg-muted/30'
+        }`}
+        style={isSelected ? {
+          borderColor: 'color-mix(in srgb, var(--error) 42%, var(--border))',
+          background: 'color-mix(in srgb, var(--error) 7%, transparent)',
+        } : undefined}
+      >
+        <SkipForward
+          size={14}
+          className="shrink-0"
+          style={{ color: isSelected ? 'var(--error)' : 'var(--muted-foreground)' }}
+        />
+        <span className={`font-medium ${isSelected ? '' : 'text-muted-foreground'}`} style={{ color: isSelected ? 'var(--error)' : undefined }}>
+          {locale === 'zh' ? '跳过' : 'Skip'}
+        </span>
+        {isSelected && (
+          <CheckCircle2 size={14} className="ml-auto shrink-0" style={{ color: 'var(--error)' }} />
         )}
       </button>
     );
@@ -189,6 +226,7 @@ export default function ProviderSelect({
     <div className="space-y-2">
       {/* Primary providers */}
       <div className={compact ? 'flex flex-wrap gap-2' : 'grid grid-cols-1 gap-2'}>
+        {compact && showSkip && renderCompactSkip()}
         {primaryItems.map(id => compact ? renderCompactTab(id) : renderCard(id))}
       </div>
 
@@ -198,43 +236,90 @@ export default function ProviderSelect({
           <button
             type="button"
             onClick={() => setShowMore(!showMore)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+            className={compact
+              ? 'flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-left transition-colors hover:border-[var(--amber)]/40 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              : 'flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1'}
           >
-            <ChevronDown size={12} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
-            {showMore
-              ? (locale === 'zh' ? '收起' : 'Show less')
-              : (locale === 'zh'
-                  ? `更多 (${secondaryItems.length})`
-                  : `More (${secondaryItems.length})`)}
+            {compact ? (
+              <>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">
+                    {showMore
+                      ? (locale === 'zh' ? '收起更多服务商' : 'Hide more providers')
+                      : (locale === 'zh' ? `更多服务商 (${secondaryItems.length})` : `More providers (${secondaryItems.length})`)}
+                  </span>
+                  {!showMore && secondaryExamples && (
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                      {secondaryExamples}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={14} className={`shrink-0 text-muted-foreground transition-transform ${showMore ? 'rotate-180' : ''}`} />
+              </>
+            ) : (
+              <>
+                <ChevronDown size={12} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
+                {showMore
+                  ? (locale === 'zh' ? '收起' : 'Show less')
+                  : (locale === 'zh'
+                      ? `更多 (${secondaryItems.length})`
+                      : `More (${secondaryItems.length})`)}
+              </>
+            )}
           </button>
 
           {showMore && (
-            <div className={compact ? 'flex flex-wrap gap-2' : 'grid grid-cols-1 gap-2'}>
-              {secondaryItems.map(id => compact ? renderCompactTab(id) : renderCard(id))}
-            </div>
+            compact ? (
+              <div className="space-y-2 rounded-lg border border-border/60 bg-background/35 p-2">
+                {moreItems.length > 0 && (
+                  <div>
+                    <p className="px-1 pb-1 text-2xs font-medium text-muted-foreground">
+                      {locale === 'zh' ? '云端服务商' : 'Cloud providers'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {moreItems.map(id => renderCompactTab(id))}
+                    </div>
+                  </div>
+                )}
+                {localItems.length > 0 && (
+                  <div>
+                    <p className="px-1 pb-1 pt-1 text-2xs font-medium text-muted-foreground">
+                      {locale === 'zh' ? '本地模型' : 'Local models'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {localItems.map(id => renderCompactTab(id))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {secondaryItems.map(id => renderCard(id))}
+              </div>
+            )
           )}
         </>
       )}
 
       {/* Skip option — only in onboarding */}
-      {showSkip && (
+      {showSkip && !compact && (
         <button
           type="button"
           onClick={() => onChange('skip')}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm w-full mt-1"
-          style={{
-            background: value === 'skip' ? 'var(--amber-dim)' : 'var(--card)',
-            borderColor: value === 'skip' ? 'var(--amber)' : 'var(--border)',
-          }}
-        >
-          <SkipForward size={14} className="shrink-0" style={{ color: value === 'skip' ? 'var(--amber)' : 'var(--muted-foreground)' }} />
-          <span className={`font-medium ${value === 'skip' ? 'text-foreground' : 'text-muted-foreground'}`}>
-            {locale === 'zh' ? '暂时跳过' : 'Skip for now'}
-          </span>
-          {value === 'skip' && (
-            <CheckCircle2 size={14} className="ml-auto shrink-0" style={{ color: 'var(--amber)' }} />
-          )}
-        </button>
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm w-full mt-1"
+        style={{
+          background: value === 'skip' ? 'color-mix(in srgb, var(--error) 7%, transparent)' : 'var(--card)',
+          borderColor: value === 'skip' ? 'color-mix(in srgb, var(--error) 42%, var(--border))' : 'var(--border)',
+        }}
+      >
+        <SkipForward size={14} className="shrink-0" style={{ color: value === 'skip' ? 'var(--error)' : 'var(--muted-foreground)' }} />
+        <span className={`font-medium ${value === 'skip' ? '' : 'text-muted-foreground'}`} style={{ color: value === 'skip' ? 'var(--error)' : undefined }}>
+          {locale === 'zh' ? '暂时跳过' : 'Skip for now'}
+        </span>
+        {value === 'skip' && (
+          <CheckCircle2 size={14} className="ml-auto shrink-0" style={{ color: 'var(--error)' }} />
+        )}
+      </button>
       )}
 
     </div>

@@ -7,6 +7,8 @@ export type McpMessages = Messages['settings']['mcp'];
 
 // ─── Template ────────────────────────────────────────────────────────────────
 export type Template = 'en' | 'zh' | 'empty' | '';
+export type SpaceKitId = 'life' | 'social' | 'learning' | 'content' | 'product' | 'research';
+export type SpaceKitLocale = 'en' | 'zh';
 
 // ─── Setup state ─────────────────────────────────────────────────────────────
 
@@ -16,6 +18,8 @@ export type SetupProvider = Provider & { apiKeyMask?: string };
 export interface SetupState {
   mindRoot: string;
   template: Template;
+  spaceKits: SpaceKitId[];
+  spaceKitLocale: SpaceKitLocale;
   activeProvider: string;       // Provider.id ("p_...") or 'skip'
   providers: SetupProvider[];   // Unified Provider[] format (same as config.json)
   webPort: number;

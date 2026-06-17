@@ -26,7 +26,7 @@ describe('MindOS setup domain operations', () => {
     expect(buildMindosSetupState(services)).toMatchObject({
       status: 200,
       body: {
-        mindRoot: '/home/tester/MindOS/mind',
+        mindRoot: '~/MindOS/mind',
         homeDir: '/home/tester',
         platform: 'linux',
         port: 3456,
@@ -35,6 +35,46 @@ describe('MindOS setup domain operations', () => {
         providerConfigs: [{ id: 'p_openai', apiKeyMask: 'sk-tes***' }],
       },
     });
+  });
+
+  it('resolves platform-aware default Mind roots under Documents when available', () => {
+    const baseSettings: MindosSetupSettings = {
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '',
+    };
+
+    const mac = {
+      ...makeServices(baseSettings),
+      homeDir: () => '/Users/tester',
+      platform: () => 'darwin',
+      pathSep: () => '/',
+      existsSync: () => false,
+    };
+    expect(buildMindosSetupState(mac).body.mindRoot).toBe('~/Documents/MindOS/mind');
+
+    const windows = {
+      ...makeServices(baseSettings),
+      homeDir: () => 'C:\\Users\\Tester',
+      platform: () => 'win32',
+      pathSep: () => '\\',
+      existsSync: () => false,
+    };
+    expect(buildMindosSetupState(windows).body.mindRoot).toBe('~\\Documents\\MindOS\\mind');
+
+    const linuxDesktop = {
+      ...makeServices(baseSettings),
+      platform: () => 'linux',
+      env: () => ({ XDG_DOCUMENTS_DIR: '$HOME/Docs' }),
+      existsSync: (target: string) => target === '/home/tester/Docs',
+    };
+    expect(buildMindosSetupState(linuxDesktop).body.mindRoot).toBe('~/Docs/MindOS/mind');
+
+    const linuxHeadless = {
+      ...makeServices(baseSettings),
+      platform: () => 'linux',
+      existsSync: () => false,
+    };
+    expect(buildMindosSetupState(linuxHeadless).body.mindRoot).toBe('~/MindOS/mind');
   });
 
   it('applies setup config with validation, template handling, provider merge, and restart detection', () => {
@@ -103,6 +143,53 @@ describe('MindOS setup domain operations', () => {
         providers: [{ id: 'p_openai', apiKey: 'sk-existing', model: 'gpt-5.5' }],
       },
     });
+  });
+
+  it('validates and applies selected Space Kits after the base template', () => {
+    const { services, templates, spaceKits } = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '',
+      setupPending: true,
+    });
+
+    const response = applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      template: 'zh',
+      spaceKits: ['product', 'social', 'product'],
+      spaceKitLocale: 'zh',
+    }, services);
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        installedSpaceKits: [
+          { id: 'product', locale: 'zh', copied: ['产品/README.md'], skipped: [] },
+          { id: 'social', locale: 'zh', copied: ['社交/README.md'], skipped: [] },
+        ],
+      },
+    });
+    expect(templates).toEqual([{ template: 'zh', root: '/home/tester/mind' }]);
+    expect(spaceKits).toEqual([{ ids: ['product', 'social'], root: '/home/tester/mind', locale: 'zh' }]);
+  });
+
+  it('rejects invalid Space Kits before copying templates or kits', () => {
+    const { services, templates, spaceKits } = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '',
+      setupPending: true,
+    });
+
+    expect(applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      template: 'en',
+      spaceKits: ['product', '../bad'],
+    }, services)).toMatchObject({
+      status: 400,
+      body: { error: 'Invalid space kit: ../bad' },
+    });
+    expect(templates).toEqual([]);
+    expect(spaceKits).toEqual([]);
   });
 
   it('keeps Web sessions stable when setup writes the Web UI password', () => {
@@ -223,6 +310,7 @@ function makeMutableServices(initial: MindosSetupSettings) {
   const state = { settings: initial };
   const createdDirs: string[] = [];
   const templates: Array<{ template: string; root: string }> = [];
+  const spaceKits: Array<{ ids: string[]; root: string; locale: string }> = [];
   const services: MindosSetupServices = {
     ...makeServices(state.settings),
     readSettings: () => state.settings,
@@ -234,6 +322,18 @@ function makeMutableServices(initial: MindosSetupSettings) {
       createdDirs.push(root);
       return { ok: true };
     },
+    applySpaceKits: (ids, root, locale) => {
+      spaceKits.push({ ids, root, locale });
+      return {
+        ok: true,
+        installed: ids.map(id => ({
+          id,
+          locale,
+          copied: [`${id === 'product' ? '产品' : id === 'social' ? '社交' : id}/README.md`],
+          skipped: [],
+        })),
+      };
+    },
   };
-  return { services, state, createdDirs, templates };
+  return { services, state, createdDirs, templates, spaceKits };
 }

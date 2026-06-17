@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
-import { Field, Input } from '@/components/settings/Primitives';
+import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
+import { Loader2, AlertTriangle, CheckCircle2, Info, Monitor, Plug } from 'lucide-react';
+import { Input } from '@/components/settings/Primitives';
 import type { SetupState, PortStatus, SetupMessages } from './types';
 
 // ─── PortField ────────────────────────────────────────────────────────────────
-function PortField({
+export function PortField({
   label, hint, value, onChange, status, onCheckPort, s,
 }: {
-  label: string; hint: string; value: number;
+  label: ReactNode; hint: string; value: number;
   onChange: (v: number) => void;
   status: PortStatus;
   onCheckPort: (port: number) => void;
@@ -33,7 +34,9 @@ function PortField({
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
   return (
-    <Field label={label} hint={hint}>
+    <div className="space-y-1.5">
+      <div className="text-sm font-medium text-foreground">{label}</div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="space-y-1.5">
         <Input
           type="number" min={1024} max={65535} value={value}
@@ -65,11 +68,11 @@ function PortField({
         )}
         {!status.checking && status.available === true && (
           <p className="text-xs flex items-center gap-1" style={{ color: 'var(--success)' }}>
-            <CheckCircle2 size={11} /> {status.isSelf ? s.portSelf : s.portAvailable}
-          </p>
+          <CheckCircle2 size={11} /> {status.isSelf ? s.portSelf : s.portAvailable}
+        </p>
         )}
       </div>
-    </Field>
+    </div>
   );
 }
 
@@ -84,33 +87,46 @@ export interface StepPortsProps {
   checkPort: (port: number, which: 'web' | 'mcp') => void;
   portConflict: boolean;
   s: SetupMessages;
+  showWeb?: boolean;
+  showMcp?: boolean;
 }
 
 export default function StepPorts({
-  state, update, webPortStatus, mcpPortStatus, setWebPortStatus, setMcpPortStatus, checkPort, portConflict, s,
+  state, update, webPortStatus, mcpPortStatus, setWebPortStatus, setMcpPortStatus, checkPort, portConflict, s, showWeb = true, showMcp = true,
 }: StepPortsProps) {
+  const hasUncheckedVisiblePort = (showWeb && webPortStatus.available === null) || (showMcp && mcpPortStatus.available === null);
+  const hasVisiblePortChecking = (showWeb && webPortStatus.checking) || (showMcp && mcpPortStatus.checking);
+
   return (
     <div className="space-y-5">
-      <PortField
-        label={s.webPort} hint={s.portHint} value={state.webPort}
-        onChange={v => { update('webPort', v); setWebPortStatus({ checking: false, available: null, isSelf: false, suggestion: null }); }}
-        status={webPortStatus}
-        onCheckPort={port => checkPort(port, 'web')}
-        s={s}
-      />
-      <PortField
-        label={s.mcpPort} hint={s.portHint} value={state.mcpPort}
-        onChange={v => { update('mcpPort', v); setMcpPortStatus({ checking: false, available: null, isSelf: false, suggestion: null }); }}
-        status={mcpPortStatus}
-        onCheckPort={port => checkPort(port, 'mcp')}
-        s={s}
-      />
+      {showWeb && (
+        <PortField
+          label={<span className="inline-flex items-center gap-1.5"><Monitor size={13} className="text-[var(--amber)]" /> {s.webPort}</span>}
+          hint={s.portHint}
+          value={state.webPort}
+          onChange={v => { update('webPort', v); setWebPortStatus({ checking: false, available: null, isSelf: false, suggestion: null }); }}
+          status={webPortStatus}
+          onCheckPort={port => checkPort(port, 'web')}
+          s={s}
+        />
+      )}
+      {showMcp && (
+        <PortField
+          label={<span className="inline-flex items-center gap-1.5"><Plug size={13} className="text-[var(--amber)]" /> {s.mcpPort}</span>}
+          hint={s.portHint}
+          value={state.mcpPort}
+          onChange={v => { update('mcpPort', v); setMcpPortStatus({ checking: false, available: null, isSelf: false, suggestion: null }); }}
+          status={mcpPortStatus}
+          onCheckPort={port => checkPort(port, 'mcp')}
+          s={s}
+        />
+      )}
       {portConflict && (
         <p className="text-xs flex items-center gap-1.5" role="alert" style={{ color: 'var(--amber)' }}>
           <AlertTriangle size={12} /> {s.portConflict}
         </p>
       )}
-      {!portConflict && (webPortStatus.available === null || mcpPortStatus.available === null) && !webPortStatus.checking && !mcpPortStatus.checking && (
+      {!portConflict && hasUncheckedVisiblePort && !hasVisiblePortChecking && (
         <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.portVerifyHint}</p>
       )}
       <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--muted-foreground)' }}>
