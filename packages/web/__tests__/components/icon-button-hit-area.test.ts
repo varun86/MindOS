@@ -128,6 +128,8 @@ describe('icon button hit areas', () => {
 
     expect(source).toContain('type="button"');
     expect(source).toContain('hit-target-box inline-flex h-7 w-7 shrink-0 items-center justify-center');
+    expect(source).toContain('StableRowDisclosureSlot');
+    expect(source).toContain('data-stable-row-disclosure');
     expect(source).toContain('StableRowActionButton');
     expect(source).toContain('hit-target-box flex-1 flex min-h-7 items-center');
     expect(source).toContain('hit-target-box flex min-h-7 min-w-0 flex-1 items-center');
@@ -135,6 +137,7 @@ describe('icon button hit areas', () => {
     expect(source).not.toContain('hidden group-hover/file:flex');
     expect(source).not.toContain('pr-16');
     expect(source).toContain('focus-visible:ring-2 focus-visible:ring-ring touch-manipulation');
+    expect(source).not.toContain('borderColor: \'color-mix');
     expect(source).not.toContain('className="shrink-0 p-1 rounded hover:bg-muted');
     expect(source).not.toContain('className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"');
   });

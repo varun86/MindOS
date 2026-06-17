@@ -3,7 +3,7 @@
 export const settingsZh = {
   settings: {
     title: '设置',
-    tabs: { ai: 'AI', appearance: '外观', navigation: '导航', knowledge: '通用', sync: '同步', mcp: '连接', plugins: '插件', shortcuts: '快捷键', update: '更新', uninstall: '卸载' },
+    tabs: { ai: 'AI', appearance: '外观', navigation: '实验', knowledge: '通用', sync: '同步', mcp: '连接', plugins: '插件', shortcuts: '快捷键', update: '更新', uninstall: '卸载' },
     ai: {
       provider: '模型服务商',
       apiKey: 'API 密钥',
@@ -105,8 +105,8 @@ export const settingsZh = {
     },
     navigation: {
       railTitle: 'Rail 项',
-      railDesc: '选择哪些可选工作面显示在左侧 rail，让日常导航保持专注。',
-      hiddenHint: '隐藏的工作面仍可从搜索、直接链接和相关页面进入。日常 rail 默认保持轻量。',
+      railDesc: '选择哪些可选或实验性工作面显示在左侧 rail，让日常导航保持专注。',
+      hiddenHint: '隐藏的工作面仍可从搜索、直接链接和相关页面进入。Studio 默认显示；Flow 仍保持实验性。',
       visible: '已显示',
       hidden: '已隐藏',
       surfacePrefix: 'Rail 项：',
@@ -114,7 +114,7 @@ export const settingsZh = {
       items: {
         studio: {
           label: 'Studio',
-          description: '用于长期 AI 工作、复盘和成长的 Project 工作面。默认隐藏。',
+          description: '用于长期 AI 工作、复盘和成长的 Project 工作面。默认显示。',
         },
         flow: {
           label: 'Flow',

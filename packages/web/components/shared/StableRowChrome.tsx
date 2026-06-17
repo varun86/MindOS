@@ -1,7 +1,32 @@
 'use client';
 
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+
+export const STABLE_ROW_DISCLOSURE_SLOT_CLASS = 'inline-flex h-7 w-7 shrink-0 items-center justify-center';
+
+type StableRowDisclosureSlotProps = {
+  children?: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+};
+
+export function StableRowDisclosureSlot({
+  children,
+  className,
+  style,
+}: StableRowDisclosureSlotProps) {
+  return (
+    <span
+      data-stable-row-disclosure
+      aria-hidden="true"
+      style={style}
+      className={cn(STABLE_ROW_DISCLOSURE_SLOT_CLASS, className)}
+    >
+      {children}
+    </span>
+  );
+}
 
 type StableRowTrailingSlotProps = {
   status?: ReactNode;

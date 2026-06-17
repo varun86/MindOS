@@ -333,10 +333,10 @@ export default function SettingsContent({
     { id: 'ai', label: t.settings.tabs.ai, icon: <Sparkles size={iconSize} />, group: 'core' },
     { id: 'mcp', label: t.settings.tabs.mcp ?? 'Connections', icon: <Plug size={iconSize} />, group: 'core' },
     { id: 'plugins', label: t.settings.tabs.plugins ?? 'Plugins', icon: <Puzzle size={iconSize} />, group: 'core' },
-    { id: 'navigation', label: t.settings.tabs.navigation ?? 'Navigation', icon: <Compass size={iconSize} />, group: 'workspace' },
     { id: 'knowledge', label: t.settings.tabs.knowledge, icon: <Settings size={iconSize} />, group: 'workspace' },
     { id: 'appearance', label: t.settings.tabs.appearance, icon: <Palette size={iconSize} />, group: 'workspace' },
     { id: 'sync', label: t.settings.tabs.sync ?? 'Sync', icon: <RefreshCw size={iconSize} />, group: 'workspace' },
+    { id: 'navigation', label: t.settings.tabs.navigation ?? 'Experiments', icon: <Compass size={iconSize} />, group: 'workspace' },
     { id: 'update', label: t.settings.tabs.update ?? 'Update', icon: <Download size={iconSize} />, badge: hasUpdate, group: 'system' },
     { id: 'uninstall', label: t.settings.tabs.uninstall ?? 'Uninstall', icon: <Trash2 size={iconSize} />, group: 'system' },
   ];
@@ -546,7 +546,7 @@ export default function SettingsContent({
                         onClick={() => switchTab(tabItem.id)}
                         className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                           active
-                            ? 'bg-[var(--amber-subtle)] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--amber)_22%,transparent)]'
+                            ? 'bg-[var(--amber-subtle)] text-foreground ring-1 ring-[var(--amber)]/25'
                             : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
                         }`}
                       >

@@ -14,7 +14,12 @@ import { createFileAction, deleteFileAction, renameFileAction, renameSpaceAction
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
 import { ConfirmDialog } from '@/components/agents/AgentsPrimitives';
-import { StableRowActionButton, StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
+import {
+  STABLE_ROW_DISCLOSURE_SLOT_CLASS,
+  StableRowActionButton,
+  StableRowDisclosureSlot,
+  StableRowTrailingSlot,
+} from '@/components/shared/StableRowChrome';
 import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import { useShowHiddenFiles, setShowHiddenFiles, filterHiddenNodes } from '@/lib/stores/hidden-files';
 import { notifyFilesChanged } from '@/lib/files-changed';
@@ -357,13 +362,14 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
         <button
           type="button"
           onClick={toggle}
+          data-stable-row-disclosure
           className={`hit-target-box inline-flex h-7 w-7 shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation [--hit-target-radius:var(--radius-md)] ${
             isSpace
               ? '[--hit-target-hover-bg:transparent] [--hit-target-active-bg:transparent] hover:text-[var(--amber)]'
               : '[--hit-target-hover-bg:var(--muted)] hover:text-foreground'
           } ${
             spaceRowActive ? 'text-[var(--amber)]' : 'text-muted-foreground'
-          }`}
+          } ${STABLE_ROW_DISCLOSURE_SLOT_CLASS}`}
           style={{ marginLeft: `${depth * 12 + 4}px` }}
           aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
           aria-expanded={open}
@@ -425,8 +431,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
         className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div
-          className={`overflow-hidden ${showBorder ? 'border-l-2 ml-[18px]' : ''}`}
-          style={showBorder ? { borderColor: 'color-mix(in srgb, var(--amber) 30%, transparent)' } : undefined}
+          className={`overflow-hidden ${showBorder ? 'ml-[18px] border-l-2 border-[var(--amber)]/30' : ''}`}
           {...(!open && { inert: true } as React.HTMLAttributes<HTMLDivElement>)}
         >
           {hasBeenOpened && node.children && (
@@ -640,6 +645,10 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
 
   return (
     <div className="relative group group/file flex items-center">
+      <StableRowDisclosureSlot
+        className="text-muted-foreground"
+        style={{ marginLeft: `${depth * 12 + 4}px` }}
+      />
       <button
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -661,7 +670,6 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
             : 'text-muted-foreground hover:text-foreground'
           }
         `}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
       >
         {getIcon(node)}
         <span className="truncate leading-5" suppressHydrationWarning>{node.name}</span>

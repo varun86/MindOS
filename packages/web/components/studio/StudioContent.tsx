@@ -182,28 +182,6 @@ function StudioMetric({
   );
 }
 
-function PracticeLoopInline({ copy }: { copy: StudioCopy }) {
-  return (
-    <div className="rounded-lg border border-border/55 bg-background/45 px-3 py-3">
-      <div className="mb-3 flex items-center gap-2">
-        <Sparkles size={13} className="text-[var(--amber)]" aria-hidden="true" />
-        <div className="text-xs font-semibold text-foreground">{copy.loopTitle}</div>
-      </div>
-      <div className="grid grid-cols-4 gap-1.5" aria-label={copy.loopTitle}>
-        {copy.loopSteps.map((step, index) => (
-          <div key={step} className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--amber)]" />
-              {index < copy.loopSteps.length - 1 ? <span className="h-px min-w-0 flex-1 bg-border/70" /> : null}
-            </div>
-            <div className="mt-2 truncate text-[11px] font-medium text-muted-foreground">{step}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function MetaChip({
   icon,
   children,
@@ -287,7 +265,7 @@ function ProjectRow({
   );
 }
 
-function ContinueProjectCard({
+function ProjectOverviewPanel({
   project,
   locale,
   copy,
@@ -304,10 +282,10 @@ function ContinueProjectCard({
 }) {
   if (!project) {
     return (
-      <section className="rounded-xl border border-border/60 bg-card/45 p-5">
+      <aside className="rounded-xl border border-border/60 bg-card/45 p-5">
         <div className="text-sm font-semibold text-foreground">{copy.projects}</div>
         <p className="mt-1 text-sm text-muted-foreground">{copy.empty}</p>
-      </section>
+      </aside>
     );
   }
 
@@ -319,89 +297,62 @@ function ContinueProjectCard({
   const kits = localizeList(project.kits, undefined, locale);
   const latestSession = latestSessionTitle
     ?? (project.sessions[0] ? localize(project.sessions[0].title, project.sessions[0].titleZh, locale) : copy.noSessions);
-  const reviewItems = localizeList(project.reviewItems, project.reviewItemsZh, locale);
-  const lessons = localizeList(project.lessons, project.lessonsZh, locale);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_286px]">
-        <div className="min-w-0 p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">{copy.continueTitle}</span>
-            <ProjectStage project={project} locale={locale} />
-            <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
-          </div>
-          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">{goal}</p>
-            </div>
-            <Button
-              render={<Link href={getStudioProjectHref(project.id)} />}
-              nativeButton={false}
-              variant="amber"
-              size="lg"
-              className="shrink-0"
-            >
-              {copy.openProject}
-              <ArrowRight size={15} />
-            </Button>
-          </div>
+    <aside className="rounded-xl border border-border/60 bg-card/45 p-4 lg:sticky lg:top-6 lg:self-start">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{copy.continueTitle}</span>
+        <ProjectStage project={project} locale={locale} />
+        <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
+      </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-            <div className="rounded-lg border border-border/55 bg-background/45 p-3">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="font-medium text-muted-foreground">{copy.continueHint}</span>
-                <span className="font-medium text-foreground [font-variant-numeric:tabular-nums]">{project.progress}%</span>
-              </div>
-              <p className="mt-2 text-sm leading-relaxed text-foreground">{nextAction}</p>
-              <div className="mt-3">
-                <ProgressBar value={project.progress} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <StudioMetric icon={<Target size={13} aria-hidden="true" />} label={copy.activeProjects} value={stats.active} />
-              <StudioMetric icon={<ListChecks size={13} aria-hidden="true" />} label={copy.reviewItems} value={stats.review} />
-              <StudioMetric icon={<CheckCircle2 size={13} aria-hidden="true" />} label={copy.recentSessions} value={stats.sessions} />
-            </div>
-          </div>
+      <div className="mt-3">
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{goal}</p>
+      </div>
 
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            <MetaChip icon={<BookOpenText size={12} aria-hidden="true" />}>{space}</MetaChip>
-            <MetaChip icon={<Blocks size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
-            <MetaChip icon={<FolderOpen size={12} aria-hidden="true" />}>{workArea}</MetaChip>
-          </div>
+      <div className="mt-4 rounded-lg border border-border/55 bg-background/45 p-3">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="font-medium text-muted-foreground">{copy.continueHint}</span>
+          <span className="font-medium text-foreground [font-variant-numeric:tabular-nums]">{project.progress}%</span>
         </div>
-
-        <div className="border-t border-border/60 bg-background/25 p-5 lg:border-l lg:border-t-0">
-          <PracticeLoopInline copy={copy} />
-          <div className="mt-4 space-y-3">
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-muted-foreground">{copy.latestSession}</div>
-              <div className="text-sm leading-relaxed text-foreground">{latestSession}</div>
-              <div className="mt-1 text-[11px] text-muted-foreground">
-                {sessionCount} {copy.sessions}
-              </div>
-            </div>
-            <div className="border-t border-border/50 pt-3">
-              <div className="mb-1 text-[11px] font-medium text-muted-foreground">{copy.review}</div>
-              <div className="space-y-1">
-                {reviewItems.slice(0, 2).map((item) => (
-                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-foreground">
-                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--amber)]" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="border-t border-border/50 pt-3">
-              <div className="mb-1 text-[11px] font-medium text-muted-foreground">{copy.reusableLesson}</div>
-              <p className="text-xs leading-relaxed text-foreground">{lessons[0] ?? nextAction}</p>
-            </div>
-          </div>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">{nextAction}</p>
+        <div className="mt-3">
+          <ProgressBar value={project.progress} />
         </div>
       </div>
-    </section>
+
+      <div className="mt-4 grid gap-2">
+        <StudioMetric icon={<Target size={13} aria-hidden="true" />} label={copy.activeProjects} value={stats.active} />
+        <StudioMetric icon={<ListChecks size={13} aria-hidden="true" />} label={copy.reviewItems} value={stats.review} />
+        <StudioMetric icon={<CheckCircle2 size={13} aria-hidden="true" />} label={copy.recentSessions} value={stats.sessions} />
+      </div>
+
+      <div className="mt-4 space-y-1.5">
+        <MetaChip icon={<BookOpenText size={12} aria-hidden="true" />}>{space}</MetaChip>
+        <MetaChip icon={<Blocks size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
+        <MetaChip icon={<FolderOpen size={12} aria-hidden="true" />}>{workArea}</MetaChip>
+      </div>
+
+      <div className="mt-4 border-t border-border/50 pt-3">
+        <div className="mb-1 text-[11px] font-medium text-muted-foreground">{copy.latestSession}</div>
+        <div className="text-sm leading-relaxed text-foreground">{latestSession}</div>
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          {sessionCount} {copy.sessions}
+        </div>
+      </div>
+
+      <Button
+        render={<Link href={getStudioProjectHref(project.id)} />}
+        nativeButton={false}
+        variant="outline"
+        size="lg"
+        className="mt-4 w-full"
+      >
+        {copy.openProject}
+        <ArrowRight size={15} />
+      </Button>
+    </aside>
   );
 }
 
@@ -498,18 +449,7 @@ export default function StudioContent() {
           </div>
         </header>
 
-        <div className="mb-5">
-          <ContinueProjectCard
-            project={previewProject}
-            locale={locale}
-            copy={copy}
-            latestSessionTitle={previewProject ? projectSessionStats.get(previewProject.id)?.latestTitle : undefined}
-            sessionCount={previewProject ? getProjectSessionCount(previewProject) : 0}
-            stats={stats}
-          />
-        </div>
-
-        <section>
+        <section className="grid gap-5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,32rem),1fr))] lg:items-start">
           <div className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card/45">
             <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 md:flex-row md:items-end md:justify-between">
               <div>
@@ -518,21 +458,31 @@ export default function StudioContent() {
               </div>
             </div>
             {projects.length ? (
-              projects.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  locale={locale}
-                  copy={copy}
-                  sessionCount={getProjectSessionCount(project)}
-                  onPreview={setPreviewProjectId}
-                  selected={project.id === previewProjectIdResolved}
-                />
-              ))
+              <div className="max-h-[min(680px,calc(100dvh-14rem))] overflow-y-auto">
+                {projects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    project={project}
+                    locale={locale}
+                    copy={copy}
+                    sessionCount={getProjectSessionCount(project)}
+                    onPreview={setPreviewProjectId}
+                    selected={project.id === previewProjectIdResolved}
+                  />
+                ))}
+              </div>
             ) : (
               <div className="px-4 py-12 text-center text-sm text-muted-foreground">{copy.empty}</div>
             )}
           </div>
+          <ProjectOverviewPanel
+            project={previewProject}
+            locale={locale}
+            copy={copy}
+            latestSessionTitle={previewProject ? projectSessionStats.get(previewProject.id)?.latestTitle : undefined}
+            sessionCount={previewProject ? getProjectSessionCount(previewProject) : 0}
+            stats={stats}
+          />
         </section>
       </div>
 

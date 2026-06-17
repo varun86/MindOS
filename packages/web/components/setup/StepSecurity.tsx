@@ -26,44 +26,38 @@ export default function StepSecurity({
         <div className="flex gap-2">
           <Input value={authToken} readOnly className="font-mono text-xs" />
           <button onClick={onCopy}
-            className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg border border-border hover:bg-muted transition-colors shrink-0"
-            style={{ color: 'var(--foreground)' }}>
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Copy size={14} />
             {s.copyToken}
           </button>
           <button onClick={() => onGenerate()}
             aria-label={s.generateToken}
-            className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg border border-border hover:bg-muted transition-colors shrink-0"
-            style={{ color: 'var(--foreground)' }}>
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <RefreshCw size={14} />
           </button>
         </div>
       </Field>
       <div className="space-y-1.5">
-        <button onClick={() => setShowUsage(!showUsage)} className="text-xs underline"
-          aria-expanded={showUsage}
-          style={{ color: 'var(--muted-foreground)' }}>
+        <button onClick={() => setShowUsage(!showUsage)} className="text-xs text-muted-foreground underline"
+          aria-expanded={showUsage}>
           {s.authTokenUsageWhat}
         </button>
         {showUsage && (
-          <p className="text-xs leading-relaxed px-3 py-2 rounded-lg"
-            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+          <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
             {s.authTokenUsage}
           </p>
         )}
       </div>
       <div>
-        <button onClick={() => setShowSeed(!showSeed)} className="text-xs underline"
-          aria-expanded={showSeed}
-          style={{ color: 'var(--muted-foreground)' }}>
+        <button onClick={() => setShowSeed(!showSeed)} className="text-xs text-muted-foreground underline"
+          aria-expanded={showSeed}>
           {s.authTokenSeed}
         </button>
         {showSeed && (
           <div className="mt-2 flex gap-2">
             <Input value={seed} onChange={e => setSeed(e.target.value)} placeholder={s.authTokenSeedHint} />
             <button onClick={() => { if (seed.trim()) onGenerate(seed); }}
-              className="px-3 py-2 text-xs rounded-lg border border-border hover:bg-muted transition-colors shrink-0"
-              style={{ color: 'var(--foreground)' }}>
+              className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {s.generateToken}
             </button>
           </div>

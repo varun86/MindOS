@@ -27,6 +27,7 @@ import { closeTab, keepTab, type WorkspaceTab } from '@/lib/workspace-tabs';
 import { tabHref, useWorkspaceTabSync } from '@/hooks/useWorkspaceTabSync';
 import { useLocale } from '@/lib/stores/locale-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
+import { StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
 
 const NO_DRAG = { WebkitAppRegion: 'no-drag' } as React.CSSProperties;
 
@@ -183,6 +184,7 @@ export default function TitlebarTabStrip() {
     const isActive = tab.id === optimisticTabId;
     const isPreview = tab.kind === 'doc' && tab.pinned === false;
     const canClose = tab.kind !== 'home';
+    const hasIndicator = tab.kind === 'chat' && (running.has(tab.key) || unread.has(tab.key));
     const previousTab = index > 0 ? visibleTabs[index - 1] : null;
     const showLeadingSeparator = Boolean(
       previousTab && previousTab.id !== activeTabId && tab.id !== activeTabId,
@@ -231,38 +233,46 @@ export default function TitlebarTabStrip() {
           <TabKindIcon kind={tab.kind} />
           <span className={`truncate ${isPreview ? 'italic' : ''}`}>{tab.title}</span>
         </span>
-        <TabIndicator tab={tab} running={running} unread={unread} />
-        {isPreview && (
-          <button
-            type="button"
-            aria-label={t.workspaceTabs.keepTab}
-            title={t.workspaceTabs.keepTab}
-            style={NO_DRAG}
-            onClick={(e) => {
-              e.stopPropagation();
-              keepTab(tab.id);
-            }}
-            className="shrink-0 rounded p-0.5 text-muted-foreground/70 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Pin size={12} aria-hidden="true" />
-          </button>
-        )}
-        {canClose && (
-          <button
-            type="button"
-            aria-label={t.workspaceTabs.closeTab}
-            style={NO_DRAG}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClose(tab);
-            }}
-            className={`shrink-0 rounded p-0.5 transition-opacity duration-150 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-            }`}
-          >
-            <X size={12} aria-hidden="true" />
-          </button>
-        )}
+        <StableRowTrailingSlot
+          reserveClassName={isPreview ? 'w-10' : 'w-5'}
+          className="h-5"
+          forceActionsVisible={isActive && !hasIndicator}
+          status={hasIndicator ? <TabIndicator tab={tab} running={running} unread={unread} /> : null}
+          actionsClassName="gap-0"
+          actions={(
+            <>
+              {isPreview && (
+                <button
+                  type="button"
+                  aria-label={t.workspaceTabs.keepTab}
+                  title={t.workspaceTabs.keepTab}
+                  style={NO_DRAG}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    keepTab(tab.id);
+                  }}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground/70 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Pin size={12} aria-hidden="true" />
+                </button>
+              )}
+              {canClose && (
+                <button
+                  type="button"
+                  aria-label={t.workspaceTabs.closeTab}
+                  style={NO_DRAG}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleClose(tab);
+                  }}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              )}
+            </>
+          )}
+        />
       </div>
     );
   };

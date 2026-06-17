@@ -12,12 +12,17 @@ import {
   FolderOpen,
   ListChecks,
   MessageSquarePlus,
+  Search,
+  SlidersHorizontal,
   Target,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
 import { useLocale } from '@/lib/stores/locale-store';
 import { refreshSessions, useActiveSessionId, useSessions } from '@/lib/ask-session-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
+import { cn } from '@/lib/utils';
 import {
   createStudioProject,
   findStudioProject,
@@ -46,12 +51,24 @@ const COPY = {
     historicalSessions: 'Session history',
     sessionsHint: 'Work, artifacts, and review trail.',
     noSessions: 'No Sessions yet.',
+    noMatchingSessions: 'No Sessions match this view.',
     untitledSession: 'Untitled Session',
     space: 'Space',
     kits: 'AI Kits',
+    directory: 'Directory',
     workArea: 'Work Area',
     cadence: 'Cadence',
     nextAction: 'Next action',
+    overview: 'Overview',
+    overviewHint: 'Configuration, status, and the next durable move.',
+    configuration: 'Configuration',
+    status: 'Status',
+    goal: 'Goal',
+    progress: 'Progress',
+    searchSessions: 'Search Sessions',
+    searchPlaceholder: 'Search title, artifact, or summary',
+    filterByAgent: 'Filter by agent',
+    allAgents: 'All agents',
     sessionMetric: 'Sessions',
     reviewMetric: 'Review',
     review: 'Review queue',
@@ -93,12 +110,24 @@ const COPY = {
     historicalSessions: 'Session 历史',
     sessionsHint: '工作、产物和复盘记录。',
     noSessions: '还没有 Session。',
+    noMatchingSessions: '没有匹配这个视图的 Session。',
     untitledSession: '未命名 Session',
     space: 'Space',
     kits: 'AI Kits',
+    directory: '目录',
     workArea: 'Work Area',
     cadence: '节奏',
     nextAction: '下一步',
+    overview: '总览',
+    overviewHint: 'Project 的配置、状态和下一步。',
+    configuration: '配置',
+    status: '状态',
+    goal: '目标',
+    progress: '进度',
+    searchSessions: '搜索 Sessions',
+    searchPlaceholder: '搜索标题、产物或摘要',
+    filterByAgent: '按 Agent 过滤',
+    allAgents: '全部 Agent',
     sessionMetric: 'Sessions',
     reviewMetric: '待复盘',
     review: 'Review queue',
@@ -144,7 +173,7 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function ScopeRow({
+function OverviewCell({
   icon,
   label,
   value,
@@ -154,77 +183,85 @@ function ScopeRow({
   value: string;
 }) {
   return (
-    <div className="flex items-start gap-3 border-t border-border/50 py-3 first:border-t-0">
+    <div className="min-w-0 border-t border-border/60 px-4 py-3 first:border-t-0 md:border-l md:border-t-0 md:first:border-l-0">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+        <span className="text-[var(--amber)]" aria-hidden="true">
+          {icon}
+        </span>
+        {label}
+      </div>
+      <div className="truncate text-sm font-medium text-foreground" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function StatusRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 gap-3 border-t border-border/60 px-4 py-3 first:border-t-0">
       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
         {icon}
       </div>
       <div className="min-w-0">
         <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-        <div className="mt-0.5 text-sm leading-relaxed text-foreground">{value}</div>
+        <div className="mt-1 text-sm leading-relaxed text-foreground">{children}</div>
       </div>
     </div>
   );
 }
 
-function ProjectMetric({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-lg border border-border/55 bg-background/45 px-3 py-2.5">
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
-          {icon}
-        </span>
-        {label}
-      </div>
-      <div className="mt-2 text-base font-semibold text-foreground [font-variant-numeric:tabular-nums]">{value}</div>
-    </div>
-  );
+function sessionAgentName(session: StudioSessionSummary): string {
+  return session.agentName?.trim() || 'MindOS';
 }
 
-function SetupChip({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-border/55 bg-background/45 px-3 py-2.5">
-      <div className="mb-1 flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
-        <span className="text-[var(--amber)]">{icon}</span>
-        {label}
-      </div>
-      <div className="truncate text-sm font-medium text-foreground">{value}</div>
-    </div>
-  );
+function sessionAgentId(session: StudioSessionSummary): string {
+  return session.agentId?.trim() || sessionAgentName(session).toLowerCase().replace(/\s+/g, '-');
 }
 
 function SessionRow({
   session,
   locale,
   copy,
+  active,
 }: {
   session: StudioSessionSummary;
   locale: string;
   copy: ProjectCopy;
+  active?: boolean;
 }) {
-  const className = 'grid gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_150px_120px]';
+  const title = localize(session.title, session.titleZh, locale);
+  const artifact = localize(session.artifact, session.artifactZh, locale);
+  const agentName = sessionAgentName(session);
+  const dotClass = session.status === 'active'
+    ? 'bg-success'
+    : session.status === 'review'
+      ? 'bg-[var(--amber)]'
+      : session.status === 'paused'
+        ? 'bg-muted-foreground/55'
+        : 'bg-muted-foreground/35';
+  const statusDot = <span className={cn('h-2 w-2 rounded-full', dotClass)} title={sessionStatusLabel(session.status, locale)} />;
+  const className = cn(
+    'group grid gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_140px_112px_2.5rem]',
+    session.href ? 'transition-colors hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
+    active ? 'bg-[var(--amber-subtle)]' : '',
+  );
   const content = (
     <>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-foreground">{localize(session.title, session.titleZh, locale)}</h3>
+          <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</h3>
           <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-background/70 px-2 text-[11px] font-medium text-muted-foreground">
             {sessionStatusLabel(session.status, locale)}
+          </span>
+          <span className="inline-flex h-6 max-w-32 items-center rounded-md border border-border/60 bg-background/70 px-2 text-[11px] font-medium text-muted-foreground">
+            <span className="truncate">{agentName}</span>
           </span>
         </div>
         <p className="mt-1 max-w-[64ch] text-xs leading-relaxed text-muted-foreground">
@@ -235,7 +272,7 @@ function SessionRow({
         <div className="text-[11px] font-medium text-muted-foreground">{copy.artifact}</div>
         <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-foreground">
           <FileText size={13} className="shrink-0 text-[var(--amber)]" />
-          <span className="truncate">{localize(session.artifact, session.artifactZh, locale)}</span>
+          <span className="truncate">{artifact}</span>
         </div>
       </div>
       <div>
@@ -245,6 +282,11 @@ function SessionRow({
           {session.updated}
         </div>
       </div>
+      <StableRowTrailingSlot
+        reserveClassName="w-10"
+        status={statusDot}
+        actions={session.href ? <ArrowRight size={14} className="text-[var(--amber)]" aria-hidden="true" /> : statusDot}
+      />
     </>
   );
 
@@ -252,7 +294,8 @@ function SessionRow({
     return (
       <Link
         href={session.href}
-        className={`${className} group transition-colors hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+        className={className}
+        aria-label={`${title} · ${agentName}`}
       >
         {content}
       </Link>
@@ -290,6 +333,8 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
   const copy = locale === 'zh' ? COPY.zh : COPY.en;
   const [projects, setProjects] = useState<StudioProject[]>(() => readStudioProjects());
   const [isCreating, setIsCreating] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState('all');
   const sessions = useSessions();
   const activeSessionId = useActiveSessionId();
 
@@ -334,6 +379,46 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
       .map((session) => summarizeChatSession(session, activeSessionId, copy.untitledSession))
   ), [activeSessionId, copy.untitledSession, projectId, sessions]);
 
+  const displaySessions = useMemo(() => (
+    realProjectSessions.length > 0 ? realProjectSessions : (project?.sessions ?? [])
+  ), [project, realProjectSessions]);
+
+  const agentOptions = useMemo(() => {
+    const options = new Map<string, { id: string; label: string; count: number }>();
+    for (const session of displaySessions) {
+      const id = sessionAgentId(session);
+      const existing = options.get(id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        options.set(id, { id, label: sessionAgentName(session), count: 1 });
+      }
+    }
+    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [displaySessions]);
+
+  const filteredSessions = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase();
+    return displaySessions.filter((session) => {
+      if (agentFilter !== 'all' && sessionAgentId(session) !== agentFilter) return false;
+      if (!query) return true;
+      const haystack = [
+        localize(session.title, session.titleZh, locale),
+        localize(session.summary, session.summaryZh, locale),
+        localize(session.artifact, session.artifactZh, locale),
+        sessionAgentName(session),
+        sessionStatusLabel(session.status, locale),
+      ].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [agentFilter, displaySessions, locale, sessionSearch]);
+
+  useEffect(() => {
+    if (agentFilter === 'all') return;
+    if (agentOptions.some((option) => option.id === agentFilter)) return;
+    setAgentFilter('all');
+  }, [agentFilter, agentOptions]);
+
   const handleCreate = (draft: StudioProjectDraft) => {
     const nextProject = createStudioProject(draft);
     setProjects(readStudioProjects());
@@ -357,117 +442,149 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
     );
   }
 
-  const displaySessions = realProjectSessions.length > 0 ? realProjectSessions : project.sessions;
-
   return (
     <StudioShell>
-      <div className="min-w-0 space-y-5">
-        <header className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
-          <div className="p-5">
-            <Link
-              href="/studio"
-              className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ArrowLeft size={15} aria-hidden="true" />
-              {copy.back}
-            </Link>
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-              <div className="min-w-0">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-card/70 px-2 text-[11px] font-medium text-muted-foreground">
-                    {stageLabel(project.stage, locale)}
-                  </span>
-                  <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
-                </div>
-                <h1 className="text-2xl font-semibold text-foreground">
-                  {localized.title}
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
-
-                <div className="mt-4 rounded-lg border border-border/55 bg-background/45 p-3">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-medium text-muted-foreground">{copy.nextAction}</span>
-                    <span className="font-medium text-foreground [font-variant-numeric:tabular-nums]">{project.progress}%</span>
-                  </div>
-                  <p className="mt-2 text-sm leading-relaxed text-foreground">{localized.nextAction}</p>
-                  <div className="mt-3">
-                    <ProgressBar value={project.progress} />
-                  </div>
-                </div>
+      <div className="min-w-0 space-y-6">
+        <header>
+          <Link
+            href="/studio"
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowLeft size={15} aria-hidden="true" />
+            {copy.returnStudio}
+          </Link>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-card/70 px-2 text-[11px] font-medium text-muted-foreground">
+                  {stageLabel(project.stage, locale)}
+                </span>
+                <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
               </div>
-              <div className="flex flex-col gap-3">
-                <Link
-                  href={`/chat/new?projectId=${encodeURIComponent(project.id)}`}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <MessageSquarePlus size={15} aria-hidden="true" />
-                  {copy.newSession}
-                </Link>
-                <ProjectMetric icon={<MessageSquarePlus size={13} aria-hidden="true" />} label={copy.sessionMetric} value={displaySessions.length} />
-                <ProjectMetric icon={<ListChecks size={13} aria-hidden="true" />} label={copy.reviewMetric} value={project.reviewItems.length} />
-              </div>
+              <h1 className="text-2xl font-semibold text-foreground">
+                {localized.title}
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
             </div>
-          </div>
-
-          <div className="grid gap-2 border-t border-border/60 bg-background/20 p-4 md:grid-cols-3">
-            <SetupChip icon={<BookOpenText size={13} aria-hidden="true" />} label={copy.space} value={localized.space} />
-            <SetupChip icon={<Blocks size={13} aria-hidden="true" />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
-            <SetupChip icon={<FolderOpen size={13} aria-hidden="true" />} label={copy.workArea} value={localized.workArea} />
+            <Button
+              render={<Link href={`/chat/new?projectId=${encodeURIComponent(project.id)}`} />}
+              nativeButton={false}
+              variant="amber"
+              size="xl"
+              className="w-fit"
+            >
+              <MessageSquarePlus size={15} aria-hidden="true" />
+              {copy.newSession}
+            </Button>
           </div>
         </header>
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-6">
-            <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
-              <div className="border-b border-border/60 px-4 py-4">
-                <h2 className="text-sm font-semibold text-foreground">{copy.historicalSessions}</h2>
-                <p className="mt-1 text-xs text-muted-foreground">{copy.sessionsHint}</p>
-              </div>
-              {displaySessions.length ? (
-                displaySessions.map((session) => (
-                  <SessionRow key={session.id} session={session} locale={locale} copy={copy} />
-                ))
-              ) : (
-                <div className="px-4 py-10 text-center text-sm text-muted-foreground">{copy.noSessions}</div>
-              )}
-            </section>
-
+        <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-overview">
+          <div className="border-b border-border/60 px-4 py-4">
+            <div className="flex items-center gap-2">
+              <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
+              <h2 id="studio-project-overview" className="text-sm font-semibold text-foreground">{copy.overview}</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{copy.overviewHint}</p>
           </div>
 
-          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <section className="rounded-xl border border-border/60 bg-card/45 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <ListChecks size={15} className="text-[var(--amber)]" aria-hidden="true" />
-                <h2 className="text-sm font-semibold text-foreground">{copy.review}</h2>
-              </div>
-              <div className="space-y-2">
-                {localized.reviewItems.map((item) => (
-                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-                    <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" aria-hidden="true" />
-                    <span>{item}</span>
+          <div className="grid md:grid-cols-4">
+            <OverviewCell icon={<FolderOpen size={13} />} label={copy.directory} value={localized.workArea} />
+            <OverviewCell icon={<BookOpenText size={13} />} label={copy.space} value={localized.space} />
+            <OverviewCell icon={<Blocks size={13} />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
+            <OverviewCell icon={<Clock3 size={13} />} label={copy.cadence} value={localized.cadence} />
+          </div>
+
+          <div className="grid border-t border-border/60 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="min-w-0">
+              <StatusRow icon={<Target size={14} aria-hidden="true" />} label={copy.goal}>
+                {localized.goal}
+              </StatusRow>
+              <StatusRow icon={<ArrowRight size={14} aria-hidden="true" />} label={copy.nextAction}>
+                {localized.nextAction}
+              </StatusRow>
+            </div>
+            <div className="min-w-0 border-t border-border/60 lg:border-l lg:border-t-0">
+              <StatusRow icon={<CheckCircle2 size={14} aria-hidden="true" />} label={copy.progress}>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <ProgressBar value={project.progress} />
                   </div>
-                ))}
+                  <span className="shrink-0 text-sm font-semibold [font-variant-numeric:tabular-nums]">{project.progress}%</span>
+                </div>
+              </StatusRow>
+              <StatusRow icon={<MessageSquarePlus size={14} aria-hidden="true" />} label={copy.sessionMetric}>
+                {displaySessions.length}
+              </StatusRow>
+              <StatusRow icon={<ListChecks size={14} aria-hidden="true" />} label={copy.reviewMetric}>
+                {project.reviewItems.length}
+              </StatusRow>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-sessions">
+          <div className="border-b border-border/60 px-4 py-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div className="min-w-0">
+                <h2 id="studio-project-sessions" className="text-sm font-semibold text-foreground">{copy.historicalSessions}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{copy.sessionsHint}</p>
               </div>
-            </section>
-            <section className="rounded-xl border border-border/60 bg-card/45 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
-                <h2 className="text-sm font-semibold text-foreground">{copy.growth}</h2>
+              <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+                <label className="relative min-w-0 flex-1 xl:w-72 xl:flex-none">
+                  <span className="sr-only">{copy.searchSessions}</span>
+                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <input
+                    value={sessionSearch}
+                    onChange={(event) => setSessionSearch(event.target.value)}
+                    placeholder={copy.searchPlaceholder}
+                    className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
+                  />
+                </label>
+                <label className="relative sm:w-44">
+                  <span className="sr-only">{copy.filterByAgent}</span>
+                  <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <select
+                    value={agentFilter}
+                    onChange={(event) => setAgentFilter(event.target.value)}
+                    className="h-9 w-full appearance-none rounded-lg border border-border bg-background pl-8 pr-8 text-sm text-foreground outline-none transition-colors focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
+                    <option value="all">{copy.allAgents}</option>
+                    {agentOptions.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.label} ({agent.count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  render={<Link href={`/chat/new?projectId=${encodeURIComponent(project.id)}`} />}
+                  nativeButton={false}
+                  variant="outline"
+                  size="lg"
+                  className="justify-center"
+                >
+                  <MessageSquarePlus size={15} aria-hidden="true" />
+                  {copy.newSession}
+                </Button>
               </div>
-              <div className="space-y-2">
-                {localized.lessons.map((item) => (
-                  <div key={item} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-                    <ArrowRight size={13} className="mt-0.5 shrink-0 text-[var(--amber)]" aria-hidden="true" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="rounded-xl border border-border/60 bg-card/45 p-4">
-              <h2 className="text-sm font-semibold text-foreground">{copy.cadence}</h2>
-              <ScopeRow icon={<Clock3 size={14} aria-hidden="true" />} label={copy.cadence} value={localized.cadence} />
-            </section>
-          </aside>
+            </div>
+          </div>
+          {filteredSessions.length ? (
+            filteredSessions.map((session) => (
+              <SessionRow
+                key={session.id}
+                session={session}
+                locale={locale}
+                copy={copy}
+                active={session.id === activeSessionId}
+              />
+            ))
+          ) : (
+            <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+              {displaySessions.length ? copy.noMatchingSessions : copy.noSessions}
+            </div>
+          )}
         </section>
       </div>
       <StudioNewProjectDialog

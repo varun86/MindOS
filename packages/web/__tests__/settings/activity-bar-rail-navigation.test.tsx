@@ -163,7 +163,7 @@ describe('ActivityBar rail navigation', () => {
     host.remove();
   });
 
-  it('keeps Studio and Flow hidden from the default rail', async () => {
+  it('shows Studio by default below Files while keeping Flow hidden', async () => {
     const ActivityBar = (await import('@/components/ActivityBar')).default;
 
     const host = document.createElement('div');
@@ -184,7 +184,12 @@ describe('ActivityBar rail navigation', () => {
       );
     });
 
-    expect(host.querySelector('[data-walkthrough="studio-page"]')).toBeNull();
+    const files = host.querySelector('[data-walkthrough="files-panel"]');
+    const studio = host.querySelector('[data-walkthrough="studio-page"]');
+    const echo = host.querySelector('[data-walkthrough="echo-panel"]');
+    expect(studio).not.toBeNull();
+    expect(files?.compareDocumentPosition(studio!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(studio?.compareDocumentPosition(echo!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(host.querySelector('button[aria-label="Flows"]')).toBeNull();
 
     await act(async () => {
@@ -193,8 +198,7 @@ describe('ActivityBar rail navigation', () => {
     host.remove();
   });
 
-  it('shows optional Studio and Flow rail items after navigation preferences are enabled', async () => {
-    localStorage.setItem('mindos:rail-studio', '1');
+  it('shows Flow after the experiments preference is enabled', async () => {
     localStorage.setItem('mindos:labs-workflows', '1');
     const ActivityBar = (await import('@/components/ActivityBar')).default;
 
@@ -220,6 +224,36 @@ describe('ActivityBar rail navigation', () => {
     expect(studio).not.toBeNull();
     expect(studio?.getAttribute('href')).toBe('/studio');
     expect(host.querySelector('button[aria-label="Flows"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+  it('can explicitly hide Studio from the rail preference', async () => {
+    localStorage.setItem('mindos:rail-studio', '0');
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    expect(host.querySelector('[data-walkthrough="studio-page"]')).toBeNull();
 
     await act(async () => {
       root.unmount();

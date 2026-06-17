@@ -3,7 +3,7 @@
 export const settingsEn = {
   settings: {
     title: 'Settings',
-    tabs: { ai: 'AI', appearance: 'Appearance', navigation: 'Navigation', knowledge: 'General', sync: 'Sync', mcp: 'Connections', plugins: 'Plugins', shortcuts: 'Shortcuts', update: 'Update', uninstall: 'Uninstall' },
+    tabs: { ai: 'AI', appearance: 'Appearance', navigation: 'Experiments', knowledge: 'General', sync: 'Sync', mcp: 'Connections', plugins: 'Plugins', shortcuts: 'Shortcuts', update: 'Update', uninstall: 'Uninstall' },
     ai: {
       provider: 'Model Providers',
       apiKey: 'API Key',
@@ -105,8 +105,8 @@ export const settingsEn = {
     },
     navigation: {
       railTitle: 'Rail items',
-      railDesc: 'Keep daily navigation focused by choosing which optional work surfaces appear in the left rail.',
-      hiddenHint: 'Hidden items stay available from search, direct links, and related pages. Keep the rail small for daily focus.',
+      railDesc: 'Keep daily navigation focused by choosing which optional or experimental work surfaces appear in the left rail.',
+      hiddenHint: 'Hidden items stay available from search, direct links, and related pages. Studio is shown by default; Flow stays experimental.',
       visible: 'Visible',
       hidden: 'Hidden',
       surfacePrefix: 'Rail item:',
@@ -114,7 +114,7 @@ export const settingsEn = {
       items: {
         studio: {
           label: 'Studio',
-          description: 'Project surface for long-running AI work, review, and growth. Hidden by default.',
+          description: 'Project surface for long-running AI work, review, and growth. Shown by default.',
         },
         flow: {
           label: 'Flow',

@@ -102,6 +102,14 @@ describe('navigation panel route recovery', () => {
     expect(getActiveLeftPanel('/wiki', 'files')).toBe('files');
   });
 
+  it('keeps full-page chat routes from changing the current left sidebar state', () => {
+    expect(getActiveLeftPanel('/chat/new', null)).toBeNull();
+    expect(getActiveLeftPanel('/chat/new', 'files')).toBe('files');
+    expect(getActiveLeftPanel('/chat/session-123', 'home')).toBe('home');
+    expect(getActiveLeftPanel('/chat/session-123', 'studio')).toBe('studio');
+    expect(getRailActivePanel('/chat/session-123', 'files')).toBe('files');
+  });
+
   it('clears stale workbench panels on neutral routes while preserving utility panels', () => {
     expect(getActiveLeftPanel('/settings', 'files')).toBeNull();
     expect(getActiveLeftPanel('/settings', 'agents')).toBeNull();

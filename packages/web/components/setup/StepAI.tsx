@@ -12,6 +12,8 @@ import StepPorts from './StepPorts';
 import StepAgents from './StepAgents';
 import { useLocale } from '@/lib/stores/locale-store';
 import { resolveAiProviderSelection } from '@/lib/ai-provider-settings';
+import { cn } from '@/lib/utils';
+import { setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
 
 export interface StepAIProps {
   state: SetupState;
@@ -111,12 +113,7 @@ export default function StepAI({
         />
         {isSkip && (
           <div
-            className="flex items-start gap-2 rounded-lg border px-3 py-2.5 text-xs leading-relaxed"
-            style={{
-              borderColor: 'color-mix(in srgb, var(--error) 26%, var(--border))',
-              background: 'color-mix(in srgb, var(--error) 7%, var(--card))',
-              color: 'var(--error)',
-            }}
+            className={setupNoticeClass('error', 'flex items-start gap-2 px-3 py-2.5')}
           >
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <span>{s.aiSkipWarning}</span>
@@ -134,7 +131,7 @@ export default function StepAI({
               placeholder={current.apiKeyMask || `${getApiKeyEnvVar(current.protocol) ?? 'API Key'}...`}
             />
             {current.apiKeyMask && !current.apiKey && (
-              <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {s.apiKeyExisting ?? 'Existing key configured. Leave blank to keep it.'}
               </p>
             )}
@@ -143,8 +140,7 @@ export default function StepAI({
                 href={currentPreset.signupUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs mt-1.5 hover:underline"
-                style={{ color: 'var(--amber)' }}
+                className="mt-1.5 inline-flex items-center gap-1 text-xs text-[var(--amber)] hover:underline"
               >
                 <ExternalLink size={10} />
                 {currentPreset.apiKeyFallback
@@ -190,8 +186,7 @@ export default function StepAI({
             <button
               type="button"
               aria-label={s.agentConnectionHelpLabel}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ color: 'var(--amber)' }}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--amber)] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <HelpCircle size={13} />
             </button>
@@ -219,12 +214,11 @@ export default function StepAI({
       </div>
 
       {/* Advanced: Port Settings */}
-      <div className="pt-3 mt-1" style={{ borderTop: '1px solid var(--border)' }}>
+      <div className="mt-1 border-t border-border pt-3">
         <button
           type="button"
           onClick={() => setPortsOpen(!portsOpen)}
-          className="flex items-center gap-1.5 text-xs font-medium"
-          style={{ color: 'var(--muted-foreground)' }}>
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {portsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           {s.advancedPorts}
         </button>
@@ -245,13 +239,16 @@ export default function StepAI({
                 {s.tokenSectionHint}
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 truncate text-xs font-mono px-3 py-2 rounded-lg"
-                  style={{ background: 'var(--muted)', color: state.authToken ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
+                <code
+                  className={cn(
+                    'flex-1 truncate rounded-lg bg-muted px-3 py-2 font-mono text-xs',
+                    state.authToken ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                >
                   {state.authToken || s.tokenSectionGenerating}
                 </code>
                 <button type="button" onClick={onCopyToken} disabled={!state.authToken}
-                  className="flex items-center gap-1 px-2.5 py-2 text-xs rounded-lg border transition-colors hover:bg-muted shrink-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+                  className={setupOutlineButtonClass('neutral', 'flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-2 text-foreground disabled:hover:bg-transparent')}>
                   <Copy size={12} /> {s.copyToken}
                 </button>
               </div>

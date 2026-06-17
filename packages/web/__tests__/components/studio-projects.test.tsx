@@ -73,16 +73,40 @@ describe('Studio Project UI', () => {
     const view = await render(<StudioProjectContent projectId="launch-practice" />);
 
     expect(view.host.textContent).toContain('Launch Practice');
+    expect(view.host.textContent).toContain('Overview');
+    expect(view.host.textContent).toContain('Directory');
+    expect(view.host.textContent).toContain('Goal');
+    expect(view.host.textContent).toContain('Progress');
     expect(view.host.textContent).toContain('Session history');
     expect(view.host.textContent).toContain('Launch brief review');
     expect(view.host.textContent).toContain('Product Strategy');
     expect(view.host.textContent).toContain('Research Kit');
     expect(view.host.textContent).toContain('Session drafts');
-    expect(view.host.textContent).toContain('Review');
-    expect(view.host.textContent).toContain('Growth');
+    expect(view.host.querySelector('input[placeholder="Search title, artifact, or summary"]')).not.toBeNull();
+    expect(view.host.querySelector('select')).not.toBeNull();
+    expect(view.host.querySelector('[data-stable-row-trailing]')).not.toBeNull();
 
     const newSession = view.host.querySelector<HTMLAnchorElement>('a[href="/chat/new?projectId=launch-practice"]');
     expect(newSession).not.toBeNull();
+
+    await view.cleanup();
+  });
+
+  it('filters Project Sessions by agent without changing the row chrome contract', async () => {
+    const StudioProjectContent = (await import('@/components/studio/StudioProjectContent')).default;
+    const view = await render(<StudioProjectContent projectId="launch-practice" />);
+
+    const filter = view.host.querySelector('select') as HTMLSelectElement | null;
+    expect(filter).not.toBeNull();
+
+    await act(async () => {
+      filter!.value = 'codex';
+      filter!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(view.host.textContent).toContain('Launch brief review');
+    expect(view.host.textContent).not.toContain('Pricing evidence pass');
+    expect(view.host.querySelectorAll('[data-stable-row-trailing]')).toHaveLength(1);
 
     await view.cleanup();
   });

@@ -2,7 +2,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { StableRowActionButton, StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
+import { StableRowActionButton, StableRowDisclosureSlot, StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
 
 describe('StableRowChrome', () => {
   let host: HTMLDivElement;
@@ -72,5 +72,19 @@ describe('StableRowChrome', () => {
     expect(status?.className).toContain('opacity-0');
     expect(actions?.className).toContain('pointer-events-auto');
     expect(actions?.className).toContain('opacity-100');
+  });
+
+  it('provides a stable disclosure slot for tree rows without children', async () => {
+    await act(async () => {
+      root.render(<StableRowDisclosureSlot className="text-muted-foreground" />);
+    });
+
+    const slot = host.querySelector('[data-stable-row-disclosure]') as HTMLElement | null;
+
+    expect(slot).not.toBeNull();
+    expect(slot?.className).toContain('h-7');
+    expect(slot?.className).toContain('w-7');
+    expect(slot?.className).toContain('shrink-0');
+    expect(slot?.getAttribute('aria-hidden')).toBe('true');
   });
 });

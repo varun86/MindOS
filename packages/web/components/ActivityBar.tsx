@@ -252,8 +252,8 @@ export default function ActivityBar({
     };
   }, []);
 
-  // Echo is now the default entry surface. Studio and Flow are optional rail
-  // items controlled from Settings / Navigation.
+  // Echo is a first-class content surface. Studio is visible by default; Flow
+  // remains an experimental rail item controlled from Settings / Experiments.
 
   /** Debounce repeated clicks on the same rail target without swallowing destination changes. */
   const debounced = useCallback((key: string, fn: () => void): boolean => {
@@ -364,6 +364,18 @@ export default function ActivityBar({
             onClick={(event) => handleRouteRailClick(event, 'files', onSpacesClick)}
             walkthroughId="files-panel"
           />
+          {railPreferences.studio && (
+            <RailButton
+              icon={<DraftingCompass size={18} />}
+              label={t.sidebar.studio ?? 'Studio'}
+              active={activeDestination === 'studio'}
+              current={isCurrentRouteForPanel('studio')}
+              expanded={expanded}
+              href={ROUTE_PANEL_HREF.studio}
+              onClick={(event) => handleRouteRailClick(event, 'studio', onStudioClick)}
+              walkthroughId="studio-page"
+            />
+          )}
           <RailButton
             icon={<Radio size={18} />}
             label={t.sidebar.echo}
@@ -384,18 +396,6 @@ export default function ActivityBar({
             onClick={(event) => handleRouteRailClick(event, 'agents', onAgentsClick)}
             walkthroughId="agents-panel"
           />
-          {railPreferences.studio && (
-            <RailButton
-              icon={<DraftingCompass size={18} />}
-              label={t.sidebar.studio ?? 'Studio'}
-              active={activeDestination === 'studio'}
-              current={isCurrentRouteForPanel('studio')}
-              expanded={expanded}
-              href={ROUTE_PANEL_HREF.studio}
-              onClick={(event) => handleRouteRailClick(event, 'studio', onStudioClick)}
-              walkthroughId="studio-page"
-            />
-          )}
           {railPreferences.flow && (
             <RailButton
               icon={<Zap size={18} />}

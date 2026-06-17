@@ -12,6 +12,7 @@ import { fetchMindosHealth } from '@/lib/mindos-health';
 import type { SetupState, SetupMessages, AgentInstallStatus } from './types';
 import { PROVIDER_PRESETS } from '@/lib/agent/providers';
 import { useLocale } from '@/lib/stores/locale-store';
+import { cn } from '@/lib/utils';
 
 // ─── Restart Block ────────────────────────────────────────────────────────────
 
@@ -19,11 +20,10 @@ import { useLocale } from '@/lib/stores/locale-store';
 export function RestartBanner({ s }: { s: SetupMessages }) {
   return (
     <div className="space-y-2">
-      <div className="p-3 rounded-lg text-sm flex items-center gap-2"
-        style={{ background: 'color-mix(in srgb, var(--amber) 10%, transparent)', color: 'var(--amber)' }}>
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] p-3 text-sm text-[var(--amber)]">
         <AlertTriangle size={14} /> {s.restartRequired}
       </div>
-      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+      <p className="text-xs text-muted-foreground">
         {s.restartManual} <code className="font-mono">mindos start</code>
       </p>
     </div>
@@ -84,8 +84,7 @@ export function RestartButton({ s, newPort, webPassword }: { s: SetupMessages; n
 
   if (done) {
     return (
-      <span className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-lg"
-        style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>
+      <span className="flex items-center gap-1.5 rounded-lg border border-success/25 bg-success/10 px-5 py-2 text-sm font-medium text-success">
         <CheckCircle2 size={14} /> {s.restartDone}
       </span>
     );
@@ -96,8 +95,7 @@ export function RestartButton({ s, newPort, webPassword }: { s: SetupMessages; n
       type="button"
       onClick={handleRestart}
       disabled={restarting}
-      className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-      style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}>
+      className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-5 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {restarting ? <Loader2 size={13} className="animate-spin" /> : null}
       {restarting ? s.restarting : s.restartNow}
     </button>
@@ -130,22 +128,27 @@ interface ReviewStatusRow {
   tone?: ReviewTone;
 }
 
-function ReviewBadge({ tone = 'default', children }: { tone?: ReviewTone; children: ReactNode }) {
-  const color = tone === 'warning'
-    ? 'var(--error)'
-    : tone === 'success'
-      ? 'var(--success)'
-      : 'var(--muted-foreground)';
-  const background = tone === 'warning'
-    ? 'color-mix(in srgb, var(--error) 8%, transparent)'
-    : tone === 'success'
-      ? 'color-mix(in srgb, var(--success) 10%, transparent)'
-      : 'var(--muted)';
+function toneBadgeClass(tone: ReviewTone = 'default'): string {
+  if (tone === 'warning') return 'border-error/25 bg-error/10 text-error';
+  if (tone === 'success') return 'border-success/25 bg-success/10 text-success';
+  return 'border-border/60 bg-muted/70 text-muted-foreground';
+}
 
+function toneIconClass(tone: ReviewTone = 'default'): string {
+  if (tone === 'warning') return 'bg-error/10 text-error';
+  if (tone === 'success') return 'bg-success/10 text-success';
+  return 'bg-[var(--amber-subtle)] text-[var(--amber)]';
+}
+
+function toneValueClass(tone: ReviewTone = 'default'): string {
+  if (tone === 'warning') return 'text-error';
+  return 'text-foreground';
+}
+
+function ReviewBadge({ tone = 'default', children }: { tone?: ReviewTone; children: ReactNode }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-2xs font-medium"
-      style={{ background, color }}
+      className={cn('inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-2xs font-medium', toneBadgeClass(tone))}
     >
       {children}
     </span>
@@ -154,21 +157,16 @@ function ReviewBadge({ tone = 'default', children }: { tone?: ReviewTone; childr
 
 function ReviewStatusList({ rows }: { rows: ReviewStatusRow[] }) {
   return (
-    <div className="divide-y divide-border/70">
+    <div className="grid gap-2">
       {rows.map((row) => {
-        const isWarning = row.tone === 'warning';
-        const iconColor = isWarning ? 'var(--error)' : 'var(--amber)';
-        const valueColor = isWarning ? 'var(--error)' : 'var(--foreground)';
         return (
-          <div key={row.title} className="grid gap-1.5 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 sm:px-5">
+          <div
+            key={row.title}
+            data-setup-review-row
+            className="grid gap-2 rounded-lg border border-border/60 bg-card/45 px-3 py-3 sm:grid-cols-[9.5rem_minmax(0,1fr)] sm:gap-4 sm:px-4"
+          >
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-                style={{
-                  background: isWarning
-                    ? 'color-mix(in srgb, var(--error) 7%, transparent)'
-                    : 'color-mix(in srgb, var(--amber) 7%, transparent)',
-                  color: iconColor,
-                }}>
+              <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md', toneIconClass(row.tone))}>
                 {row.icon}
               </span>
               <span>{row.title}</span>
@@ -176,8 +174,7 @@ function ReviewStatusList({ rows }: { rows: ReviewStatusRow[] }) {
             <div className="min-w-0">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <p
-                  className="min-w-0 break-words text-sm font-medium leading-5"
-                  style={{ color: valueColor }}
+                  className={cn('min-w-0 break-words text-sm font-medium leading-5', toneValueClass(row.tone))}
                 >
                   {row.value}
                 </p>
@@ -269,34 +266,18 @@ export default function StepReview({
       {setupPhase !== 'done' && (
         <div className="space-y-3">
           {setupPhase === 'review' && (
-            <div
-              className="overflow-hidden rounded-xl border"
-              style={{
-                borderColor: 'color-mix(in srgb, var(--amber) 22%, var(--border))',
-                background: 'var(--card)',
-              }}
-            >
-              <div className="border-b border-border/70 px-4 py-3.5 sm:px-5">
-                <div className="flex min-w-0 items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-base font-medium leading-6 text-foreground">{s.reviewReadyTitle}</p>
-                    <p className="mt-0.5 max-w-[38rem] text-xs leading-relaxed text-muted-foreground">{s.reviewHint}</p>
-                  </div>
-                  <span
-                    className="hidden shrink-0 rounded-md px-2 py-1 text-xs font-medium sm:inline-flex"
-                    style={{
-                      background: aiSkipped
-                        ? 'color-mix(in srgb, var(--error) 8%, transparent)'
-                        : 'color-mix(in srgb, var(--success) 10%, transparent)',
-                      color: aiSkipped ? 'var(--error)' : 'var(--success)',
-                    }}
-                  >
-                    {aiSkipped ? s.aiSkipTitle : s.aiModelTitle}
-                  </span>
+            <section data-setup-review-summary className="space-y-3" aria-label={s.reviewReadyTitle}>
+              <div className="flex min-w-0 items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold leading-6 text-foreground">{s.reviewReadyTitle}</p>
+                  <p className="mt-1 max-w-[38rem] text-xs leading-relaxed text-muted-foreground">{s.reviewHint}</p>
                 </div>
+                <ReviewBadge tone={aiSkipped ? 'warning' : 'success'}>
+                  {aiSkipped ? s.aiSkipTitle : s.aiModelTitle}
+                </ReviewBadge>
               </div>
               <ReviewStatusList rows={reviewRows} />
-            </div>
+            </section>
           )}
         </div>
       )}
@@ -311,18 +292,25 @@ export default function StepReview({
             const isPending = currentIdx < idx;
             return (
               <div key={key} className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-2xs"
-                  style={{
-                    background: isDone ? 'color-mix(in srgb, var(--success) 15%, transparent)' : isActive ? 'color-mix(in srgb, var(--amber) 15%, transparent)' : 'var(--muted)',
-                    color: isDone ? 'var(--success)' : isActive ? 'var(--amber)' : 'var(--muted-foreground)',
-                  }}>
+                <div
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-2xs',
+                    isDone
+                      ? 'bg-success/10 text-success'
+                      : isActive
+                        ? 'bg-[var(--amber-subtle)] text-[var(--amber)]'
+                        : 'bg-muted text-muted-foreground',
+                  )}
+                >
                   {isDone ? <CheckCircle2 size={12} /> : isActive ? <Loader2 size={12} className="animate-spin" /> : (i + 1)}
                 </div>
-                <span className="text-sm" style={{
-                  color: isDone ? 'var(--success)' : isActive ? 'var(--foreground)' : 'var(--muted-foreground)',
-                  fontWeight: isActive ? 500 : 400,
-                  opacity: isPending ? 0.5 : 1,
-                }}>
+                <span
+                  className={cn(
+                    'text-sm',
+                    isDone ? 'text-success' : isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
+                    isPending ? 'opacity-50' : '',
+                  )}
+                >
                   {label}
                 </span>
               </div>
@@ -332,32 +320,30 @@ export default function StepReview({
       )}
 
       {error && (
-        <div className="p-3 rounded-lg text-sm text-error" style={{ background: 'color-mix(in srgb, var(--error) 10%, transparent)' }}>
+        <div className="rounded-lg border border-error/25 bg-error/10 p-3 text-sm text-error">
           {s.completeFailed}: {error}
         </div>
       )}
 
       {failedAgents.length > 0 && setupPhase === 'done' && (
-        <div className="rounded-lg border p-3 space-y-2"
-          style={{ borderColor: 'color-mix(in srgb, var(--error) 35%, transparent)', background: 'color-mix(in srgb, var(--error) 8%, transparent)' }}>
-          <p className="text-xs font-medium" style={{ color: 'var(--error)' }}>
+        <div className="space-y-2 rounded-lg border border-error/30 bg-error/10 p-3">
+          <p className="text-xs font-medium text-error">
             {s.agentFailedCount(failedAgents.length)}
           </p>
           {failedAgents.map(([key, st]) => (
             <div key={key} className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-xs flex items-center gap-1" style={{ color: 'var(--error)' }}>
+              <span className="flex min-w-0 items-center gap-1 truncate text-xs text-error">
                 <XCircle size={11} className="shrink-0" /> {key}{st.message ? ` - ${st.message}` : ''}
               </span>
               <button
                 type="button"
                 onClick={() => onRetryAgent(key)}
-                className="shrink-0 rounded-md border px-2 py-0.5 text-xs transition-colors hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                style={{ borderColor: 'var(--error)', color: 'var(--error)' }}>
+                className="shrink-0 rounded-md border border-error/50 px-2 py-0.5 text-xs text-error transition-colors hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {s.retryAgent}
               </button>
             </div>
           ))}
-          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.agentFailureNote}</p>
+          <p className="text-xs text-muted-foreground">{s.agentFailureNote}</p>
         </div>
       )}
 
@@ -507,15 +493,11 @@ function HealthCheckView({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+      <div className="overflow-hidden rounded-lg border border-border bg-card/70">
         <div className="border-b border-border/70 p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <span
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{
-                background: 'color-mix(in srgb, var(--success) 10%, transparent)',
-                color: 'var(--success)',
-              }}
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success"
             >
               <CheckCircle2 size={19} />
             </span>
@@ -531,32 +513,31 @@ function HealthCheckView({
 
       {/* Auth Token — always shown prominently */}
       {hasToken && (
-        <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
+        <div className="space-y-2 rounded-lg border border-border bg-card/70 p-4">
+          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <Shield size={11} />
             {s.healthTokenTitle ?? 'Auth Token'}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center px-3 py-2 rounded-lg min-h-[38px]"
-              style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
-              <code className="flex-1 text-xs font-mono break-all select-all leading-relaxed" style={{ color: 'var(--foreground)' }}>
+            <div className="flex min-h-[38px] flex-1 items-center rounded-lg border border-border bg-muted px-3 py-2">
+              <code className="flex-1 select-all break-all font-mono text-xs leading-relaxed text-foreground">
                 {state.authToken}
               </code>
             </div>
             <button
               type="button"
               onClick={handleCopyToken}
-              className="shrink-0 p-2 rounded-lg border transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-              style={{
-                borderColor: copied ? 'color-mix(in srgb, var(--success) 50%, transparent)' : 'var(--border)',
-                background: copied ? 'color-mix(in srgb, var(--success) 10%, transparent)' : 'transparent',
-                color: copied ? 'var(--success)' : 'var(--muted-foreground)',
-              }}
+              className={cn(
+                'shrink-0 rounded-lg border p-2 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                copied
+                  ? 'border-success/50 bg-success/10 text-success'
+                  : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
               title={s.healthTokenCopy ?? 'Copy token'}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
           </div>
-          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <p className="text-xs text-muted-foreground">
             {s.healthTokenHint ?? 'Use this token when connecting AI agents. Also available in Settings → Connections.'}
           </p>
         </div>

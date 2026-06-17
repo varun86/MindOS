@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Loader2, AlertTriangle, CheckCircle2, Info, Monitor, Plug } from 'lucide-react';
 import { Input } from '@/components/settings/Primitives';
 import type { SetupState, PortStatus, SetupMessages } from './types';
+import { setupOutlineButtonClass } from './setupStyles';
 
 // ─── PortField ────────────────────────────────────────────────────────────────
 export function PortField({
@@ -44,13 +45,13 @@ export function PortField({
           onBlur={handleBlur}
         />
         {status.checking && (
-          <p className="text-xs flex items-center gap-1" role="status" style={{ color: 'var(--muted-foreground)' }}>
+          <p className="flex items-center gap-1 text-xs text-muted-foreground" role="status">
             <Loader2 size={11} className="animate-spin" /> {s.portChecking}
           </p>
         )}
         {!status.checking && status.available === false && (
           <div className="flex items-center gap-2" role="alert">
-            <p className="text-xs flex items-center gap-1" style={{ color: 'var(--amber)' }}>
+            <p className="flex items-center gap-1 text-xs text-[var(--amber)]">
               <AlertTriangle size={11} /> {s.portInUse(value)}
             </p>
             {status.suggestion !== null && (
@@ -59,15 +60,15 @@ export function PortField({
                   onChange(status.suggestion!);
                   setTimeout(() => onCheckPort(status.suggestion!), 0);
                 }}
-                className="text-xs px-2 py-0.5 rounded border transition-colors"
-                style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}>
+                className={setupOutlineButtonClass('amber', 'px-2 py-0.5')}
+              >
                 {s.portSuggest(status.suggestion)}
               </button>
             )}
           </div>
         )}
         {!status.checking && status.available === true && (
-          <p className="text-xs flex items-center gap-1" style={{ color: 'var(--success)' }}>
+          <p className="flex items-center gap-1 text-xs text-success">
           <CheckCircle2 size={11} /> {status.isSelf ? s.portSelf : s.portAvailable}
         </p>
         )}
@@ -122,14 +123,14 @@ export default function StepPorts({
         />
       )}
       {portConflict && (
-        <p className="text-xs flex items-center gap-1.5" role="alert" style={{ color: 'var(--amber)' }}>
+        <p className="flex items-center gap-1.5 text-xs text-[var(--amber)]" role="alert">
           <AlertTriangle size={12} /> {s.portConflict}
         </p>
       )}
       {!portConflict && hasUncheckedVisiblePort && !hasVisiblePortChecking && (
-        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.portVerifyHint}</p>
+        <p className="text-xs text-muted-foreground">{s.portVerifyHint}</p>
       )}
-      <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--muted-foreground)' }}>
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Info size={12} /> {s.portRestartWarning}
       </p>
     </div>

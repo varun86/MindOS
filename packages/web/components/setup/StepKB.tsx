@@ -7,6 +7,8 @@ import type { Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SetupState } from './types';
 import { TEMPLATES } from './constants';
+import { cn } from '@/lib/utils';
+import { setupChoiceCardClass, setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
 
 // Desktop bridge for folder picker (Electron only)
 interface MindosDesktopBridge {
@@ -148,12 +150,7 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
               onBlur={() => setTimeout(() => hideSuggestions(), 150)}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder={placeholder}
-              className="flex-1 px-3 py-2 text-sm rounded-lg border outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
-              style={{
-                background: 'var(--input, var(--card))',
-                borderColor: 'var(--border)',
-                color: 'var(--foreground)',
-              }}
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
             />
             {/* Folder picker button — Desktop (Electron) only */}
             {getDesktopBridge()?.selectDirectory && (
@@ -167,24 +164,17 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
                     hideSuggestions();
                   }
                 }}
-                className="px-3 py-2 rounded-lg border transition-colors hover:bg-muted/50"
-                style={{ borderColor: 'var(--border)' }}
+                className="rounded-lg border border-border px-3 py-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title={s.kbPathBrowse ?? 'Browse...'}
               >
-                <FolderOpen size={16} style={{ color: 'var(--muted-foreground)' }} />
+                <FolderOpen size={16} />
               </button>
             )}
           </div>
           {showSuggestions && suggestions.length > 0 && (
             <div
               role="listbox"
-              className="absolute z-50 left-0 right-0 top-full mt-1 rounded-lg border overflow-auto"
-              style={{
-                background: 'var(--card)',
-                borderColor: 'var(--border)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                maxHeight: '220px',
-              }}>
+              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-auto rounded-lg border border-border bg-card shadow-lg">
               {suggestions.map((suggestion, i) => (
                 <button
                   key={suggestion}
@@ -192,12 +182,12 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
                   role="option"
                   aria-selected={i === activeSuggestion}
                   onMouseDown={() => selectSuggestion(suggestion)}
-                  className="w-full text-left px-3 py-2 text-sm font-mono transition-colors"
-                  style={{
-                    background: i === activeSuggestion ? 'var(--muted)' : 'transparent',
-                    color: 'var(--foreground)',
-                    borderTop: i > 0 ? '1px solid var(--border)' : undefined,
-                  }}>
+                  className={cn(
+                    'w-full px-3 py-2 text-left font-mono text-sm text-foreground transition-colors',
+                    i === activeSuggestion ? 'bg-muted' : 'bg-transparent',
+                    i > 0 && 'border-t border-border',
+                  )}
+                >
                   {suggestion}
                 </button>
               ))}
@@ -208,21 +198,19 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
         {state.mindRoot !== placeholder && placeholder !== s.kbPathDefault && (
           <button type="button"
             onClick={() => update('mindRoot', placeholder)}
-            className="mt-1.5 px-2.5 py-1 text-xs rounded-md border transition-colors hover:bg-muted/50"
-            style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}>
+            className={setupOutlineButtonClass('amber', 'mt-1.5')}>
             {s.kbPathUseDefault(placeholder)}
           </button>
         )}
         {/* ⚠️ Unsafe path warning — blocks setup until user picks a safe path */}
         {pathInfo?.unsafe && (
-          <div className="mt-3 rounded-lg border p-3 text-sm flex gap-2 items-start"
-            style={{ borderColor: 'var(--error)', background: 'color-mix(in srgb, var(--error) 8%, transparent)' }}>
-            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--error)' }} />
+          <div className={setupNoticeClass('error', 'mt-3 flex items-start gap-2 p-3 text-sm')}>
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium" style={{ color: 'var(--error)' }}>
+              <p className="font-medium">
                 {isZh ? '路径不安全' : 'Unsafe Path'}
               </p>
-              <p className="mt-1" style={{ color: 'var(--muted-foreground)' }}>
+              <p className="mt-1 text-muted-foreground">
                 {isZh ? pathInfo.reasonZh : pathInfo.reason}
               </p>
             </div>
@@ -233,25 +221,23 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
       {pathInfo && pathInfo.exists && !pathInfo.empty && !showTemplatePickerAnyway ? (
         <div>
           <label className="text-sm text-foreground font-medium mb-3 block">{s.template}</label>
-          <div className="rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--amber)', background: 'color-mix(in srgb, var(--amber) 6%, transparent)' }}>
-            <p style={{ color: 'var(--amber)' }}>
+          <div className={setupNoticeClass('amber', 'p-3 text-sm')}>
+            <p>
               {s.kbPathHasFiles(pathInfo.count)}
             </p>
             <div className="flex gap-2 mt-2">
               <button type="button"
                 onClick={() => update('template', '')}
-                className="px-2.5 py-1 text-xs rounded-md border transition-colors"
-                style={{
-                  borderColor: 'var(--amber)',
-                  color: state.template === '' ? 'var(--background)' : 'var(--amber)',
-                  background: state.template === '' ? 'var(--amber)' : 'transparent',
-                }}>
+                className={cn(
+                  setupOutlineButtonClass('amber'),
+                  state.template === '' && 'bg-[var(--amber)] text-[var(--amber-foreground)] hover:bg-[var(--amber)]/90',
+                )}
+              >
                 {state.template === '' ? <>{s.kbTemplateSkip} ✓</> : s.kbTemplateSkip}
               </button>
               <button type="button"
                 onClick={() => setShowTemplatePickerAnyway(true)}
-                className="px-2.5 py-1 text-xs rounded-md border transition-colors hover:bg-muted/50"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                className={setupOutlineButtonClass('neutral')}>
                 {s.kbTemplateMerge}
               </button>
             </div>
@@ -263,19 +249,14 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {TEMPLATES.map(tpl => (
             <button key={tpl.id} onClick={() => update('template', tpl.id)}
-              className="flex flex-col items-start gap-2 p-4 rounded-xl border text-left transition-all duration-150"
-              style={{
-                background: state.template === tpl.id ? 'var(--amber-dim)' : 'var(--card)',
-                borderColor: state.template === tpl.id ? 'var(--amber)' : 'var(--border)',
-              }}>
+              className={setupChoiceCardClass(state.template === tpl.id, 'flex flex-col items-start gap-2 rounded-xl p-4 text-left duration-150')}>
               <div className="flex items-center gap-2">
-                <span style={{ color: 'var(--amber)' }}>{tpl.icon}</span>
-                <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
+                <span className="text-[var(--amber)]">{tpl.icon}</span>
+                <span className="text-sm font-medium text-foreground">
                   {t.onboarding.templates[tpl.id as 'en' | 'zh' | 'empty'].title}
                 </span>
               </div>
-              <div className="w-full rounded-lg px-2.5 py-1.5 text-xs leading-relaxed font-display"
-                style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+              <div className="w-full rounded-lg bg-muted px-2.5 py-1.5 font-display text-xs leading-relaxed text-muted-foreground">
                 {tpl.dirs.map(d => <div key={d}>{d}</div>)}
               </div>
             </button>
@@ -285,23 +266,21 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
       )}
 
       {/* ── Security ── */}
-      <div className="pt-2 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
-        <Field label={<>{s.webPassword} <span style={{ color: 'var(--error)' }}>*</span></>} hint={s.webPasswordHint}>
+      <div className="mt-2 border-t border-border pt-2">
+        <Field label={<>{s.webPassword} <span className="text-error">*</span></>} hint={s.webPasswordHint}>
           <input
             type="password"
             value={state.webPassword}
             onChange={e => { update('webPassword', e.target.value); setPasswordTouched(true); }}
             onBlur={() => setPasswordTouched(true)}
             placeholder="••••••••"
-            className="w-full px-3 py-2 text-sm rounded-lg border outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
-            style={{
-              background: 'var(--input, var(--card))',
-              borderColor: passwordTouched && !state.webPassword.trim() ? 'var(--error)' : 'var(--border)',
-              color: 'var(--foreground)',
-            }}
+            className={cn(
+              'w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
+              passwordTouched && !state.webPassword.trim() ? 'border-error' : 'border-border',
+            )}
           />
           {passwordTouched && !state.webPassword.trim() && (
-            <p className="text-xs flex items-center gap-1 mt-1" style={{ color: 'var(--error)' }}>
+            <p className="mt-1 flex items-center gap-1 text-xs text-error">
               <AlertCircle size={11} /> {s.webPasswordRequired}
             </p>
           )}

@@ -1,6 +1,7 @@
 import { getMessages, hasMessages } from '@/lib/ask-run-store';
 import type { ChatSession, Message } from '@/lib/types';
 import type { StudioSessionSummary } from '@/lib/studio-projects';
+import { getSessionAgentRuntime } from '@/lib/ask-agent';
 
 export function getChatSessionMessages(session: ChatSession): Message[] {
   return hasMessages(session.id) ? getMessages(session.id) : session.messages;
@@ -48,9 +49,12 @@ export function summarizeChatSession(
   activeSessionId: string | null,
   fallbackTitle = 'Untitled Session',
 ): StudioSessionSummary {
+  const runtime = getSessionAgentRuntime(session);
   return {
     id: session.id,
     href: `/chat/${encodeURIComponent(session.id)}`,
+    agentId: runtime?.id ?? 'mindos',
+    agentName: runtime?.name ?? 'MindOS',
     title: getChatSessionTitle(session, fallbackTitle),
     status: getStudioStatusFromChatSession(session, activeSessionId),
     updated: formatChatSessionUpdated(session.updatedAt),

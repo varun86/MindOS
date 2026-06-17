@@ -9,6 +9,8 @@ import { useLocale } from '@/lib/stores/locale-store';
 import type { PortStatus, SetupState, SpaceKitId } from './types';
 import { SPACE_KITS } from './constants';
 import { PortField } from './StepPorts';
+import { cn } from '@/lib/utils';
+import { setupChoiceCardClass, setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
 
 interface MindosDesktopBridge {
   selectDirectory?: () => Promise<string | null>;
@@ -208,20 +210,14 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => toggleKit(kit.id)}
-                className="group relative grid min-h-[5rem] grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color] duration-150 hover:border-[var(--amber)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem]"
-                style={{
-                  background: isSelected
-                    ? 'color-mix(in srgb, var(--amber) 9%, var(--card))'
-                    : 'color-mix(in srgb, var(--card) 86%, transparent)',
-                  borderColor: isSelected ? 'var(--amber)' : 'var(--border)',
-                }}
+                className={setupChoiceCardClass(isSelected, 'group relative grid min-h-[5rem] grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 py-2.5 text-left duration-150 hover:border-[var(--amber)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem]')}
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors duration-150"
-                  style={{
-                    background: isSelected ? 'color-mix(in srgb, var(--amber) 10%, var(--muted))' : 'var(--muted)',
-                    color: isSelected ? 'var(--amber)' : 'var(--muted-foreground)',
-                    borderColor: 'transparent',
-                  }}>
+                <span
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors duration-150',
+                    isSelected ? 'bg-[var(--amber-subtle)] text-[var(--amber)]' : 'bg-muted text-muted-foreground',
+                  )}
+                >
                   {kit.icon}
                 </span>
                 <span className="min-w-0 pr-5 sm:pr-4">
@@ -229,7 +225,7 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
                   <span className="mt-0.5 block truncate whitespace-nowrap text-xs leading-4 text-muted-foreground" title={desc}>{desc}</span>
                 </span>
                 <span className="absolute right-2.5 top-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-background/75 transition-opacity duration-150">
-                  <CheckCircle2 size={14} className={isSelected ? 'opacity-100' : 'opacity-0'} style={{ color: 'var(--amber)' }} />
+                  <CheckCircle2 size={14} className={cn('text-[var(--amber)]', isSelected ? 'opacity-100' : 'opacity-0')} />
                 </span>
               </button>
             );
@@ -256,8 +252,10 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder={placeholder}
               aria-label={s.kbPath}
-              className="w-full rounded-lg border bg-background px-3 py-2 pr-11 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-              style={{ borderColor: pathInfo?.unsafe ? 'var(--error)' : 'var(--border)' }}
+              className={cn(
+                'w-full rounded-lg border bg-background px-3 py-2 pr-11 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
+                pathInfo?.unsafe ? 'border-error' : 'border-border',
+              )}
             />
             <button
               type="button"
@@ -280,13 +278,13 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
                     key={suggestion}
                     type="button"
                     role="option"
-                    aria-selected={i === activeSuggestion}
-                    onMouseDown={() => selectSuggestion(suggestion)}
-                    className="w-full px-3 py-2 text-left font-mono text-sm text-foreground transition-colors"
-                    style={{
-                      background: i === activeSuggestion ? 'var(--muted)' : 'transparent',
-                      borderTop: i > 0 ? '1px solid var(--border)' : undefined,
-                    }}
+                  aria-selected={i === activeSuggestion}
+                  onMouseDown={() => selectSuggestion(suggestion)}
+                    className={cn(
+                      'w-full px-3 py-2 text-left font-mono text-sm text-foreground transition-colors',
+                      i === activeSuggestion ? 'bg-muted' : 'bg-transparent',
+                      i > 0 && 'border-t border-border',
+                    )}
                   >
                     {suggestion}
                   </button>
@@ -298,19 +296,17 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
             <button
               type="button"
               onClick={() => update('mindRoot', placeholder)}
-              className="mt-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ borderColor: 'var(--amber)', color: 'var(--amber)' }}
+              className={setupOutlineButtonClass('amber', 'mt-1.5')}
             >
               {s.kbPathUseDefault(placeholder)}
             </button>
           )}
 
           {pathInfo?.unsafe && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border p-3 text-sm"
-              style={{ borderColor: 'var(--error)', background: 'color-mix(in srgb, var(--error) 8%, transparent)' }}>
-              <AlertCircle size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--error)' }} />
+            <div className={setupNoticeClass('error', 'mt-3 flex items-start gap-2 p-3 text-sm')}>
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
               <div>
-                <p className="font-medium" style={{ color: 'var(--error)' }}>{isZh ? '路径不安全' : 'Unsafe path'}</p>
+                <p className="font-medium">{isZh ? '路径不安全' : 'Unsafe path'}</p>
                 <p className="mt-1 text-muted-foreground">{isZh ? pathInfo.reasonZh : pathInfo.reason}</p>
               </div>
             </div>

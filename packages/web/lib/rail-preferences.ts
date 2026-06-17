@@ -18,7 +18,7 @@ export const RAIL_STORAGE_KEYS: Record<OptionalRailItem, string> = {
 };
 
 export const DEFAULT_RAIL_PREFERENCES: RailPreferences = {
-  studio: false,
+  studio: true,
   flow: false,
 };
 
@@ -28,19 +28,21 @@ function canUseStorage(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
-function readFlag(key: string): boolean {
-  if (!canUseStorage()) return false;
+function readFlag(key: string, defaultValue: boolean): boolean {
+  if (!canUseStorage()) return defaultValue;
   try {
-    return window.localStorage.getItem(key) === '1';
+    const stored = window.localStorage.getItem(key);
+    if (stored === null) return defaultValue;
+    return stored === '1';
   } catch {
-    return false;
+    return defaultValue;
   }
 }
 
 export function readRailPreferences(): RailPreferences {
   const next = {
-    studio: readFlag(RAIL_STORAGE_KEYS.studio),
-    flow: readFlag(RAIL_STORAGE_KEYS.flow),
+    studio: readFlag(RAIL_STORAGE_KEYS.studio, DEFAULT_RAIL_PREFERENCES.studio),
+    flow: readFlag(RAIL_STORAGE_KEYS.flow, DEFAULT_RAIL_PREFERENCES.flow),
   };
 
   if (next.studio === cachedSnapshot.studio && next.flow === cachedSnapshot.flow) {

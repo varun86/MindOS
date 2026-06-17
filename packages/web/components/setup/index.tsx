@@ -437,16 +437,16 @@ export default function SetupWizard() {
   }, [agents, agentScope, agentTransport, state.mcpPort, state.authToken]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto"
+    <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-background"
       role="dialog" aria-modal="true" aria-labelledby="setup-title"
-      style={{ background: 'var(--background)' }}>
+    >
       {/* Sticky header: logo + step dots */}
-      <div className="sticky top-0 z-10 border-b border-border/40 px-6 pb-3 pt-6 shadow-[0_1px_0_0_color-mix(in_srgb,var(--background)_70%,transparent)]" style={{ background: 'color-mix(in srgb, var(--background) 94%, transparent)' }}>
+      <div className="sticky top-0 z-10 border-b border-border/40 bg-background/95 px-6 pb-3 pt-6 shadow-sm backdrop-blur">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-3">
             <div className="inline-flex items-center gap-2">
               <Logo id="setup" className="h-5 w-10" />
-              <h1 id="setup-title" className="text-2xl font-brand" style={{ color: 'var(--foreground)' }}>
+              <h1 id="setup-title" className="text-2xl font-brand text-foreground">
                 MindOS
               </h1>
             </div>
@@ -459,7 +459,7 @@ export default function SetupWizard() {
 
       {/* Scrollable content */}
       <div className="mx-auto w-full max-w-2xl flex-1 px-6 pb-8 pt-7">
-        <h2 className="text-lg font-semibold mb-5" style={{ color: 'var(--foreground)' }}>
+        <h2 className="text-lg font-semibold mb-5 text-foreground">
           {s.stepTitles[step]}
         </h2>
 
@@ -505,12 +505,11 @@ export default function SetupWizard() {
         )}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
           <button
             onClick={() => setStep(step - 1)}
             disabled={step === 0 || submitting || completed}
-            className="flex items-center gap-1 px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ color: 'var(--foreground)' }}>
+            className="flex items-center gap-1 rounded-lg border border-border px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronLeft size={14} /> {s.back}
           </button>
 
@@ -518,8 +517,7 @@ export default function SetupWizard() {
             <button
               onClick={() => setStep(step + 1)}
               disabled={!canNext()}
-              className="flex items-center gap-1 px-4 py-2 text-sm rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}>
+              className="flex items-center gap-1 rounded-lg bg-[var(--amber)] px-4 py-2 text-sm text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {s.next} <ChevronRight size={14} />
             </button>
           ) : completed ? (
@@ -528,8 +526,7 @@ export default function SetupWizard() {
               <RestartButton s={s} newPort={state.webPort} webPassword={state.webPassword} />
             ) : (
               <a href="/?welcome=1"
-                className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium rounded-lg transition-colors hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
-                style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}>
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--amber)] px-5 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {s.healthGoHome ?? 'Go to MindOS'} &rarr;
               </a>
             )
@@ -537,8 +534,7 @@ export default function SetupWizard() {
             <button
               onClick={handleComplete}
               disabled={submitting}
-              className="flex items-center gap-1 px-5 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-              style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}>
+              className="flex items-center gap-1 rounded-lg bg-[var(--amber)] px-5 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {submitting && <Loader2 size={14} className="animate-spin" />}
               {submitting ? s.completing : s.complete}
             </button>

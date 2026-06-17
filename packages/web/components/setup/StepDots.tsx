@@ -2,6 +2,7 @@
 
 import { CheckCircle2 } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
+import { cn } from '@/lib/utils';
 
 export interface StepDotsProps {
   step: number;
@@ -25,8 +26,10 @@ export default function StepDots({ step, setStep, stepTitles, disabled, numbered
         <div key={i} className="flex items-center gap-1.5">
           {i > 0 && (
             <div
-              className="h-px w-9 rounded-full"
-              style={{ background: i <= step || isConfirmStep ? 'color-mix(in srgb, var(--success) 42%, var(--border))' : 'var(--border)' }}
+              className={cn(
+                'h-px w-9 rounded-full',
+                i <= step || isConfirmStep ? 'bg-success/35' : 'bg-border',
+              )}
             />
           )}
           <button onClick={() => setStep(i)}
@@ -40,19 +43,24 @@ export default function StepDots({ step, setStep, stepTitles, disabled, numbered
               const isActive = i === step && !isConfirmStep;
               return (
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold"
-              style={{
-                background: isDone ? 'var(--background)' : isActive ? 'var(--amber)' : 'var(--muted)',
-                borderColor: isDone ? 'color-mix(in srgb, var(--success) 40%, var(--border))' : isActive ? 'color-mix(in srgb, var(--amber) 68%, transparent)' : 'var(--border)',
-                color: isDone ? 'var(--success)' : isActive ? 'var(--amber-foreground)' : 'var(--muted-foreground)',
-                opacity: isDone || isActive ? 1 : 0.5,
-              }}>
+              className={cn(
+                'flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold',
+                isDone && 'border-success/40 bg-background text-success',
+                isActive && 'border-[var(--amber)] bg-[var(--amber)] text-[var(--amber-foreground)]',
+                !isDone && !isActive && 'border-border bg-muted text-muted-foreground opacity-50',
+              )}
+            >
               {isDone ? <CheckCircle2 size={14} /> : i + 1}
             </div>
               );
             })()}
-            <span className="text-[10px] leading-tight hidden sm:inline max-w-[4rem] text-center truncate"
-              style={{ color: (i === step && !isConfirmStep) ? 'var(--foreground)' : 'var(--muted-foreground)', opacity: (i <= step || isConfirmStep) ? 1 : 0.5 }}>
+            <span
+              className={cn(
+                'hidden max-w-[4rem] truncate text-center text-[10px] leading-tight sm:inline',
+                i === step && !isConfirmStep ? 'text-foreground' : 'text-muted-foreground',
+                i <= step || isConfirmStep ? 'opacity-100' : 'opacity-50',
+              )}
+            >
               {title}
             </span>
           </button>

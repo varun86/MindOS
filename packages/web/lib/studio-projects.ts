@@ -1,6 +1,8 @@
 export interface StudioSessionSummary {
   id: string;
   href?: string;
+  agentId?: string;
+  agentName?: string;
   title: string;
   titleZh?: string;
   status: 'active' | 'paused' | 'review' | 'done';
@@ -72,6 +74,8 @@ export const STUDIO_PROJECTS: StudioProject[] = [
     sessions: [
       {
         id: 'launch-brief-review',
+        agentId: 'codex',
+        agentName: 'Codex',
         title: 'Launch brief review',
         titleZh: '发布 brief 复盘',
         status: 'active',
@@ -83,6 +87,8 @@ export const STUDIO_PROJECTS: StudioProject[] = [
       },
       {
         id: 'pricing-evidence-pass',
+        agentId: 'mindos',
+        agentName: 'MindOS',
         title: 'Pricing evidence pass',
         titleZh: '定价证据梳理',
         status: 'review',
@@ -119,6 +125,8 @@ export const STUDIO_PROJECTS: StudioProject[] = [
     sessions: [
       {
         id: 'literature-map',
+        agentId: 'claude',
+        agentName: 'Claude Code',
         title: 'Literature map',
         titleZh: '文献地图',
         status: 'done',
@@ -130,6 +138,8 @@ export const STUDIO_PROJECTS: StudioProject[] = [
       },
       {
         id: 'method-risk-pass',
+        agentId: 'mindos',
+        agentName: 'MindOS',
         title: 'Method risk pass',
         titleZh: '方法风险复盘',
         status: 'review',
@@ -166,6 +176,8 @@ export const STUDIO_PROJECTS: StudioProject[] = [
     sessions: [
       {
         id: 'link-triage',
+        agentId: 'mindos',
+        agentName: 'MindOS',
         title: 'Link triage',
         titleZh: '链接筛选',
         status: 'paused',
