@@ -12,6 +12,6 @@ describe('browser extension popup HTML safety', () => {
     );
 
     expect(source).not.toMatch(/innerHTML\s*=\s*`[\s\S]*\$\{childName\}/);
-    expect(source).toContain('name.textContent = childName');
+    expect(source).toContain('name.textContent = child.name');
   });
 });

@@ -174,6 +174,36 @@ describe('browser extension generated AI conversation extractor', () => {
     expect(result.content).toContain('class="language-ts"');
   });
 
+  it('ignores CSS-hidden pre-rendered messages in generated extraction', async () => {
+    const result = await extractGeneratedClipResult(browser, 'https://chatgpt.com/c/hidden-template', `
+      <!doctype html>
+      <title>Hidden template - ChatGPT</title>
+      <style>.template-message { display: none; }</style>
+      <main id="thread">
+        <h1>Hidden template</h1>
+        <article data-testid="conversation-turn-template" class="template-message">
+          <div data-message-author-role="assistant">
+            <div class="markdown"><p>Do not capture this hidden template.</p></div>
+          </div>
+        </article>
+        <article data-testid="conversation-turn-1">
+          <div data-message-author-role="user"><p>Visible request</p></div>
+        </article>
+        <article data-testid="conversation-turn-2">
+          <div data-message-author-role="assistant">
+            <div class="markdown"><p>Visible answer</p></div>
+          </div>
+        </article>
+      </main>
+    `);
+
+    expect(result.captureType).toBe('ai-conversation');
+    expect(result.messageCount).toBe(2);
+    expect(result.textContent).toContain('User:\nVisible request');
+    expect(result.textContent).toContain('ChatGPT:\nVisible answer');
+    expect(result.textContent).not.toContain('hidden template');
+  });
+
   it('falls back to ordinary web extraction when a known AI domain has no loaded session', async () => {
     const result = await extractGeneratedClipResult(browser, 'https://chat.deepseek.com/', `
       <!doctype html>

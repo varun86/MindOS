@@ -25,7 +25,7 @@ Done. You'll see the MindOS icon in your toolbar.
 ### First-time setup
 
 1. Click the MindOS icon in your toolbar
-2. Enter your MindOS URL (default: `http://localhost:3456`)
+2. Enter your MindOS URL (default: `http://localhost:3456`; `localhost:3456` is accepted too)
 3. Paste your Auth Token (find it in MindOS → Settings → MCP)
 4. Click **Connect**
 
@@ -36,6 +36,8 @@ Done. You'll see the MindOS icon in your toolbar.
 - **Keyboard shortcut**: `Ctrl+Shift+M` (Mac: `Cmd+Shift+M`)
 
 Choose a folder, edit the title if needed, and hit **Save to MindOS**. On supported AI chat pages, MindOS captures the visible conversation transcript instead of generic article text.
+
+If the page changes while the popup is open, use the refresh icon to read the current tab again. If the folder list cannot load, saving to Inbox still works.
 
 ### AI chat capture
 
@@ -102,7 +104,7 @@ Clean markdown content...
 ### 首次配置
 
 1. 点击工具栏的 MindOS 图标
-2. 输入 MindOS 地址（默认 `http://localhost:3456`）
+2. 输入 MindOS 地址（默认 `http://localhost:3456`；也可以直接填 `localhost:3456`）
 3. 粘贴认证令牌（在 MindOS → 设置 → MCP 中找到）
 4. 点击 **Connect**
 
@@ -113,6 +115,8 @@ Clean markdown content...
 - **快捷键**：`Ctrl+Shift+M`（Mac：`Cmd+Shift+M`）
 
 选择目标文件夹，可编辑标题，然后点 **Save to MindOS**。在已支持的 AI 对话页里，插件会优先保存当前会话转写，而不是把页面当普通文章抽取。
+
+如果页面内容在弹窗打开后发生变化，可以点刷新图标重新读取当前页。若文件夹列表加载失败，仍可先保存到 Inbox。
 
 ### AI 对话捕获
 

@@ -71,6 +71,9 @@ const NOISY_MESSAGE_SELECTORS = [
   '[class*="actions"]',
 ];
 
+const cleanedTextCache = new WeakMap<Element, string>();
+const visibilityCache = new WeakMap<Element, boolean>();
+
 export const AI_CONVERSATION_PLATFORMS: AiConversationPlatform[] = [
   {
     id: 'chatgpt',
@@ -419,9 +422,14 @@ function cleanMessageHtml(element: Element): string {
 }
 
 function cleanMessageText(element: Element): string {
+  const cached = cleanedTextCache.get(element);
+  if (cached != null) return cached;
+
   const clone = element.cloneNode(true) as Element;
   removeNoisyMessageNodes(clone);
-  return normalizeWhitespace(clone.textContent ?? '');
+  const text = normalizeWhitespace(clone.textContent ?? '');
+  cleanedTextCache.set(element, text);
+  return text;
 }
 
 function removeNoisyMessageNodes(root: Element): void {
@@ -497,11 +505,48 @@ function matchesAny(element: Element, selectors: string[]): boolean {
 }
 
 function isProbablyVisible(element: Element): boolean {
+  const cached = visibilityCache.get(element);
+  if (cached != null) return cached;
+
+  let visible = true;
   if (element.hasAttribute('hidden')) return false;
   if (element.getAttribute('aria-hidden') === 'true') return false;
+
+  const checkVisibility = (element as Element & {
+    checkVisibility?: (options?: {
+      checkOpacity?: boolean;
+      checkVisibilityCSS?: boolean;
+    }) => boolean;
+  }).checkVisibility;
+  if (typeof checkVisibility === 'function') {
+    try {
+      visible = checkVisibility.call(element, {
+        checkOpacity: false,
+        checkVisibilityCSS: true,
+      });
+    } catch {
+      visible = true;
+    }
+  }
+  if (!visible) {
+    visibilityCache.set(element, false);
+    return false;
+  }
+
   const style = element.getAttribute('style')?.toLowerCase() ?? '';
   if (/\bdisplay\s*:\s*none\b/.test(style)) return false;
   if (/\bvisibility\s*:\s*hidden\b/.test(style)) return false;
+
+  const view = element.ownerDocument?.defaultView;
+  if (view) {
+    const computed = view.getComputedStyle(element);
+    if (computed.display === 'none' || computed.visibility === 'hidden' || computed.visibility === 'collapse') {
+      visibilityCache.set(element, false);
+      return false;
+    }
+  }
+
+  visibilityCache.set(element, true);
   return true;
 }
 

@@ -4,6 +4,13 @@ import type { ClipperConfig, MindOSSpace, FileApiResponse } from './types';
 
 const REQUEST_TIMEOUT = 8000;
 
+export function normalizeMindosUrl(input: string): string {
+  const trimmed = input.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
+}
+
 /** Fetch with timeout + auth */
 async function apiFetch(
   config: ClipperConfig,
@@ -13,19 +20,50 @@ async function apiFetch(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
   try {
-    const url = `${config.mindosUrl.replace(/\/+$/, '')}${path}`;
+    const baseUrl = normalizeMindosUrl(config.mindosUrl);
+    if (!baseUrl) throw new Error('Missing MindOS URL');
+
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    if (config.authToken) {
+      headers.set('Authorization', `Bearer ${config.authToken}`);
+    }
+
+    const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     return await fetch(url, {
       ...init,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.authToken}`,
-        ...(init?.headers ?? {}),
-      },
+      headers,
     });
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readJsonObject(res: Response): Promise<Record<string, unknown> | null> {
+  try {
+    const data = await res.json();
+    return data && typeof data === 'object' && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function responseError(res: Response, data: Record<string, unknown> | null, fallback: string): string {
+  if (res.status === 401 || res.status === 403) return 'Invalid auth token';
+  const serverError = typeof data?.error === 'string' ? data.error : null;
+  return serverError ?? `${fallback} (${res.status})`;
+}
+
+function requestError(err: unknown, fallback: string): string {
+  if (err instanceof DOMException && err.name === 'AbortError') return 'Request timed out';
+  if (err instanceof TypeError) return 'Cannot reach MindOS — is it running?';
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 /** Check if MindOS is running and token is valid */
@@ -51,10 +89,7 @@ export async function testConnection(config: ClipperConfig): Promise<{
 
     return { ok: true };
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return { ok: false, error: 'Connection timed out' };
-    }
-    return { ok: false, error: 'Cannot reach MindOS — is it running?' };
+    return { ok: false, error: requestError(err, 'Cannot reach MindOS — is it running?') };
   }
 }
 
@@ -72,14 +107,15 @@ export async function listSpaces(config: ClipperConfig): Promise<MindOSSpace[]> 
 
 /** List all directory paths (flat list for hierarchical picker) */
 export async function listDirs(config: ClipperConfig): Promise<string[]> {
-  try {
-    const res = await apiFetch(config, '/api/file?op=list_dirs');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.dirs ?? []) as string[];
-  } catch {
-    return [];
+  const res = await apiFetch(config, '/api/file?op=list_dirs');
+  const data = await readJsonObject(res);
+  if (!res.ok) {
+    throw new Error(responseError(res, data, 'Could not load spaces'));
   }
+
+  const dirs = data?.dirs;
+  if (!Array.isArray(dirs)) return [];
+  return dirs.filter((dir): dir is string => typeof dir === 'string');
 }
 
 /** Save markdown to Inbox */
@@ -104,14 +140,11 @@ export async function saveToInbox(
       return { error: `Server returned invalid response (${res.status})` };
     }
     if (!res.ok) {
-      return { error: data.error ?? `Server error (${res.status})` };
+      return { error: responseError(res, data, 'Server error') };
     }
     return { ok: true };
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return { error: 'Request timed out' };
-    }
-    return { error: 'Cannot reach MindOS — is it running?' };
+    return { error: requestError(err, 'Cannot reach MindOS — is it running?') };
   }
 }
 
@@ -136,13 +169,10 @@ export async function createFile(
       return { error: `Server returned invalid response (${res.status})` };
     }
     if (!res.ok) {
-      return { error: data.error ?? `Server error (${res.status})` };
+      return { error: responseError(res, data, 'Server error') };
     }
     return { ok: true };
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return { error: 'Request timed out' };
-    }
-    return { error: 'Cannot reach MindOS — is it running?' };
+    return { error: requestError(err, 'Cannot reach MindOS — is it running?') };
   }
 }

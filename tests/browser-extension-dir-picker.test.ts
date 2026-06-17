@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDirectoryIndex,
   formatDirLabel,
   getBreadcrumbSegments,
+  getChildDirectoryEntries,
   getChildDirectories,
   hasChildDirectories,
   INBOX_VALUE,
+  normalizeDirPath,
 } from '../packages/browser-extension/src/popup/dir-picker';
 
 describe('browser extension directory picker helpers', () => {
@@ -32,6 +35,26 @@ describe('browser extension directory picker helpers', () => {
     expect(getChildDirectories(dirs, '')).toEqual(['Archive', 'Projects']);
     expect(getChildDirectories(dirs, 'Projects')).toEqual(['Projects/Alpha', 'Projects/Beta']);
     expect(getChildDirectories(dirs, 'Projects/Alpha')).toEqual(['Projects/Alpha/Deep']);
+  });
+
+  it('normalizes duplicate and partial directory paths into a navigable tree', () => {
+    const dirs = [
+      'Projects/Alpha',
+      ' Projects / Alpha ',
+      'Projects/Beta//',
+      '/Archive/2026',
+    ];
+
+    expect(normalizeDirPath(' Projects / Beta//')).toBe('Projects/Beta');
+    expect(getChildDirectories(dirs, '')).toEqual(['Archive', 'Projects']);
+    expect(getChildDirectories(dirs, 'Archive')).toEqual(['Archive/2026']);
+    expect(getChildDirectories(dirs, 'Projects')).toEqual(['Projects/Alpha', 'Projects/Beta']);
+
+    const index = buildDirectoryIndex(dirs);
+    expect(getChildDirectoryEntries(index, 'Projects')).toEqual([
+      { path: 'Projects/Alpha', name: 'Alpha', hasChildren: false },
+      { path: 'Projects/Beta', name: 'Beta', hasChildren: false },
+    ]);
   });
 
   it('detects whether a directory has nested children', () => {
