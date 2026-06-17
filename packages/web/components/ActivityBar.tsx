@@ -13,7 +13,6 @@ import {
   getRailActivePanel,
   getRailPanelClickDecision,
   isContentRouteForPanel,
-  isStudioRoute,
   type PanelId,
   type RoutePanelId,
 } from '@/lib/navigation-panel';
@@ -189,7 +188,6 @@ export default function ActivityBar({
   const isHome = pathname === '/';
   const railPreferences = useRailPreferences();
   const activeDestination = suppressRouteActive ? activePanel : getRailActivePanel(pathname, activePanel);
-  const studioRouteCurrent = !suppressRouteActive && isStudioRoute(pathname);
   const isCurrentRouteForPanel = useCallback((panel: RoutePanelId) => (
     !suppressRouteActive && isContentRouteForPanel(pathname, panel)
   ), [pathname, suppressRouteActive]);
@@ -390,18 +388,11 @@ export default function ActivityBar({
             <RailButton
               icon={<Sparkles size={18} />}
               label={t.sidebar.studio ?? 'Studio'}
-              active={studioRouteCurrent}
-              current={studioRouteCurrent}
+              active={activeDestination === 'studio'}
+              current={isCurrentRouteForPanel('studio')}
               expanded={expanded}
-              href="/studio"
-              onClick={(event) => debouncedRailClick(event, 'route:studio', () => {
-                if (onStudioClick) {
-                  onStudioClick(event);
-                  return;
-                }
-                if (studioRouteCurrent) event.preventDefault();
-                onPanelChange(null);
-              })}
+              href={ROUTE_PANEL_HREF.studio}
+              onClick={(event) => handleRouteRailClick(event, 'studio', onStudioClick)}
               walkthroughId="studio-page"
             />
           )}

@@ -45,6 +45,8 @@ export interface StudioProjectDraft {
 }
 
 const STORAGE_KEY = 'mindos:studio-projects';
+export const STUDIO_PROJECTS_UPDATED_EVENT = 'mindos:studio-projects-updated';
+export const STUDIO_NEW_PROJECT_REQUESTED_EVENT = 'mindos:studio-new-project-requested';
 let volatileCustomProjects: StudioProject[] = [];
 let useVolatileProjects = false;
 
@@ -314,5 +316,8 @@ export function readStudioProjects(): StudioProject[] {
 export function createStudioProject(draft: StudioProjectDraft): StudioProject {
   const project = buildStudioProjectFromDraft(draft, readStudioProjects());
   writeCustomProjects([project, ...readCustomProjects()]);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(STUDIO_PROJECTS_UPDATED_EVENT, { detail: project }));
+  }
   return project;
 }

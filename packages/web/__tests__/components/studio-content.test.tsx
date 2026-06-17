@@ -3,8 +3,10 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StudioContent from '@/components/studio/StudioContent';
+import StudioPanel from '@/components/panels/StudioPanel';
 
 const push = vi.fn();
+let mockPathname = '/studio';
 
 vi.mock('@/hooks/useSmoothRouterPush', () => ({
   useSmoothRouterPush: () => push,
@@ -20,6 +22,10 @@ vi.mock('next/link', () => ({
 
 vi.mock('@/lib/stores/locale-store', () => ({
   useLocale: () => ({ locale: 'en' }),
+}));
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => mockPathname,
 }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,6 +58,7 @@ describe('StudioContent', () => {
   beforeEach(() => {
     localStorage.clear();
     push.mockClear();
+    mockPathname = '/studio';
   });
 
   afterEach(async () => {
@@ -69,26 +76,40 @@ describe('StudioContent', () => {
     await renderStudio();
 
     expect(host.textContent).toContain('New Project');
-    expect(host.textContent).toContain('Overview');
-    expect(host.textContent).toContain('Recent Projects');
+    expect(host.textContent).toContain('Projects');
+    expect(host.textContent).not.toContain('Recent Projects');
     expect(host.textContent).not.toContain('New session');
     expect(host.querySelector('a[href="/studio/launch-practice"]')).not.toBeNull();
     expect(host.querySelector('[data-content-page-shell="studio"]')?.className).toContain('workbench-content-page');
+    expect(host.querySelector('aside[aria-label="Studio"]')).toBeNull();
   });
 
-  it('expands a Project in the Studio sidebar and shows its Sessions', async () => {
-    await renderStudio();
-
-    expect(host.querySelector('[aria-label="Launch Practice sessions"]')).toBeNull();
-
-    const launchProjectLink = host.querySelector('a[href="/studio/launch-practice"]') as HTMLAnchorElement | null;
-    expect(launchProjectLink).not.toBeNull();
+  it('renders the unified Studio panel with Overview and Recent Projects', async () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
 
     await act(async () => {
-      launchProjectLink!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      root!.render(<StudioPanel active />);
     });
 
-    const sidebarSessions = host.querySelector('[aria-label="Launch Practice sessions"]');
+    expect(host.textContent).toContain('Overview');
+    expect(host.textContent).toContain('Recent Projects');
+    expect(host.querySelector('a[href="/studio"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/studio/launch-practice"]')).not.toBeNull();
+  });
+
+  it('shows Sessions under the selected Project in the unified Studio panel', async () => {
+    mockPathname = '/studio/launch-practice';
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root!.render(<StudioPanel active />);
+    });
+
+    const sidebarSessions = host.querySelector('[aria-label="Launch Practice Sessions"]');
     expect(sidebarSessions).not.toBeNull();
     expect(sidebarSessions?.textContent).toContain('Launch brief review');
   });

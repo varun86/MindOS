@@ -54,9 +54,8 @@ describe('Studio Project UI', () => {
     const view = await render(<StudioContent />);
 
     expect(view.host.textContent).toContain('New Project');
-    expect(view.host.textContent).toContain('Overview');
-    expect(view.host.textContent).toContain('Recent Projects');
-    expect(view.host.textContent).toContain('Projects that keep context');
+    expect(view.host.textContent).not.toContain('Recent Projects');
+    expect(view.host.textContent).toContain('Projects keep context');
     expect(view.host.textContent).toContain('Launch Practice');
     expect(view.host.textContent).not.toContain('Start from a setup');
     expect(view.host.textContent).not.toContain('Suggested setup');
@@ -81,7 +80,6 @@ describe('Studio Project UI', () => {
     expect(view.host.textContent).toContain('Session drafts');
     expect(view.host.textContent).toContain('Review');
     expect(view.host.textContent).toContain('Growth');
-    expect(view.host.querySelector('[aria-label="Launch Practice Sessions"]')?.textContent).toContain('Launch brief review');
 
     const newSession = view.host.querySelector<HTMLAnchorElement>('a[href="/chat/new?projectId=launch-practice"]');
     expect(newSession).not.toBeNull();

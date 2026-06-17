@@ -253,7 +253,7 @@ export default function StudioNewProjectDialog({
         aria-modal="true"
         aria-labelledby="studio-new-project-title"
         onSubmit={submit}
-        className="flex max-h-[min(840px,calc(100dvh-40px))] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+        className="flex max-h-[min(920px,calc(100dvh-32px))] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border/70 px-5 py-4">
           <div className="min-w-0">
@@ -276,7 +276,7 @@ export default function StudioNewProjectDialog({
           </button>
         </div>
 
-        <div className="grid min-h-0 gap-5 overflow-y-auto px-5 py-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid min-h-0 gap-4 overflow-y-auto px-5 py-4 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-w-0 space-y-3">
             <p className="text-xs leading-relaxed text-muted-foreground">{copy.setupDescription}</p>
             <ChoiceSection

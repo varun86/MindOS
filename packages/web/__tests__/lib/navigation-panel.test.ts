@@ -25,6 +25,8 @@ describe('navigation panel route recovery', () => {
     expect(getContentRoutePanel('/inbox/history')).toBe('capture');
     expect(getContentRoutePanel('/agents')).toBe('agents');
     expect(getContentRoutePanel('/agents/codex')).toBe('agents');
+    expect(getContentRoutePanel('/studio')).toBe('studio');
+    expect(getContentRoutePanel('/studio/launch-practice')).toBe('studio');
     expect(getContentRoutePanel('/explore')).toBe('discover');
     expect(getContentRoutePanel('/explore/plugins')).toBe('discover');
     expect(getContentRoutePanel('/echo/about-you')).toBe('echo');
@@ -35,6 +37,7 @@ describe('navigation panel route recovery', () => {
     expect(ROUTE_PANEL_HREF.capture).toBe('/capture');
     expect(ROUTE_PANEL_HREF.echo).toBe('/echo/imprint');
     expect(ROUTE_PANEL_HREF.agents).toBe('/agents');
+    expect(ROUTE_PANEL_HREF.studio).toBe('/studio');
     expect(ROUTE_PANEL_HREF.discover).toBe('/explore');
   });
 
@@ -43,6 +46,7 @@ describe('navigation panel route recovery', () => {
     expect(getContentRoutePanel('/explorer')).toBeNull();
     expect(getContentRoutePanel('/echoes')).toBeNull();
     expect(getContentRoutePanel('/capture-old')).toBeNull();
+    expect(getContentRoutePanel('/studio-old')).toBeNull();
     expect(getContentRoutePanel('/inbox')).toBeNull();
     expect(getContentRoutePanel('/inbox/history/old')).toBeNull();
     expect(getContentRoutePanel('/inbox-old')).toBeNull();
@@ -56,8 +60,8 @@ describe('navigation panel route recovery', () => {
     expect(isNeutralContentRoute('/settings/sync')).toBe(true);
     expect(isNeutralContentRoute('/trash')).toBe(true);
     expect(isNeutralContentRoute('/trash/expired')).toBe(true);
-    expect(isNeutralContentRoute('/studio')).toBe(true);
-    expect(isNeutralContentRoute('/studio/launch-practice')).toBe(true);
+    expect(isNeutralContentRoute('/studio')).toBe(false);
+    expect(isNeutralContentRoute('/studio/launch-practice')).toBe(false);
     expect(isNeutralContentRoute('/wiki')).toBe(false);
     expect(isNeutralContentRoute('/settings-old')).toBe(false);
     expect(isNeutralContentRoute('/studio-old')).toBe(false);
@@ -75,6 +79,8 @@ describe('navigation panel route recovery', () => {
     expect(getRouteControlledPanel('/view/Notes/example.md')).toBeNull();
     expect(getRouteControlledPanel('/capture')).toBe('capture');
     expect(getRouteControlledPanel('/agents')).toBe('agents');
+    expect(getRouteControlledPanel('/studio')).toBe('studio');
+    expect(getRouteControlledPanel('/studio/launch-practice')).toBe('studio');
     expect(getRouteControlledPanel('/explore')).toBe('discover');
     expect(getRouteControlledPanel('/explore/plugins')).toBe('discover');
     expect(getRouteControlledPanel('/echo/about-you')).toBe('echo');
@@ -90,6 +96,8 @@ describe('navigation panel route recovery', () => {
     expect(getActiveLeftPanel('/agents', 'files')).toBe('agents');
     expect(getActiveLeftPanel('/agents', 'search')).toBe('search');
     expect(getActiveLeftPanel('/agents', 'workflows')).toBe('workflows');
+    expect(getActiveLeftPanel('/studio', null)).toBe('studio');
+    expect(getActiveLeftPanel('/studio/launch-practice', 'agents')).toBe('studio');
     expect(getActiveLeftPanel('/wiki', null)).toBeNull();
     expect(getActiveLeftPanel('/wiki', 'files')).toBe('files');
   });
@@ -98,7 +106,6 @@ describe('navigation panel route recovery', () => {
     expect(getActiveLeftPanel('/settings', 'files')).toBeNull();
     expect(getActiveLeftPanel('/settings', 'agents')).toBeNull();
     expect(getActiveLeftPanel('/trash', 'capture')).toBeNull();
-    expect(getActiveLeftPanel('/studio', 'agents')).toBeNull();
     expect(getActiveLeftPanel('/trash', 'search')).toBe('search');
     expect(getActiveLeftPanel('/settings', 'workflows')).toBe('workflows');
     expect(getRailActivePanel('/settings', 'files')).toBeNull();
@@ -111,6 +118,7 @@ describe('navigation panel route recovery', () => {
 
   it('recovers sibling destination panels when leaving Inbox', () => {
     expect(recoverStaleCapturePanel('/agents', 'capture')).toBe('agents');
+    expect(recoverStaleCapturePanel('/studio', 'capture')).toBe('studio');
     expect(recoverStaleCapturePanel('/explore', 'capture')).toBe('discover');
     expect(recoverStaleCapturePanel('/explore/plugins', 'capture')).toBe('discover');
     expect(recoverStaleCapturePanel('/echo/about-you', 'capture')).toBe('echo');
@@ -119,6 +127,7 @@ describe('navigation panel route recovery', () => {
   it('recovers any stale route-owned panel when the destination route commits', () => {
     expect(recoverStaleRoutePanel('/capture', 'agents')).toBe('capture');
     expect(recoverStaleRoutePanel('/agents', 'discover')).toBe('agents');
+    expect(recoverStaleRoutePanel('/studio', 'agents')).toBe('studio');
     expect(recoverStaleRoutePanel('/explore', 'echo')).toBe('discover');
   });
 
@@ -179,7 +188,7 @@ describe('navigation panel route recovery', () => {
   });
 
   it('keeps rail sections inactive whenever home is clicked', () => {
-    const panels = [null, 'home', 'files', 'capture', 'search', 'echo', 'agents', 'discover', 'workflows'] as const;
+    const panels = [null, 'home', 'files', 'capture', 'search', 'echo', 'agents', 'studio', 'discover', 'workflows'] as const;
     for (const panel of panels) {
       expect(getHomeClickPanel(panel)).toBe('home');
     }
@@ -200,6 +209,10 @@ describe('navigation panel route recovery', () => {
     });
     expect(getRailPanelClickDecision('/agents/codex', 'agents', 'agents')).toEqual({
       nextPanel: 'agents',
+      preventDefault: true,
+    });
+    expect(getRailPanelClickDecision('/studio/launch-practice', 'studio', 'studio')).toEqual({
+      nextPanel: 'studio',
       preventDefault: true,
     });
     expect(getRailPanelClickDecision('/capture', 'capture', 'agents')).toEqual({

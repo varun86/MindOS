@@ -27,6 +27,7 @@ import {
   readStudioProjects,
   sessionStatusLabel,
   stageLabel,
+  STUDIO_NEW_PROJECT_REQUESTED_EVENT,
   type StudioProject,
   type StudioSessionSummary,
   type StudioProjectDraft,
@@ -48,7 +49,7 @@ const COPY = {
     newSession: 'New Session',
     sessions: 'Sessions',
     historicalSessions: 'Historical Sessions',
-    sessionsHint: 'Each Session keeps its own messages, artifacts, runs, and review items.',
+    sessionsHint: 'Messages, artifacts, runs, and review.',
     noSessions: 'No Sessions yet.',
     untitledSession: 'Untitled Session',
     showSessions: 'Show sessions',
@@ -70,7 +71,7 @@ const COPY = {
     status: 'Status',
     updated: 'Updated',
     createTitle: 'New Project',
-    createDescription: 'Set up the durable path for this Project before starting the first focused Session.',
+    createDescription: 'Choose where this Project works, remembers, and starts.',
     titleLabel: 'Project name',
     goalLabel: 'Goal',
     spaceLabel: 'Mind Space',
@@ -85,13 +86,13 @@ const COPY = {
     create: 'Create Project',
     required: 'Add a project name and goal.',
     setupTitle: 'Project setup',
-    setupDescription: 'Start with the work area, then choose the durable context and the AI capability package.',
-    workAreaDescription: 'Where drafts, artifacts, and working files should collect for this Project.',
-    spaceDescription: 'The long-term Mind Space this Project can read from and promote durable memory into.',
-    kitDescription: 'The default AI capability set used when a focused Session starts inside this Project.',
+    setupDescription: 'Start with files, then memory, then AI.',
+    workAreaDescription: 'Drafts and artifacts land here.',
+    spaceDescription: 'Long-term context for this Project.',
+    kitDescription: 'Default AI capability for new Sessions.',
     customValue: 'Custom value',
     projectDetailsTitle: 'Project details',
-    projectDetailsDescription: 'Keep the name short and make the goal concrete enough to start the first Session.',
+    projectDetailsDescription: 'Name it, then set one concrete goal.',
     selectedSummary: 'Selected setup',
     fromRecentProject: 'Recent Project',
   },
@@ -107,7 +108,7 @@ const COPY = {
     newSession: '新建 Session',
     sessions: 'Sessions',
     historicalSessions: '历史 Sessions',
-    sessionsHint: '每个 Session 独立保存 messages、artifacts、runs 和 review items。',
+    sessionsHint: '保存 messages、artifacts、runs 和复盘。',
     noSessions: '还没有 Session。',
     untitledSession: '未命名 Session',
     showSessions: '展开 Sessions',
@@ -129,7 +130,7 @@ const COPY = {
     status: '状态',
     updated: '更新',
     createTitle: '新建 Project',
-    createDescription: '先把这个 Project 的长期路径设置清楚，再开启第一个聚焦 Session。',
+    createDescription: '先选工作位置、记忆位置和默认 AI。',
     titleLabel: 'Project 名称',
     goalLabel: '目标',
     spaceLabel: 'Mind Space',
@@ -144,13 +145,13 @@ const COPY = {
     create: '创建 Project',
     required: '需要填写 Project 名称和目标。',
     setupTitle: 'Project 设置',
-    setupDescription: '从 Work Area 开始，再选择长期上下文和默认 AI 能力。',
-    workAreaDescription: '这个 Project 的草稿、产物和工作文件优先沉淀的位置。',
-    spaceDescription: '这个 Project 读取并长期沉淀记忆的 Mind Space。',
-    kitDescription: '在这个 Project 内开启 Session 时默认使用的 AI 能力组合。',
+    setupDescription: '先文件，再记忆，最后 AI。',
+    workAreaDescription: '草稿和产物放这里。',
+    spaceDescription: '这个 Project 的长期上下文。',
+    kitDescription: '新 Session 默认使用的 AI 能力。',
     customValue: '自定义',
     projectDetailsTitle: 'Project 细节',
-    projectDetailsDescription: '名称保持短，目标要具体到能直接开启第一个 Session。',
+    projectDetailsDescription: '名称要短，目标要具体。',
     selectedSummary: '已选设置',
     fromRecentProject: '来自近期 Project',
   },
@@ -304,6 +305,12 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
     void refreshSessions();
   }, []);
 
+  useEffect(() => {
+    const openCreate = () => setIsCreating(true);
+    window.addEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, openCreate);
+    return () => window.removeEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, openCreate);
+  }, []);
+
   const project = useMemo(
     () => findStudioProject(projects, projectId) ?? null,
     [projectId, projects],
@@ -340,14 +347,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
 
   if (!project || !localized) {
     return (
-      <StudioShell
-        projects={projects}
-        locale={locale}
-        copy={copy}
-        chatSessions={sessions}
-        activeSessionId={activeSessionId}
-        onCreateProject={() => setIsCreating(true)}
-      >
+      <StudioShell>
         <MissingProject copy={copy} />
         <StudioNewProjectDialog
           open={isCreating}
@@ -364,15 +364,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
   const displaySessions = realProjectSessions.length > 0 ? realProjectSessions : project.sessions;
 
   return (
-    <StudioShell
-      projects={projects}
-      locale={locale}
-      copy={copy}
-      chatSessions={sessions}
-      activeSessionId={activeSessionId}
-      currentProjectId={project.id}
-      onCreateProject={() => setIsCreating(true)}
-    >
+    <StudioShell>
       <div className="min-w-0">
         <header className="border-b border-border/60 pb-6">
           <Link

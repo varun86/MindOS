@@ -59,7 +59,6 @@ import {
   getRailPanelClickDecision,
   getRouteControlledPanel,
   isNeutralContentRoute,
-  isStudioRoute,
   recoverStaleRoutePanel,
   type PanelId,
   type PendingHomeNav,
@@ -104,6 +103,7 @@ const AgentsPanel = dynamic(() => import('./panels/AgentsPanel'), {
   ssr: false,
   loading: AgentsPanelLoading,
 });
+const StudioPanel = dynamic(() => import('./panels/StudioPanel'), { ssr: false });
 const DiscoverPanel = dynamic(() => import('./panels/DiscoverPanel'), { ssr: false });
 const EchoPanel = dynamic(() => import('./panels/EchoPanel'), { ssr: false });
 const WorkflowsPanel = dynamic(() => import('./panels/WorkflowsPanel'), { ssr: false });
@@ -739,20 +739,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     if (targetPanel === 'agents') setAgentDetailKey(null);
   }, [activeLeftPanel, exitAskMaximized, lp, pathname, smoothPush]);
 
-  const handleStudioClick = useCallback((event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
-    if (!shouldHandleSmoothNavigation(event)) return;
-    event.preventDefault();
-    exitAskMaximized();
-    flushSync(() => {
-      previousSearchPanelRef.current = null;
-      setAgentDetailKey(null);
-      setPendingNav(null);
-      setPendingHomeNav(null);
-      lp.setActivePanel(null);
-    });
-    if (!isStudioRoute(pathname)) smoothPush('/studio');
-  }, [exitAskMaximized, lp.setActivePanel, pathname, smoothPush]);
-
   return (
     <InboxOrganizeProvider value={inboxOrganize}>
       <McpStoreInit />
@@ -780,8 +766,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         onCaptureClick={(event) => handleRoutePanelClick(event, 'capture')}
         onEchoClick={(event) => handleRoutePanelClick(event, 'echo')}
         onAgentsClick={(event) => handleRoutePanelClick(event, 'agents')}
+        onStudioClick={(event) => handleRoutePanelClick(event, 'studio')}
         onDiscoverClick={(event) => handleRoutePanelClick(event, 'discover')}
-        onStudioClick={handleStudioClick}
         onSpacesClick={(event) => handleRoutePanelClick(event, 'files')}
         syncStatus={syncStatus}
         syncStale={syncStatusStale}
@@ -835,6 +821,11 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
               active={activeLeftPanel === 'agents'}
               selectedAgentKey={agentDockOpen ? agentDetailKey : null}
             />
+          </div>
+        )}
+        {isPanelMounted('studio') && (
+          <div className={`flex flex-col h-full ${activeLeftPanel === 'studio' ? '' : 'hidden'}`}>
+            <StudioPanel active={activeLeftPanel === 'studio'} />
           </div>
         )}
         {isPanelMounted('discover') && (

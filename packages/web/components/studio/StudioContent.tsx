@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useLocale } from '@/lib/stores/locale-store';
-import { refreshSessions, useActiveSessionId, useSessions } from '@/lib/ask-session-store';
+import { refreshSessions, useSessions } from '@/lib/ask-session-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import {
   createStudioProject,
@@ -23,6 +23,7 @@ import {
   localizeList,
   readStudioProjects,
   stageLabel,
+  STUDIO_NEW_PROJECT_REQUESTED_EVENT,
   type StudioProject,
   type StudioProjectDraft,
 } from '@/lib/studio-projects';
@@ -34,12 +35,12 @@ const COPY = {
   en: {
     eyebrow: 'Project practice',
     title: 'Studio',
-    subtitle: 'Projects that keep context, capability, sessions, and review in one durable place.',
+    subtitle: 'Projects keep context, sessions, and review together.',
     overview: 'Overview',
     recentProjects: 'Recent Projects',
     newProject: 'New Project',
     projects: 'Projects',
-    projectsHint: 'Long-running work, training, and review loops.',
+    projectsHint: 'Active work and practice loops.',
     projectColumn: 'Project',
     scopeColumn: 'Scope',
     nextColumn: 'Next',
@@ -61,7 +62,7 @@ const COPY = {
     loopTitle: 'Practice loop',
     loopSteps: ['Context', 'Session', 'Review', 'Improve'],
     createTitle: 'New Project',
-    createDescription: 'Set up the durable path for this Project before starting the first focused Session.',
+    createDescription: 'Choose where this Project works, remembers, and starts.',
     titleLabel: 'Project name',
     goalLabel: 'Goal',
     spaceLabel: 'Mind Space',
@@ -80,25 +81,25 @@ const COPY = {
     showSessions: 'Show sessions',
     hideSessions: 'Hide sessions',
     setupTitle: 'Project setup',
-    setupDescription: 'Start with the work area, then choose the durable context and the AI capability package.',
-    workAreaDescription: 'Where drafts, artifacts, and working files should collect for this Project.',
-    spaceDescription: 'The long-term Mind Space this Project can read from and promote durable memory into.',
-    kitDescription: 'The default AI capability set used when a focused Session starts inside this Project.',
+    setupDescription: 'Start with files, then memory, then AI.',
+    workAreaDescription: 'Drafts and artifacts land here.',
+    spaceDescription: 'Long-term context for this Project.',
+    kitDescription: 'Default AI capability for new Sessions.',
     customValue: 'Custom value',
     projectDetailsTitle: 'Project details',
-    projectDetailsDescription: 'Keep the name short and make the goal concrete enough to start the first Session.',
+    projectDetailsDescription: 'Name it, then set one concrete goal.',
     selectedSummary: 'Selected setup',
     fromRecentProject: 'Recent Project',
   },
   zh: {
     eyebrow: 'Project 实践',
     title: 'Studio',
-    subtitle: '用 Project 把上下文、AI 能力、历史 Session 和复盘放在一个可持续推进的位置。',
+    subtitle: 'Project 把上下文、Session 和复盘放在一起。',
     overview: 'Overview',
     recentProjects: 'Recent Projects',
     newProject: '新建 Project',
     projects: 'Projects',
-    projectsHint: '长期工作、训练和复盘循环。',
+    projectsHint: '正在推进的工作和练习。',
     projectColumn: 'Project',
     scopeColumn: '范围',
     nextColumn: '下一步',
@@ -120,7 +121,7 @@ const COPY = {
     loopTitle: '实践循环',
     loopSteps: ['上下文', 'Session', '复盘', '改进'],
     createTitle: '新建 Project',
-    createDescription: '先把这个 Project 的长期路径设置清楚，再开启第一个聚焦 Session。',
+    createDescription: '先选工作位置、记忆位置和默认 AI。',
     titleLabel: 'Project 名称',
     goalLabel: '目标',
     spaceLabel: 'Mind Space',
@@ -139,13 +140,13 @@ const COPY = {
     showSessions: '展开 Sessions',
     hideSessions: '收起 Sessions',
     setupTitle: 'Project 设置',
-    setupDescription: '从 Work Area 开始，再选择长期上下文和默认 AI 能力。',
-    workAreaDescription: '这个 Project 的草稿、产物和工作文件优先沉淀的位置。',
-    spaceDescription: '这个 Project 读取并长期沉淀记忆的 Mind Space。',
-    kitDescription: '在这个 Project 内开启 Session 时默认使用的 AI 能力组合。',
+    setupDescription: '先文件，再记忆，最后 AI。',
+    workAreaDescription: '草稿和产物放这里。',
+    spaceDescription: '这个 Project 的长期上下文。',
+    kitDescription: '新 Session 默认使用的 AI 能力。',
     customValue: '自定义',
     projectDetailsTitle: 'Project 细节',
-    projectDetailsDescription: '名称保持短，目标要具体到能直接开启第一个 Session。',
+    projectDetailsDescription: '名称要短，目标要具体。',
     selectedSummary: '已选设置',
     fromRecentProject: '来自近期 Project',
   },
@@ -411,11 +412,16 @@ export default function StudioContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const chatSessions = useSessions();
-  const activeSessionId = useActiveSessionId();
 
   useEffect(() => {
     setProjects(readStudioProjects());
     void refreshSessions();
+  }, []);
+
+  useEffect(() => {
+    const openCreate = () => setIsCreating(true);
+    window.addEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, openCreate);
+    return () => window.removeEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, openCreate);
   }, []);
 
   const projectSessionStats = useMemo(() => {
@@ -463,14 +469,7 @@ export default function StudioContent() {
   };
 
   return (
-    <StudioShell
-      projects={projects}
-      locale={locale}
-      copy={copy}
-      chatSessions={chatSessions}
-      activeSessionId={activeSessionId}
-      onCreateProject={() => setIsCreating(true)}
-    >
+    <StudioShell>
       <div className="min-w-0">
         <header className="mb-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

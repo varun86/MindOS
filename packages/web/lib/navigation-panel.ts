@@ -1,6 +1,6 @@
-export type PanelId = 'home' | 'files' | 'capture' | 'search' | 'echo' | 'agents' | 'discover' | 'workflows';
+export type PanelId = 'home' | 'files' | 'capture' | 'search' | 'echo' | 'agents' | 'studio' | 'discover' | 'workflows';
 
-export type RoutePanelId = Extract<PanelId, 'files' | 'capture' | 'echo' | 'agents' | 'discover'>;
+export type RoutePanelId = Extract<PanelId, 'files' | 'capture' | 'echo' | 'agents' | 'studio' | 'discover'>;
 
 export interface RailPanelClickDecision {
   nextPanel: PanelId | null;
@@ -56,6 +56,7 @@ export const ROUTE_PANEL_HREF: Record<RoutePanelId, string> = {
   // one, so '/echo/about-you' 404s via app/echo/[segment] notFound().
   echo: '/echo/imprint',
   agents: '/agents',
+  studio: '/studio',
   discover: '/explore',
 };
 
@@ -82,6 +83,7 @@ export function getContentRoutePanel(pathname: string | null | undefined): Panel
     return 'files';
   }
   if (isRouteSegment(pathname, '/agents')) return 'agents';
+  if (isStudioRoute(pathname)) return 'studio';
   if (isRouteSegment(pathname, '/explore')) return 'discover';
   if (isRouteSegment(pathname, '/echo')) return 'echo';
   if (isRouteSegment(pathname, '/capture') || isLegacyInboxContentRoute(pathname)) return 'capture';
@@ -90,7 +92,7 @@ export function getContentRoutePanel(pathname: string | null | undefined): Panel
 
 export function isNeutralContentRoute(pathname: string | null | undefined): boolean {
   if (!pathname) return false;
-  return isRouteSegment(pathname, '/settings') || isRouteSegment(pathname, '/trash') || isStudioRoute(pathname);
+  return isRouteSegment(pathname, '/settings') || isRouteSegment(pathname, '/trash');
 }
 
 export function getRouteControlledPanel(pathname: string | null | undefined): PanelId | null {
