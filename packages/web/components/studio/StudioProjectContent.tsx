@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpenText,
+  Blocks,
   CheckCircle2,
   Clock3,
   FileText,
@@ -12,7 +13,6 @@ import {
   ListChecks,
   MessageSquarePlus,
   Target,
-  Zap,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -411,7 +411,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
 
           <div className="grid gap-2 border-t border-border/60 bg-background/20 p-4 md:grid-cols-3">
             <SetupChip icon={<BookOpenText size={13} aria-hidden="true" />} label={copy.space} value={localized.space} />
-            <SetupChip icon={<Zap size={13} aria-hidden="true" />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
+            <SetupChip icon={<Blocks size={13} aria-hidden="true" />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
             <SetupChip icon={<FolderOpen size={13} aria-hidden="true" />} label={copy.workArea} value={localized.workArea} />
           </div>
         </header>

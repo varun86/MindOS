@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useEffect, useTransition, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Brain, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox, Puzzle, Sparkles } from 'lucide-react';
+import { Brain, Settings, RefreshCw, Bot, Compass, ChevronLeft, ChevronRight, Radio, Zap, Inbox, Puzzle, DraftingCompass } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
 import { DOT_COLORS, getStatusLevel } from './SyncStatusBar';
 import type { SyncStatus } from './settings/types';
@@ -386,7 +386,7 @@ export default function ActivityBar({
           />
           {railPreferences.studio && (
             <RailButton
-              icon={<Sparkles size={18} />}
+              icon={<DraftingCompass size={18} />}
               label={t.sidebar.studio ?? 'Studio'}
               active={activeDestination === 'studio'}
               current={isCurrentRouteForPanel('studio')}

@@ -4,13 +4,13 @@ import Link from 'next/link';
 import {
   ArrowRight,
   BookOpenText,
+  Blocks,
   CheckCircle2,
   FolderOpen,
   ListChecks,
   Plus,
   Sparkles,
   Target,
-  Zap,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -261,7 +261,7 @@ function ProjectRow({
         <p className="mt-1 max-w-[58ch] text-xs leading-relaxed text-muted-foreground">{goal}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           <MetaChip icon={<BookOpenText size={12} aria-hidden="true" />}>{space}</MetaChip>
-          <MetaChip icon={<Zap size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
+          <MetaChip icon={<Blocks size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
           <MetaChip icon={<FolderOpen size={12} aria-hidden="true" />}>{workArea}</MetaChip>
         </div>
       </div>
@@ -368,7 +368,7 @@ function ContinueProjectCard({
 
           <div className="mt-4 flex flex-wrap gap-1.5">
             <MetaChip icon={<BookOpenText size={12} aria-hidden="true" />}>{space}</MetaChip>
-            <MetaChip icon={<Zap size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
+            <MetaChip icon={<Blocks size={12} aria-hidden="true" />}>{kits.length ? kits.join(' / ') : firstKit(project)}</MetaChip>
             <MetaChip icon={<FolderOpen size={12} aria-hidden="true" />}>{workArea}</MetaChip>
           </div>
         </div>
