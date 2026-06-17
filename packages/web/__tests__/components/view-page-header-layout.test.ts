@@ -7,12 +7,12 @@ describe('ViewPageClient header layout', () => {
     const filePath = path.resolve(process.cwd(), 'app/view/[...path]/ViewPageClient.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
-    expect(source).toContain('className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20');
+    expect(source).toContain('className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border');
     expect(source).toContain('className="view-header-row w-full min-w-0 flex items-center justify-between gap-3 h-full"');
     expect(source).not.toContain('className="content-width flex items-center justify-between gap-2 h-full"');
   });
 
-  it('keeps actions in the normal header flow and lets breadcrumb own truncation', () => {
+  it('lets the header span the TOC reserve without squeezing the breadcrumb', () => {
     const viewFile = path.resolve(process.cwd(), 'app/view/[...path]/ViewPageClient.tsx');
     const cssFile = path.resolve(process.cwd(), 'app/globals.css');
     const viewSource = fs.readFileSync(viewFile, 'utf8');
@@ -20,10 +20,10 @@ describe('ViewPageClient header layout', () => {
 
     expect(viewSource).toContain('className="view-header-actions flex items-center gap-1.5 md:gap-2 shrink-0"');
     expect(viewSource).toContain('className="view-header-breadcrumb min-w-0 flex-1 flex items-center gap-1.5"');
-    expect(viewSource).toContain('view-topbar-border-extension');
-    expect(viewSource).toContain("right: 'calc(var(--toc-extra-right, 0px) * -1)'");
+    expect(viewSource).toContain("marginRight: 'calc(var(--toc-extra-right, 0px) * -1)'");
+    expect(viewSource).not.toContain('view-topbar-border-extension');
     expect(viewSource).not.toContain("width: 'calc(100% + var(--toc-extra-right, 0px))'");
-    expect(viewSource).not.toContain("marginRight: 'calc(var(--toc-extra-right, 0px) * -1)'");
+    expect(viewSource).not.toMatch(/paddingRight:\s*['"`][^'"`]*toc-extra-right/);
     expect(viewSource).not.toContain('view-header-actions-reserve');
 
     expect(cssSource).not.toContain('.view-header-actions-reserve');

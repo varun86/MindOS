@@ -611,19 +611,12 @@ export default function ViewPageClient({
     <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
       {/* Top bar */}
       <div
-        className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b-0 px-4 md:px-6 h-[46px] flex items-center"
+        className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border px-4 md:px-6 h-[46px] flex items-center transition-[margin-right] duration-200"
         style={{
           background: 'var(--background)',
+          marginRight: 'calc(var(--toc-extra-right, 0px) * -1)',
         }}
       >
-        <div
-          className="view-topbar-border-extension pointer-events-none absolute bottom-0 h-px bg-border"
-          style={{
-            left: 0,
-            right: 'calc(var(--toc-extra-right, 0px) * -1)',
-          }}
-          aria-hidden="true"
-        />
         <div className="view-header-row w-full min-w-0 flex items-center justify-between gap-3 h-full">
           <div className="view-header-breadcrumb min-w-0 flex-1 flex items-center gap-1.5">
             <button
