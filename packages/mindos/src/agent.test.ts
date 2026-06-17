@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MINDOS_AGENT_PROMPT_ASSET_URL,
@@ -41,6 +44,34 @@ describe('MindOS agent product contract', () => {
     expect(MINDOS_SYSTEM_PROMPT).not.toContain('Agent mode');
     expect(MINDOS_SYSTEM_PROMPT).not.toContain('Working Context');
     expect(ORGANIZE_SYSTEM_PROMPT).toContain('organizing information');
+  });
+
+  it('resolves Next dev server/app static media prompt asset paths', () => {
+    const previousCwd = process.cwd();
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'mindos-prompt-asset-'));
+    try {
+      const staticDir = path.join(tempDir, '.next', 'dev', 'server', 'static', 'media');
+      mkdirSync(staticDir, { recursive: true });
+      writeFileSync(path.join(staticDir, 'agent-prompt.hash.txt'), 'dev prompt\n', 'utf-8');
+      process.chdir(tempDir);
+
+      const compiledRouteAssetPath = path.join(
+        tempDir,
+        '.next',
+        'dev',
+        'server',
+        'app',
+        'api',
+        'ask',
+        'static',
+        'media',
+        'agent-prompt.hash.txt',
+      );
+      expect(loadMindosAgentPrompt({ asset: compiledRouteAssetPath })).toBe('dev prompt');
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('builds stable system prompts without turn-local context', () => {

@@ -716,7 +716,10 @@ describe('MindOS session event contract', () => {
         name: 'read_file',
         description: 'Read file',
         parameters: { type: 'object' },
-        execute: async () => ({ content: [{ type: 'text', text: 'contents' }] }),
+        execute: async (_toolCallId, _args, _signal, onUpdate) => {
+          onUpdate?.({ content: [{ type: 'text', text: 'Reading file...' }] });
+          return { content: [{ type: 'text', text: 'contents' }] };
+        },
       }],
       send: (event) => events.push(event),
       signal: new AbortController().signal,
@@ -729,7 +732,162 @@ describe('MindOS session event contract', () => {
     expect(calls[0]?.url).toBe('https://proxy.example/v1/chat/completions');
     expect(events).toEqual([
       { type: 'tool_start', toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.md' } },
-      { type: 'tool_end', toolCallId: 'call-1', output: 'contents', isError: false },
+      { type: 'tool_delta', toolCallId: 'call-1', toolName: 'read_file', delta: 'Reading file...' },
+      { type: 'tool_end', toolCallId: 'call-1', toolName: 'read_file', output: 'contents', isError: false },
+      { type: 'text_delta', delta: 'Done' },
+    ]);
+  });
+
+  it('runs extension-registered tools in the non-streaming fallback with headless context', async () => {
+    const requestReadTool = {
+      name: 'read_file',
+      description: 'Request-scoped read',
+      execute: async () => ({ content: [{ type: 'text', text: 'request read' }] }),
+    };
+    const captured: {
+      params?: unknown;
+      ctx?: Record<string, unknown>;
+      toolCallId?: string;
+    } = {};
+    const webSearchTool = {
+      name: 'web_search',
+      description: 'Search the web',
+      parameters: { type: 'object', properties: { query: { type: 'string' } } },
+      prepareArguments: (args: unknown) => ({
+        ...(typeof args === 'object' && args ? args as Record<string, unknown> : {}),
+        query: String(typeof args === 'object' && args ? (args as Record<string, unknown>).query ?? '' : '').trim(),
+        workflow: 'none',
+      }),
+      execute: async (
+        toolCallId: string,
+        params: unknown,
+        _signal: AbortSignal | undefined,
+        onUpdate: ((update: unknown) => void) | undefined,
+        ctx: Record<string, unknown>,
+      ) => {
+        captured.toolCallId = toolCallId;
+        captured.params = params;
+        captured.ctx = ctx;
+        onUpdate?.({ content: [{ type: 'text', text: 'Searching pi.dev...' }] });
+        return { content: [{ type: 'text', text: 'pi-web-access result' }] };
+      },
+    };
+    const duplicateReadTool = {
+      name: 'read_file',
+      description: 'Extension read should not override request tool',
+      execute: async () => ({ content: [{ type: 'text', text: 'extension read' }] }),
+    };
+    const resourceLoader = {
+      reload: async () => {},
+      getSkills: () => ({ skills: [] }),
+      getExtensions: () => ({
+        extensions: [{
+          path: '/ext/pi-web-access.ts',
+          tools: new Map<string, unknown>([
+            ['read_file', { definition: duplicateReadTool }],
+            ['web_search', { definition: webSearchTool }],
+          ]),
+        }],
+        errors: [],
+      }),
+    };
+    const session = {
+      subscribe: () => {},
+      prompt: async () => {},
+      steer: async () => {},
+      abort: async () => {},
+    };
+
+    const runtime = await createMindosPiAgentRuntime({
+      mode: 'agent',
+      messages: [{ role: 'user', content: 'search web', timestamp: 1 }],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      agentConfig: {},
+      serverSettings: {},
+      requestTools: [requestReadTool],
+      bashTool: { name: 'bash' },
+      services: {
+        resolveModelConfig: () => ({
+          model: { id: 'model-object' },
+          modelName: 'gpt-test',
+          apiKey: 'key',
+          provider: 'openai',
+        }),
+        toRuntimeProvider: (provider) => provider,
+        createAuthStorage: () => ({ setRuntimeApiKey: () => {} }),
+        createModelRegistry: () => ({ registry: true }),
+        createSettingsManager: (settings) => ({ settings }),
+        createSessionManager: () => ({ appendMessage: () => {} }),
+        createResourceLoader: () => resourceLoader,
+        convertToLlm: (messages) => [...messages],
+        createAgentSession: async () => ({ session }),
+        setKbMode: () => {},
+      },
+    });
+
+    expect(runtime.requestTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
+    expect(runtime.requestTools.find((tool) => tool.name === 'read_file')).toBe(requestReadTool);
+
+    const events: Array<{ type: string; delta?: string; toolCallId?: string; toolName?: string; output?: string; isError?: boolean; args?: unknown }> = [];
+    const calls: Array<{ body: Record<string, unknown> }> = [];
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      calls.push({ body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
+      if (calls.length === 1) {
+        return new Response(JSON.stringify({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{
+                id: 'call-search',
+                type: 'function',
+                function: { name: 'web_search', arguments: '{"query":" pi-web-access "}' },
+              }],
+            },
+            finish_reason: 'tool_calls',
+          }],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{
+          message: { role: 'assistant', content: 'Done' },
+          finish_reason: 'stop',
+        }],
+      }), { status: 200 });
+    };
+
+    await runMindosNonStreamingFallback({
+      baseUrl: 'https://proxy.example/v1',
+      apiKey: runtime.apiKey,
+      model: runtime.modelName,
+      systemPrompt: runtime.systemPrompt,
+      historyMessages: runtime.llmHistoryMessages,
+      userContent: runtime.lastUserContent,
+      tools: runtime.requestTools,
+      send: (event) => events.push(event),
+      signal: new AbortController().signal,
+      maxSteps: 3,
+      fetch: fetchImpl,
+      chunkDelayMs: 0,
+    });
+
+    const firstCallTools = calls[0]?.body.tools as Array<{ function?: { name?: string } }>;
+    expect(firstCallTools.map((tool) => tool.function?.name)).toContain('web_search');
+    expect(captured.toolCallId).toBe('call-search');
+    expect(captured.params).toEqual({ query: 'pi-web-access', workflow: 'none' });
+    expect(captured.ctx).toMatchObject({
+      cwd: '/repo',
+      hasUI: false,
+      model: { id: 'model-object' },
+      modelRegistry: { registry: true },
+    });
+    expect(events).toEqual([
+      { type: 'tool_start', toolCallId: 'call-search', toolName: 'web_search', args: { query: ' pi-web-access ' } },
+      { type: 'tool_delta', toolCallId: 'call-search', toolName: 'web_search', delta: 'Searching pi.dev...' },
+      { type: 'tool_end', toolCallId: 'call-search', toolName: 'web_search', output: 'pi-web-access result', isError: false },
       { type: 'text_delta', delta: 'Done' },
     ]);
   });
@@ -951,6 +1109,14 @@ describe('MindOS session event contract', () => {
     const appendedMessages: unknown[] = [];
     let capturedSystemPrompt = '';
     let capturedSystemPromptOverride: ((base?: string) => string | undefined) | null = null;
+    const requestReadTool = { name: 'read_file', execute: async () => ({ content: [] }) };
+    const extensionReadTool = { name: 'read_file', execute: async () => ({ content: [{ type: 'text', text: 'extension' }] }) };
+    const extensionWebTool = {
+      name: 'web_search',
+      description: 'Search the web',
+      parameters: { type: 'object' },
+      execute: async () => ({ content: [{ type: 'text', text: 'web' }] }),
+    };
     const resourceLoader = {
       reload: async () => { calls.push('resource.reload'); },
       getSkills: () => ({
@@ -959,6 +1125,16 @@ describe('MindOS session event contract', () => {
           { name: 'third-party', disableModelInvocation: false },
           { name: 'disabled-skill', disableModelInvocation: false },
         ],
+      }),
+      getExtensions: () => ({
+        extensions: [{
+          path: '/ext/web.ts',
+          tools: new Map<string, unknown>([
+            ['read_file', { definition: extensionReadTool }],
+            ['web_search', { definition: extensionWebTool }],
+          ]),
+        }],
+        errors: [],
       }),
     };
     const sessionManager = {
@@ -991,7 +1167,7 @@ describe('MindOS session event contract', () => {
       serverSettings: { disabledSkills: ['disabled-skill'] },
       additionalSkillPaths: ['/skills'],
       additionalExtensionPaths: ['/ext'],
-      requestTools: [{ name: 'read_file', execute: async () => ({ content: [] }) }],
+      requestTools: [requestReadTool],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: (input) => {
@@ -1047,7 +1223,13 @@ describe('MindOS session event contract', () => {
     expect(runtime.lastUserImages).toEqual([{ type: 'image', data: 'img', mimeType: 'image/png' }]);
     expect(runtime.modelName).toBe('gpt-test');
     expect(runtime.provider).toBe('anthropic');
-    expect(runtime.requestTools).toEqual([{ name: 'read_file', execute: expect.any(Function) }]);
+    expect(runtime.requestTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
+    expect(runtime.requestTools.find((tool) => tool.name === 'read_file')).toBe(requestReadTool);
+    expect(runtime.requestTools.find((tool) => tool.name === 'web_search')).toMatchObject({
+      name: 'web_search',
+      description: 'Search the web',
+      parameters: { type: 'object' },
+    });
     expect(runtime.lastUserSkillName).toBe('third-party');
     expect(runtime.systemPrompt).toContain('<skills>third-party</skills>');
     expect(runtime.systemPrompt).not.toContain('load_skill("third-party")');
