@@ -10,14 +10,11 @@ import {
   Plus,
   Sparkles,
   Target,
-  X,
   Zap,
 } from 'lucide-react';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { ChatSession, Message } from '@/lib/types';
-import { getMessages, hasMessages } from '@/lib/ask-run-store';
-import { refreshSessions, useSessions } from '@/lib/ask-session-store';
+import { refreshSessions, useActiveSessionId, useSessions } from '@/lib/ask-session-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import {
   createStudioProject,
@@ -29,12 +26,17 @@ import {
   type StudioProject,
   type StudioProjectDraft,
 } from '@/lib/studio-projects';
+import { getChatSessionTitle } from './studio-session-summaries';
+import { StudioShell } from './StudioShell';
+import StudioNewProjectDialog from './StudioNewProjectDialog';
 
 const COPY = {
   en: {
     eyebrow: 'Project practice',
     title: 'Studio',
     subtitle: 'Projects that keep context, capability, sessions, and review in one durable place.',
+    overview: 'Overview',
+    recentProjects: 'Recent Projects',
     newProject: 'New Project',
     projects: 'Projects',
     projectsHint: 'Long-running work, training, and review loops.',
@@ -59,10 +61,10 @@ const COPY = {
     loopTitle: 'Practice loop',
     loopSteps: ['Context', 'Session', 'Review', 'Improve'],
     createTitle: 'New Project',
-    createDescription: 'Name the durable work, choose its context, then start Sessions inside it.',
+    createDescription: 'Set up the durable path for this Project before starting the first focused Session.',
     titleLabel: 'Project name',
     goalLabel: 'Goal',
-    spaceLabel: 'Primary Space',
+    spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
     workAreaLabel: 'Work Area',
     titlePlaceholder: 'Launch practice',
@@ -74,11 +76,26 @@ const COPY = {
     create: 'Create Project',
     required: 'Add a project name and goal.',
     empty: 'No projects yet.',
+    noSessions: 'No Sessions yet.',
+    showSessions: 'Show sessions',
+    hideSessions: 'Hide sessions',
+    setupTitle: 'Project setup',
+    setupDescription: 'Start with the work area, then choose the durable context and the AI capability package.',
+    workAreaDescription: 'Where drafts, artifacts, and working files should collect for this Project.',
+    spaceDescription: 'The long-term Mind Space this Project can read from and promote durable memory into.',
+    kitDescription: 'The default AI capability set used when a focused Session starts inside this Project.',
+    customValue: 'Custom value',
+    projectDetailsTitle: 'Project details',
+    projectDetailsDescription: 'Keep the name short and make the goal concrete enough to start the first Session.',
+    selectedSummary: 'Selected setup',
+    fromRecentProject: 'Recent Project',
   },
   zh: {
     eyebrow: 'Project 实践',
     title: 'Studio',
     subtitle: '用 Project 把上下文、AI 能力、历史 Session 和复盘放在一个可持续推进的位置。',
+    overview: 'Overview',
+    recentProjects: 'Recent Projects',
     newProject: '新建 Project',
     projects: 'Projects',
     projectsHint: '长期工作、训练和复盘循环。',
@@ -103,10 +120,10 @@ const COPY = {
     loopTitle: '实践循环',
     loopSteps: ['上下文', 'Session', '复盘', '改进'],
     createTitle: '新建 Project',
-    createDescription: '先定义长期工作，再在 Project 中开启具体 Session。',
+    createDescription: '先把这个 Project 的长期路径设置清楚，再开启第一个聚焦 Session。',
     titleLabel: 'Project 名称',
     goalLabel: '目标',
-    spaceLabel: '默认 Space',
+    spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
     workAreaLabel: 'Work Area',
     titlePlaceholder: '发布实践',
@@ -118,6 +135,19 @@ const COPY = {
     create: '创建 Project',
     required: '需要填写 Project 名称和目标。',
     empty: '还没有 Project。',
+    noSessions: '还没有 Session。',
+    showSessions: '展开 Sessions',
+    hideSessions: '收起 Sessions',
+    setupTitle: 'Project 设置',
+    setupDescription: '从 Work Area 开始，再选择长期上下文和默认 AI 能力。',
+    workAreaDescription: '这个 Project 的草稿、产物和工作文件优先沉淀的位置。',
+    spaceDescription: '这个 Project 读取并长期沉淀记忆的 Mind Space。',
+    kitDescription: '在这个 Project 内开启 Session 时默认使用的 AI 能力组合。',
+    customValue: '自定义',
+    projectDetailsTitle: 'Project 细节',
+    projectDetailsDescription: '名称保持短，目标要具体到能直接开启第一个 Session。',
+    selectedSummary: '已选设置',
+    fromRecentProject: '来自近期 Project',
   },
 } as const;
 
@@ -125,18 +155,6 @@ type StudioCopy = (typeof COPY)[keyof typeof COPY];
 
 function countReviewItems(projects: StudioProject[]): number {
   return projects.reduce((total, project) => total + project.reviewItems.length, 0);
-}
-
-function chatSessionMessages(session: ChatSession): Message[] {
-  return hasMessages(session.id) ? getMessages(session.id) : session.messages;
-}
-
-function chatSessionTitle(session: ChatSession, copy: StudioCopy): string {
-  if (session.title?.trim()) return session.title.trim();
-  const firstUser = chatSessionMessages(session).find((message) => message.role === 'user');
-  const text = firstUser?.content.replace(/\s+/g, ' ').trim();
-  if (!text) return copy.untitledSession;
-  return text.length > 56 ? `${text.slice(0, 56)}...` : text;
 }
 
 function firstKit(project: StudioProject): string {
@@ -231,7 +249,7 @@ function ProjectRow({
       href={getStudioProjectHref(project.id)}
       onFocus={() => onPreview(project.id)}
       onPointerEnter={() => onPreview(project.id)}
-      className={`group relative grid gap-4 border-t border-border/60 px-4 py-4 transition-colors first:border-t-0 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:grid-cols-[minmax(0,1.2fr)_minmax(240px,0.9fr)_minmax(180px,0.65fr)] ${
+      className={`group relative grid gap-4 border-t border-border/60 px-4 py-4 transition-colors first:border-t-0 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.58fr)] ${
         selected ? 'bg-card/60' : ''
       }`}
     >
@@ -244,6 +262,20 @@ function ProjectRow({
           <ProjectStage project={project} locale={locale} />
         </div>
         <p className="mt-1 max-w-[54ch] text-xs leading-relaxed text-muted-foreground">{goal}</p>
+        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+          <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
+            <BookOpenText size={13} className="shrink-0 text-[var(--amber)]" />
+            <span className="truncate">{space}</span>
+          </span>
+          <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
+            <Zap size={13} className="shrink-0 text-[var(--amber)]" />
+            <span className="truncate">{kits.length ? kits.join(' / ') : firstKit(project)}</span>
+          </span>
+          <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
+            <FolderOpen size={13} className="shrink-0 text-[var(--amber)]" />
+            <span className="truncate">{workArea}</span>
+          </span>
+        </div>
         <div className="mt-3 flex max-w-sm items-center gap-3">
           <ProgressBar value={project.progress} />
           <span className="shrink-0 text-[11px] font-medium text-muted-foreground [font-variant-numeric:tabular-nums]">
@@ -252,22 +284,7 @@ function ProjectRow({
         </div>
       </div>
 
-      <div className="min-w-0 space-y-2">
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <BookOpenText size={13} className="shrink-0 text-[var(--amber)]" />
-          <span className="truncate">{space}</span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <Zap size={13} className="shrink-0 text-[var(--amber)]" />
-          <span className="truncate">{kits.length ? kits.join(' / ') : firstKit(project)}</span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <FolderOpen size={13} className="shrink-0 text-[var(--amber)]" />
-          <span className="truncate">{workArea}</span>
-        </div>
-      </div>
-
-      <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3 lg:border-l lg:border-border/50 lg:pl-4">
         <div className="min-w-0">
           <p className="text-xs leading-relaxed text-foreground">{nextAction}</p>
           <p className="mt-2 text-[11px] font-medium text-muted-foreground">
@@ -386,147 +403,6 @@ function ProjectFocusPanel({
   );
 }
 
-function NewProjectDialog({
-  open,
-  onClose,
-  onCreate,
-  copy,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onCreate: (draft: StudioProjectDraft) => void;
-  copy: StudioCopy;
-}) {
-  const [draft, setDraft] = useState<StudioProjectDraft>({
-    title: '',
-    goal: '',
-    space: '',
-    kit: '',
-    workArea: '',
-  });
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setDraft({ title: '', goal: '', space: '', kit: '', workArea: '' });
-    setError(null);
-  }, [open]);
-
-  if (!open) return null;
-
-  const updateDraft = (field: keyof StudioProjectDraft, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }));
-  };
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!draft.title.trim() || !draft.goal.trim()) {
-      setError(copy.required);
-      return;
-    }
-    onCreate(draft);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-6 backdrop-blur-sm">
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="studio-new-project-title"
-        onSubmit={submit}
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-border/70 px-5 py-4">
-          <div>
-            <h2 id="studio-new-project-title" className="text-base font-semibold text-foreground">
-              {copy.createTitle}
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{copy.createDescription}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={copy.cancel}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="grid gap-4 px-5 py-5">
-          <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{copy.titleLabel}</span>
-            <input
-              autoFocus
-              value={draft.title}
-              onChange={(event) => updateDraft('title', event.target.value)}
-              placeholder={copy.titlePlaceholder}
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{copy.goalLabel}</span>
-            <textarea
-              value={draft.goal}
-              onChange={(event) => updateDraft('goal', event.target.value)}
-              placeholder={copy.goalPlaceholder}
-              rows={3}
-              className="min-h-20 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-            />
-          </label>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{copy.spaceLabel}</span>
-              <input
-                value={draft.space}
-                onChange={(event) => updateDraft('space', event.target.value)}
-                placeholder={copy.spacePlaceholder}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-              />
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{copy.kitLabel}</span>
-              <input
-                value={draft.kit}
-                onChange={(event) => updateDraft('kit', event.target.value)}
-                placeholder={copy.kitPlaceholder}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-              />
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{copy.workAreaLabel}</span>
-              <input
-                value={draft.workArea}
-                onChange={(event) => updateDraft('workArea', event.target.value)}
-                placeholder={copy.workAreaPlaceholder}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-              />
-            </label>
-          </div>
-          {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border/70 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {copy.cancel}
-          </button>
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Plus size={15} />
-            {copy.create}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 export default function StudioContent() {
   const push = useSmoothRouterPush();
   const { locale } = useLocale();
@@ -535,6 +411,7 @@ export default function StudioContent() {
   const [isCreating, setIsCreating] = useState(false);
   const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const chatSessions = useSessions();
+  const activeSessionId = useActiveSessionId();
 
   useEffect(() => {
     setProjects(readStudioProjects());
@@ -553,12 +430,12 @@ export default function StudioContent() {
       const previous = stats.get(projectId);
       stats.set(projectId, {
         count: (previous?.count ?? 0) + 1,
-        latestTitle: previous?.latestTitle ?? chatSessionTitle(session, copy),
+        latestTitle: previous?.latestTitle ?? getChatSessionTitle(session, copy.untitledSession),
       });
     }
 
     return stats;
-  }, [chatSessions, copy]);
+  }, [chatSessions, copy.untitledSession]);
 
   const getProjectSessionCount = (project: StudioProject): number => (
     projectSessionStats.get(project.id)?.count ?? project.sessions.length
@@ -586,19 +463,26 @@ export default function StudioContent() {
   };
 
   return (
-    <main className="min-h-[calc(100dvh-var(--app-titlebar-h))] overflow-y-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-6 px-5 py-6 md:px-8 lg:px-10">
-        <header className="space-y-5 border-b border-border/60 pb-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <StudioShell
+      projects={projects}
+      locale={locale}
+      copy={copy}
+      chatSessions={chatSessions}
+      activeSessionId={activeSessionId}
+      onCreateProject={() => setIsCreating(true)}
+    >
+      <div className="min-w-0">
+        <header className="mb-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-border/70 bg-card/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
                 <Sparkles size={12} className="text-[var(--amber)]" />
                 {copy.eyebrow}
               </div>
-              <h1 className="font-display text-3xl font-semibold tracking-normal text-foreground md:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 {copy.title}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
             </div>
 
             <button
@@ -610,27 +494,22 @@ export default function StudioContent() {
               {copy.newProject}
             </button>
           </div>
-
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(260px,1.2fr)]">
-            <StudioStat icon={<Target size={15} />} label={copy.activeProjects} value={stats.active} />
-            <StudioStat icon={<ListChecks size={15} />} label={copy.reviewItems} value={stats.review} />
-            <StudioStat icon={<CheckCircle2 size={15} />} label={copy.recentSessions} value={stats.sessions} />
-            <PracticeLoop copy={copy} />
-          </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="mb-6 grid gap-2 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(260px,1.1fr)]">
+          <StudioStat icon={<Target size={15} />} label={copy.activeProjects} value={stats.active} />
+          <StudioStat icon={<ListChecks size={15} />} label={copy.reviewItems} value={stats.review} />
+          <StudioStat icon={<CheckCircle2 size={15} />} label={copy.recentSessions} value={stats.sessions} />
+          <PracticeLoop copy={copy} />
+        </div>
+
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card/45">
             <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">{copy.projects}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">{copy.projectsHint}</p>
               </div>
-            </div>
-            <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(240px,0.9fr)_minmax(180px,0.65fr)] gap-4 border-b border-border/60 px-4 py-2 text-[11px] font-semibold text-muted-foreground md:grid">
-              <div>{copy.projectColumn}</div>
-              <div>{copy.scopeColumn}</div>
-              <div>{copy.nextColumn}</div>
             </div>
             {projects.length ? (
               projects.map((project) => (
@@ -658,12 +537,14 @@ export default function StudioContent() {
         </section>
       </div>
 
-      <NewProjectDialog
+      <StudioNewProjectDialog
         open={isCreating}
         onClose={() => setIsCreating(false)}
         onCreate={handleCreate}
         copy={copy}
+        locale={locale}
+        projects={projects}
       />
-    </main>
+    </StudioShell>
   );
 }

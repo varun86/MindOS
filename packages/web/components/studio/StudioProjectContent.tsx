@@ -16,11 +16,12 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { ChatSession, Message } from '@/lib/types';
-import { getMessages, hasMessages } from '@/lib/ask-run-store';
 import { refreshSessions, useActiveSessionId, useSessions } from '@/lib/ask-session-store';
+import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import {
+  createStudioProject,
   findStudioProject,
+  getStudioProjectHref,
   localize,
   localizeList,
   readStudioProjects,
@@ -28,18 +29,30 @@ import {
   stageLabel,
   type StudioProject,
   type StudioSessionSummary,
+  type StudioProjectDraft,
 } from '@/lib/studio-projects';
+import { summarizeChatSession } from './studio-session-summaries';
+import { StudioShell } from './StudioShell';
+import StudioNewProjectDialog from './StudioNewProjectDialog';
 
 const COPY = {
   en: {
+    title: 'Studio',
+    overview: 'Overview',
+    recentProjects: 'Recent Projects',
+    newProject: 'New Project',
     back: 'Studio',
     missingTitle: 'Project not found',
     missingText: 'This Project may have been archived or created in another browser profile.',
     returnStudio: 'Back to Studio',
     newSession: 'New Session',
-    sessions: 'Historical Sessions',
+    sessions: 'Sessions',
+    historicalSessions: 'Historical Sessions',
     sessionsHint: 'Each Session keeps its own messages, artifacts, runs, and review items.',
     noSessions: 'No Sessions yet.',
+    untitledSession: 'Untitled Session',
+    showSessions: 'Show sessions',
+    hideSessions: 'Hide sessions',
     context: 'Context',
     space: 'Space',
     kits: 'AI Kits',
@@ -56,16 +69,49 @@ const COPY = {
     artifact: 'Artifact',
     status: 'Status',
     updated: 'Updated',
+    createTitle: 'New Project',
+    createDescription: 'Set up the durable path for this Project before starting the first focused Session.',
+    titleLabel: 'Project name',
+    goalLabel: 'Goal',
+    spaceLabel: 'Mind Space',
+    kitLabel: 'AI Kit',
+    workAreaLabel: 'Work Area',
+    titlePlaceholder: 'Launch practice',
+    goalPlaceholder: 'Turn product evidence into launch decisions',
+    spacePlaceholder: 'Product Strategy',
+    kitPlaceholder: 'Research Kit',
+    workAreaPlaceholder: 'Session drafts',
+    cancel: 'Cancel',
+    create: 'Create Project',
+    required: 'Add a project name and goal.',
+    setupTitle: 'Project setup',
+    setupDescription: 'Start with the work area, then choose the durable context and the AI capability package.',
+    workAreaDescription: 'Where drafts, artifacts, and working files should collect for this Project.',
+    spaceDescription: 'The long-term Mind Space this Project can read from and promote durable memory into.',
+    kitDescription: 'The default AI capability set used when a focused Session starts inside this Project.',
+    customValue: 'Custom value',
+    projectDetailsTitle: 'Project details',
+    projectDetailsDescription: 'Keep the name short and make the goal concrete enough to start the first Session.',
+    selectedSummary: 'Selected setup',
+    fromRecentProject: 'Recent Project',
   },
   zh: {
+    title: 'Studio',
+    overview: 'Overview',
+    recentProjects: 'Recent Projects',
+    newProject: '新建 Project',
     back: 'Studio',
     missingTitle: '找不到 Project',
     missingText: '这个 Project 可能已归档，或是在另一个浏览器配置里创建的。',
     returnStudio: '返回 Studio',
     newSession: '新建 Session',
-    sessions: '历史 Sessions',
+    sessions: 'Sessions',
+    historicalSessions: '历史 Sessions',
     sessionsHint: '每个 Session 独立保存 messages、artifacts、runs 和 review items。',
     noSessions: '还没有 Session。',
+    untitledSession: '未命名 Session',
+    showSessions: '展开 Sessions',
+    hideSessions: '收起 Sessions',
     context: '上下文',
     space: 'Space',
     kits: 'AI Kits',
@@ -82,60 +128,35 @@ const COPY = {
     artifact: '产物',
     status: '状态',
     updated: '更新',
+    createTitle: '新建 Project',
+    createDescription: '先把这个 Project 的长期路径设置清楚，再开启第一个聚焦 Session。',
+    titleLabel: 'Project 名称',
+    goalLabel: '目标',
+    spaceLabel: 'Mind Space',
+    kitLabel: 'AI Kit',
+    workAreaLabel: 'Work Area',
+    titlePlaceholder: '发布实践',
+    goalPlaceholder: '把产品证据整理成发布决策',
+    spacePlaceholder: '产品策略',
+    kitPlaceholder: 'Research Kit',
+    workAreaPlaceholder: 'Session 草稿',
+    cancel: '取消',
+    create: '创建 Project',
+    required: '需要填写 Project 名称和目标。',
+    setupTitle: 'Project 设置',
+    setupDescription: '从 Work Area 开始，再选择长期上下文和默认 AI 能力。',
+    workAreaDescription: '这个 Project 的草稿、产物和工作文件优先沉淀的位置。',
+    spaceDescription: '这个 Project 读取并长期沉淀记忆的 Mind Space。',
+    kitDescription: '在这个 Project 内开启 Session 时默认使用的 AI 能力组合。',
+    customValue: '自定义',
+    projectDetailsTitle: 'Project 细节',
+    projectDetailsDescription: '名称保持短，目标要具体到能直接开启第一个 Session。',
+    selectedSummary: '已选设置',
+    fromRecentProject: '来自近期 Project',
   },
 } as const;
 
 type ProjectCopy = (typeof COPY)[keyof typeof COPY];
-
-function sessionMessages(session: ChatSession): Message[] {
-  return hasMessages(session.id) ? getMessages(session.id) : session.messages;
-}
-
-function chatSessionTitle(session: ChatSession): string {
-  if (session.title?.trim()) return session.title.trim();
-  const firstUser = sessionMessages(session).find((message) => message.role === 'user');
-  const text = firstUser?.content.replace(/\s+/g, ' ').trim();
-  if (!text) return 'Untitled Session';
-  return text.length > 56 ? `${text.slice(0, 56)}...` : text;
-}
-
-function chatSessionSummary(session: ChatSession): string {
-  const messages = sessionMessages(session);
-  const last = [...messages].reverse().find((message) => message.content.trim());
-  const text = last?.content.replace(/\s+/g, ' ').trim();
-  if (!text) return 'Project-scoped chat session is ready for focused work.';
-  return text.length > 96 ? `${text.slice(0, 96)}...` : text;
-}
-
-function formatSessionUpdated(updatedAt: number): string {
-  const diff = Date.now() - updatedAt;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function statusFromChatSession(session: ChatSession, activeSessionId: string | null): StudioSessionSummary['status'] {
-  if (session.id === activeSessionId) return 'active';
-  if (sessionMessages(session).length === 0) return 'paused';
-  return 'done';
-}
-
-function summarizeChatSession(session: ChatSession, activeSessionId: string | null): StudioSessionSummary {
-  return {
-    id: session.id,
-    href: `/chat/${encodeURIComponent(session.id)}`,
-    title: chatSessionTitle(session),
-    status: statusFromChatSession(session, activeSessionId),
-    updated: formatSessionUpdated(session.updatedAt),
-    artifact: session.currentFile ?? 'Chat session',
-    summary: chatSessionSummary(session),
-  };
-}
 
 function ProgressBar({ value }: { value: number }) {
   const width = Math.max(0, Math.min(value, 100));
@@ -250,38 +271,43 @@ function SessionRow({
 
 function MissingProject({ copy }: { copy: ProjectCopy }) {
   return (
-    <main className="min-h-[calc(100dvh-var(--app-titlebar-h))] overflow-y-auto bg-background">
-      <div className="mx-auto flex min-h-[calc(100dvh-var(--app-titlebar-h))] w-full max-w-3xl flex-col justify-center px-5 py-10 md:px-8">
-        <div className="rounded-xl border border-border/60 bg-card/55 p-6">
-          <h1 className="font-display text-2xl font-semibold text-foreground">{copy.missingTitle}</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{copy.missingText}</p>
-          <Link
-            href="/studio"
-            className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeft size={15} />
-            {copy.returnStudio}
-          </Link>
-        </div>
+    <div className="flex min-h-[calc(100dvh-var(--app-titlebar-h)-5rem)] items-center justify-center">
+      <div className="w-full max-w-3xl rounded-xl border border-border/60 bg-card/55 p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{copy.missingTitle}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{copy.missingText}</p>
+        <Link
+          href="/studio"
+          className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--amber)] px-3.5 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowLeft size={15} />
+          {copy.returnStudio}
+        </Link>
       </div>
-    </main>
+    </div>
   );
 }
 
 export default function StudioProjectContent({ projectId }: { projectId: string }) {
+  const push = useSmoothRouterPush();
   const { locale } = useLocale();
   const copy = locale === 'zh' ? COPY.zh : COPY.en;
-  const [project, setProject] = useState<StudioProject | null>(() => findStudioProject(readStudioProjects(), projectId) ?? null);
+  const [projects, setProjects] = useState<StudioProject[]>(() => readStudioProjects());
+  const [isCreating, setIsCreating] = useState(false);
   const sessions = useSessions();
   const activeSessionId = useActiveSessionId();
 
   useEffect(() => {
-    setProject(findStudioProject(readStudioProjects(), projectId) ?? null);
+    setProjects(readStudioProjects());
   }, [projectId]);
 
   useEffect(() => {
     void refreshSessions();
   }, []);
+
+  const project = useMemo(
+    () => findStudioProject(projects, projectId) ?? null,
+    [projectId, projects],
+  );
 
   const localized = useMemo(() => {
     if (!project) return null;
@@ -302,18 +328,52 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
     sessions
       .filter((session) => session.projectId === projectId)
       .sort((a, b) => b.updatedAt - a.updatedAt)
-      .map((session) => summarizeChatSession(session, activeSessionId))
-  ), [activeSessionId, projectId, sessions]);
+      .map((session) => summarizeChatSession(session, activeSessionId, copy.untitledSession))
+  ), [activeSessionId, copy.untitledSession, projectId, sessions]);
+
+  const handleCreate = (draft: StudioProjectDraft) => {
+    const nextProject = createStudioProject(draft);
+    setProjects(readStudioProjects());
+    setIsCreating(false);
+    push(getStudioProjectHref(nextProject.id));
+  };
 
   if (!project || !localized) {
-    return <MissingProject copy={copy} />;
+    return (
+      <StudioShell
+        projects={projects}
+        locale={locale}
+        copy={copy}
+        chatSessions={sessions}
+        activeSessionId={activeSessionId}
+        onCreateProject={() => setIsCreating(true)}
+      >
+        <MissingProject copy={copy} />
+        <StudioNewProjectDialog
+          open={isCreating}
+          onClose={() => setIsCreating(false)}
+          onCreate={handleCreate}
+          copy={copy}
+          locale={locale}
+          projects={projects}
+        />
+      </StudioShell>
+    );
   }
 
   const displaySessions = realProjectSessions.length > 0 ? realProjectSessions : project.sessions;
 
   return (
-    <main className="min-h-[calc(100dvh-var(--app-titlebar-h))] overflow-y-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-6 px-5 py-6 md:px-8 lg:px-10">
+    <StudioShell
+      projects={projects}
+      locale={locale}
+      copy={copy}
+      chatSessions={sessions}
+      activeSessionId={activeSessionId}
+      currentProjectId={project.id}
+      onCreateProject={() => setIsCreating(true)}
+    >
+      <div className="min-w-0">
         <header className="border-b border-border/60 pb-6">
           <Link
             href="/studio"
@@ -330,10 +390,10 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
                 </span>
                 <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
               </div>
-              <h1 className="font-display text-3xl font-semibold tracking-normal text-foreground md:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 {localized.title}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
             </div>
             <div className="flex flex-col gap-3">
               <Link
@@ -367,7 +427,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
           <div className="min-w-0 space-y-6">
             <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
               <div className="border-b border-border/60 px-4 py-4">
-                <h2 className="text-sm font-semibold text-foreground">{copy.sessions}</h2>
+                <h2 className="text-sm font-semibold text-foreground">{copy.historicalSessions}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">{copy.sessionsHint}</p>
               </div>
               {displaySessions.length ? (
@@ -428,6 +488,14 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
           </aside>
         </section>
       </div>
-    </main>
+      <StudioNewProjectDialog
+        open={isCreating}
+        onClose={() => setIsCreating(false)}
+        onCreate={handleCreate}
+        copy={copy}
+        locale={locale}
+        projects={projects}
+      />
+    </StudioShell>
   );
 }

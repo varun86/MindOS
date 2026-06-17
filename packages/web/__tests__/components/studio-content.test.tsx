@@ -69,8 +69,28 @@ describe('StudioContent', () => {
     await renderStudio();
 
     expect(host.textContent).toContain('New Project');
+    expect(host.textContent).toContain('Overview');
+    expect(host.textContent).toContain('Recent Projects');
     expect(host.textContent).not.toContain('New session');
     expect(host.querySelector('a[href="/studio/launch-practice"]')).not.toBeNull();
+    expect(host.querySelector('[data-content-page-shell="studio"]')?.className).toContain('workbench-content-page');
+  });
+
+  it('expands a Project in the Studio sidebar and shows its Sessions', async () => {
+    await renderStudio();
+
+    expect(host.querySelector('[aria-label="Launch Practice sessions"]')).toBeNull();
+
+    const launchProjectLink = host.querySelector('a[href="/studio/launch-practice"]') as HTMLAnchorElement | null;
+    expect(launchProjectLink).not.toBeNull();
+
+    await act(async () => {
+      launchProjectLink!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    const sidebarSessions = host.querySelector('[aria-label="Launch Practice sessions"]');
+    expect(sidebarSessions).not.toBeNull();
+    expect(sidebarSessions?.textContent).toContain('Launch brief review');
   });
 
   it('creates a Project and navigates to its detail page', async () => {
@@ -96,5 +116,49 @@ describe('StudioContent', () => {
     });
 
     expect(push).toHaveBeenCalledWith('/studio/growth-room');
+  });
+
+  it('orders and selects Project setup choices before creating a Project', async () => {
+    await renderStudio();
+
+    const newProjectButton = Array.from(host.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('New Project')
+    ));
+    expect(newProjectButton).not.toBeNull();
+
+    await act(async () => {
+      newProjectButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const form = host.querySelector('form[role="dialog"]') as HTMLFormElement | null;
+    expect(form).not.toBeNull();
+
+    const text = form!.textContent ?? '';
+    expect(text.indexOf('Work Area')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('Work Area')).toBeLessThan(text.indexOf('Mind Space'));
+    expect(text.indexOf('Mind Space')).toBeLessThan(text.indexOf('AI Kit'));
+
+    const launchDrafts = Array.from(form!.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Launch drafts')
+    ));
+    const productStrategy = Array.from(form!.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Product Strategy')
+    ));
+    const reviewKit = Array.from(form!.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Review Kit')
+    ));
+    expect(launchDrafts).not.toBeNull();
+    expect(productStrategy).not.toBeNull();
+    expect(reviewKit).not.toBeNull();
+
+    await act(async () => {
+      launchDrafts!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      productStrategy!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      reviewKit!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect((form!.querySelector('input[placeholder="Session drafts"]') as HTMLInputElement | null)?.value).toBe('Launch drafts');
+    expect((form!.querySelector('input[placeholder="Product Strategy"]') as HTMLInputElement | null)?.value).toBe('Product Strategy');
+    expect((form!.querySelector('input[placeholder="Research Kit"]') as HTMLInputElement | null)?.value).toBe('Review Kit');
   });
 });
