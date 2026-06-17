@@ -249,42 +249,119 @@ export function PrimaryButton({ children, disabled, onClick, type = 'button', cl
   );
 }
 
-/**
- * SettingCard — groups related settings into a visually distinct card.
- * Provides the "breathing room" and grouping that raw Field stacks lack.
- *
- * Usage:
- *   <SettingCard icon={<Sparkles size={15} />} title="AI Provider" description="Choose your model">
- *     <Field label="Model"> ... </Field>
- *   </SettingCard>
- */
-export function SettingCard({ icon, title, description, badge, children, className = '' }: {
+type SettingIconTone = 'accent' | 'muted' | 'danger';
+
+const SETTING_SURFACE_CLASS =
+  'rounded-xl border border-border/60 bg-card/65 p-5 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)]';
+
+function settingIconToneClass(tone: SettingIconTone) {
+  if (tone === 'muted') return 'border-border/60 bg-muted/55 text-muted-foreground';
+  if (tone === 'danger') return 'border-destructive/25 bg-destructive/10 text-destructive';
+  return 'border-[var(--amber)]/20 bg-[var(--amber-subtle)] text-[var(--amber)]';
+}
+
+export function SettingIconShell({ children, tone = 'accent', className = '' }: {
+  children: React.ReactNode;
+  tone?: SettingIconTone;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--background)_52%,transparent)] [&_svg]:h-[15px] [&_svg]:w-[15px] ${settingIconToneClass(tone)} ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function SettingCardHeader({ icon, title, description, badge, actions, iconTone = 'accent', className = '' }: {
   icon: React.ReactNode;
   title: string;
   description?: string;
   badge?: React.ReactNode;
+  actions?: React.ReactNode;
+  iconTone?: SettingIconTone;
+  className?: string;
+}) {
+  return (
+    <div className={`grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2 sm:grid-cols-[2rem_minmax(0,1fr)_auto] ${className}`}>
+      <SettingIconShell tone={iconTone} className="col-start-1 row-span-2">
+        {icon}
+      </SettingIconShell>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="min-w-0 text-sm font-semibold leading-5 text-foreground">{title}</h3>
+          {badge}
+        </div>
+        {description && (
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
+        )}
+      </div>
+      {actions && (
+        <div className="col-start-2 row-start-2 flex shrink-0 items-center gap-2 sm:col-start-3 sm:row-start-1 sm:row-span-2 sm:self-start">
+          {actions}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SettingCardBody({ children, inset = true, className = '' }: {
+  children: React.ReactNode;
+  inset?: boolean;
+  className?: string;
+}) {
+  const hasExplicitGap = /\bspace-y-/.test(className);
+  return (
+    <div className={`${inset ? 'pl-11' : ''} ${hasExplicitGap ? '' : 'space-y-4'} ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * SettingCard — the shared settings content surface.
+ *
+ * It standardizes the top-left icon shell, title/description layout, optional
+ * right-side actions, and the content indentation used by the AI settings page.
+ */
+export function SettingCard({ icon, title, description, badge, actions, children, className = '', bodyClassName = '', iconTone = 'accent', insetBody = true }: {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  badge?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+  iconTone?: SettingIconTone;
+  insetBody?: boolean;
+}) {
+  return (
+    <div className={`${SETTING_SURFACE_CLASS} ${className}`}>
+      <SettingCardHeader
+        icon={icon}
+        title={title}
+        description={description}
+        badge={badge}
+        actions={actions}
+        iconTone={iconTone}
+      />
+      <SettingCardBody inset={insetBody} className={`mt-4 ${bodyClassName}`}>
+        {children}
+      </SettingCardBody>
+    </div>
+  );
+}
+
+export function SettingSurface({ children, className = '' }: {
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-border/60 bg-card/65 p-5 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)] ${className}`}>
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-[var(--amber-subtle)] flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-[var(--amber)]">{icon}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-            {badge}
-          </div>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
-          )}
-        </div>
-      </div>
-      <div className="space-y-4 pl-11">
-        {children}
-      </div>
+    <div className={`${SETTING_SURFACE_CLASS} ${className}`}>
+      {children}
     </div>
   );
 }

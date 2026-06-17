@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, ChevronRight, Code2, Copy, Globe, Link2, Loader2, Monitor, Plug, RefreshCw, RotateCcw, Terminal, Users, Wifi, WifiOff } from 'lucide-react';
-import type { McpStatus, AgentInfo, McpTabProps, ConnectionMode, SettingsMcpMessages } from './types';
-import type { Messages } from '@/lib/i18n';
+import { AlertCircle, Check, CheckCircle2, ChevronDown, ChevronRight, Copy, Globe, Link2, Loader2, Monitor, Plug, RefreshCw, RotateCcw, Terminal, Users } from 'lucide-react';
+import type { McpStatus, AgentInfo, McpTabProps, SettingsMcpMessages } from './types';
 import { toast } from '@/lib/toast';
-import { useMcpData } from '@/lib/stores/mcp-store';
 import { generateSnippet } from '@/lib/mcp-snippets';
 import { copyToClipboard } from '@/lib/clipboard';
 import { revealMcpAuthToken } from '@/lib/mcp-token';
@@ -13,6 +11,7 @@ import CustomSelect from '@/components/CustomSelect';
 import type { SelectItem } from '@/components/CustomSelect';
 import AgentInstall from './McpAgentInstall';
 import McpPortSection from './McpPortSection';
+import { SettingCard } from './Primitives';
 
 export function useCopyField() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -56,18 +55,14 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
   const effectiveMode = mcpEnabled ? mode : 'cli';
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className="w-7 h-7 rounded-lg bg-[var(--amber-subtle)] flex items-center justify-center shrink-0">
-          <Link2 size={14} className="text-[var(--amber)]" />
-        </div>
-        <h3 className="text-sm font-semibold text-foreground">{m?.connectionTitle ?? 'Connect Agents'}</h3>
-      </div>
-
+    <SettingCard
+      icon={<Link2 size={15} />}
+      title={m?.connectionTitle ?? 'Connect Agents'}
+      bodyClassName="space-y-4"
+    >
       {/* Tab switcher — only show both tabs when MCP is enabled */}
       {mcpEnabled ? (
-        <div className="grid grid-cols-2 mx-4 mb-3 rounded-lg border border-border overflow-hidden">
+        <div className="grid grid-cols-2 rounded-lg border border-border overflow-hidden">
           <button
             onClick={() => onModeChange('cli')}
             className={`flex flex-col items-start px-3 py-2.5 text-left transition-colors ${
@@ -95,7 +90,7 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
           </button>
         </div>
       ) : (
-        <div className="mx-4 mb-3 px-3 py-2 rounded-lg border border-border bg-muted/30">
+        <div className="px-3 py-2 rounded-lg border border-border bg-muted/30">
           <span className="flex items-center gap-1.5">
             <Terminal size={12} className="text-[var(--amber)]" />
             <span className="text-xs font-semibold text-foreground">CLI</span>
@@ -105,9 +100,9 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
       )}
 
       {/* Tab content */}
-      <div className="px-4 pb-4 space-y-4">
+      <div className="space-y-4">
         {effectiveMode === 'cli' ? (
-          <CliGuide status={status} activeSkillName={activeSkillName} agents={agents} connectedAgents={connectedAgents} detectedAgents={detectedAgents} notFoundAgents={notFoundAgents} onRefresh={onRefresh} m={m} t={t} />
+          <CliGuide status={status} activeSkillName={activeSkillName} agents={agents} connectedAgents={connectedAgents} detectedAgents={detectedAgents} onRefresh={onRefresh} m={m} t={t} />
         ) : (
           <McpGuide
             status={status} agents={agents} activeSkillName={activeSkillName}
@@ -117,14 +112,14 @@ export default function ConnectCard({ mode, onModeChange, status, agents, connec
           />
         )}
       </div>
-    </div>
+    </SettingCard>
   );
 }
 
 /* ── CLI Guide (local + remote setup) ── */
 
-function CliGuide({ status, activeSkillName, agents, connectedAgents, detectedAgents, notFoundAgents, onRefresh, m, t }: {
-  status: McpStatus; activeSkillName: string; agents: AgentInfo[]; connectedAgents: AgentInfo[]; detectedAgents: AgentInfo[]; notFoundAgents: AgentInfo[];
+function CliGuide({ status, activeSkillName, agents, connectedAgents, detectedAgents, onRefresh, m, t }: {
+  status: McpStatus; activeSkillName: string; agents: AgentInfo[]; connectedAgents: AgentInfo[]; detectedAgents: AgentInfo[];
   onRefresh: () => void; m: SettingsMcpMessages | undefined; t: McpTabProps['t'];
 }) {
   const { copiedField, handleCopy } = useCopyField();

@@ -8,6 +8,7 @@ import {
 import { useLocale } from '@/lib/stores/locale-store';
 import { getDesktopBridge } from '@/lib/desktop-bridge';
 import { useCoreUpdateStore } from '@/lib/stores/core-update-store';
+import { SettingCard } from './Primitives';
 
 // Re-exported for existing importers (UpdateTab, badge sync helpers).
 export { getDesktopBridge };
@@ -83,11 +84,12 @@ export function ProductVersionCard() {
   useEffect(() => { init(); }, [init]);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">MindOS</span>
-        {current && <span className="text-xs font-mono text-muted-foreground">v{current}</span>}
-      </div>
+    <SettingCard
+      icon={<Monitor size={15} />}
+      title="MindOS"
+      actions={current ? <span className="text-xs font-mono text-muted-foreground">v{current}</span> : null}
+      bodyClassName="space-y-3"
+    >
 
       {phase === 'checking' && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -179,7 +181,7 @@ export function ProductVersionCard() {
           </button>
         </div>
       )}
-    </div>
+    </SettingCard>
   );
 }
 

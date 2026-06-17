@@ -40,7 +40,7 @@ import {
 import { openTab } from '@/lib/workspace-tabs';
 import { notifyFilesChanged } from '@/lib/files-changed';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
-import { Input, Select, Toggle } from './Primitives';
+import { Input, Select, SettingCard, Toggle } from './Primitives';
 import { ConfirmDialog } from '@/components/agents/AgentsPrimitives';
 import PluginActionMenuDialog from '@/components/plugins/PluginActionMenuDialog';
 import PluginActionModalDialog from '@/components/plugins/PluginActionModalDialog';
@@ -531,20 +531,12 @@ export function ObsidianPluginHostSection({
 
   return (
     <>
-      <section className="rounded-xl border border-border bg-card/65 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border/70">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-[var(--amber-subtle)] flex items-center justify-center shrink-0">
-            <Terminal size={15} className="text-[var(--amber)]" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Obsidian plugin host</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Enable imported lightweight plugins, load their commands, and inspect compatibility limits.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <SettingCard
+        icon={<Terminal size={15} />}
+        title="Obsidian plugin host"
+        description="Enable imported lightweight plugins, load their commands, and inspect compatibility limits."
+        actions={(
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => refresh(false)}
@@ -563,10 +555,12 @@ export function ObsidianPluginHostSection({
             {busyKey === 'load-enabled:all' ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
             Load enabled
           </button>
-        </div>
-      </div>
+          </div>
+        )}
+        bodyClassName="space-y-3"
+      >
 
-      <div className="px-4 py-3">
+      <div className="space-y-3">
         <div className="flex flex-wrap gap-2 text-2xs text-muted-foreground">
           <span className="rounded bg-muted/60 px-2 py-1 font-mono">{counts.total} imported</span>
           <span className="rounded bg-muted/60 px-2 py-1 font-mono">{counts.enabled} enabled</span>
@@ -835,7 +829,7 @@ export function ObsidianPluginHostSection({
           </div>
         )}
       </div>
-      </section>
+      </SettingCard>
       <PluginActionModalDialog
         modal={pluginModal}
         onChooseSuggestion={(modal, suggestion) => void chooseModalSuggestion(modal, suggestion)}

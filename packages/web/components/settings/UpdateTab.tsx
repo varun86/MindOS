@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, RefreshCw, CheckCircle2, AlertCircle, Loader2, ExternalLink, Circle, Monitor } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle2, AlertCircle, Loader2, ExternalLink, Monitor } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useLocale } from '@/lib/stores/locale-store';
+import { SettingCard } from './Primitives';
 
 import {
   getDesktopBridge, ProductVersionCard, ShellUpdateBanner, ShellVersionRow, useShellUpdate,
-  StageIcon, formatSize,
+  StageIcon,
   type UpdateInfo, type UpdateState, type StageInfo, type UpdateStatus,
   CHANGELOG_URL, POLL_INTERVAL, POLL_TIMEOUT, UPDATE_STATE_KEY, STAGE_LABELS,
 } from './DesktopUpdateCards';
@@ -245,13 +246,12 @@ function BrowserUpdateTab() {
   return (
     <div className="space-y-6">
       {/* Version Card */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-foreground">MindOS</span>
-          {info && (
-            <span className="text-xs font-mono text-muted-foreground">v{info.current}</span>
-          )}
-        </div>
+      <SettingCard
+        icon={<Monitor size={15} />}
+        title="MindOS"
+        actions={info ? <span className="text-xs font-mono text-muted-foreground">v{info.current}</span> : null}
+        bodyClassName="space-y-3"
+      >
 
         {state === 'checking' && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -385,7 +385,7 @@ function BrowserUpdateTab() {
             {u?.hint ?? 'Updates are installed via npm. Equivalent to running'} <code className="font-mono bg-muted px-1 py-0.5 rounded">mindos update</code> {u?.inTerminal ?? 'in your terminal.'}
           </p>
         </div>
-      </div>
+      </SettingCard>
     </div>
   );
 }

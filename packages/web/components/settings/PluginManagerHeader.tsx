@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ExternalLink, Puzzle, type LucideIcon } from 'lucide-react';
 import type { PluginsCopy } from './PluginsTabModel';
 import type { PluginPanel } from './types';
+import { SettingCard } from './Primitives';
 
 export interface PluginManagerNavItem {
   id: PluginPanel;
@@ -26,18 +27,11 @@ export function PluginManagerHeader({
   onPanelChange,
 }: PluginManagerHeaderProps) {
   return (
-    <header className="rounded-xl border border-border/60 bg-card/65 p-4 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--amber-subtle)] text-[var(--amber)]">
-            <Puzzle size={15} />
-          </span>
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">{copy.managerTitle}</h3>
-            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">{copy.managerSubtitle}</p>
-          </div>
-        </div>
-
+    <SettingCard
+      icon={<Puzzle size={15} />}
+      title={copy.managerTitle}
+      description={copy.managerSubtitle}
+      actions={(
         <Link
           href="/explore/plugins"
           className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -45,11 +39,12 @@ export function PluginManagerHeader({
           <ExternalLink size={13} />
           {copy.browseMarketAction}
         </Link>
-      </div>
-
+      )}
+      bodyClassName="space-y-0"
+    >
       <nav
         aria-label={copy.sectionNavLabel}
-        className="mt-4 flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/70 bg-muted/25 p-1"
+        className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/70 bg-muted/25 p-1"
       >
         {panels.map((item) => {
           const Icon = item.icon;
@@ -77,6 +72,6 @@ export function PluginManagerHeader({
           );
         })}
       </nav>
-    </header>
+    </SettingCard>
   );
 }

@@ -1,18 +1,16 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Loader2, Copy, Check, Monitor, Globe, AlertCircle, RotateCcw, RefreshCw, Eye, EyeOff, ChevronDown, ChevronRight, Link2, Shield, Terminal, Plug, CheckCircle2, Sparkles, Users } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Loader2, Eye, EyeOff, Shield, Terminal, Plug, Sparkles } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { useMcpDataOptional } from '@/lib/stores/mcp-store';
-import { generateSnippet } from '@/lib/mcp-snippets';
 import { copyToClipboard } from '@/lib/clipboard';
 import { apiFetch } from '@/lib/api';
 import { revealMcpAuthToken } from '@/lib/mcp-token';
-import CustomSelect from '@/components/CustomSelect';
-import type { SelectItem } from '@/components/CustomSelect';
-import type { McpTabProps, McpStatus, AgentInfo, ConnectionMode, SettingsMcpMessages } from './types';
-import AgentInstall from './McpAgentInstall';
+import type { McpTabProps, McpStatus, SettingsMcpMessages } from './types';
 import SkillsSection from './McpSkillsSection';
 import McpExternalTools from './McpExternalTools';
 import { saveSettingsPatch } from './settings-save';
+import { SettingCard } from './Primitives';
+import ConnectCard, { CopyButton } from './McpConnectGuides';
 
 /* ── Main Connections Tab ────────────────────────────────────────── */
 
@@ -130,36 +128,22 @@ export function McpTab({ t }: McpTabProps) {
       />
 
       {/* 4. External MCP Tools */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-          <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <Plug size={14} className="text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">{m?.externalToolsTitle ?? 'External MCP Tools'}</h3>
-            <p className="text-2xs text-muted-foreground">{m?.externalToolsDesc ?? 'Configure tool access mode for external MCP servers.'}</p>
-          </div>
-        </div>
-        <div className="px-4 pb-4">
-          <McpExternalTools />
-        </div>
-      </div>
+      <SettingCard
+        icon={<Plug size={15} />}
+        title={m?.externalToolsTitle ?? 'External MCP Tools'}
+        description={m?.externalToolsDesc ?? 'Configure tool access mode for external MCP servers.'}
+      >
+        <McpExternalTools />
+      </SettingCard>
 
       {/* 5. Skills */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-          <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <Sparkles size={14} className="text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">{m?.skillsTitle ?? 'Skills'}</h3>
-            <p className="text-2xs text-muted-foreground">{m?.skillsDesc ?? 'Teach agents how to operate your knowledge base.'}</p>
-          </div>
-        </div>
-        <div className="px-4 pb-4">
-          <SkillsSection t={t} />
-        </div>
-      </div>
+      <SettingCard
+        icon={<Sparkles size={15} />}
+        title={m?.skillsTitle ?? 'Skills'}
+        description={m?.skillsDesc ?? 'Teach agents how to operate your knowledge base.'}
+      >
+        <SkillsSection t={t} />
+      </SettingCard>
     </div>
   );
 }
@@ -174,17 +158,12 @@ function ConnectionModeCard({ mcpEnabled, onToggle, saving, mcpRunning, m }: {
   m: SettingsMcpMessages | undefined;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className="w-7 h-7 rounded-lg bg-[var(--amber-subtle)] flex items-center justify-center shrink-0">
-          <Plug size={14} className="text-[var(--amber)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">{m?.modeCardTitle ?? 'Connection Mode'}</h3>
-          <p className="text-2xs text-muted-foreground">{m?.modeCardDesc ?? 'Choose how agents connect to MindOS.'}</p>
-        </div>
-      </div>
-      <div className="px-4 pb-4 space-y-2">
+    <SettingCard
+      icon={<Plug size={15} />}
+      title={m?.modeCardTitle ?? 'Connection Mode'}
+      description={m?.modeCardDesc ?? 'Choose how agents connect to MindOS.'}
+      bodyClassName="space-y-2"
+    >
         {/* CLI - always on */}
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/30 border border-border/50">
           <input type="checkbox" checked disabled className="w-3.5 h-3.5 rounded accent-[var(--amber)]" />
@@ -236,8 +215,7 @@ function ConnectionModeCard({ mcpEnabled, onToggle, saving, mcpRunning, m }: {
             ? (m?.mcpEnabledHint ?? 'MCP mode enabled. Disable to simplify the interface if you only use CLI agents.')
             : (m?.mcpDisabledHint ?? 'Enable MCP to connect Desktop clients like Claude Desktop or Cursor.')}
         </p>
-      </div>
-    </div>
+    </SettingCard>
   );
 }
 
@@ -307,17 +285,11 @@ function AuthTokenCard({ status, m }: {
   const displayToken = revealed ? (revealedToken ?? '') : (status.maskedToken ?? '');
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0">
-          <Shield size={14} className="text-muted-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">{m?.tokenCardTitle ?? 'Auth Token'}</h3>
-          <p className="text-2xs text-muted-foreground">{m?.tokenCardDesc ?? 'Used by CLI remote mode and MCP connections.'}</p>
-        </div>
-      </div>
-      <div className="px-4 pb-4">
+    <SettingCard
+      icon={<Shield size={15} />}
+      title={m?.tokenCardTitle ?? 'Auth Token'}
+      description={m?.tokenCardDesc ?? 'Used by CLI remote mode and MCP connections.'}
+    >
         {hasToken ? (
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 border border-border rounded-lg min-h-[34px]">
@@ -336,10 +308,6 @@ function AuthTokenCard({ status, m }: {
             <p className="text-2xs text-muted-foreground mt-0.5">{m?.tokenNoneAction ?? 'Generate one in Settings → General → Security.'}</p>
           </div>
         )}
-      </div>
-    </div>
+    </SettingCard>
   );
 }
-
-/* ── Shared copy-state hook for guide sub-components ── */
-import ConnectCard, { CopyButton, useCopyField } from './McpConnectGuides';
