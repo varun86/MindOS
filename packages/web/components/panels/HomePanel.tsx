@@ -129,9 +129,11 @@ function AgentMark({
 function SessionStatusDot({
   running,
   status,
+  className = '',
 }: {
   running: boolean;
   status?: string;
+  className?: string;
 }) {
   const { t } = useLocale();
   if (!running && (!status || status === 'active')) return null;
@@ -142,7 +144,7 @@ function SessionStatusDot({
   return (
     <span
       data-home-session-status={running ? 'running' : status}
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full"
+      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${className}`}
       aria-label={label}
       title={label}
     >
@@ -252,7 +254,7 @@ function HomeSessionRow({
     <div
       data-home-session-row={session.id}
       data-hit-active={active ? 'true' : undefined}
-      className={`hit-target-box group flex w-full min-w-0 items-center gap-1.5 px-1.5 py-1 text-left transition-colors focus-within:text-foreground [--hit-target-radius:var(--radius-lg)] [--hit-target-hover-bg:var(--muted)] ${
+      className={`hit-target-box group relative flex w-full min-w-0 items-center gap-1.5 px-1.5 py-1 text-left transition-colors focus-within:text-foreground [--hit-target-radius:var(--radius-lg)] [--hit-target-hover-bg:var(--muted)] ${
         active
           ? '[--hit-target-border-width:1px] [--hit-target-active-bg:var(--amber-subtle)] [--hit-target-active-border:color-mix(in_srgb,var(--amber)_26%,transparent)]'
           : ''
@@ -260,19 +262,26 @@ function HomeSessionRow({
     >
       <button
         type="button"
+        data-home-session-open
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md pr-12 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <AgentMark kind={agentKind} id={session.id} active={active} />
         <span className="min-w-0 flex-1 truncate text-[12px] leading-4 text-foreground/90" title={title}>
           {title}
         </span>
-        <SessionStatusDot running={running} status={runtimeSummary?.status} />
       </button>
-      <span className={`flex shrink-0 items-center gap-0.5 transition-opacity duration-100 ${
+      <SessionStatusDot
+        running={running}
+        status={runtimeSummary?.status}
+        className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-opacity duration-100 group-hover:opacity-0 group-focus-within:opacity-0 ${
+          session.pinned ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
+      <span data-home-session-actions className={`absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 transition-opacity duration-100 ${
         session.pinned
-          ? 'opacity-100'
-          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+          ? 'pointer-events-auto opacity-100'
+          : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'
       }`}>
         <button
           type="button"

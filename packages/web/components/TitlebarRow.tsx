@@ -15,12 +15,13 @@ import { useLocale } from '@/lib/stores/locale-store';
 // individually, and the trailing spacer guarantees >=110px of pure drag space
 // at the row's right end no matter how many tabs are open.
 const ROW_STYLE = {
-  left: 'var(--rail-width, var(--titlebar-row-left, 48px))',
+  left: 'var(--titlebar-row-left, 48px)',
   height: 'var(--app-titlebar-h)',
-  // Clear the traffic lights only while the rail is narrower than them. The row
-  // must start after the live rail width, otherwise the titlebar drag layer
-  // covers the expanded rail home/logo hit area.
-  paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, var(--titlebar-row-left, 48px))))',
+  // CSS chooses the row's left edge by shell:
+  // browser/win/linux/fullscreen mac avoid the live rail logo; normal mac
+  // starts after the traffic lights so the tab strip can use the empty titlebar
+  // space above an expanded rail.
+  paddingLeft: 'var(--titlebar-row-padding-left, max(0px, calc(var(--window-controls-left, 0px) - var(--titlebar-row-left, 48px))))',
   WebkitAppRegion: 'drag',
 } as React.CSSProperties;
 

@@ -57,9 +57,9 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
   it('binds geometry to the shell CSS variables', () => {
     const el = render();
     const style = el.getAttribute('style') ?? '';
-    expect(style).toContain('left: var(--rail-width, var(--titlebar-row-left, 48px))');
+    expect(style).toContain('left: var(--titlebar-row-left, 48px)');
     expect(style).toContain('height: var(--app-titlebar-h)');
-    expect(style).toContain('max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, var(--titlebar-row-left, 48px))))');
+    expect(style).toContain('var(--titlebar-row-padding-left');
   });
 
   it('paints above the expanding rail so leading titlebar buttons stay clickable', () => {
@@ -71,13 +71,13 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     expect(titlebarSource).not.toContain('className="titlebar-row fixed top-0 right-0 z-30');
   });
 
-  it('starts after the live rail width so expanded rail controls stay clickable', () => {
+  it('delegates the left edge to CSS so shell-specific titlebar geometry can stay safe', () => {
     const el = render();
     // jsdom does not serialize -webkit-app-region into the style attribute;
     // React assigns it as a camelCase expando on the style object
     expect((el.style as unknown as Record<string, string>).WebkitAppRegion).toBe('drag');
     const style = el.getAttribute('style') ?? '';
-    expect(style).toContain('left: var(--rail-width');
+    expect(style).toContain('left: var(--titlebar-row-left');
     expect(style).not.toMatch(/transition:[^;]*left 200ms ease-out/);
     expect(style).not.toMatch(/transition:[^;]*padding-left 200ms ease-out/);
   });
@@ -180,16 +180,19 @@ describe('TitlebarRow (spec-titlebar-row Phase 1 + 2)', () => {
     // Variables default to 0 (browser/win/linux/old shell = zero diff)
     expect(css).toContain('--app-titlebar-h: 0px');
     expect(css).toContain('--window-controls-left: 0px');
-    expect(css).toContain('--titlebar-row-left: 48px');
+    expect(css).toContain('--titlebar-row-left: max(var(--rail-width, 0px), 48px)');
+    expect(css).toContain('--titlebar-row-padding-left: max(0px, calc(var(--window-controls-left, 0px) - var(--titlebar-row-left, 48px)))');
     // Rail offset exists only for the mac traffic lights: 0 by default so the
     // rail logo sits in the first row on browser/win/linux desktops
     expect(css).toMatch(/:root\s*\{[^}]*--rail-titlebar-offset:\s*0px/);
     // Mac shell geometry
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--app-titlebar-h:\s*42px/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--window-controls-left:\s*70px/);
+    expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--titlebar-row-left:\s*max\(var\(--window-controls-left\),\s*var\(--rail-width,\s*0px\)\)/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\s*\{[^}]*--rail-titlebar-offset:\s*var\(--app-titlebar-h\)/);
     // Fullscreen hides traffic lights: clearance collapses to 0
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\[data-mac-fullscreen\]\s*\{[^}]*--window-controls-left:\s*0px/);
+    expect(css).toMatch(/html\[data-mac-titlebar-row\]\[data-mac-fullscreen\]\s*\{[^}]*--titlebar-row-left:\s*max\(var\(--rail-width,\s*0px\),\s*48px\)/);
     expect(css).toMatch(/html\[data-mac-titlebar-row\]\[data-mac-fullscreen\]\s*\{[^}]*--rail-titlebar-offset:\s*0px/);
     // Legacy injected-CSS fallback is gone
     expect(css).not.toContain('.electron-mac-titlebar-pad');

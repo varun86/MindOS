@@ -847,7 +847,8 @@ input[type="radio"].form-radio:focus-visible {
      win / linux desktops keep 0 so the logo sits in the first row. */
   --rail-titlebar-offset: 0px;
   --rail-width: 0px;
-  --titlebar-row-left: 48px;
+  --titlebar-row-left: max(var(--rail-width, 0px), 48px);
+  --titlebar-row-padding-left: max(0px, calc(var(--window-controls-left, 0px) - var(--titlebar-row-left, 48px)));
 }
 @media (min-width: 768px) {
   :root {
@@ -857,11 +858,13 @@ input[type="radio"].form-radio:focus-visible {
 html[data-mac-titlebar-row] {
   --app-titlebar-h: 42px;
   --window-controls-left: 70px; /* traffic lights span x12..64 + 6px margin */
+  --titlebar-row-left: max(var(--window-controls-left), var(--rail-width, 0px));
   --rail-titlebar-offset: var(--app-titlebar-h);
 }
 /* Fullscreen hides the traffic lights: no clearance, rail logo back to top */
 html[data-mac-titlebar-row][data-mac-fullscreen] {
   --window-controls-left: 0px;
+  --titlebar-row-left: max(var(--rail-width, 0px), 48px);
   --rail-titlebar-offset: 0px;
 }
 /* Render gating — desktop viewports or the mac shell (any viewport) */

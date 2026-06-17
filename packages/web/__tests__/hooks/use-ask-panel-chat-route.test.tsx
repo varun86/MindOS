@@ -123,4 +123,13 @@ describe('useAskPanel full-page chat guard', () => {
     expect(source).not.toContain('<AskModal\n          open={ap.desktopAskPopupOpen}');
     expect(source).not.toContain('<AskModal open={mobileAskOpen}');
   });
+
+  it('does not use the full-page chat guard to collapse the left sidebar panel', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'components/SidebarLayout.tsx'), 'utf-8');
+
+    expect(source).not.toContain('const activeLeftPanel = isFullPageChatRoute');
+    expect(source).not.toContain('const railActivePanel = isFullPageChatRoute');
+    expect(source).toContain('const activeLeftPanel = homeNavPending');
+    expect(source).toContain('const railActivePanel = homeNavPending');
+  });
 });

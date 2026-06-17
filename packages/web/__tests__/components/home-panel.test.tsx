@@ -118,7 +118,18 @@ describe('HomePanel', () => {
     expect(host.querySelector('[data-home-session-row="s-codex"] .tabular-nums')).toBeNull();
     expect(host.querySelector('button[aria-label="Pin session"]')).not.toBeNull();
     expect(host.querySelector('button[aria-label="Archive session"]')).not.toBeNull();
-    expect(host.querySelector('[data-home-session-row="s-codex"] [data-home-session-status="running"]')).not.toBeNull();
+    const status = host.querySelector('[data-home-session-row="s-codex"] [data-home-session-status="running"]') as HTMLElement | null;
+    expect(status).not.toBeNull();
+    expect(status?.className).toContain('absolute');
+    expect(status?.className).toContain('right-3');
+    expect(status?.className).toContain('group-hover:opacity-0');
+    const actions = host.querySelector('[data-home-session-row="s-codex"] [data-home-session-actions]') as HTMLElement | null;
+    expect(actions).not.toBeNull();
+    expect(actions?.className).toContain('absolute');
+    expect(actions?.className).toContain('right-1.5');
+    expect(actions?.className).toContain('opacity-0');
+    const openButton = host.querySelector('[data-home-session-row="s-codex"] button[data-home-session-open]') as HTMLButtonElement | null;
+    expect(openButton?.className).toContain('pr-12');
   });
 
   it('filters Home sessions by agent runtime', async () => {

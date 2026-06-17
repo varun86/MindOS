@@ -40,18 +40,20 @@ describe('Sidebar width contract', () => {
     expect(sidebarLayout).not.toContain('href={ROUTE_PANEL_HREF.files}');
   });
 
-  it('keeps titlebar actions outside the live rail width so expanded rail controls remain clickable', () => {
+  it('keeps titlebar actions outside unsafe chrome while letting mac use the traffic-light gap', () => {
     const titlebarRow = readSource('components/TitlebarRow.tsx');
     const sidebarLayout = readSource('components/SidebarLayout.tsx');
     const globals = readSource('app/globals.css');
 
-    expect(titlebarRow).toContain("left: 'var(--rail-width, var(--titlebar-row-left, 48px))'");
-    expect(titlebarRow).toContain("paddingLeft: 'max(0px, calc(var(--window-controls-left, 0px) - var(--rail-width, var(--titlebar-row-left, 48px))))'");
+    expect(titlebarRow).toContain("left: 'var(--titlebar-row-left, 48px)'");
+    expect(titlebarRow).toContain("paddingLeft: 'var(--titlebar-row-padding-left");
     expect(titlebarRow).toContain('z-app-rail-affordance');
     expect(sidebarLayout).toContain('--rail-width: ${lp.railWidth}px;');
-    expect(sidebarLayout).toContain('--titlebar-row-left: ${RAIL_WIDTH_COLLAPSED}px;');
-    expect(globals).toContain('--titlebar-row-left: 48px;');
-    expect(titlebarRow).not.toContain("left: 'var(--titlebar-row-left, 48px)'");
+    expect(sidebarLayout).not.toContain('--titlebar-row-left: ${RAIL_WIDTH_COLLAPSED}px;');
+    expect(globals).toContain('--titlebar-row-left: max(var(--rail-width, 0px), 48px);');
+    expect(globals).toContain('--titlebar-row-left: max(var(--window-controls-left), var(--rail-width, 0px));');
+    expect(globals).toContain('html[data-mac-titlebar-row][data-mac-fullscreen]');
+    expect(titlebarRow).not.toContain("left: 'var(--rail-width");
   });
 
   it('keeps Home navigation pending state from re-highlighting route sections', () => {
