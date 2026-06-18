@@ -196,6 +196,7 @@ describe('Agents content dashboard', () => {
     expect(html).toContain('agents-content-page');
     expect(html).toContain(a.title);
     expect(html).toContain(a.navAriaLabel);
+    expect(html).not.toContain(a.backToOverview);
     expect(html).toContain(a.navHints.overview);
     expect(html).toContain(a.navHints.assistant);
     expect(html).toContain(a.navHints.agent);
@@ -226,6 +227,10 @@ describe('Agents content dashboard', () => {
     const html = renderToStaticMarkup(<AgentsContentPage tab="agent" />);
     const a = messages.en.agentsContent;
 
+    expect(html).toContain(a.backToOverview);
+    expect(html).not.toContain(a.navAriaLabel);
+    expect(html).not.toContain('href="/agents?tab=assistant"');
+    expect(html).not.toContain('href="/agents?tab=capabilities"');
     expect(html).toContain(a.runtime.title);
     expect(html).toContain(a.runtime.mindosName);
     expect(html).toContain('Codex');
@@ -270,6 +275,9 @@ describe('Agents content dashboard', () => {
     const html = renderToStaticMarkup(<AgentsContentPage tab="capabilities" />);
     const a = messages.en.agentsContent;
 
+    expect(html).toContain(a.backToOverview);
+    expect(html).not.toContain(a.navAriaLabel);
+    expect(html).not.toContain('href="/agents?tab=assistant"');
     expect(html).toContain(a.mcp.tabs.byAgent);
     expect(html).toContain(a.mcp.tabs.byServer);
     expect(html).not.toContain(a.mcp.connectionGraph);
@@ -294,6 +302,9 @@ describe('Agents content dashboard', () => {
     const html = renderToStaticMarkup(<AgentsContentPage tab="assistant" />);
     const a = messages.en.agentsContent;
 
+    expect(html).toContain(a.backToOverview);
+    expect(html).not.toContain(a.navAriaLabel);
+    expect(html).not.toContain('href="/agents?tab=capabilities"');
     expect(html).toContain(a.presets.title);
     expect(html).toContain(a.presets.presetRail);
     expect(html).toContain(a.presets.libraryHint);
