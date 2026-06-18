@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { Lightbulb, Blocks, Zap, LayoutTemplate, User, Download, RefreshCw, Repeat, Rocket, Search, Handshake, ShieldCheck } from 'lucide-react';
 import PanelHeader from './PanelHeader';
-import { PanelNavRow, ComingSoonBadge } from './PanelNavRow';
+import { PANEL_NAV_STACK_CLASS, PanelNavRow, ComingSoonBadge } from './PanelNavRow';
 import { useLocale } from '@/lib/stores/locale-store';
 import { useCases } from '@/components/explore/use-cases.generated';
 import { openAskModal } from '@/hooks/useAskModal';
@@ -75,7 +75,7 @@ export default function DiscoverPanel({ active }: DiscoverPanelProps) {
       <PanelHeader title={d.title} />
       <div className="flex-1 overflow-y-auto min-h-0">
         {/* Navigation entries */}
-        <div className="flex flex-col gap-0.5 py-1.5">
+        <div className={PANEL_NAV_STACK_CLASS}>
           <PanelNavRow
             icon={<Blocks size={14} className={pluginMarketActive ? 'text-[var(--amber)]' : 'text-muted-foreground'} />}
             title={d.pluginMarket}

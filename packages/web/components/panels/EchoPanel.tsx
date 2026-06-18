@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { Footprints, Brain, Eye } from 'lucide-react';
 import PanelHeader from './PanelHeader';
-import { PanelNavRow } from './PanelNavRow';
+import { PANEL_NAV_STACK_CLASS, PanelNavRow } from './PanelNavRow';
 import { useLocale } from '@/lib/stores/locale-store';
 import { ECHO_SEGMENT_HREF, ECHO_SEGMENT_ORDER, type EchoSegment } from '@/lib/echo-segments';
 
@@ -29,7 +29,7 @@ export default function EchoPanel({ active }: EchoPanelProps) {
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
       <PanelHeader title={e.title} />
       <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
-        <div className="flex flex-col gap-0.5 py-1.5">
+        <div className={PANEL_NAV_STACK_CLASS}>
           {ECHO_SEGMENT_ORDER.map((segment) => {
             const row = rowBySegment[segment];
             const href = ECHO_SEGMENT_HREF[segment];

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { FolderOpen, LayoutDashboard, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import PanelHeader from './PanelHeader';
-import { PanelNavRow } from './PanelNavRow';
+import { PANEL_NAV_SECTION_CLASS, PanelNavRow } from './PanelNavRow';
 import { useLocale } from '@/lib/stores/locale-store';
 import { cn } from '@/lib/utils';
 import {
@@ -117,7 +117,7 @@ export default function StudioPanel({ active }: StudioPanelProps) {
         </button>
       </PanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="py-2">
+        <div className={PANEL_NAV_SECTION_CLASS}>
           <PanelNavRow
             href="/studio"
             icon={<LayoutDashboard size={14} aria-hidden="true" />}

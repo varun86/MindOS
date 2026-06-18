@@ -28,6 +28,15 @@ describe('EchoPanel sidebar navigation', () => {
     expect(html).not.toContain('ring-2 ring-ring/50');
   });
 
+  it('uses the shared primary sidebar nav spacing under the panel header', () => {
+    routeState.pathname = '/echo/imprint';
+
+    const html = renderToStaticMarkup(<EchoPanel active maximized={false} />);
+
+    expect(html).toContain('flex flex-col gap-0.5 py-2');
+    expect(html).not.toContain('py-1.5');
+  });
+
   it('keeps inactive Echo segments out of the active/current state', () => {
     routeState.pathname = '/echo/growth';
 

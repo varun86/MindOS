@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Zap, AlertTriangle, Loader2 } from 'lucide-react';
 import PanelHeader from './PanelHeader';
+import { PANEL_NAV_STACK_CLASS } from './PanelNavRow';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath, relativeTime } from '@/lib/utils';
 import { openTab } from '@/lib/workspace-tabs';
@@ -174,7 +175,7 @@ export default function WorkflowsPanel({ active, maximized, onMaximize }: Workfl
 
         {/* Workflow list */}
         {!loading && workflows.length > 0 && (
-          <div className="flex flex-col gap-0.5 py-1.5">
+          <div className={PANEL_NAV_STACK_CLASS}>
             {workflows.map(w => (
               <Link
                 key={w.path}
