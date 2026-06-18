@@ -75,7 +75,7 @@ describe('FolderContextMenu convert to Space AI gating', () => {
       );
     });
 
-    const button = [...host.querySelectorAll('button')]
+    const button = [...document.body.querySelectorAll('button')]
       .find(el => el.textContent?.includes('Convert to Space'));
     expect(button).toBeTruthy();
     return { host, root, button: button as HTMLButtonElement };

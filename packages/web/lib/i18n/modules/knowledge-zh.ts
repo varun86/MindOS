@@ -462,6 +462,8 @@ export const knowledgeZh = {
     importFile: '导入文件',
     importToSpace: '导入文件到此空间',
     convertToSpaceAiRequired: '请先配置 AI API 密钥再将文件夹转为空间。MindOS 不会在没有 AI 生成时创建占位 Space 文件。',
+    addAsContext: '添加为 Context',
+    addedAsContext: '已添加到 Context',
     copyPath: '复制路径',
     pathCopied: '路径已复制',
     pinToFavorites: '固定到收藏',

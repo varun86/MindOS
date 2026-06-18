@@ -345,7 +345,7 @@ describe('Panel Mind System collapse', () => {
     expect(openButton).not.toBeNull();
     expect(openButton?.getAttribute('data-hit-active')).toBe('true');
     expect(openButton?.className).toContain('[--hit-target-radius:var(--radius-sm)]');
-    expect(openButton?.className).toContain('[--hit-target-active-bg:var(--muted)]');
+    expect(openButton?.className).toContain('[--hit-target-active-bg:transparent]');
     expect(openButton?.parentElement?.className).toContain('bg-muted/70');
     expect(openButton?.querySelector('[class*="rounded-r-full"]')).toBeNull();
   });

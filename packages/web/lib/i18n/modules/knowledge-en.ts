@@ -462,6 +462,8 @@ Read the assistant prompt at ${promptPath} first, then read this space's INSTRUC
     importFile: 'Import File',
     importToSpace: 'Import file to this space',
     convertToSpaceAiRequired: 'Configure an AI API key before converting a folder into a Space. MindOS will not create placeholder Space files without AI generation.',
+    addAsContext: 'Add as Context',
+    addedAsContext: 'Added to context',
     copyPath: 'Copy Path',
     pathCopied: 'Path copied',
     pinToFavorites: 'Pin to Favorites',

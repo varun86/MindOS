@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react
 import { usePathname } from 'next/navigation';
 import { RIGHT_ASK_DEFAULT_WIDTH, RIGHT_ASK_MIN_WIDTH, RIGHT_ASK_MAX_WIDTH } from '@/components/RightAskPanel';
 import { useAskModal, type AcpAgentSelection, type AskAgentRuntimeSelection } from './useAskModal';
+import {
+  ASK_ADD_CONTEXT_EVENT,
+  normalizeAskContextDetail,
+  type AskAddContextDetail,
+  type AskContextRequest,
+} from '@/lib/ask-context-events';
 
 export interface AskPanelState {
   askPanelOpen: boolean;
@@ -15,6 +21,7 @@ export interface AskPanelState {
   askOpenSource: 'user' | 'guide' | 'guide-next';
   askAcpAgent: AcpAgentSelection | null;
   askAgentRuntime: AskAgentRuntimeSelection | null;
+  askContextRequest: AskContextRequest | null;
   toggleAskPanel: () => void;
   closeAskPanel: () => void;
   closeDesktopAskPopup: () => void;
@@ -44,9 +51,16 @@ export function useAskPanel(): AskPanelState {
   const [askOpenSource, setAskOpenSource] = useState<'user' | 'guide' | 'guide-next'>('user');
   const [askAcpAgent, setAskAcpAgent] = useState<AcpAgentSelection | null>(null);
   const [askAgentRuntime, setAskAgentRuntime] = useState<AskAgentRuntimeSelection | null>(null);
+  const [askContextRequest, setAskContextRequest] = useState<AskContextRequest | null>(null);
   const prevWidthRef = useRef(RIGHT_ASK_DEFAULT_WIDTH);
+  const askModeRef = useRef(askMode);
+  const contextRequestIdRef = useRef(0);
 
   const askModal = useAskModal();
+
+  useLayoutEffect(() => {
+    askModeRef.current = askMode;
+  }, [askMode]);
 
   useEffect(() => {
     if (!fullPageChat) return;
@@ -56,6 +70,36 @@ export function useAskPanel(): AskPanelState {
       setAskMaximized(false);
       setAskPanelWidth(prevWidthRef.current);
     }
+  }, [fullPageChat]);
+
+  useEffect(() => {
+    const onAddContext = (event: Event) => {
+      if (fullPageChat) return;
+      const normalized = normalizeAskContextDetail((event as CustomEvent<AskAddContextDetail>).detail);
+      if (!normalized) return;
+
+      setAskInitialMessage('');
+      setAskOpenSource('user');
+      setAskAcpAgent(null);
+      setAskAgentRuntime(null);
+      setAskContextRequest({
+        id: ++contextRequestIdRef.current,
+        ...normalized,
+      });
+
+      if (askModeRef.current === 'popup') {
+        setDesktopAskPopupOpen(true);
+      } else {
+        setAskPanelOpen(true);
+      }
+
+      if (askMaximizedRef.current) {
+        setAskMaximized(false);
+        setAskPanelWidth(prevWidthRef.current);
+      }
+    };
+    window.addEventListener(ASK_ADD_CONTEXT_EVENT, onAddContext);
+    return () => window.removeEventListener(ASK_ADD_CONTEXT_EVENT, onAddContext);
   }, [fullPageChat]);
 
   // Load persisted width + mode
@@ -184,7 +228,7 @@ export function useAskPanel(): AskPanelState {
 
   return {
     askPanelOpen, askPanelWidth, askMaximized, askMode, desktopAskPopupOpen,
-    askInitialMessage, askOpenSource, askAcpAgent, askAgentRuntime,
+    askInitialMessage, askOpenSource, askAcpAgent, askAgentRuntime, askContextRequest,
     toggleAskPanel, closeAskPanel, closeDesktopAskPopup,
     handleAskWidthChange, handleAskWidthCommit, handleAskModeSwitch, toggleAskMaximized,
   };

@@ -48,6 +48,7 @@ import { useNativeRuntimeDetection } from '@/hooks/useNativeRuntimeDetection';
 import type { AcpAgentSelection } from '@/hooks/useAskModal';
 import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import type { CodexThreadListResponse, CodexThreadSummary, RuntimeSessionBinding } from '@/lib/types';
+import type { AskContextRequest } from '@/lib/ask-context-events';
 
 /** Stable empty array — a fresh [] literal per render would bust MessageList's memo */
 const EMPTY_SUGGESTIONS: ReadonlyArray<{ label: string; prompt: string }> = [];
@@ -120,6 +121,7 @@ interface AskContentProps {
   initialSessionId?: string;
   /** Project lane for Studio-scoped work. */
   projectId?: string;
+  contextRequest?: AskContextRequest | null;
   onFirstMessage?: () => void;
   /** 'modal' renders close button + ESC handler; 'panel' renders compact header; 'home' renders embedded on homepage */
   variant: 'modal' | 'panel' | 'home';
@@ -131,7 +133,7 @@ interface AskContentProps {
   onDockToPanel?: () => void;
 }
 
-export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, initialSessionId, projectId, onFirstMessage, variant, onClose, maximized, onMaximize, onDockToPanel }: AskContentProps) {
+export default function AskContent({ visible, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, initialSessionId, projectId, contextRequest, onFirstMessage, variant, onClose, maximized, onMaximize, onDockToPanel }: AskContentProps) {
   const isPanel = variant === 'panel';
   const isHome = variant === 'home';
 
@@ -615,6 +617,13 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     prevFileRef.current = currentFile;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, currentFile]);
+
+  useEffect(() => {
+    if (!visible || !contextRequest) return;
+    const path = contextRequest.path;
+    setAttachedFiles(prev => prev.includes(path) ? prev : [...prev, path]);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [contextRequest, visible]);
 
   useEffect(() => {
     if (!visible || !session.activeSessionId) return;

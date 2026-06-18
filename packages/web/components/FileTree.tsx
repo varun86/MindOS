@@ -8,7 +8,7 @@ import { ICON_SIZES } from '@/lib/config/icon-scale';
 import {
   ChevronDown, FileText, Table, Folder, FolderOpen, Loader2,
   Trash2, Pencil, Layers, Copy, MoreHorizontal, Star, Inbox,
-  Compass, ScrollText, Route, Wrench,
+  Compass, ScrollText, Route, Wrench, MessageSquarePlus,
 } from 'lucide-react';
 import { createFileAction, deleteFileAction, renameFileAction, renameSpaceAction, deleteSpaceAction, deleteFolderAction, undoDeleteAction } from '@/lib/actions';
 import { toast } from '@/lib/toast';
@@ -24,16 +24,19 @@ import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import { useShowHiddenFiles, setShowHiddenFiles, filterHiddenNodes } from '@/lib/stores/hidden-files';
 import { notifyFilesChanged } from '@/lib/files-changed';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
+import { requestAddAskContext } from '@/lib/ask-context-events';
 
 // Re-export for backward compatibility (Panel.tsx, KnowledgeTab.tsx import from FileTree)
 export { setShowHiddenFiles, useShowHiddenFiles };
-import { ContextMenuShell, SpaceContextMenu, FolderContextMenu, MENU_ITEM, MENU_DANGER, MENU_DIVIDER } from '@/components/file-tree/FileTreeContextMenus';
+import { ContextMenuShell, SpaceContextMenu, FolderContextMenu, MENU_ITEM, MENU_DANGER, MENU_DIVIDER, type ContextMenuAlign } from '@/components/file-tree/FileTreeContextMenus';
 import { useDirectoryDragDrop } from '@/lib/hooks/useDirectoryDragDrop';
 import { ActivePathContext, createActivePathStore, useIsActiveFile, useIsOnActivePath, type ActivePathStore } from '@/components/file-tree/active-path';
 
 async function copyPathToClipboard(path: string) {
   try { await navigator.clipboard.writeText(path); } catch { /* noop */ }
 }
+
+type RowContextMenuState = { x: number; y: number; align?: ContextMenuAlign };
 
 interface FileTreeProps {
   nodes: FileNode[];
@@ -228,7 +231,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
   const [isPending, startTransition] = useTransition();
   const renameRef = useRef<HTMLInputElement>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<RowContextMenuState | null>(null);
   const { t } = useLocale();
   const [deleteConfirm, setDeleteConfirm] = useState<null | 'space' | 'folder'>(null);
   const [, startDeleteTransition] = useTransition();
@@ -392,7 +395,10 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
             hit-target-box flex-1 flex min-h-7 items-center gap-1.5 px-1 text-left min-w-0
             text-sm transition-colors duration-100
             cursor-default [--hit-target-radius:var(--radius-sm)]
-            [--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--muted)]
+            ${isSpace
+              ? '[--hit-target-hover-bg:transparent] [--hit-target-active-bg:transparent]'
+              : '[--hit-target-hover-bg:var(--muted)] [--hit-target-active-bg:var(--muted)]'
+            }
             ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}
           `}
         >
@@ -417,7 +423,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
                 e.preventDefault();
                 e.stopPropagation();
                 const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+                setContextMenu({ x: rect.right, y: rect.bottom + 6, align: 'end' });
               }}
               title="More"
             >
@@ -431,7 +437,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
         className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div
-          className={`overflow-hidden ${showBorder ? 'ml-[18px] border-l-2 border-[var(--amber)]/30' : ''}`}
+          className={`overflow-hidden ${open && hasBeenOpened ? 'pt-1' : ''} ${showBorder ? 'ml-[18px] border-l-2 border-[var(--amber)]/30' : ''}`}
           {...(!open && { inert: true } as React.HTMLAttributes<HTMLDivElement>)}
         >
           {hasBeenOpened && node.children && (
@@ -459,6 +465,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
         <SpaceContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          align={contextMenu.align}
           node={node}
           onClose={() => setContextMenu(null)}
           onRename={() => startRename()}
@@ -470,6 +477,7 @@ const DirectoryNode = memo(function DirectoryNode({ node, depth, onNavigate, max
         <FolderContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          align={contextMenu.align}
           node={node}
           onClose={() => setContextMenu(null)}
           onRename={() => startRename()}
@@ -531,7 +539,7 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
   const pinned = isPinned(node.path);
   const isProtected = !node.path.includes('/') && UNDELETABLE_FILES.has(node.name);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<RowContextMenuState | null>(null);
   const [opening, setOpening] = useState(false);
   const openingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -684,7 +692,7 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
               e.preventDefault();
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenu({ x: rect.left, y: rect.bottom + 4 });
+              setContextMenu({ x: rect.right, y: rect.bottom + 6, align: 'end' });
             }}
             title="More"
           >
@@ -696,9 +704,13 @@ const FileNodeItem = memo(function FileNodeItem({ node, depth, onNavigate }: {
         <ContextMenuShell
           x={contextMenu.x}
           y={contextMenu.y}
+          align={contextMenu.align}
           onClose={() => setContextMenu(null)}
-          menuHeight={140}
+          menuHeight={180}
         >
+          <button className={MENU_ITEM} onClick={() => { requestAddAskContext({ path: node.path, type: 'file', label: node.name }); toast.success(t.fileTree.addedAsContext, 1600); setContextMenu(null); }}>
+            <MessageSquarePlus size={14} className="shrink-0" /> {t.fileTree.addAsContext}
+          </button>
           <button className={MENU_ITEM} onClick={() => { copyPathToClipboard(node.path); setContextMenu(null); }}>
             <Copy size={14} className="shrink-0" /> {t.fileTree.copyPath}
           </button>

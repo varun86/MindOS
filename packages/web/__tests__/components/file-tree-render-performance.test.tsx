@@ -32,6 +32,7 @@ vi.mock('lucide-react', () => {
   const names = [
     'ChevronDown', 'FileText', 'Table', 'Folder', 'FolderOpen', 'Plus', 'Loader2',
     'Trash2', 'Pencil', 'Layers', 'Copy', 'MoreHorizontal', 'Star', 'Inbox',
+    'MessageSquarePlus',
   ];
   return Object.fromEntries(names.map(n => [n, make(n)]));
 });

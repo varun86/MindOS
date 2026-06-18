@@ -3,6 +3,7 @@
 import { useLocale } from '@/lib/stores/locale-store';
 import AskContent from '@/components/ask/AskContent';
 import type { AcpAgentSelection, AskAgentRuntimeSelection } from '@/hooks/useAskModal';
+import type { AskContextRequest } from '@/lib/ask-context-events';
 
 interface AskModalProps {
   open: boolean;
@@ -11,10 +12,11 @@ interface AskModalProps {
   initialMessage?: string;
   initialAcpAgent?: AcpAgentSelection | null;
   initialAgentRuntime?: AskAgentRuntimeSelection | null;
+  contextRequest?: AskContextRequest | null;
   onFirstMessage?: () => void;
 }
 
-export default function AskModal({ open, onClose, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, onFirstMessage }: AskModalProps) {
+export default function AskModal({ open, onClose, currentFile, initialMessage, initialAcpAgent, initialAgentRuntime, contextRequest, onFirstMessage }: AskModalProps) {
   const { t } = useLocale();
 
   if (!open) return null;
@@ -38,6 +40,7 @@ export default function AskModal({ open, onClose, currentFile, initialMessage, i
           initialMessage={initialMessage}
           initialAcpAgent={initialAcpAgent}
           initialAgentRuntime={initialAgentRuntime}
+          contextRequest={contextRequest}
           onFirstMessage={onFirstMessage}
         />
       </div>

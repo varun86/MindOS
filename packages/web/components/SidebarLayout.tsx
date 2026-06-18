@@ -868,6 +868,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           initialMessage={ap.askInitialMessage}
           initialAcpAgent={ap.askAcpAgent}
           initialAgentRuntime={ap.askAgentRuntime}
+          contextRequest={ap.askContextRequest}
           onFirstMessage={handleFirstMessage}
           width={ap.askPanelWidth}
           onWidthChange={ap.handleAskWidthChange}
@@ -898,6 +899,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           initialMessage={ap.askInitialMessage}
           initialAcpAgent={ap.askAcpAgent}
           initialAgentRuntime={ap.askAgentRuntime}
+          contextRequest={ap.askContextRequest}
           onFirstMessage={handleFirstMessage}
         />
       )}
