@@ -32,7 +32,8 @@ import { cleanupOrphanedSshTunnel, SshTunnel } from './ssh-tunnel';
 import { testConnection } from './connection-sdk';
 import { getNodePath, getNpxPath, getNpmPath, getLocalBinPath, getEnrichedEnv } from './node-detect';
 import { resolveExecTarget } from './exec-target';
-import { downloadNode, installMindosWithPrivateNode } from './node-bootstrap';
+import { downloadNode, getPrivateNodePath, installMindosWithPrivateNode } from './node-bootstrap';
+import { buildWebCrashDiagnostic } from './desktop-crash-diagnostics';
 import { resolveLocalMindOsProjectRoot } from './mindos-runtime-resolve';
 import { isNextBuildCurrent, BUILD_VERSION_FILE, analyzeMindOsLayout, resolveWebAppDir } from './mindos-runtime-layout';
 import { hasRequiredStandaloneAppFiles } from './runtime-health-contract';
@@ -68,6 +69,8 @@ import {
 registerMindosConnectSchemePrivileged();
 
 installSmokeFileLogger();
+
+const NODE_RUNTIME_REPAIR_MARKER = path.join(CONFIG_DIR, 'node-runtime-repair-required.json');
 
 // Intel Mac GPU workaround: some Intel HD/Iris/UHD GPUs are on Chromium's
 // blocklist, which disables GPU compositing and breaks backdrop-filter.
@@ -282,6 +285,28 @@ function checkCliConflict(): { running: boolean; webPort?: number; mcpPort?: num
   } catch {
     return { running: false };
   }
+}
+
+function markNodeRuntimeRepairRequired(reason: string, nodePath: string | null | undefined): void {
+  try {
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(
+      NODE_RUNTIME_REPAIR_MARKER,
+      JSON.stringify({
+        reason,
+        nodePath: nodePath || null,
+        createdAt: new Date().toISOString(),
+      }, null, 2),
+      'utf-8',
+    );
+    console.warn(`[MindOS:heal] Private Node.js runtime refresh requested (${reason})`);
+  } catch (err) {
+    console.warn('[MindOS:heal] Failed to write Node.js runtime repair marker:', (err as Error)?.message);
+  }
+}
+
+function clearNodeRuntimeRepairMarker(): void {
+  try { unlinkSync(NODE_RUNTIME_REPAIR_MARKER); } catch { /* marker absent */ }
 }
 
 // ── Local Mode ──
@@ -669,38 +694,19 @@ async function startLocalMode(): Promise<string | null> {
       } else {
         crashDialogShown = true;
         const zh = navigator_lang() === 'zh';
-        // Strip ANSI escape codes from stderr for clean display in native dialog
-        const ansiEscapePattern = new RegExp(`${String.fromCharCode(27)}\\\\[[0-9;]*m`, 'g');
-        const stripAnsi = (s: string) => s.replace(ansiEscapePattern, '');
-        const stderr = stripAnsi(stderrLines?.slice(-5).join('\n') || '');
-        const lastExitCode = exitCode ?? null;
-        // Diagnose crash cause from exit code and stderr
-        let hint: string;
-        if (lastExitCode === 137 || lastExitCode === 9) {
-          hint = zh
-            ? '\n\n可能原因：内存不足 (OOM)。尝试关闭其他应用后重启。'
-            : '\n\nLikely cause: out of memory (OOM). Close other apps and restart.';
-        } else if (stderr.includes('ENOSPC') || stderr.includes('no space left')) {
-          hint = zh
-            ? '\n\n可能原因：磁盘空间不足。请清理磁盘后重启。'
-            : '\n\nLikely cause: disk full. Free up disk space and restart.';
-        } else if (stderr.includes('EADDRINUSE') || stderr.includes('address already in use')) {
-          hint = zh
-            ? '\n\n可能原因：端口被占用。请关闭占用端口的程序后重启。'
-            : '\n\nLikely cause: port in use. Close the program using the port and restart.';
-        } else if (stderr.includes('MODULE_NOT_FOUND') || stderr.includes('Cannot find module')) {
-          hint = zh
-            ? '\n\n可能原因：构建产物过期。请在终端运行 mindos start 重新编译。'
-            : '\n\nLikely cause: stale build. Run "mindos start" in terminal to rebuild.';
-        } else {
-          hint = zh
-            ? '\n\n请检查 Node.js 环境后重启。'
-            : '\n\nPlease check your Node.js environment and restart.';
+        const diagnostic = buildWebCrashDiagnostic({
+          zh,
+          exitCode: exitCode ?? null,
+          stderrLines,
+          nodePath,
+          privateNodePath: getPrivateNodePath(),
+        });
+        if (diagnostic.shouldRefreshPrivateNode) {
+          markNodeRuntimeRepairRequired(diagnostic.cause, nodePath);
         }
         dialog.showErrorBox(
           zh ? 'MindOS 服务崩溃' : 'MindOS Service Crashed',
-          (zh ? 'Web 服务连续崩溃 3 次。' : 'The web server crashed 3 times.')
-            + hint + '\n\n' + (zh ? '详细日志：~/.mindos/crash.log' : 'Details: ~/.mindos/crash.log') + (stderr ? '\n\n--- Last output ---\n' + stderr : ''),
+          diagnostic.message,
         );
       }
     }
@@ -945,9 +951,20 @@ async function validatePrivateNode(): Promise<'missing' | 'ok' | 'removed'> {
     DESKTOP_HOME, '.mindos', 'node',
     process.platform === 'win32' ? 'node.exe' : 'bin/node',
   );
+  const repairRequested = existsSync(NODE_RUNTIME_REPAIR_MARKER);
   if (!existsSync(nodeBin)) {
+    if (repairRequested) clearNodeRuntimeRepairMarker();
     stop({ result: 'missing' });
     return 'missing';
+  }
+
+  if (repairRequested) {
+    console.warn('[MindOS:heal] Refreshing private Node.js after previous native runtime crash');
+    const nodeDir = path.join(DESKTOP_HOME, '.mindos', 'node');
+    try { rmSync(nodeDir, { recursive: true, force: true }); } catch { /* best effort */ }
+    clearNodeRuntimeRepairMarker();
+    stop({ result: 'removed', reason: 'native-crash-marker' });
+    return 'removed';
   }
 
   try {
@@ -969,6 +986,7 @@ async function validatePrivateNode(): Promise<'missing' | 'ok' | 'removed'> {
   // Remove the entire private node directory — downloadNode() will replace it
   const nodeDir = path.join(DESKTOP_HOME, '.mindos', 'node');
   try { rmSync(nodeDir, { recursive: true, force: true }); } catch { /* best effort */ }
+  clearNodeRuntimeRepairMarker();
   stop({ result: 'removed' });
   return 'removed';
 }

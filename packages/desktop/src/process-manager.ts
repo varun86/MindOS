@@ -545,6 +545,9 @@ export class ProcessManager extends EventEmitter {
       const entry = [
         `--- [${ts}] ${which} crash #${this.crashCount[which as keyof typeof this.crashCount]} ---`,
         `exit code=${code} signal=${signal}`,
+        `node=${this.opts.nodePath}`,
+        `projectRoot=${this.opts.projectRoot}`,
+        `webPort=${this.opts.webPort} mcpPort=${this.opts.mcpPort}`,
         ...stderr.map(l => `  ${l}`),
         '',
       ].join('\n');

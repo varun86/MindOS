@@ -66,4 +66,12 @@ describe('desktop main startup contract', () => {
       splashIdx = startupSlice.indexOf('splashWindow = createSplash()', splashIdx + 1);
     }
   });
+
+  it('diagnoses web crash dialogs through the desktop crash diagnostics module', () => {
+    expect(source).toContain("import { buildWebCrashDiagnostic } from './desktop-crash-diagnostics';");
+    expect(source).toContain('const diagnostic = buildWebCrashDiagnostic({');
+    expect(source).toContain('diagnostic.shouldRefreshPrivateNode');
+    expect(source).toContain('markNodeRuntimeRepairRequired(diagnostic.cause, nodePath)');
+    expect(source).toContain('NODE_RUNTIME_REPAIR_MARKER');
+  });
 });
