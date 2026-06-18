@@ -5,6 +5,9 @@ const base = (): MindOsRuntimePickInput => ({
   policy: 'prefer-newer',
   overrideRoot: null,
   overrideVersion: null,
+  cachedRoot: null,
+  cachedVersion: null,
+  cachedRunnable: false,
   bundledRoot: '/b',
   bundledVersion: '0.5.0',
   bundledRunnable: true,
@@ -84,6 +87,46 @@ describe('pickMindOsRuntime', () => {
     });
     expect(r.source).toBe('user');
     expect(r.projectRoot).toBe('/u');
+  });
+
+  it('prefer-newer chooses cached when cached semver is greater', () => {
+    const r = pickMindOsRuntime({
+      ...base(),
+      cachedRoot: '/c',
+      cachedVersion: '0.7.0',
+      cachedRunnable: true,
+      userVersion: '0.6.0',
+      bundledVersion: '0.5.0',
+    });
+    expect(r.source).toBe('cached');
+    expect(r.version).toBe('0.7.0');
+    expect(r.projectRoot).toBe('/c');
+  });
+
+  it('prefer-newer equal semver prefers cached over user and bundled', () => {
+    const r = pickMindOsRuntime({
+      ...base(),
+      cachedRoot: '/c',
+      cachedVersion: '0.5.0',
+      cachedRunnable: true,
+      userVersion: '0.5.0',
+      bundledVersion: '0.5.0',
+    });
+    expect(r.source).toBe('cached');
+    expect(r.projectRoot).toBe('/c');
+  });
+
+  it('prefer-newer chooses user when user is newer than cached', () => {
+    const r = pickMindOsRuntime({
+      ...base(),
+      cachedRoot: '/c',
+      cachedVersion: '0.6.0',
+      cachedRunnable: true,
+      userVersion: '0.7.0',
+      bundledVersion: '0.5.0',
+    });
+    expect(r.source).toBe('user');
+    expect(r.version).toBe('0.7.0');
   });
 
   it('prefer-newer uses user when bundled missing', () => {

@@ -34,7 +34,7 @@ import { getNodePath, getNpxPath, getNpmPath, getLocalBinPath, getEnrichedEnv } 
 import { resolveExecTarget } from './exec-target';
 import { downloadNode, getPrivateNodePath, installMindosWithPrivateNode } from './node-bootstrap';
 import { buildWebCrashDiagnostic, type WebCrashDiagnostic } from './desktop-crash-diagnostics';
-import { resolveLocalMindOsProjectRoot } from './mindos-runtime-resolve';
+import { resolveLocalMindOsProjectRoot, type ResolveMindOsErr, type ResolveMindOsOk } from './mindos-runtime-resolve';
 import { isNextBuildCurrent, BUILD_VERSION_FILE, analyzeMindOsLayout, resolveWebAppDir } from './mindos-runtime-layout';
 import { hasRequiredStandaloneAppFiles } from './runtime-health-contract';
 import { getDefaultBundledMindOsDirectory } from './mindos-runtime-path';
@@ -329,6 +329,34 @@ async function openCrashLog(): Promise<void> {
 
 // ── Local Mode ──
 
+async function applyPendingCoreUpdateForResolvedRuntime(
+  runtimeRes: ResolveMindOsOk,
+  nodePath: string,
+): Promise<ResolveMindOsOk | ResolveMindOsErr> {
+  // Explicit runtime overrides are user/developer controlled. Do not mutate the
+  // cached runtime just because a Core download happens to be present.
+  if (runtimeRes.pick.source === 'override') return runtimeRes;
+  const runtimePolicy = loadConfig().mindosRuntimePolicy ?? process.env.MINDOS_RUNTIME_POLICY;
+  if (runtimePolicy === 'bundled-only' || runtimePolicy === 'user-only') return runtimeRes;
+
+  const currentVersion = runtimeRes.pick.version;
+  const pending = coreUpdater.getPendingVersion(currentVersion);
+  if (!pending) return runtimeRes;
+
+  try {
+    coreUpdater.apply(currentVersion);
+    const appliedVersion = coreUpdater.getCachedVersion() ?? pending;
+    console.info(
+      `[MindOS] Auto-applied pending Core update v${appliedVersion} at boot (previous: ${currentVersion ?? 'unknown'})`,
+    );
+  } catch (e) {
+    console.warn('[MindOS] Boot auto-apply of pending Core update skipped:', e);
+    return runtimeRes;
+  }
+
+  return resolveLocalMindOsProjectRoot(loadConfig(), nodePath);
+}
+
 async function startLocalMode(): Promise<string | null> {
   invalidateConfig(); // Always re-read config (may have changed via setup wizard or settings)
   const config = loadConfig();
@@ -373,21 +401,10 @@ async function startLocalMode(): Promise<string | null> {
     coreUpdater.cleanupOnBoot(bundledVer);
   } catch (e) { console.warn('[MindOS] cleanupOnBoot failed:', e); }
 
-  // Promote a pending Core download at boot; services are not running yet, so
-  // apply() is just an atomic directory swap (no overlay, no restart). This is
-  // what makes a silently-downloaded Core update apply on the next launch.
-  // A merely-downloaded update still surfaces "Apply now" mid-session; this
-  // consumes it cleanly on relaunch.
-  try {
-    if (coreUpdater.getPendingVersion()) {
-      const applied = coreUpdater.apply();
-      console.info(`[MindOS] Auto-applied pending Core update v${applied} at boot`);
-    }
-  } catch (e) {
-    console.warn('[MindOS] Boot auto-apply of pending Core update skipped:', e);
+  let runtimeRes = await resolveLocalMindOsProjectRoot(loadConfig(), nodePath);
+  if (runtimeRes.ok) {
+    runtimeRes = await applyPendingCoreUpdateForResolvedRuntime(runtimeRes, nodePath);
   }
-
-  const runtimeRes = await resolveLocalMindOsProjectRoot(loadConfig(), nodePath);
   if (!runtimeRes.ok) {
     splashStatus({
       error: zh ? runtimeRes.messageZh : runtimeRes.messageEn,
@@ -1676,7 +1693,7 @@ function setupIPC(): void {
   });
 
   handleActiveMainWindowOnly('get-core-update-pending', () => {
-    return { version: coreUpdater.getPendingVersion() };
+    return { version: coreUpdater.getPendingVersion(currentCoreVersion) };
   });
 
   handleLocalOnly('apply-core-update', async () => {
@@ -1706,7 +1723,7 @@ function setupIPC(): void {
       }
 
       // 2. Atomic file replacement
-      const newRuntimeDir = coreUpdater.apply();
+      const newRuntimeDir = coreUpdater.apply(previousVersion);
       const verifiedVersion = coreUpdater.getCachedVersion();
       console.info(`[CoreUpdater] Files replaced: ${newRuntimeDir}, verified version: ${verifiedVersion}`);
 
@@ -1965,7 +1982,7 @@ async function bootApp(): Promise<void> {
       if (currentMode !== 'local' || !currentCoreVersion) return;
       try {
         // Check for pending download first (user downloaded but didn't apply last session)
-        const pending = coreUpdater.getPendingVersion();
+        const pending = coreUpdater.getPendingVersion(currentCoreVersion);
         if (pending && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('core-update-available', {
             current: currentCoreVersion,

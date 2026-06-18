@@ -424,6 +424,13 @@ describe('CoreUpdater stale pending downloads', () => {
     expect(new CoreUpdater().getPendingVersion()).toBeNull();
   });
 
+  it('getPendingVersion uses the supplied running runtime as the stale baseline', () => {
+    writeRuntimeAt(RUNTIME_DIR, '1.0.0', true);
+    writeRuntimeAt(DOWNLOAD_DIR, '1.1.0', true);
+
+    expect(new CoreUpdater().getPendingVersion('1.2.0')).toBeNull();
+  });
+
   it('getPendingVersion returns the version when pending is an upgrade', () => {
     writeRuntimeAt(RUNTIME_DIR, '1.0.0', true);
     writeRuntimeAt(DOWNLOAD_DIR, '1.1.0', true);
@@ -441,6 +448,18 @@ describe('CoreUpdater stale pending downloads', () => {
     expect(existsSync(DOWNLOAD_DIR)).toBe(false);
     expect(existsSync(RUNTIME_DIR)).toBe(true);
     expect(updater.getCachedVersion()).toBe('1.2.0');
+  });
+
+  it('apply discards a pending download older than the supplied running runtime', () => {
+    writeRuntimeAt(RUNTIME_DIR, '1.0.0', true);
+    writeRuntimeAt(DOWNLOAD_DIR, '1.1.0', true);
+
+    const updater = new CoreUpdater();
+    expect(() => updater.apply('1.2.0')).toThrow(/not newer/);
+
+    expect(existsSync(DOWNLOAD_DIR)).toBe(false);
+    expect(existsSync(RUNTIME_DIR)).toBe(true);
+    expect(updater.getCachedVersion()).toBe('1.0.0');
   });
 
   it('cleanupOnBoot removes runnable pending downloads that are not upgrades', () => {
