@@ -74,6 +74,28 @@ describe('useAskPanel full-page chat guard', () => {
     act(() => root.unmount());
   });
 
+  it('restores the last non-focus width when Focus was entered from a drag snapshot', () => {
+    const { root } = renderProbe();
+
+    act(() => {
+      latestState?.handleAskWidthChange(760);
+    });
+    expect(latestState?.askPanelWidth).toBe(760);
+
+    act(() => {
+      latestState?.toggleAskMaximized(420);
+    });
+    expect(latestState?.askMaximized).toBe(true);
+
+    act(() => {
+      latestState?.toggleAskMaximized();
+    });
+    expect(latestState?.askMaximized).toBe(false);
+    expect(latestState?.askPanelWidth).toBe(420);
+
+    act(() => root.unmount());
+  });
+
   it('refuses direct toggle but preserves dock intent on full-page chat routes', () => {
     navState.pathname = '/chat/session-123';
     const { host, root } = renderProbe();
@@ -136,7 +158,8 @@ describe('useAskPanel full-page chat guard', () => {
     expect(source).not.toContain('const activeLeftPanel = isFullPageChatRoute');
     expect(source).not.toContain('const railActivePanel = isFullPageChatRoute');
     expect(source).toContain('const derivedActiveLeftPanel = homeNavPending');
-    expect(source).toContain('const activeLeftPanel = shouldSuppressRoutePanel');
+    expect(source).toContain('const routePanelSuppressed = shouldSuppressRoutePanel');
+    expect(source).toContain('const activeLeftPanel = lp.sidebarExpanded && !routePanelSuppressed ? derivedActiveLeftPanel : null;');
     expect(source).toContain('const railActivePanel = homeNavPending');
   });
 });

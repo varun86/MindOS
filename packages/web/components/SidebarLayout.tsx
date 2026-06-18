@@ -68,7 +68,8 @@ import {
   type RoutePanelId,
 } from '@/lib/navigation-panel';
 import type { Tab } from './settings/types';
-import { MOBILE_SIDEBAR, RIGHT_AGENT_DETAIL_PANEL, getLeftPanelWidth } from '@/lib/config/panel-sizes';
+import { MOBILE_SIDEBAR, RIGHT_AGENT_DETAIL_PANEL, RIGHT_ASK_PANEL, getLeftPanelWidth } from '@/lib/config/panel-sizes';
+import { resolveRightAskLayout } from '@/lib/right-ask-layout';
 
 const noop = () => {};
 const SYNC_POPOVER_ID = 'sync-popover';
@@ -115,6 +116,19 @@ const RightAgentDetailPanel = dynamic(() => import('./RightAgentDetailPanel'), {
 const RIGHT_AGENT_DETAIL_DEFAULT_WIDTH = RIGHT_AGENT_DETAIL_PANEL.DEFAULT;
 const RIGHT_AGENT_DETAIL_MIN_WIDTH = RIGHT_AGENT_DETAIL_PANEL.MIN;
 const RIGHT_AGENT_DETAIL_MAX_WIDTH = RIGHT_AGENT_DETAIL_PANEL.MAX_ABS;
+
+function useViewportWidth(): number {
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth));
+
+  useEffect(() => {
+    const update = () => setViewportWidth(window.innerWidth);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return viewportWidth;
+}
 
 function collectDirPaths(nodes: FileNode[], prefix = ''): string[] {
   const result: string[] = [];
@@ -269,6 +283,26 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   // Deriving width from WHICH state controlled the panel made every
   // navigation transition animate through 2-4 widths — the flicker.
   const effectivePanelWidth = getLeftPanelWidth(activeLeftPanel, lp.panelWidth);
+  const viewportWidth = useViewportWidth();
+  const contentLeftOffset = panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth;
+  const contentLeftOffsetCss = panelOpen && effectivePanelMaximized ? '100vw' : `${contentLeftOffset}px`;
+  const rightAskLayout = useMemo(() => resolveRightAskLayout({
+    viewportWidth,
+    leftOffset: contentLeftOffset,
+    askOpen: effectiveAskPanelOpen,
+    askWidth: ap.askPanelWidth,
+    askFocused: ap.askMaximized,
+    agentDetailOpen: agentDockOpen,
+    agentDetailWidth,
+  }), [
+    viewportWidth,
+    contentLeftOffset,
+    effectiveAskPanelOpen,
+    ap.askPanelWidth,
+    ap.askMaximized,
+    agentDockOpen,
+    agentDetailWidth,
+  ]);
   const previousSearchPanelRef = useRef<PanelId | null>(null);
   const lastSidebarPanelRef = useRef<PanelId | null>(pathname === '/' ? 'home' : 'files');
   const [searchFocusRequest, setSearchFocusRequest] = useState(0);
@@ -889,7 +923,8 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           onWidthCommit={ap.handleAskWidthCommit}
           maximized={ap.askMaximized}
           onMaximize={ap.toggleAskMaximized}
-          sidebarOffset={panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}
+          sidebarOffset={contentLeftOffset}
+          layoutMode={rightAskLayout.mode}
         />
       )}
 
@@ -898,7 +933,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
           open={agentDockOpen}
           agentKey={agentDetailKey}
           onClose={closeAgentDetailPanel}
-          rightOffset={effectiveAskPanelOpen ? ap.askPanelWidth : 0}
+          rightOffset={effectiveAskPanelOpen ? 'var(--right-ask-panel-visual-width, 0px)' : 0}
           width={agentDetailWidth}
           onWidthChange={setAgentDetailWidth}
           onWidthCommit={handleAgentDetailWidthCommit}
@@ -1073,13 +1108,18 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
         @media (min-width: 768px) {
           :root {
             --rail-width: ${lp.railWidth}px;
-            --content-left-offset: ${panelOpen && effectivePanelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`};
-            --right-panel-width: ${ap.askMaximized && effectiveAskPanelOpen ? `calc(100vw - ${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px)` : `${effectiveAskPanelOpen ? ap.askPanelWidth : 0}px`};
-            --right-agent-detail-width: ${agentDockOpen ? agentDetailWidth : 0}px;
+            --content-left-offset: ${contentLeftOffsetCss};
+            --right-ask-panel-visual-width: ${effectiveAskPanelOpen ? (ap.askMaximized ? `calc(100vw - ${contentLeftOffset}px)` : `min(${ap.askPanelWidth}px, calc(100vw - ${contentLeftOffset}px))`) : '0px'};
+            --right-agent-detail-visual-width: ${agentDockOpen ? agentDetailWidth : 0}px;
+            --right-stack-visual-width: calc(var(--right-ask-panel-visual-width) + var(--right-agent-detail-visual-width));
+            --right-stack-reserve-limit: max(0px, calc(100% - var(--content-left-offset) - ${RIGHT_ASK_PANEL.MAIN_COMFORT_MIN}px));
+            --right-dock-reserved-width: ${ap.askMaximized && effectiveAskPanelOpen ? '0px' : 'min(var(--right-stack-visual-width), var(--right-stack-reserve-limit))'};
+            --right-panel-width: var(--right-dock-reserved-width);
+            --right-agent-detail-width: 0px;
           }
           #main-content {
-            padding-left: ${panelOpen && effectivePanelMaximized ? '100vw' : `${panelOpen ? lp.railWidth + effectivePanelWidth : lp.railWidth}px`} !important;
-            padding-right: calc(var(--right-panel-width) + var(--right-agent-detail-width)) !important;
+            padding-left: ${contentLeftOffsetCss} !important;
+            padding-right: var(--right-dock-reserved-width) !important;
             padding-top: var(--app-titlebar-h);
           }
         }

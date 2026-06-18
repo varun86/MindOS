@@ -42,11 +42,18 @@ export function getLeftPanelWidth(activeLeftPanel: PanelId | null, userWidth: nu
 
 // ── Right Ask Panel ──
 
-export const RIGHT_ASK_PANEL: { DEFAULT: number; MIN: number; MAX_ABS: number; MIN_CONTENT: number } = {
+export const RIGHT_ASK_PANEL: {
+  DEFAULT: number;
+  MIN: number;
+  MAX_ABS: number;
+  MAIN_COMFORT_MIN: number;
+  FOCUS_SNAP_LEFT_GAP: number;
+} = {
   DEFAULT: 380,
   MIN: 320,
   MAX_ABS: 4000, // Unlikely but safe upper bound
-  MIN_CONTENT: 200, // Minimum content width — only auto-maximize when user drags near edge
+  MAIN_COMFORT_MIN: 720,
+  FOCUS_SNAP_LEFT_GAP: 96,
 };
 
 // ── Right Agent Detail Panel ──

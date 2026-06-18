@@ -33,7 +33,10 @@ describe('ViewPageClient header layout', () => {
     expect(viewSource).not.toContain('view-header-actions-reserve');
     expect(layoutSource).not.toContain("overflowX: 'clip'");
     expect(layoutSource).not.toContain('overflowClipMargin');
-    expect(layoutSource).toContain('padding-right: calc(var(--right-panel-width) + var(--right-agent-detail-width)) !important;');
+    expect(layoutSource).toContain('--right-ask-panel-visual-width:');
+    expect(layoutSource).toContain('--right-dock-reserved-width:');
+    expect(layoutSource).toContain('--right-panel-width: var(--right-dock-reserved-width);');
+    expect(layoutSource).toContain('padding-right: var(--right-dock-reserved-width) !important;');
     expect(layoutSource).not.toContain('var(--toc-extra-right');
 
     expect(cssSource).toContain('.toc-reserved-content { margin-right: 220px; }');

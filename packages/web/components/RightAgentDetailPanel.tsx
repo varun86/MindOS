@@ -18,7 +18,7 @@ interface RightAgentDetailPanelProps {
   agentKey: string | null;
   onClose: () => void;
   /** Right offset in px when Ask panel is open (stack panels side-by-side). */
-  rightOffset: number;
+  rightOffset: number | string;
   width: number;
   onWidthChange: (w: number) => void;
   onWidthCommit: (w: number) => void;
@@ -93,7 +93,7 @@ export default function RightAgentDetailPanel({
         transition-transform duration-200 ease-out
         ${open ? 'translate-x-0' : 'translate-x-full pointer-events-none'}
       `}
-      style={{ width: `${width}px`, right: `${rightOffset}px` }}
+      style={{ width: `${width}px`, right: typeof rightOffset === 'number' ? `${rightOffset}px` : rightOffset }}
       role="complementary"
       aria-label={p.agentDetailPanelAria}
       aria-hidden={!open || !resolved}

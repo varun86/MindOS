@@ -28,7 +28,7 @@ export interface AskPanelState {
   handleAskWidthChange: (w: number) => void;
   handleAskWidthCommit: (w: number) => void;
   handleAskModeSwitch: () => void;
-  toggleAskMaximized: () => void;
+  toggleAskMaximized: (restoreWidth?: number) => void;
 }
 
 /**
@@ -52,7 +52,7 @@ export function useAskPanel(): AskPanelState {
   const [askAcpAgent, setAskAcpAgent] = useState<AcpAgentSelection | null>(null);
   const [askAgentRuntime, setAskAgentRuntime] = useState<AskAgentRuntimeSelection | null>(null);
   const [askContextRequest, setAskContextRequest] = useState<AskContextRequest | null>(null);
-  const prevWidthRef = useRef(RIGHT_ASK_DEFAULT_WIDTH);
+  const lastNonFocusWidthRef = useRef(RIGHT_ASK_DEFAULT_WIDTH);
   const askModeRef = useRef(askMode);
   const contextRequestIdRef = useRef(0);
 
@@ -68,7 +68,7 @@ export function useAskPanel(): AskPanelState {
     setDesktopAskPopupOpen(false);
     if (askMaximizedRef.current) {
       setAskMaximized(false);
-      setAskPanelWidth(prevWidthRef.current);
+      setAskPanelWidth(lastNonFocusWidthRef.current);
     }
   }, [fullPageChat]);
 
@@ -95,7 +95,7 @@ export function useAskPanel(): AskPanelState {
 
       if (askMaximizedRef.current) {
         setAskMaximized(false);
-        setAskPanelWidth(prevWidthRef.current);
+        setAskPanelWidth(lastNonFocusWidthRef.current);
       }
     };
     window.addEventListener(ASK_ADD_CONTEXT_EVENT, onAddContext);
@@ -110,11 +110,11 @@ export function useAskPanel(): AskPanelState {
         const w = parseInt(stored, 10);
         if (w >= RIGHT_ASK_MIN_WIDTH && w <= RIGHT_ASK_MAX_WIDTH) {
           setAskPanelWidth(w);
-          prevWidthRef.current = w;
+          lastNonFocusWidthRef.current = w;
         } else if (w > RIGHT_ASK_MAX_WIDTH) {
           // Stored value exceeds new max (e.g., after config change) — clamp
           setAskPanelWidth(RIGHT_ASK_DEFAULT_WIDTH);
-          prevWidthRef.current = RIGHT_ASK_DEFAULT_WIDTH;
+          lastNonFocusWidthRef.current = RIGHT_ASK_DEFAULT_WIDTH;
         }
       }
       const mode = localStorage.getItem('ask-mode');
@@ -136,7 +136,7 @@ export function useAskPanel(): AskPanelState {
       setAskPanelOpen(true);
       if (askMaximizedRef.current) {
         setAskMaximized(false);
-        setAskPanelWidth(prevWidthRef.current);
+        setAskPanelWidth(lastNonFocusWidthRef.current);
       }
     };
     window.addEventListener('mindos:open-ask-panel', onOpenPanel);
@@ -185,26 +185,35 @@ export function useAskPanel(): AskPanelState {
   const closeAskPanel = useCallback(() => {
     setAskPanelOpen(false);
     if (askMaximized) {
-      setAskPanelWidth(prevWidthRef.current);
+      setAskPanelWidth(lastNonFocusWidthRef.current);
       setAskMaximized(false);
     }
   }, [askMaximized]);
 
-  const toggleAskMaximized = useCallback(() => {
+  const toggleAskMaximized = useCallback((restoreWidth?: number) => {
     setAskMaximized(prev => {
       if (!prev) {
-        prevWidthRef.current = askPanelWidth;
+        lastNonFocusWidthRef.current = typeof restoreWidth === 'number' && Number.isFinite(restoreWidth)
+          ? Math.max(RIGHT_ASK_MIN_WIDTH, Math.min(RIGHT_ASK_MAX_WIDTH, Math.round(restoreWidth)))
+          : askPanelWidth;
       } else {
-        setAskPanelWidth(prevWidthRef.current);
+        setAskPanelWidth(lastNonFocusWidthRef.current);
       }
       return !prev;
     });
   }, [askPanelWidth]);
   const closeDesktopAskPopup = useCallback(() => setDesktopAskPopupOpen(false), []);
 
-  const handleAskWidthChange = useCallback((w: number) => setAskPanelWidth(w), []);
+  const handleAskWidthChange = useCallback((w: number) => {
+    setAskPanelWidth(Math.max(RIGHT_ASK_MIN_WIDTH, Math.min(RIGHT_ASK_MAX_WIDTH, Math.round(w))));
+  }, []);
   const handleAskWidthCommit = useCallback((w: number) => {
-    try { localStorage.setItem('right-ask-panel-width', String(w)); } catch {}
+    const safeWidth = Math.max(RIGHT_ASK_MIN_WIDTH, Math.min(RIGHT_ASK_MAX_WIDTH, Math.round(w)));
+    if (!askMaximizedRef.current) {
+      lastNonFocusWidthRef.current = safeWidth;
+      setAskPanelWidth(safeWidth);
+      try { localStorage.setItem('right-ask-panel-width', String(safeWidth)); } catch {}
+    }
   }, []);
 
   const handleAskModeSwitch = useCallback(() => {
