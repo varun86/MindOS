@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, FolderOpen, LayoutGrid, Monitor, Shield } from 'lucide-react';
 import { PasswordInput } from '@/components/settings/Primitives';
+import PathAutocompleteField from '@/components/shared/PathAutocompleteField';
 import type { Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { PortStatus, SetupState, SpaceKitId } from './types';
@@ -11,24 +12,6 @@ import { SPACE_KITS } from './constants';
 import { PortField } from './StepPorts';
 import { cn } from '@/lib/utils';
 import { setupChoiceCardClass, setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
-
-interface MindosDesktopBridge {
-  selectDirectory?: () => Promise<string | null>;
-}
-
-function getDesktopBridge(): MindosDesktopBridge | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as { mindos?: MindosDesktopBridge };
-  return w.mindos ?? null;
-}
-
-function getParentDir(p: string): string {
-  if (!p.trim()) return '';
-  const trimmed = p.trim();
-  if (trimmed.endsWith('/') || trimmed.endsWith('\\')) return trimmed;
-  const lastSlash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
-  return lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : '';
-}
 
 function buildDocumentsMindPath(homeDir: string, platformName: string, fallback: string): string {
   if (homeDir === '~') return fallback;
@@ -72,70 +55,51 @@ export interface StepMindSpaceProps {
   checkPort: (port: number, which: 'web' | 'mcp') => void;
 }
 
+type PathInfo = {
+  exists: boolean;
+  empty: boolean;
+  count: number;
+  unsafe?: boolean;
+  reason?: string;
+  reasonZh?: string;
+};
+
 export default function StepMindSpace({ state, update, t, homeDir, platformName, webPortStatus, setWebPortStatus, checkPort }: StepMindSpaceProps) {
   const { locale } = useLocale();
   const isZh = locale === 'zh';
   const s = t.setup;
-  const [pathInfo, setPathInfo] = useState<{ exists: boolean; empty: boolean; count: number; unsafe?: boolean; reason?: string; reasonZh?: string } | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
-  const [canBrowseDirectory, setCanBrowseDirectory] = useState(false);
+  const currentMindRoot = state.mindRoot.trim();
+  const [pathInfoResult, setPathInfoResult] = useState<{ path: string; info: PathInfo } | null>(null);
+  const pathInfo = pathInfoResult?.path === currentMindRoot ? pathInfoResult.info : null;
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const justSelectedRef = useRef(false);
 
   const placeholder = buildDocumentsMindPath(homeDir, platformName, s.kbPathDefault);
 
   useEffect(() => {
-    setCanBrowseDirectory(!!getDesktopBridge()?.selectDirectory);
-  }, []);
-
-  useEffect(() => {
-    if (justSelectedRef.current) { justSelectedRef.current = false; return; }
-    if (!state.mindRoot.trim()) { setSuggestions([]); return; }
-    const timer = setTimeout(() => {
-      const parent = getParentDir(state.mindRoot) || homeDir;
-      fetch('/api/setup/ls', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: parent }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          if (!d.dirs?.length) { setSuggestions([]); return; }
-          const endsWithSep = parent.endsWith('/') || parent.endsWith('\\');
-          const localSep = parent.includes('\\') ? '\\' : '/';
-          const parentNorm = endsWithSep ? parent : parent + localSep;
-          const typed = state.mindRoot.trim();
-          const full: string[] = (d.dirs as string[]).map((dir: string) => parentNorm + dir);
-          const endsWithAnySep = typed.endsWith('/') || typed.endsWith('\\');
-          const filtered = endsWithAnySep ? full : full.filter(f => f.startsWith(typed));
-          setSuggestions(filtered.slice(0, 20));
-          setShowSuggestions(filtered.length > 0);
-          setActiveSuggestion(-1);
-        })
-        .catch(e => { console.warn('[SetupWizard] autocomplete fetch failed:', e); setSuggestions([]); });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [state.mindRoot, homeDir]);
-
-  useEffect(() => {
-    if (!state.mindRoot.trim()) { setPathInfo(null); return; }
+    if (!currentMindRoot) return;
+    let cancelled = false;
     const timer = setTimeout(() => {
       fetch('/api/setup/check-path', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: state.mindRoot }),
+        body: JSON.stringify({ path: currentMindRoot }),
       })
         .then(r => r.json())
         .then(d => {
-          setPathInfo(d);
+          if (cancelled) return;
+          setPathInfoResult({ path: currentMindRoot, info: d });
         })
-        .catch(e => { console.warn('[SetupWizard] check-path failed:', e); setPathInfo(null); });
+        .catch(e => {
+          if (cancelled) return;
+          console.warn('[SetupWizard] check-path failed:', e);
+          setPathInfoResult(null);
+        });
     }, 600);
-    return () => clearTimeout(timer);
-  }, [state.mindRoot, update]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [currentMindRoot]);
 
   const selected = new Set(state.spaceKits);
   const toggleKit = (id: SpaceKitId) => {
@@ -143,45 +107,6 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
       ? state.spaceKits.filter(item => item !== id)
       : [...state.spaceKits, id];
     update('spaceKits', next);
-  };
-
-  const hideSuggestions = () => {
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setActiveSuggestion(-1);
-  };
-
-  const selectSuggestion = (val: string) => {
-    justSelectedRef.current = true;
-    update('mindRoot', val);
-    hideSuggestions();
-    inputRef.current?.focus();
-  };
-
-  const browseDirectory = async () => {
-    const selectedDir = await getDesktopBridge()?.selectDirectory?.();
-    if (selectedDir) {
-      justSelectedRef.current = true;
-      update('mindRoot', selectedDir);
-      hideSuggestions();
-      inputRef.current?.focus();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSuggestions || suggestions.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveSuggestion(i => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveSuggestion(i => Math.max(i - 1, -1));
-    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
-      e.preventDefault();
-      selectSuggestion(suggestions[activeSuggestion]);
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-    }
   };
 
   return (
@@ -242,56 +167,19 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
         />
 
         <div className="space-y-3">
-          <div className="relative">
-            <input
-              ref={inputRef}
-              value={state.mindRoot}
-              onChange={e => { update('mindRoot', e.target.value); setShowSuggestions(true); }}
-              onKeyDown={handleKeyDown}
-              onBlur={() => setTimeout(() => hideSuggestions(), 150)}
-              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-              placeholder={placeholder}
-              aria-label={s.kbPath}
-              className={cn(
-                'w-full rounded-lg border bg-background px-3 py-2 pr-11 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
-                pathInfo?.unsafe ? 'border-error' : 'border-border',
-              )}
-            />
-            <button
-              type="button"
-              onClick={browseDirectory}
-              disabled={!canBrowseDirectory}
-              className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              title={canBrowseDirectory ? s.kbPathBrowse : s.kbPathBrowseUnavailable}
-              aria-label={s.kbPathBrowse}
-            >
-              <FolderOpen size={16} />
-            </button>
-
-            {showSuggestions && suggestions.length > 0 && (
-              <div
-                role="listbox"
-                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-auto rounded-lg border border-border bg-card shadow-lg"
-              >
-                {suggestions.map((suggestion, i) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    role="option"
-                  aria-selected={i === activeSuggestion}
-                  onMouseDown={() => selectSuggestion(suggestion)}
-                    className={cn(
-                      'w-full px-3 py-2 text-left font-mono text-sm text-foreground transition-colors',
-                      i === activeSuggestion ? 'bg-muted' : 'bg-transparent',
-                      i > 0 && 'border-t border-border',
-                    )}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+          <PathAutocompleteField
+            value={state.mindRoot}
+            onChange={(value) => update('mindRoot', value)}
+            homeDir={homeDir}
+            placeholder={placeholder}
+            ariaLabel={s.kbPath}
+            browseLabel={s.kbPathBrowse}
+            browseUnavailableLabel={s.kbPathBrowseUnavailable}
+            inputClassName={cn(
+              'w-full rounded-lg border bg-background px-3 py-2 pr-11 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring',
+              pathInfo?.unsafe ? 'border-error' : 'border-border',
             )}
-          </div>
+          />
           {state.mindRoot !== placeholder && placeholder !== s.kbPathDefault && (
             <button
               type="button"

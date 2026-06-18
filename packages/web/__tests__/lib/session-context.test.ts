@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, afterEach } from 'vitest';
@@ -89,6 +89,87 @@ describe('session context server resolver', () => {
 
     expect(result.resolvedWorkDir.path).toBe(realpathSync(workDir));
     expect(result.resolvedWorkDir.source).toBe('manual');
+  });
+
+  it('expands home-prefixed manual WorkDir paths before allowed-root checks', () => {
+    const mindRoot = tempDir('mindos-mind-');
+    const projectRoot = tempDir('mindos-project-');
+    const homeRoot = tempDir('mindos-home-');
+    const workDir = path.join(homeRoot, 'workspace');
+    mkdirSync(workDir);
+
+    const result = resolveSessionContext({
+      requestedWorkDir: { source: 'manual', path: '~/workspace' },
+      requestedSelection: undefined,
+      mindRoot,
+      projectRoot,
+      allowedWorkDirRoots: ['~'],
+      env: { HOME: homeRoot },
+    });
+
+    expect(result.resolvedWorkDir.path).toBe(realpathSync(workDir));
+  });
+
+  it('allows manual WorkDir paths under the user home by default', () => {
+    const mindRoot = tempDir('mindos-mind-');
+    const projectRoot = tempDir('mindos-project-');
+    const homeRoot = tempDir('mindos-home-');
+    const workDir = path.join(homeRoot, 'Projects', 'launch');
+    mkdirSync(workDir, { recursive: true });
+
+    const result = resolveSessionContext({
+      requestedWorkDir: { source: 'manual', path: workDir },
+      requestedSelection: undefined,
+      mindRoot,
+      projectRoot,
+      env: { HOME: homeRoot },
+    });
+
+    expect(result.resolvedWorkDir.path).toBe(realpathSync(workDir));
+  });
+
+  it('rejects home-contained WorkDir symlinks that resolve outside allowed roots', () => {
+    const mindRoot = tempDir('mindos-mind-');
+    const projectRoot = tempDir('mindos-project-');
+    const homeRoot = tempDir('mindos-home-');
+    const outsideRoot = tempDir('mindos-outside-');
+    const symlinkPath = path.join(homeRoot, 'linked-outside');
+    symlinkSync(outsideRoot, symlinkPath, 'dir');
+
+    expect(() => resolveSessionContext({
+      requestedWorkDir: { source: 'manual', path: symlinkPath },
+      requestedSelection: undefined,
+      mindRoot,
+      projectRoot,
+      env: { HOME: homeRoot },
+    })).toThrow(SessionContextResolutionError);
+  });
+
+  it('does not treat a filesystem-root HOME as a default allowed WorkDir root', () => {
+    const mindRoot = tempDir('mindos-mind-');
+    const projectRoot = tempDir('mindos-project-');
+    const outsideRoot = tempDir('mindos-outside-');
+    const filesystemRoot = path.parse(outsideRoot).root;
+
+    expect(() => resolveSessionContext({
+      requestedWorkDir: { source: 'manual', path: outsideRoot },
+      requestedSelection: undefined,
+      mindRoot,
+      projectRoot,
+      env: { HOME: filesystemRoot },
+    })).toThrow(SessionContextResolutionError);
+  });
+
+  it('rejects bare relative manual WorkDir paths instead of resolving them against projectRoot', () => {
+    const mindRoot = tempDir('mindos-mind-');
+    const projectRoot = tempDir('mindos-project-');
+
+    expect(() => resolveSessionContext({
+      requestedWorkDir: { source: 'manual', path: 'relative-project' },
+      requestedSelection: undefined,
+      mindRoot,
+      projectRoot,
+    })).toThrow(/absolute path/);
   });
 
   it('derives the resolved WorkDir label from the trusted real path', () => {

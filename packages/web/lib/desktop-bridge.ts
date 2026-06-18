@@ -10,6 +10,9 @@
  */
 
 export interface MindosDesktopBridge {
+  /* Native filesystem dialogs */
+  selectDirectory?: () => Promise<string | null>;
+
   /* Desktop shell: electron-updater */
   checkUpdate: () => Promise<{ available: boolean; version?: string }>;
   installUpdate: () => Promise<void>;

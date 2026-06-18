@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bot, BriefcaseBusiness, Check, ChevronDown, ChevronUp, Layers3, Plus, X } from 'lucide-react';
+import { Bot, BriefcaseBusiness, ChevronDown, ChevronUp, Layers3, Plus, X } from 'lucide-react';
+import PathAutocompleteField from '@/components/shared/PathAutocompleteField';
 import type { ChatSession, SessionContextSelection, SessionWorkDir } from '@/lib/types';
 import {
   getEffectiveSessionContextSelection,
@@ -21,6 +22,8 @@ type SessionContextLabels = {
   locked: string;
   editWorkDir: string;
   workDirPlaceholder: string;
+  workDirBrowse: string;
+  workDirBrowseUnavailable: string;
   addSpace: string;
   addAssistant: string;
   newSession: string;
@@ -52,6 +55,8 @@ const DEFAULT_LABELS: SessionContextLabels = {
   locked: 'Locked after first message',
   editWorkDir: 'Set work directory',
   workDirPlaceholder: '/path/to/project',
+  workDirBrowse: 'Choose work directory',
+  workDirBrowseUnavailable: 'Folder picker is available in the desktop app',
   addSpace: 'Add Space',
   addAssistant: 'Add Assistant',
   newSession: 'New',
@@ -101,6 +106,10 @@ function addAssistant(selection: SessionContextSelection, raw: string): SessionC
   });
 }
 
+function workDirToDraftValue(workDir: SessionWorkDir | undefined): string {
+  return workDir?.source === 'mind-root' ? '' : workDir?.path ?? '';
+}
+
 export default function SessionContextDock({
   session,
   labels,
@@ -111,7 +120,7 @@ export default function SessionContextDock({
   onNewSession,
 }: SessionContextDockProps) {
   const [expanded, setExpanded] = useState(false);
-  const [workDirDraft, setWorkDirDraft] = useState('');
+  const [workDirDraftState, setWorkDirDraftState] = useState({ key: '', value: '' });
   const [spaceDraft, setSpaceDraft] = useState('');
   const [assistantDraft, setAssistantDraft] = useState('');
   const resolvedLabels = useMemo<SessionContextLabels>(() => ({
@@ -121,28 +130,30 @@ export default function SessionContextDock({
 
   const workDir = useMemo(() => session ? getEffectiveSessionWorkDir(session) : undefined, [session]);
   const selection = useMemo(() => session ? getEffectiveSessionContextSelection(session) : normalizeSessionContextSelectionForClient(null), [session]);
+  const workDirDraftKey = `${session?.id ?? 'draft'}:${workDir?.source ?? 'mind-root'}:${workDir?.path ?? ''}`;
+  const workDirDraft = workDirDraftState.key === workDirDraftKey
+    ? workDirDraftState.value
+    : workDirToDraftValue(workDir);
   const workDirDisplay = workDir?.source === 'mind-root'
     ? resolvedLabels.mindRoot
     : shortPath(workDir?.path, workDir?.label || resolvedLabels.mindRoot);
 
-  useEffect(() => {
-    setWorkDirDraft(workDir?.source === 'mind-root' ? '' : workDir?.path ?? '');
-  }, [workDir?.path, workDir?.source]);
+  const setWorkDirDraft = (value: string) => {
+    setWorkDirDraftState({ key: workDirDraftKey, value });
+  };
 
-  const commitWorkDir = () => {
+  const commitWorkDir = (nextValue = workDirDraft) => {
     if (!workDirEditable) return;
-    const trimmed = workDirDraft.trim();
+    const trimmed = nextValue.trim();
     onSetWorkDir(trimmed
       ? {
         source: 'manual',
         path: trimmed,
         label: shortPath(trimmed, trimmed),
-        updatedAt: Date.now(),
       }
       : {
         source: 'mind-root',
         label: resolvedLabels.mindRoot,
-        updatedAt: Date.now(),
       });
   };
 
@@ -160,7 +171,6 @@ export default function SessionContextDock({
     onSetContextSelection({
       ...selection,
       spaces: selection.spaces.filter((space) => space.path !== path),
-      updatedAt: Date.now(),
     });
   };
 
@@ -168,7 +178,6 @@ export default function SessionContextDock({
     onSetContextSelection({
       ...selection,
       assistants: selection.assistants.filter((assistant) => assistant.id !== id),
-      updatedAt: Date.now(),
     });
   };
 
@@ -190,31 +199,21 @@ export default function SessionContextDock({
             </div>
             <div className="min-w-0 flex items-center gap-1.5">
               {workDirEditable ? (
-                <div className="min-w-0 flex-1 flex items-center gap-1 rounded-lg border border-border/40 bg-background/60 px-2 py-1">
-                  <input
-                    value={workDirDraft}
-                    onChange={(event) => setWorkDirDraft(event.target.value)}
-                    onBlur={commitWorkDir}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        commitWorkDir();
-                      }
-                    }}
-                    placeholder={resolvedLabels.workDirPlaceholder}
-                    className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
-                    aria-label={resolvedLabels.editWorkDir}
-                  />
-                  <button
-                    type="button"
-                    onClick={commitWorkDir}
-                    className="hit-target-box p-1 text-muted-foreground hover:text-foreground transition-colors [--hit-target-hover-bg:color-mix(in_srgb,var(--muted)_65%,transparent)] [--hit-target-radius:var(--radius-md)]"
-                    title={resolvedLabels.editWorkDir}
-                    aria-label={resolvedLabels.editWorkDir}
-                  >
-                    <Check size={13} />
-                  </button>
-                </div>
+                <PathAutocompleteField
+                  value={workDirDraft}
+                  onChange={setWorkDirDraft}
+                  onCommit={commitWorkDir}
+                  commitOnSelect
+                  placeholder={resolvedLabels.workDirPlaceholder}
+                  ariaLabel={resolvedLabels.editWorkDir}
+                  browseLabel={resolvedLabels.workDirBrowse}
+                  browseUnavailableLabel={resolvedLabels.workDirBrowseUnavailable}
+                  wrapperClassName="min-w-0 flex-1"
+                  inputClassName="h-8 rounded-lg border-border/40 bg-background/60 px-2 py-1 pr-9 text-xs"
+                  browseButtonClassName="right-1 h-6 w-6 rounded-md"
+                  suggestionsClassName="text-xs"
+                  suggestionClassName="py-1.5 text-xs"
+                />
               ) : (
                 <div className="min-w-0 flex-1 flex items-center justify-between gap-2 rounded-lg bg-muted/35 px-2 py-1.5">
                   <span className="truncate text-xs text-foreground" title={workDir?.path || workDirDisplay}>{workDirDisplay}</span>

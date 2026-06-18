@@ -156,6 +156,8 @@ export const aiChatEn = {
       locked: 'Locked after first message',
       editWorkDir: 'Set work directory',
       workDirPlaceholder: '/path/to/project',
+      workDirBrowse: 'Choose work directory',
+      workDirBrowseUnavailable: 'Folder picker is available in the desktop app',
       addSpace: 'Add Space',
       addAssistant: 'Add Assistant',
       newSession: 'New',

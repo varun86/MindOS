@@ -155,6 +155,8 @@ export const aiChatZh = {
       locked: '首条消息后锁定',
       editWorkDir: '设置工作目录',
       workDirPlaceholder: '/path/to/project',
+      workDirBrowse: '选择工作目录',
+      workDirBrowseUnavailable: '目录选择器仅在桌面端可用',
       addSpace: '添加 Space',
       addAssistant: '添加 Assistant',
       newSession: '新会话',

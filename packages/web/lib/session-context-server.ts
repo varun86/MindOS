@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type {
   ChatSession,
@@ -46,6 +47,7 @@ export type SessionContextIssue = {
     | 'workdir_missing'
     | 'workdir_not_directory'
     | 'workdir_outside_allowed_roots'
+    | 'workdir_relative_path'
     | 'workdir_changed_after_history'
     | 'runtime_cwd_locked'
     | 'runtime_resume_untrusted'
@@ -154,6 +156,35 @@ function isSameOrInside(candidate: string, root: string): boolean {
   return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+function homeDirFromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined): string {
+  return env?.HOME?.trim() || env?.USERPROFILE?.trim() || os.homedir();
+}
+
+function isFilesystemRoot(inputPath: string): boolean {
+  const resolved = path.resolve(inputPath);
+  if (resolved === path.parse(resolved).root) return true;
+  const winResolved = path.win32.resolve(inputPath);
+  return winResolved === path.win32.parse(winResolved).root;
+}
+
+function defaultUserWorkDirRoots(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined): string[] {
+  const home = homeDirFromEnv(env);
+  return isFilesystemRoot(home) ? [] : [home];
+}
+
+function expandWorkDirPathHome(inputPath: string, env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined): string {
+  const trimmed = inputPath.trim();
+  if (trimmed === '~') return homeDirFromEnv(env);
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.resolve(homeDirFromEnv(env), trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function isAbsoluteWorkDirPath(inputPath: string): boolean {
+  return path.isAbsolute(inputPath) || path.win32.isAbsolute(inputPath);
+}
+
 function envAllowedWorkDirRoots(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined): string[] {
   const raw = env?.MINDOS_ALLOWED_WORKDIRS;
   if (!raw) return [];
@@ -174,6 +205,7 @@ function normalizeAllowedRoots(input: {
   const roots = [
     input.mindRoot,
     input.projectRoot,
+    ...defaultUserWorkDirRoots(input.env),
     getRuntimeBindingCwd(input.priorSession ?? {}),
     ...(input.priorRuns ?? []).map((run) => run.cwd).filter((cwd): cwd is string => Boolean(cwd?.trim())),
     ...(input.allowedWorkDirRoots ?? []),
@@ -183,7 +215,7 @@ function normalizeAllowedRoots(input: {
   for (const root of roots) {
     if (!root?.trim()) continue;
     try {
-      const real = fs.realpathSync(path.resolve(root));
+      const real = fs.realpathSync(path.resolve(expandWorkDirPathHome(root, input.env)));
       if (!normalized.some((existing) => existing === real)) normalized.push(real);
     } catch {
       // Ignore stale configured roots. The requested WorkDir still has to resolve.
@@ -192,7 +224,10 @@ function normalizeAllowedRoots(input: {
   return normalized;
 }
 
-function resolveRequestedPath(requested: SessionWorkDir, defaults: { mindRoot: string; projectRoot: string }): string {
+function resolveRequestedPath(requested: SessionWorkDir, defaults: {
+  mindRoot: string;
+  env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+}): string {
   if (requested.source === 'mind-root') return defaults.mindRoot;
   if (!requested.path?.trim()) {
     throw new SessionContextResolutionError({
@@ -201,9 +236,16 @@ function resolveRequestedPath(requested: SessionWorkDir, defaults: { mindRoot: s
       message: `WorkDir path is required for ${requested.source} sessions.`,
     });
   }
-  return path.isAbsolute(requested.path)
-    ? requested.path
-    : path.resolve(defaults.projectRoot, requested.path);
+  const expandedPath = expandWorkDirPathHome(requested.path, defaults.env);
+  if (!isAbsoluteWorkDirPath(expandedPath)) {
+    throw new SessionContextResolutionError({
+      code: 'workdir_relative_path',
+      severity: 'error',
+      message: 'WorkDir path must be an absolute path or start with ~/.',
+      target: requested.path,
+    });
+  }
+  return expandedPath;
 }
 
 function resolveWorkDir(input: ResolveSessionContextInput, requested: SessionWorkDir): ResolvedSessionWorkDir {

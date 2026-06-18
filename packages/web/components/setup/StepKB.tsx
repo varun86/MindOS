@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, FolderOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { Field } from '@/components/settings/Primitives';
+import PathAutocompleteField from '@/components/shared/PathAutocompleteField';
 import type { Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SetupState } from './types';
@@ -10,33 +11,21 @@ import { TEMPLATES } from './constants';
 import { cn } from '@/lib/utils';
 import { setupChoiceCardClass, setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
 
-// Desktop bridge for folder picker (Electron only)
-interface MindosDesktopBridge {
-  selectDirectory?: () => Promise<string | null>;
-}
-function getDesktopBridge(): MindosDesktopBridge | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as { mindos?: MindosDesktopBridge };
-  return w.mindos ?? null;
-}
-
-// Derive parent dir from current input for ls — supports both / and \ separators
-function getParentDir(p: string): string {
-  if (!p.trim()) return '';
-  const trimmed = p.trim();
-  // Already a directory (ends with separator)
-  if (trimmed.endsWith('/') || trimmed.endsWith('\\')) return trimmed;
-  // Find last separator (/ or \)
-  const lastSlash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
-  return lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : '';
-}
-
 export interface StepKBProps {
   state: SetupState;
   update: <K extends keyof SetupState>(key: K, val: SetupState[K]) => void;
   t: Messages;
   homeDir: string;
 }
+
+type PathInfo = {
+  exists: boolean;
+  empty: boolean;
+  count: number;
+  unsafe?: boolean;
+  reason?: string;
+  reasonZh?: string;
+};
 
 export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
   const { locale } = useLocale();
@@ -47,153 +36,54 @@ export default function StepKB({ state, update, t, homeDir }: StepKBProps) {
   // Windows homedir always contains \, e.g. C:\Users\Alice — safe to detect by separator
   const sep = homeDir.includes('\\') ? '\\' : '/';
   const placeholder = homeDir !== '~' ? [homeDir, 'MindOS', 'mind'].join(sep) : s.kbPathDefault;
-  const [pathInfo, setPathInfo] = useState<{ exists: boolean; empty: boolean; count: number; unsafe?: boolean; reason?: string; reasonZh?: string } | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const currentMindRoot = state.mindRoot.trim();
+  const [pathInfoResult, setPathInfoResult] = useState<{ path: string; info: PathInfo } | null>(null);
+  const pathInfo = pathInfoResult?.path === currentMindRoot ? pathInfoResult.info : null;
   const [showTemplatePickerAnyway, setShowTemplatePickerAnyway] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const justSelectedRef = useRef(false);
-
-  // Debounced autocomplete
-  useEffect(() => {
-    // Skip when a suggestion was just selected — prevents dropdown flicker
-    if (justSelectedRef.current) { justSelectedRef.current = false; return; }
-    if (!state.mindRoot.trim()) { setSuggestions([]); return; }
-    const timer = setTimeout(() => {
-      const parent = getParentDir(state.mindRoot) || homeDir;
-      fetch('/api/setup/ls', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: parent }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          if (!d.dirs?.length) { setSuggestions([]); return; }
-          // Normalize parent to end with a separator (preserve existing / or \)
-          const endsWithSep = parent.endsWith('/') || parent.endsWith('\\');
-          const localSep = parent.includes('\\') ? '\\' : '/';
-          const parentNorm = endsWithSep ? parent : parent + localSep;
-          const typed = state.mindRoot.trim();
-          const full: string[] = (d.dirs as string[]).map((dir: string) => parentNorm + dir);
-          const endsWithAnySep = typed.endsWith('/') || typed.endsWith('\\');
-          const filtered = endsWithAnySep ? full : full.filter(f => f.startsWith(typed));
-          setSuggestions(filtered.slice(0, 20));
-          setShowSuggestions(filtered.length > 0);
-          setActiveSuggestion(-1);
-        })
-        .catch(e => { console.warn('[SetupWizard] autocomplete fetch failed:', e); setSuggestions([]); });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [state.mindRoot, homeDir]);
 
   // Debounced path check
   useEffect(() => {
-    if (!state.mindRoot.trim()) { setPathInfo(null); return; }
+    if (!currentMindRoot) return;
+    let cancelled = false;
     const timer = setTimeout(() => {
       fetch('/api/setup/check-path', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: state.mindRoot }),
+        body: JSON.stringify({ path: currentMindRoot }),
       })
         .then(r => r.json())
         .then(d => {
-          setPathInfo(d);
+          if (cancelled) return;
+          setPathInfoResult({ path: currentMindRoot, info: d });
           setShowTemplatePickerAnyway(false);
           // Non-empty directory: default to skip template (user can opt-in to merge)
           if (d?.exists && !d.empty) update('template', '');
         })
-        .catch(e => { console.warn('[SetupWizard] check-path failed:', e); setPathInfo(null); });
+        .catch(e => {
+          if (cancelled) return;
+          console.warn('[SetupWizard] check-path failed:', e);
+          setPathInfoResult(null);
+        });
     }, 600);
-    return () => clearTimeout(timer);
-  }, [state.mindRoot, update]);
-
-  const hideSuggestions = () => {
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setActiveSuggestion(-1);
-  };
-
-  const selectSuggestion = (val: string) => {
-    justSelectedRef.current = true;
-    update('mindRoot', val);
-    hideSuggestions();
-    inputRef.current?.focus();
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSuggestions || suggestions.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveSuggestion(i => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveSuggestion(i => Math.max(i - 1, -1));
-    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
-      e.preventDefault();
-      selectSuggestion(suggestions[activeSuggestion]);
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [currentMindRoot, update]);
 
   return (
     <div className="space-y-6">
       <Field label={s.kbPath} hint={s.kbPathHint}>
-        <div className="relative">
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={state.mindRoot}
-              onChange={e => { update('mindRoot', e.target.value); setShowSuggestions(true); }}
-              onKeyDown={handleKeyDown}
-              onBlur={() => setTimeout(() => hideSuggestions(), 150)}
-              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-              placeholder={placeholder}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            {/* Folder picker button — Desktop (Electron) only */}
-            {getDesktopBridge()?.selectDirectory && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const selected = await getDesktopBridge()?.selectDirectory?.();
-                  if (selected) {
-                    justSelectedRef.current = true;
-                    update('mindRoot', selected);
-                    hideSuggestions();
-                  }
-                }}
-                className="rounded-lg border border-border px-3 py-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                title={s.kbPathBrowse ?? 'Browse...'}
-              >
-                <FolderOpen size={16} />
-              </button>
-            )}
-          </div>
-          {showSuggestions && suggestions.length > 0 && (
-            <div
-              role="listbox"
-              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-auto rounded-lg border border-border bg-card shadow-lg">
-              {suggestions.map((suggestion, i) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  role="option"
-                  aria-selected={i === activeSuggestion}
-                  onMouseDown={() => selectSuggestion(suggestion)}
-                  className={cn(
-                    'w-full px-3 py-2 text-left font-mono text-sm text-foreground transition-colors',
-                    i === activeSuggestion ? 'bg-muted' : 'bg-transparent',
-                    i > 0 && 'border-t border-border',
-                  )}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <PathAutocompleteField
+          value={state.mindRoot}
+          onChange={(value) => update('mindRoot', value)}
+          homeDir={homeDir}
+          placeholder={placeholder}
+          ariaLabel={s.kbPath}
+          browseLabel={s.kbPathBrowse}
+          browseUnavailableLabel={s.kbPathBrowseUnavailable}
+          inputClassName="w-full rounded-lg border border-border bg-background px-3 py-2 pr-11 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+        />
         {/* Recommended default — one-click accept */}
         {state.mindRoot !== placeholder && placeholder !== s.kbPathDefault && (
           <button type="button"
