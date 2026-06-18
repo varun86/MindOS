@@ -12,6 +12,8 @@ const mockClearPersistTimer = vi.fn();
 const mockInitSessions = vi.fn();
 const mockSetSessionDefaultAcpAgent = vi.fn();
 const mockSetSessionAgentRuntimeBinding = vi.fn();
+const mockSetSessionWorkDir = vi.fn(() => true);
+const mockSetSessionContextSelection = vi.fn(() => true);
 const mockAttachRuntimeSession = vi.fn(() => true);
 const mockResetSession = vi.fn();
 const mockLoadSession = vi.fn();
@@ -65,10 +67,31 @@ vi.mock('@/lib/stores/locale-store', () => ({
         reconnecting: (attempt: number, max: number) => `retry ${attempt}/${max}`,
         stopped: 'stopped',
         errorNoResponse: 'no response',
+        concurrentLimit: 'too many conversations are running',
         emptyPrompt: 'empty',
         suggestions: [],
         copyMessage: 'Copy',
         sessionRunningRetry: 'That session is still running. Try again after it finishes.',
+        sessionContext: {
+          title: 'Context',
+          workDir: 'WorkDir',
+          spaces: 'Spaces',
+          assistants: 'Assistants',
+          mindRoot: 'Mind root',
+          none: 'None',
+          locked: 'Locked after first message',
+          editWorkDir: 'Set work directory',
+          workDirPlaceholder: '/path/to/project',
+          addSpace: 'Add Space',
+          addAssistant: 'Add Assistant',
+          newSession: 'New',
+          removeItem: (label: string) => `Remove ${label}`,
+          spacePlaceholder: 'Space path',
+          assistantPlaceholder: 'assistant-id',
+          applyNextTurn: 'Changes apply to the next message.',
+          spacesCount: (n: number) => `${n} space${n === 1 ? '' : 's'}`,
+          assistantsCount: (n: number) => `${n} assistant${n === 1 ? '' : 's'}`,
+        },
       },
       search: { close: 'close' },
       hints: {
@@ -101,6 +124,8 @@ vi.mock('@/hooks/useAskSession', () => ({
     setMessages: mockSetMessages,
     setSessionDefaultAcpAgent: mockSetSessionDefaultAcpAgent,
     setSessionAgentRuntimeBinding: mockSetSessionAgentRuntimeBinding,
+    setSessionWorkDir: mockSetSessionWorkDir,
+    setSessionContextSelection: mockSetSessionContextSelection,
     attachRuntimeSession: mockAttachRuntimeSession,
     resetSession: mockResetSession,
     loadSession: mockLoadSession,
@@ -677,6 +702,60 @@ describe('AskContent ACP session binding', () => {
     const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toEqual({ id: 'claude-code', name: 'Claude Code' });
     expect(requestBody.selectedRuntime).toEqual({ id: 'claude-code', name: 'Claude Code', kind: 'acp' });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('restores the draft instead of locking the session when WorkDir validation fails before runtime start', async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url) === '/api/ask') {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            error: {
+              code: 'CONFLICT',
+              issueCode: 'runtime_resume_untrusted',
+              message: 'Attach the runtime session first.',
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        body: new ReadableStream(),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<AskContent visible variant="panel" initialMessage="use the selected folder" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const textarea = host.querySelector('textarea') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('use the selected folder');
+    expect(host.textContent).toContain('Attach the runtime session first');
 
     await act(async () => {
       root.unmount();

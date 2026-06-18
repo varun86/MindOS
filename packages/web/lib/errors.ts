@@ -47,6 +47,8 @@ export interface ApiErrorResponse {
   error: {
     code: string;
     message: string;
+    issueCode?: string;
+    context?: Record<string, unknown>;
   };
 }
 
@@ -101,9 +103,14 @@ function mapProductErrorToSimpleStatus(err: { code: string; statusCode?: number;
  *
  * If `status` is omitted it is derived from the error code.
  */
-export function apiError(code: ErrorCode, message: string, status?: number): NextResponse<ApiErrorResponse> {
+export function apiError(
+  code: ErrorCode,
+  message: string,
+  status?: number,
+  details: Pick<ApiErrorResponse['error'], 'issueCode' | 'context'> = {},
+): NextResponse<ApiErrorResponse> {
   const effectiveStatus = status ?? mapCodeToStatus(code);
-  return NextResponse.json({ ok: false as const, error: { code, message } }, { status: effectiveStatus });
+  return NextResponse.json({ ok: false as const, error: { code, message, ...details } }, { status: effectiveStatus });
 }
 
 /**

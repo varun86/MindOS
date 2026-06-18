@@ -22,6 +22,7 @@ import {
   useSessionRun,
   writeRuntimeBinding,
 } from '@/lib/ask-run-store';
+import { getSessionSubmitContextSnapshot } from '@/lib/ask-session-store';
 
 export type LoadingPhase = 'connecting' | 'thinking' | 'streaming' | 'reconnecting';
 
@@ -85,6 +86,23 @@ interface UseAskChatOpts {
   errorLabels: { noResponse: string; stopped: string; concurrentLimit: string };
   resetInputState: () => void;
   onRestoreInput?: (userMessage: Message) => void;
+  onTransientError?: (message: string) => void;
+}
+
+const SESSION_CONTEXT_ERROR_CODES = new Set([
+  'workdir_missing',
+  'workdir_not_directory',
+  'workdir_outside_allowed_roots',
+  'workdir_changed_after_history',
+  'runtime_cwd_locked',
+  'runtime_resume_untrusted',
+]);
+
+function isWorkDirContextError(error: Error & { httpStatus?: number; issueCode?: string }): boolean {
+  return error.httpStatus === 409 && (
+    (!!error.issueCode && SESSION_CONTEXT_ERROR_CODES.has(error.issueCode))
+    || /\bWorkDir\b/i.test(error.message)
+  );
 }
 
 export function useAskChat({
@@ -99,6 +117,7 @@ export function useAskChat({
   errorLabels,
   resetInputState,
   onRestoreInput,
+  onTransientError,
 }: UseAskChatOpts) {
   // All run state lives in ask-run-store, keyed by session. The hook derives
   // UI state for the *active* session — background runs keep going on their
@@ -224,7 +243,8 @@ export function useAskChat({
     }
 
     img.clearImages();
-    const requestMessages = [...storeGetMessages(sessionId), userMsg];
+    const previousMessages = [...storeGetMessages(sessionId)];
+    const requestMessages = [...previousMessages, userMsg];
 
     storeAppendMessages(sessionId, [
       userMsg,
@@ -263,6 +283,7 @@ export function useAskChat({
         ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort }
         : {}),
     };
+    const sessionContextSnapshot = getSessionSubmitContextSnapshot(sessionId);
     const requestBody = JSON.stringify({
       messages: requestMessages,
       currentFile,
@@ -281,6 +302,8 @@ export function useAskChat({
       selectedAcpAgent: acpAgent,
       selectedRuntime,
       runtimeBinding: matchingRuntimeBinding ?? null,
+      workDir: sessionContextSnapshot.workDir,
+      contextSelection: sessionContextSnapshot.contextSelection,
       mode: askMode,
       chatSessionId: sessionId,
       providerOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : providerOverride ?? undefined,
@@ -308,18 +331,26 @@ export function useAskChat({
 
       if (!res.ok) {
         let errorMsg = `Request failed (${res.status})`;
+        let issueCode: string | undefined;
         try {
-          const errBody = await res.json() as { error?: { message?: string } | string; message?: string };
+          const errBody = await res.json() as {
+            error?: { message?: string; issueCode?: string } | string;
+            message?: string;
+          };
           if (typeof errBody?.error === 'string' && errBody.error.trim()) {
             errorMsg = errBody.error;
           } else if (typeof errBody?.error === 'object' && typeof errBody.error?.message === 'string' && errBody.error.message.trim()) {
             errorMsg = errBody.error.message;
+            if (typeof errBody.error.issueCode === 'string' && errBody.error.issueCode.trim()) {
+              issueCode = errBody.error.issueCode.trim();
+            }
           } else if (typeof errBody?.message === 'string' && errBody.message.trim()) {
             errorMsg = errBody.message;
           }
         } catch (err) { console.warn("[useAskChat] error body parse failed:", err); }
         const err = new Error(errorMsg);
         (err as Error & { httpStatus?: number }).httpStatus = res.status;
+        if (issueCode) (err as Error & { issueCode?: string }).issueCode = issueCode;
         throw err;
       }
 
@@ -414,6 +445,13 @@ export function useAskChat({
         }
       } else {
         const errMsg = err instanceof Error ? err.message : 'Something went wrong';
+        if (err instanceof Error && isWorkDirContextError(err)) {
+          updateRun(sessionId, { pendingUserMessage: null });
+          storeSetMessages(sessionId, previousMessages, { requireRun: true });
+          onRestoreInput?.(userMsg);
+          onTransientError?.(errMsg);
+          return;
+        }
         storeSetMessages(sessionId, (prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
@@ -432,7 +470,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, askMode, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState]);
+  }, [currentFile, askMode, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
 
   return {
     isLoading,

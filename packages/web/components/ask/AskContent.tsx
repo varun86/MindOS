@@ -23,6 +23,7 @@ import SessionHistoryPanel from '@/components/ask/SessionHistoryPanel';
 import AskHeader from '@/components/ask/AskHeader';
 import FileChip from '@/components/ask/FileChip';
 import AskComposerInput from '@/components/ask/AskComposerInput';
+import SessionContextDock from '@/components/ask/SessionContextDock';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
 import NativeRuntimeOptionsCapsule, { getPersistedNativeRuntimeOptions, persistNativeRuntimeOptions } from '@/components/ask/NativeRuntimeOptionsCapsule';
 import type { ProviderId } from '@/lib/agent/providers';
@@ -41,7 +42,7 @@ import {
   loadLastSelectedAgentRuntime,
   persistLastSelectedAgentRuntime,
 } from '@/lib/ask-runtime-preference';
-import { refreshSessions } from '@/lib/ask-session-store';
+import { canEditSessionWorkDir, refreshSessions } from '@/lib/ask-session-store';
 import { cn } from '@/lib/utils';
 import { useNativeRuntimeDetection } from '@/hooks/useNativeRuntimeDetection';
 import type { AcpAgentSelection } from '@/hooks/useAskModal';
@@ -380,6 +381,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     setComposerValue('');
     setSelectedSkill(null);
     setAttachedFiles(currentFile ? [currentFile] : []);
+    setDropError('');
     uploadRef.current.clearAttachments();
   }, [currentFile]);
 
@@ -420,6 +422,7 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     errorLabels: { noResponse: t.ask.errorNoResponse, stopped: t.ask.stopped, concurrentLimit: t.ask.concurrentLimit },
     resetInputState,
     onRestoreInput: handleRestoreInput,
+    onTransientError: setDropError,
   });
   const { isLoading, loadingPhase, reconnectAttempt, reconnectMax } = chat;
   useAgentRunTimeline({
@@ -1189,6 +1192,16 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          <SessionContextDock
+            session={session.activeSession}
+            labels={t.ask.sessionContext}
+            workDirEditable={Boolean(session.activeSessionId && canEditSessionWorkDir(session.activeSessionId))}
+            compact={isPanel || isHome}
+            onSetWorkDir={session.setSessionWorkDir}
+            onSetContextSelection={session.setSessionContextSelection}
+            onNewSession={handleResetSession}
+          />
+
           {/* Unified context chip flow */}
           {(attachedFiles.length > 0 || localAttachments.length > 0 || images.length > 0 || selectedSkill || composerStatusMessage) && (
             <div className={cn('px-3 pt-2.5 pb-2 border-b border-border/30', isPanel ? 'max-h-24 overflow-y-auto' : 'max-h-28 overflow-y-auto')}>

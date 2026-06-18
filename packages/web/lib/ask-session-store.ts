@@ -19,13 +19,30 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, ChatSession, Message, RuntimeSessionBinding } from '@/lib/types';
+import type {
+  AgentIdentity,
+  AgentRuntimeIdentity,
+  ChatSession,
+  Message,
+  RuntimeSessionBinding,
+  SessionContextSelection,
+  SessionWorkDir,
+} from '@/lib/types';
 import {
   bindSessionAgent,
   bindSessionAgentRuntime,
   getMatchingRuntimeSessionBinding,
   isSessionInRuntimeLane,
 } from '@/lib/ask-agent';
+import {
+  canEditSessionWorkDir as canEditSessionWorkDirValue,
+  defaultSessionContextSelection,
+  defaultSessionWorkDir,
+  getEffectiveSessionContextSelection,
+  getEffectiveSessionWorkDir,
+  normalizeSessionContextSelectionForClient,
+  normalizeSessionWorkDirForClient,
+} from '@/lib/session-context';
 import {
   clearUnread,
   getMessageWriteAt,
@@ -84,6 +101,8 @@ export function createSessionEntry(
     createdAt: ts,
     updatedAt: ts,
     messages: [],
+    workDir: defaultSessionWorkDir(ts),
+    contextSelection: defaultSessionContextSelection(ts),
   };
 
   if (!runtime || runtime.kind === 'mindos') return session;
@@ -126,6 +145,14 @@ function withStoreMessages(session: ChatSession): ChatSession {
     : session;
 }
 
+function normalizeSessionContextMetadata(session: ChatSession): ChatSession {
+  return {
+    ...session,
+    workDir: getEffectiveSessionWorkDir(session),
+    contextSelection: getEffectiveSessionContextSelection(session),
+  };
+}
+
 function sortAndCap(list: ChatSession[]): ChatSession[] {
   return [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_SESSIONS);
 }
@@ -139,7 +166,7 @@ async function fetchSessions(): Promise<ChatSession[] | null> {
     if (!res.ok) return null;
     const data = (await res.json()) as ChatSession[];
     if (!Array.isArray(data)) return null;
-    return data.slice(0, MAX_SESSIONS);
+    return data.slice(0, MAX_SESSIONS).map(normalizeSessionContextMetadata);
   } catch {
     return null;
   }
@@ -194,12 +221,13 @@ async function removeSessionsRemote(ids: string[]): Promise<void> {
 // Run-store bridges (module-wired once; no component registration anywhere)
 
 function resolvePersistMeta(sessionId: string): ChatSession | null {
-  return sessions.find((s) => s.id === sessionId) ?? null;
+  const session = sessions.find((s) => s.id === sessionId) ?? null;
+  return session ? normalizeSessionContextMetadata(session) : null;
 }
 
 /** Persistence flush feeds the payload back so ordering / message snapshot stay fresh. */
 function applyPersistedSession(session: ChatSession) {
-  emitSessions(sortAndCap([session, ...sessions.filter((s) => s.id !== session.id)]));
+  emitSessions(sortAndCap([normalizeSessionContextMetadata(session), ...sessions.filter((s) => s.id !== session.id)]));
 }
 
 /** Component-independent binding write path for run closures (explicit session id). */
@@ -210,7 +238,18 @@ export function writeBindingForSession(
 ) {
   const current = sessions.find((s) => s.id === sessionId);
   if (!current) return;
-  const updated = bindSessionAgentRuntime({ ...current, updatedAt: Date.now() }, runtime, binding);
+  const bound = bindSessionAgentRuntime({ ...current, updatedAt: Date.now() }, runtime, binding);
+  const updated = binding?.cwd?.trim()
+    ? {
+      ...bound,
+      workDir: {
+        source: 'runtime-binding' as const,
+        path: binding.cwd.trim(),
+        label: binding.cwd.trim().split(/[\\/]/).filter(Boolean).pop() ?? binding.cwd.trim(),
+        updatedAt: binding.updatedAt ?? Date.now(),
+      },
+    }
+    : normalizeSessionContextMetadata(bound);
   emitSessions(sortAndCap([updated, ...sessions.filter((s) => s.id !== sessionId)]));
   schedulePersist(sessionId);
 }
@@ -241,6 +280,78 @@ export function getActiveSessionId(): string | null {
 
 export function getSessions(): ChatSession[] {
   return sessions;
+}
+
+export function getSessionWorkDir(sessionId: string): SessionWorkDir {
+  const session = sessions.find((s) => s.id === sessionId);
+  return session ? getEffectiveSessionWorkDir(session) : defaultSessionWorkDir();
+}
+
+export function getSessionContextSelection(sessionId: string): SessionContextSelection {
+  const session = sessions.find((s) => s.id === sessionId);
+  return session ? getEffectiveSessionContextSelection(session) : defaultSessionContextSelection();
+}
+
+export function getSessionSubmitContextSnapshot(sessionId: string): {
+  workDir: SessionWorkDir;
+  contextSelection: SessionContextSelection;
+} {
+  return {
+    workDir: getSessionWorkDir(sessionId),
+    contextSelection: getSessionContextSelection(sessionId),
+  };
+}
+
+export function canEditSessionWorkDir(sessionId: string): boolean {
+  const session = sessions.find((s) => s.id === sessionId);
+  if (!session) return true;
+  return canEditSessionWorkDirValue(withStoreMessages(session), { hasLiveRun: Boolean(getRun(sessionId)) });
+}
+
+export function setSessionWorkDir(sessionId: string, workDir: unknown): boolean {
+  const idx = sessions.findIndex((s) => s.id === sessionId);
+  if (idx < 0) return false;
+  const current = withStoreMessages(sessions[idx]);
+  if (!canEditSessionWorkDirValue(current, { hasLiveRun: Boolean(getRun(sessionId)) })) return false;
+  const now = Date.now();
+  const updated: ChatSession = {
+    ...sessions[idx],
+    workDir: normalizeSessionWorkDirForClient(workDir, now),
+    updatedAt: now,
+  };
+  const next = [...sessions];
+  next[idx] = updated;
+  emitSessions(next);
+  if (shouldPersistSession(withStoreMessages(updated))) schedulePersist(sessionId);
+  return true;
+}
+
+export function setSessionContextSelection(sessionId: string, selection: unknown): boolean {
+  const idx = sessions.findIndex((s) => s.id === sessionId);
+  if (idx < 0) return false;
+  const now = Date.now();
+  const updated: ChatSession = {
+    ...sessions[idx],
+    contextSelection: normalizeSessionContextSelectionForClient(selection, now),
+    updatedAt: now,
+  };
+  const next = [...sessions];
+  next[idx] = updated;
+  emitSessions(next);
+  if (shouldPersistSession(withStoreMessages(updated))) schedulePersist(sessionId);
+  return true;
+}
+
+export function patchSessionContextSelection(
+  sessionId: string,
+  patch: Partial<Pick<SessionContextSelection, 'spaces' | 'assistants'>>,
+): boolean {
+  const current = getSessionContextSelection(sessionId);
+  return setSessionContextSelection(sessionId, {
+    ...current,
+    ...patch,
+    version: 1,
+  });
 }
 
 /**
@@ -465,11 +576,11 @@ export function setSessionDefaultAcpAgent(agent: AgentIdentity | null, currentFi
   const current = sessions.find((s) => s.id === sessionId);
   if (!current) return;
 
-  const updated = bindSessionAgent({
+  const updated = normalizeSessionContextMetadata(bindSessionAgent({
     ...current,
     currentFile: current.currentFile ?? currentFile,
     updatedAt: Date.now(),
-  }, agent);
+  }, agent));
   emitSessions(sortAndCap([updated, ...sessions.filter((s) => s.id !== sessionId)]));
 
   // Debounced via the run store's per-session channel; flush itself decides
@@ -519,7 +630,7 @@ export function attachRuntimeSession(
   if (existing && getRun(existing.id)) return false;
 
   const base = existing ?? createSessionEntry(currentFile, runtime, trimmedProjectId);
-  const updated = bindSessionAgentRuntime({
+  const bound = bindSessionAgentRuntime({
     ...base,
     source: base.projectId || trimmedProjectId ? 'project' : base.source,
     projectId: base.projectId ?? trimmedProjectId,
@@ -532,6 +643,18 @@ export function attachRuntimeSession(
     status: binding.status ?? 'active',
     updatedAt: bindingUpdatedAt,
   });
+  const updated = binding.cwd?.trim()
+    ? {
+      ...bound,
+      workDir: {
+        source: 'runtime-binding' as const,
+        path: binding.cwd.trim(),
+        label: binding.cwd.trim().split(/[\\/]/).filter(Boolean).pop() ?? binding.cwd.trim(),
+        updatedAt: bindingUpdatedAt,
+      },
+      contextSelection: getEffectiveSessionContextSelection(bound),
+    }
+    : normalizeSessionContextMetadata(bound);
 
   if (!storeHasMessages(updated.id)) {
     storeSetMessages(updated.id, updated.messages, { skipPersist: true });

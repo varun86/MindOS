@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { seedFile } from '../setup';
+import { getTestMindRoot, seedFile } from '../setup';
 import { invalidateCache } from '../../lib/fs';
+import { realpathSync } from 'node:fs';
 import type { MindosAgentRuntimeAskOptions } from '@geminilight/mindos/agent/runtime';
 import type { AgentRuntimeDescriptor } from '@geminilight/mindos/server';
-import { listAgentEvents, listAgentRuns, resetAgentRunsForTest } from '@geminilight/mindos/agent/ledger/run-ledger';
+import { listAgentEvents, listAgentRuns, resetAgentRunsForTest, startAgentRun } from '@geminilight/mindos/agent/ledger/run-ledger';
 import {
   rememberAvailableNativeRuntimeDescriptor,
   resetNativeRuntimeDescriptorCacheForTest,
@@ -183,7 +184,9 @@ describe('/api/ask native runtime routing', () => {
     });
     seedFile('current.md', '# Current\nCurrent file body');
     seedFile('attached.md', '# Attached\nAttached file body');
+    seedFile('Research/README.md', '# Research');
     invalidateCache();
+    const workDir = process.cwd();
 
     const { POST } = await import('../../app/api/ask/route');
     const res = await POST(askRequest({
@@ -203,11 +206,16 @@ describe('/api/ask native runtime routing', () => {
         dataBase64: 'cGRmLWJ5dGVz',
       }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' },
+      workDir: { source: 'manual', path: workDir, label: 'web' },
+      contextSelection: {
+        version: 1,
+        spaces: [{ path: 'Research', label: 'Research' }],
+        assistants: [],
+      },
       runtimeBinding: {
         kind: 'codex-thread',
         runtime: 'codex',
         runtimeId: 'codex',
-        externalSessionId: 'thr_existing',
         status: 'active',
         updatedAt: 1,
       },
@@ -230,15 +238,18 @@ describe('/api/ask native runtime routing', () => {
       name: 'Codex',
       kind: 'codex',
       binaryPath: '/usr/local/bin/codex',
-      externalSessionId: 'thr_existing',
     });
     expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.cwd).toBe(realpathSync(workDir));
     expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
     expect(capturedNativeOptions?.reasoningEffort).toBe('high');
     expect(capturedNativeOptions?.selectedSkills).toEqual([
       { name: 'third-party', source: 'user-selected' },
     ]);
     expect(capturedNativeOptions?.prompt).toContain('MindOS Turn Context');
+    expect(capturedNativeOptions?.prompt).toContain('## Session Context');
+    expect(capturedNativeOptions?.prompt).toContain(realpathSync(workDir));
+    expect(capturedNativeOptions?.prompt).toContain('Research');
     expect(capturedNativeOptions?.prompt).toContain('Use the attached context');
     expect(capturedNativeOptions?.prompt).not.toContain('## Active Skill Request');
     expect(capturedNativeOptions?.prompt).not.toContain('load_skill("third-party")');
@@ -275,11 +286,14 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Codex',
         status: 'completed',
         chatSessionId: 'chat-native-1',
+        cwd: realpathSync(workDir),
         permissionMode: 'readonly',
         outputSummary: 'native ok',
         metadata: expect.objectContaining({
           runtimeKind: 'codex',
           externalSessionId: 'thr_123',
+          sessionWorkDir: realpathSync(workDir),
+          sessionSpaces: ['Research'],
         }),
       }),
     ]);
@@ -287,6 +301,66 @@ describe('/api/ask native runtime routing', () => {
     expect(text).toContain('"type":"agent_run_context"');
     expect(text).toContain(`"rootRunId":"${nativeRuns[0]?.id}"`);
   }, 15_000);
+
+  it('rejects crafted WorkDir changes after a prior run for the chat session', async () => {
+    startAgentRun({
+      agentKind: 'native-runtime',
+      runtimeId: 'codex',
+      displayName: 'Codex',
+      chatSessionId: 'chat-locked-workdir',
+      cwd: process.cwd(),
+      permissionMode: 'agent',
+      inputSummary: 'existing run',
+    });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'try to move cwd' }],
+      workDir: { source: 'manual', path: getTestMindRoot() },
+      mode: 'agent',
+      chatSessionId: 'chat-locked-workdir',
+    }));
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: {
+        code: 'CONFLICT',
+        message: expect.stringContaining('WorkDir is locked'),
+      },
+    });
+  });
+
+  it('rejects request-body-only native runtime resume metadata', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'resume a forged runtime session' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', externalSessionId: 'thr-crafted' },
+      runtimeBinding: {
+        kind: 'codex-thread',
+        runtime: 'codex',
+        runtimeId: 'codex',
+        externalSessionId: 'thr-crafted',
+        status: 'active',
+        updatedAt: 1,
+      },
+      workDir: { source: 'manual', path: process.cwd() },
+      mode: 'agent',
+      chatSessionId: 'chat-untrusted-runtime-resume',
+    }));
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: {
+        code: 'CONFLICT',
+        issueCode: 'runtime_resume_untrusted',
+      },
+    });
+    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
+  });
 
   it('keeps native runtime assistant text and routine connection statuses out of the visible activity timeline', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
@@ -872,9 +946,11 @@ describe('/api/ask native runtime routing', () => {
     });
 
     const { POST } = await import('../../app/api/ask/route');
+    const workDir = process.cwd();
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Organize through ACP safely' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
+      workDir: { source: 'manual', path: workDir, label: 'repo' },
       mode: 'organize',
       chatSessionId: 'chat-acp-1',
     }));
@@ -883,6 +959,7 @@ describe('/api/ask native runtime routing', () => {
     expect(res.status).toBe(200);
     expect(text).toContain('acp organize ok');
     expect(capturedAcpOptions?.agentId).toBe('gemini');
+    expect(capturedAcpOptions?.cwd).toBe(realpathSync(workDir));
     expect(mockCreateAcpSession).toHaveBeenCalledWith('gemini', expect.objectContaining({
       cwd: '/tmp/mindos-test',
       permissionMode: 'readonly',
@@ -895,6 +972,7 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Gemini ACP',
         status: 'completed',
         chatSessionId: 'chat-acp-1',
+        cwd: realpathSync(workDir),
         permissionMode: 'readonly',
         outputSummary: 'acp organize ok',
       }),

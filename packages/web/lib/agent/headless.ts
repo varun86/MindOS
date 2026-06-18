@@ -24,6 +24,7 @@ export interface HeadlessAgentRunOptions {
   maxSteps?: number;
   providerOverride?: string;
   modelOverride?: string;
+  workDir?: string;
   entrypoint?: HeadlessAgentEntryPoint;
   allowAgentMode?: boolean;
 }
@@ -49,12 +50,13 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
   const agentConfig = serverSettings.agent ?? {};
   const projectRoot = getProjectRoot();
   const mindRoot = getMindRoot();
+  const workDir = options.workDir || mindRoot;
 
   const systemPrompt = buildMindosSystemPrompt({
     mindRoot,
     environment: {
       projectRoot,
-      cwd: mindRoot,
+      cwd: workDir,
     },
   });
   const turnPrompt = await buildMindosContextPrompt({
@@ -63,6 +65,11 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
     mindRoot,
     messages: mindosUiMessages,
     activeRecall: agentConfig.activeRecall,
+    sessionWorkDir: {
+      path: workDir,
+      label: workDir.split(/[\\/]/).filter(Boolean).pop() || workDir,
+      source: options.workDir ? 'manual' : 'mind-root',
+    },
   }, {
     loadFileContext: () => ({ contextParts: [], failedFiles: [] }),
     recallKnowledge: (query, recallOptions) => performActiveRecall(mindRoot, query, recallOptions),
@@ -89,6 +96,7 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
     projectRoot,
     agentDir: runtimePaths.agentDir,
     mindRoot,
+    workDir,
     agentConfig,
     serverSettings,
     requestTools: getMindosWebRequestToolsForPolicy(permissionPolicy),

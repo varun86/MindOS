@@ -64,7 +64,7 @@ export async function createMindosPiCodingAgentRuntime(
   return createMindosPiAgentRuntime({
     ...options,
     // ToolDefinition shape (not AgentTool) — it goes into SDK customTools.
-    bashTool: pi.createBashToolDefinition(options.projectRoot),
+    bashTool: pi.createBashToolDefinition(options.workDir ?? options.mindRoot),
     services: createMindosPiCodingAgentRuntimeServices(pi, options.hostServices),
   });
 }

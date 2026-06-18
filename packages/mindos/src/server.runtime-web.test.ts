@@ -845,11 +845,21 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         status: 'active',
         updatedAt: 123,
       },
+      workDir: { source: 'manual', path: '/repo/app', label: 'app', updatedAt: 456 },
+      contextSelection: {
+        version: 1,
+        spaces: [{ path: 'Research', label: 'Research' }],
+        assistants: [{ id: 'ui-reviewer', name: 'UI Reviewer', kind: 'assistant' }],
+        updatedAt: 789,
+      },
+      runtimeOptions: { permissionMode: 'readonly', reasoningEffort: 'high', modelOverride: 'gpt-test' },
+      chatSessionId: 'chat-context-1',
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
       askStream: async function* (input) {
         yield { type: 'status', message: `mode=${input.mode};runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
         yield { type: 'status', message: `binding=${input.runtimeBinding?.kind}:${input.runtimeBinding?.externalSessionId}` };
+        yield { type: 'status', message: `context=${input.chatSessionId};cwd=${input.workDir?.path};spaces=${input.contextSelection?.spaces[0]?.path};permission=${input.runtimeOptions?.permissionMode}` };
         yield { type: 'text_delta', delta: String(input.messages[0]?.content ?? '') };
         yield { type: 'done' };
       },
@@ -862,8 +872,39 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     expect(events).toEqual([
       { type: 'status', message: 'mode=agent;runtime=codex:codex' },
       { type: 'status', message: 'binding=codex-thread:thr_123' },
+      { type: 'status', message: 'context=chat-context-1;cwd=/repo/app;spaces=Research;permission=readonly' },
       { type: 'text_delta', delta: 'hello' },
       { type: 'done' },
+    ]);
+  });
+
+  it('preserves context Space paths for the trusted Web resolver instead of rewriting them', async () => {
+    const valid = handleAskStream({
+      messages: [{ role: 'user', content: 'hello' }],
+      contextSelection: {
+        version: 1,
+        spaces: [
+          { path: '/Research', label: 'absolute-posix' },
+          { path: 'C:\\Users\\moonshot\\Research', label: 'absolute-windows' },
+          { path: 'Research/', label: 'trailing-slash' },
+        ],
+        assistants: [],
+      },
+    }, {
+      askStream: async function* (input) {
+        yield {
+          type: 'status',
+          message: input.contextSelection?.spaces.map((space) => space.path).join('|') ?? '',
+        };
+      },
+    });
+
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) throw new Error('expected ask stream');
+    const events = [];
+    for await (const event of valid.body) events.push(event);
+    expect(events).toEqual([
+      { type: 'status', message: '/Research|C:/Users/moonshot/Research|Research/' },
     ]);
   });
 

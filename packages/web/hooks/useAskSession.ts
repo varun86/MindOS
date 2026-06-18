@@ -12,7 +12,15 @@
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, Message, ChatSession, RuntimeSessionBinding } from '@/lib/types';
+import type {
+  AgentIdentity,
+  AgentRuntimeIdentity,
+  Message,
+  ChatSession,
+  RuntimeSessionBinding,
+  SessionContextSelection,
+  SessionWorkDir,
+} from '@/lib/types';
 import { setMessages as storeSetMessages, useSessionMessages } from '@/lib/ask-run-store';
 import {
   attachRuntimeSession as storeAttachRuntimeSession,
@@ -24,8 +32,10 @@ import {
   noteCurrentFile,
   renameSession as storeRenameSession,
   resetSession as storeResetSession,
+  setSessionContextSelection as storeSetSessionContextSelection,
   setSessionAgentRuntimeBinding as storeSetSessionAgentRuntimeBinding,
   setSessionDefaultAcpAgent as storeSetSessionDefaultAcpAgent,
+  setSessionWorkDir as storeSetSessionWorkDir,
   togglePinSession as storeTogglePinSession,
   useActiveSessionId,
   useSessions,
@@ -89,6 +99,16 @@ export function useAskSession(currentFile?: string, projectId?: string) {
     binding?: { externalSessionId?: string; cwd?: string; status?: RuntimeSessionBinding['status']; updatedAt?: number },
   ) => storeSetSessionAgentRuntimeBinding(runtime, binding), []);
 
+  const setSessionWorkDir = useCallback((workDir: SessionWorkDir) => {
+    const id = getActiveSessionId();
+    return id ? storeSetSessionWorkDir(id, workDir) : false;
+  }, []);
+
+  const setSessionContextSelection = useCallback((selection: SessionContextSelection) => {
+    const id = getActiveSessionId();
+    return id ? storeSetSessionContextSelection(id, selection) : false;
+  }, []);
+
   const attachRuntimeSession = useCallback((
     runtime: AgentRuntimeIdentity,
     binding: {
@@ -137,6 +157,8 @@ export function useAskSession(currentFile?: string, projectId?: string) {
     togglePinSession,
     setSessionDefaultAcpAgent,
     setSessionAgentRuntimeBinding,
+    setSessionWorkDir,
+    setSessionContextSelection,
     attachRuntimeSession,
     clearSessions,
     clearAllSessions,

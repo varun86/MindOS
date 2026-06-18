@@ -251,6 +251,36 @@ export interface NativeRuntimeOptions {
   reasoningEffort?: NativeRuntimeEffort;
 }
 
+export type SessionWorkDirSource = 'mind-root' | 'project-default' | 'runtime-binding' | 'manual';
+
+export interface SessionWorkDir {
+  path?: string;
+  label?: string;
+  source: SessionWorkDirSource;
+  updatedAt?: number;
+}
+
+export interface ContextSpaceRef {
+  path: string;
+  label?: string;
+  icon?: string;
+  source?: 'filesystem' | 'project-default' | 'manual';
+}
+
+export interface ContextAssistantRef {
+  id: string;
+  name?: string;
+  kind?: 'assistant' | 'agent' | 'skill' | 'team';
+  source?: 'local-assistant' | 'builtin' | 'project-default' | 'manual';
+}
+
+export interface SessionContextSelection {
+  version: 1;
+  spaces: ContextSpaceRef[];
+  assistants: ContextAssistantRef[];
+  updatedAt?: number;
+}
+
 export interface ChatSession {
   id: string;
   title?: string;
@@ -269,4 +299,8 @@ export interface ChatSession {
   externalAgentBinding?: ExternalAgentBinding | null;
   /** Typed external runtime session metadata. Prefer this over externalAgentBinding. */
   runtimeSessionBinding?: RuntimeSessionBinding | null;
+  /** Session-bound execution cwd. Dynamic Spaces/Assistants live in contextSelection instead. */
+  workDir?: SessionWorkDir;
+  /** Dynamic context hints for this chat session. */
+  contextSelection?: SessionContextSelection;
 }

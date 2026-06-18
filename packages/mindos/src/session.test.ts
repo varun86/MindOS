@@ -738,6 +738,92 @@ describe('MindOS session event contract', () => {
     ]);
   });
 
+  it('keeps Pi resource loading on projectRoot while executing the session in workDir', async () => {
+    const captured: {
+      resourceCwd?: string;
+      sessionCwd?: string;
+      extensionCwd?: unknown;
+    } = {};
+    const extensionTool = {
+      name: 'capture_context',
+      description: 'Capture extension context',
+      execute: async (
+        _toolCallId: string,
+        _params: unknown,
+        _signal: AbortSignal | undefined,
+        _onUpdate: ((update: unknown) => void) | undefined,
+        ctx: Record<string, unknown>,
+      ) => {
+        captured.extensionCwd = ctx.cwd;
+        return { content: [{ type: 'text', text: 'ok' }] };
+      },
+    };
+    const resourceLoader = {
+      reload: async () => {},
+      getSkills: () => ({ skills: [] }),
+      getExtensions: () => ({
+        extensions: [{
+          path: '/ext/context.ts',
+          tools: new Map<string, unknown>([
+            ['capture_context', { definition: extensionTool }],
+          ]),
+        }],
+        errors: [],
+      }),
+    };
+    const session = {
+      subscribe: () => {},
+      prompt: async () => {},
+      steer: async () => {},
+      abort: async () => {},
+    };
+
+    const runtime = await createMindosPiAgentRuntime({
+      mode: 'agent',
+      messages: [{ role: 'user', content: 'hello', timestamp: 1 }],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      workDir: '/repo/app',
+      agentConfig: {},
+      serverSettings: {},
+      requestTools: [],
+      bashTool: { name: 'bash' },
+      services: {
+        resolveModelConfig: () => ({
+          model: { id: 'model-object' },
+          modelName: 'gpt-test',
+          apiKey: 'key',
+          provider: 'openai',
+        }),
+        toRuntimeProvider: (provider) => provider,
+        createAuthStorage: () => ({ setRuntimeApiKey: () => {} }),
+        createModelRegistry: () => ({ registry: true }),
+        createSettingsManager: (settings) => ({ settings }),
+        createSessionManager: () => ({ appendMessage: () => {} }),
+        createResourceLoader: (config) => {
+          captured.resourceCwd = config.cwd;
+          return resourceLoader;
+        },
+        convertToLlm: (messages) => [...messages],
+        createAgentSession: async (config) => {
+          captured.sessionCwd = config.cwd;
+          return { session };
+        },
+        setKbMode: () => {},
+      },
+    });
+
+    const tool = runtime.requestTools.find((item) => item.name === 'capture_context');
+    expect(tool).toBeTruthy();
+    await tool!.execute('tool-1', {}, undefined, undefined);
+
+    expect(captured.resourceCwd).toBe('/repo');
+    expect(captured.sessionCwd).toBe('/repo/app');
+    expect(captured.extensionCwd).toBe('/repo/app');
+  });
+
   it('runs extension-registered tools in the non-streaming fallback with headless context', async () => {
     const requestReadTool = {
       name: 'read_file',
@@ -879,7 +965,7 @@ describe('MindOS session event contract', () => {
     expect(captured.toolCallId).toBe('call-search');
     expect(captured.params).toEqual({ query: 'pi-web-access', workflow: 'none' });
     expect(captured.ctx).toMatchObject({
-      cwd: '/repo',
+      cwd: '/mind',
       hasUI: false,
       model: { id: 'model-object' },
       modelRegistry: { registry: true },
@@ -1262,7 +1348,7 @@ describe('MindOS session event contract', () => {
       'resource.reload',
       'session.append:0',
       'session.append:1',
-      'agent:/repo:medium:no-allowlist:builtin:bash',
+      'agent:/mind:medium:no-allowlist:builtin:bash',
     ]);
   });
 

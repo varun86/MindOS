@@ -7,7 +7,16 @@ import { randomUUID } from 'crypto';
 import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
-import type { AgentRuntimeIdentity, AskModeApi, RuntimeSessionBinding, NativeRuntimeOptions, NativeRuntimePermissionMode, NativeRuntimeEffort } from '@/lib/types';
+import type {
+  AgentRuntimeIdentity,
+  AskModeApi,
+  RuntimeSessionBinding,
+  NativeRuntimeOptions,
+  NativeRuntimePermissionMode,
+  NativeRuntimeEffort,
+  SessionContextSelection,
+  SessionWorkDir,
+} from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
@@ -73,6 +82,7 @@ import {
 import {
   completeAgentRun,
   failAgentRun,
+  listAgentRuns,
   startAgentRun,
   updateAgentRun,
   type AgentRunRecord,
@@ -88,6 +98,11 @@ import {
 } from '@geminilight/mindos/agent/agent-run-context';
 import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
 import { isAbortLikeError } from '@geminilight/mindos/agent/ledger/run-cancellation';
+import {
+  readPersistedAskSession,
+  resolveSessionContext,
+  SessionContextResolutionError,
+} from '@/lib/session-context-server';
 
 const NATIVE_ASK_HEALTH_GATE_TIMEOUT_MS = 3000;
 
@@ -474,6 +489,10 @@ export async function POST(req: NextRequest) {
     selectedRuntime?: (AgentRuntimeIdentity & { externalSessionId?: string }) | null;
     /** Typed external runtime binding for native Codex/Claude resume. */
     runtimeBinding?: RuntimeSessionBinding | null;
+    /** Session-bound execution cwd. */
+    workDir?: SessionWorkDir;
+    /** Dynamic selected Spaces / Assistants for this turn. */
+    contextSelection?: SessionContextSelection;
     /** Per-request provider override from the chat panel capsule */
     providerOverride?: string;
     /** Per-request model override from the inline model picker */
@@ -513,6 +532,38 @@ export async function POST(req: NextRequest) {
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
     ? body.chatSessionId.trim()
     : undefined;
+  const mindRoot = getMindRoot();
+  const projectRoot = getProjectRoot();
+  const priorSession = readPersistedAskSession(chatSessionId);
+  const priorRuns = chatSessionId
+    ? listAgentRuns({ chatSessionId, limit: 20 }).map((run) => ({
+      cwd: run.cwd,
+      archiveSessionId: run.archive?.sessionId,
+      externalSessionId: typeof run.metadata?.externalSessionId === 'string'
+        ? run.metadata.externalSessionId
+        : undefined,
+    }))
+    : [];
+  let sessionContext: ReturnType<typeof resolveSessionContext>;
+  try {
+    sessionContext = resolveSessionContext({
+      requestedWorkDir: body.workDir,
+      requestedSelection: body.contextSelection,
+      mindRoot,
+      projectRoot,
+      priorSession,
+      requestRuntimeBinding: body.runtimeBinding,
+      requestExternalSessionId: selectedNativeRuntime?.externalSessionId,
+      priorRuns,
+      env: process.env,
+    });
+  } catch (error) {
+    if (error instanceof SessionContextResolutionError) {
+      return apiError(ErrorCodes.CONFLICT, error.message, 409, { issueCode: error.code });
+    }
+    throw error;
+  }
+  const executionCwd = sessionContext.resolvedWorkDir.path;
 
   // Diagnostic: log attached files so silent failures are visible
   if (Array.isArray(attachedFiles) && attachedFiles.length > 0) {
@@ -563,7 +614,6 @@ export async function POST(req: NextRequest) {
   const selectedSkills = normalizeMindosSelectedSkills(undefined, getLastUserSkillName(messages));
 
   if (verifiedNativeRuntime || selectedAcpAgent) {
-    const mindRoot = getMindRoot();
     const lastUserContent = getLastUserContent(messages);
     const fileContext = loadAttachedFileContext(attachedFiles, currentFile, 'external');
     const excludePaths = [
@@ -587,6 +637,9 @@ export async function POST(req: NextRequest) {
       uploadedParts,
       recalledKnowledge,
       selectedSkills,
+      sessionWorkDir: sessionContext.resolvedWorkDir,
+      sessionContextSelection: sessionContext.resolvedSelection,
+      sessionContextIssues: sessionContext.issues,
     });
 
     return createAskSseResponse((send) => runWithAgentRunContext({ chatSessionId }, async () => {
@@ -598,12 +651,15 @@ export async function POST(req: NextRequest) {
           agentKind: 'native-runtime',
           runtimeId: nativeRuntime.id,
           displayName: nativeRuntime.name,
-          cwd: mindRoot,
+          cwd: executionCwd,
           permissionMode: nativePermissionMode,
           inputSummary: externalPrompt,
           metadata: {
             runtimeKind: nativeRuntime.kind,
             source: 'selected-native-runtime',
+            sessionWorkDir: sessionContext.resolvedWorkDir.path,
+            sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
+            sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
           },
         });
         const sendWithLedger = (event: MindOSSSEvent) => {
@@ -626,7 +682,7 @@ export async function POST(req: NextRequest) {
               send: (event) => sendWithLedger(event as unknown as MindOSSSEvent),
             }, () => runMindosAgentRuntimeAskSession({
               runtime: nativeRuntime,
-              cwd: mindRoot,
+              cwd: executionCwd,
               prompt: externalPrompt,
               attachments: runtimeAttachments,
               selectedSkills,
@@ -700,12 +756,15 @@ export async function POST(req: NextRequest) {
           agentKind: 'acp',
           runtimeId: selectedAcpAgent.id,
           displayName: selectedAcpAgent.name,
-          cwd: mindRoot,
+          cwd: executionCwd,
           permissionMode: permissionPolicy.acpPermissionMode,
           inputSummary: externalPrompt,
           metadata: {
             source: 'selected-acp-runtime',
             phase: 'create_session',
+            sessionWorkDir: sessionContext.resolvedWorkDir.path,
+            sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
+            sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
           },
         });
         sendAgentRunContext(send, acpRun);
@@ -716,7 +775,7 @@ export async function POST(req: NextRequest) {
         }, () => (
           runMindosAcpAskSession({
             agentId: selectedAcpAgent.id,
-            cwd: mindRoot,
+            cwd: executionCwd,
             prompt: acpPrompt,
             signal: req.signal,
             createSession: async (agentId, options) => {
@@ -787,9 +846,6 @@ export async function POST(req: NextRequest) {
     // Auto-load skill + bootstrap context for each request.
     const isZh = serverSettings.disabledSkills?.includes('mindos') ?? false;
     const skillDirName = isZh ? 'mindos-zh' : 'mindos';
-    const projectRoot = getProjectRoot();
-    const mindRoot = getMindRoot();
-    
     // Resolve skill file from multiple fallback locations (handles Core Update scenarios)
     const skillInfo = resolveSkillFile(skillDirName, projectRoot, mindRoot);
     const skill = skillInfo.result;
@@ -886,14 +942,12 @@ export async function POST(req: NextRequest) {
     };
   }
 
-  const mindRoot = getMindRoot();
-  const projectRoot = getProjectRoot();
   const lastUserContent = getLastUserContent(messages);
   const systemPromptBase = buildMindosSystemPrompt({
     mindRoot,
     environment: {
       projectRoot,
-      cwd: mindRoot,
+      cwd: executionCwd,
     },
   });
   const commonTurnPrompt = await buildMindosContextPrompt({
@@ -906,6 +960,9 @@ export async function POST(req: NextRequest) {
     agentInitialization,
     activeRecall: agentConfig.activeRecall,
     selectedSkills,
+    sessionWorkDir: sessionContext.resolvedWorkDir,
+    sessionContextSelection: sessionContext.resolvedSelection,
+    sessionContextIssues: sessionContext.issues,
   }, {
     loadFileContext: loadAttachedFileContext,
     recallKnowledge: (query, options) => performActiveRecall(mindRoot, query, options),
@@ -938,6 +995,7 @@ export async function POST(req: NextRequest) {
       projectRoot,
       agentDir: runtimePaths.agentDir,
       mindRoot,
+      workDir: executionCwd,
       agentConfig: {
         enableThinking,
         thinkingBudget,
@@ -972,9 +1030,14 @@ export async function POST(req: NextRequest) {
         runtimeId: 'mindos',
         displayName: 'MindOS Agent',
         chatSessionId,
-        cwd: mindRoot,
+        cwd: executionCwd,
         permissionMode: permissionPolicy.permissionMode,
         inputSummary: typeof lastUserContent === 'string' ? lastUserContent : JSON.stringify(lastUserContent),
+        metadata: {
+          sessionWorkDir: sessionContext.resolvedWorkDir.path,
+          sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
+          sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
+        },
       });
       sendAgentRunContext(send, mainRun);
       const sendWithLedger = (event: MindOSSSEvent) => {

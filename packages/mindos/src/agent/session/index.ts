@@ -1170,6 +1170,7 @@ export type MindosPiAgentRuntimeOptions = {
   projectRoot: string;
   agentDir: string;
   mindRoot: string;
+  workDir?: string;
   agentConfig?: {
     enableThinking?: boolean;
     thinkingBudget?: number;
@@ -1203,6 +1204,7 @@ export type MindosPiAgentRuntime = {
 };
 
 export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOptions): Promise<MindosPiAgentRuntime> {
+  const workDir = options.workDir ?? options.mindRoot;
   const lastMessage = options.messages.length > 0 ? options.messages[options.messages.length - 1] : undefined;
   const lastUserContent = lastMessage?.role === 'user' ? lastMessage.content : '';
   const lastUserSkillName = lastMessage?.role === 'user' && typeof lastMessage.skillName === 'string'
@@ -1299,7 +1301,7 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
   }
 
   const { session } = await options.services.createAgentSession({
-    cwd: options.projectRoot,
+    cwd: workDir,
     model: modelConfig.model,
     thinkingLevel: options.agentConfig?.enableThinking && modelConfig.provider === 'anthropic' ? 'medium' : 'off',
     authStorage,
@@ -1309,7 +1311,7 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     settingsManager,
     // Builtin read/edit/write/bash stay off: KB file access must flow through
     // the extension-registered KB tools (write-protection + audit log). The
-    // project-root bash tool is the only SDK customTool, and only when the
+    // session workDir bash tool is the only SDK customTool, and only when the
     // request permission policy allows terminal access. options.requestTools is
     // intentionally NOT passed here — SDK
     // customTools override extension-registered tools by name, which would
@@ -1322,7 +1324,7 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
     requestTools: options.requestTools,
     resourceLoader,
     extensionContext: createMindosHeadlessExtensionContext({
-      cwd: options.projectRoot,
+      cwd: workDir,
       model: modelConfig.model,
       modelRegistry,
       sessionManager,
