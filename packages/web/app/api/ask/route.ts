@@ -123,6 +123,16 @@ function sendAgentRunContext(
   } as unknown as MindOSSSEvent);
 }
 
+function formatMindosPiExtensionLoadStatus(errors: Array<{ path: string; error: string }> | undefined): string | null {
+  if (!errors?.length) return null;
+  const names = [...new Set(errors.map((entry) => path.basename(entry.path || 'extension')).filter(Boolean))].slice(0, 5);
+  const hasWebAccessError = errors.some((entry) => entry.path.includes('pi-web-access'));
+  const suffix = hasWebAccessError
+    ? ' pi-web-access is unavailable or incomplete, so web_search/fetch_content may be unavailable.'
+    : ' Some extension tools may be unavailable.';
+  return `MindOS detected ${errors.length} extension issue${errors.length === 1 ? '' : 's'}${names.length ? ` (${names.join(', ')})` : ''}.${suffix}`;
+}
+
 function compactStringEnv(env: Record<string, string | undefined> | undefined): Record<string, string> | undefined {
   if (!env) return undefined;
   const compact: Record<string, string> = {};
@@ -978,7 +988,6 @@ export async function POST(req: NextRequest) {
     const {
       createWebMindosPiRuntimeHostServices,
       getMindosWebPiRuntimePaths,
-      getMindosWebRequestToolsForPolicy,
     } = await import('@/lib/agent/mindos-pi-runtime-host');
     const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, mode: askMode, permissionPolicy });
     const { createMindosAgentRuntime } = await import('@geminilight/mindos/agent/runtime/adapters/mindos');
@@ -1002,7 +1011,6 @@ export async function POST(req: NextRequest) {
         contextStrategy,
       },
       serverSettings,
-      requestTools: getMindosWebRequestToolsForPolicy(permissionPolicy),
       additionalSkillPaths: runtimePaths.additionalSkillPaths,
       additionalExtensionPaths: runtimePaths.additionalExtensionPaths,
       allowProjectBash: permissionPolicy.toolScope.terminal,
@@ -1015,12 +1023,14 @@ export async function POST(req: NextRequest) {
       llmHistoryMessages,
       lastUserContent,
       lastUserImages,
-      requestTools,
+      fallbackTools,
       apiKey,
       modelName,
       provider,
       baseUrl,
     } = runtime;
+    const extensionLoadErrors = (runtime as { extensionLoadErrors?: Array<{ path: string; error: string }> }).extensionLoadErrors;
+    const extensionLoadStatus = formatMindosPiExtensionLoadStatus(extensionLoadErrors);
 
     // ── SSE Stream ──
     return createAskSseResponse(async (send) => {
@@ -1045,6 +1055,14 @@ export async function POST(req: NextRequest) {
         appendSseEventToAgentRun(mainRun.id, event);
         send(event);
       };
+      if (extensionLoadStatus) {
+        sendWithLedger({
+          type: 'status',
+          runtime: 'mindos',
+          visible: true,
+          message: extensionLoadStatus,
+        });
+      }
       try {
         const agentRunContext = {
           chatSessionId,
@@ -1078,7 +1096,7 @@ export async function POST(req: NextRequest) {
               systemPrompt,
               historyMessages: llmHistoryMessages,
               userContent: turnPrompt,
-              tools: requestTools,
+              tools: fallbackTools,
               send: sendWithLedger,
               signal: req.signal,
               maxSteps: stepLimit,

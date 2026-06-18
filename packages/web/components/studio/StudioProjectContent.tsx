@@ -6,18 +6,22 @@ import {
   ArrowRight,
   BookOpenText,
   Blocks,
-  CheckCircle2,
   Clock3,
   FileText,
   FolderOpen,
-  ListChecks,
   MessageSquarePlus,
   Search,
   SlidersHorizontal,
   Target,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  contextChipLabel,
+  contextItemIcon,
+  contextPathLabel,
+  ContextSelectionRow,
+} from '@/components/shared/ContextTokenPicker';
 import { StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
 import { useLocale } from '@/lib/stores/locale-store';
 import { refreshSessions, useActiveSessionId, useSessions } from '@/lib/ask-session-store';
@@ -27,12 +31,17 @@ import {
   createStudioProject,
   findStudioProject,
   getStudioProjectHref,
+  getStudioProjectAssistantRefs,
+  getStudioProjectSpaceRefs,
+  getStudioProjectWorkDir,
+  getStudioProjectWorkDirLabel,
   localize,
-  localizeList,
+  markStudioProjectOpened,
   readStudioProjects,
   sessionStatusLabel,
-  stageLabel,
   STUDIO_NEW_PROJECT_REQUESTED_EVENT,
+  STUDIO_PROJECTS_UPDATED_EVENT,
+  updateStudioProjectDefaults,
   type StudioProject,
   type StudioSessionSummary,
   type StudioProjectDraft,
@@ -40,6 +49,16 @@ import {
 import { summarizeChatSession } from './studio-session-summaries';
 import { StudioShell } from './StudioShell';
 import StudioNewProjectDialog from './StudioNewProjectDialog';
+import {
+  assistantFromCandidate,
+  buildAssistantCandidates,
+  buildSpaceCandidates,
+  normalizeAssistants,
+  normalizeSpaces,
+  spaceFromCandidate,
+  studioContextPickerCopy,
+  type StudioContextPickerKind,
+} from './studioContextOptions';
 
 const COPY = {
   en: {
@@ -55,12 +74,11 @@ const COPY = {
     untitledSession: 'Untitled Session',
     space: 'Space',
     kits: 'AI Kits',
-    directory: 'Directory',
-    workArea: 'Work Area',
+    directory: 'WorkDir',
     cadence: 'Cadence',
     nextAction: 'Next action',
     overview: 'Overview',
-    overviewHint: 'Configuration, status, and the next durable move.',
+    overviewHint: 'Goal and context defaults for new Sessions.',
     configuration: 'Configuration',
     status: 'Status',
     goal: 'Goal',
@@ -81,18 +99,18 @@ const COPY = {
     goalLabel: 'Goal',
     spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
-    workAreaLabel: 'Work Area',
+    workAreaLabel: 'WorkDir',
     titlePlaceholder: 'Launch practice',
     goalPlaceholder: 'Turn product evidence into launch decisions',
     spacePlaceholder: 'Product Strategy',
     kitPlaceholder: 'Research Kit',
-    workAreaPlaceholder: 'Session drafts',
+    workAreaPlaceholder: 'Mind',
     cancel: 'Cancel',
     create: 'Create Project',
     required: 'Add a project name and goal.',
     setupTitle: 'Project setup',
     setupDescription: 'Pick defaults for new Sessions.',
-    workAreaDescription: 'Drafts and artifacts land here.',
+    workAreaDescription: 'The default directory for new Sessions.',
     spaceDescription: 'Long-term context for this Project.',
     kitDescription: 'Default AI capability for new Sessions.',
     customValue: 'Custom value',
@@ -114,12 +132,11 @@ const COPY = {
     untitledSession: '未命名 Session',
     space: 'Space',
     kits: 'AI Kits',
-    directory: '目录',
-    workArea: 'Work Area',
+    directory: 'WorkDir',
     cadence: '节奏',
     nextAction: '下一步',
     overview: '总览',
-    overviewHint: 'Project 的配置、状态和下一步。',
+    overviewHint: '目标，以及新 Session 默认继承的上下文。',
     configuration: '配置',
     status: '状态',
     goal: '目标',
@@ -140,18 +157,18 @@ const COPY = {
     goalLabel: '目标',
     spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
-    workAreaLabel: 'Work Area',
+    workAreaLabel: 'WorkDir',
     titlePlaceholder: '发布实践',
     goalPlaceholder: '把产品证据整理成发布决策',
     spacePlaceholder: '产品策略',
     kitPlaceholder: 'Research Kit',
-    workAreaPlaceholder: 'Session 草稿',
+    workAreaPlaceholder: 'Mind',
     cancel: '取消',
     create: '创建 Project',
     required: '需要填写 Project 名称和目标。',
     setupTitle: 'Project 设置',
     setupDescription: '为新 Session 选择默认设置。',
-    workAreaDescription: '草稿和产物放这里。',
+    workAreaDescription: '新 Session 默认使用的工作目录。',
     spaceDescription: '这个 Project 的长期上下文。',
     kitDescription: '新 Session 默认使用的 AI 能力。',
     customValue: '自定义',
@@ -164,56 +181,149 @@ const COPY = {
 
 type ProjectCopy = (typeof COPY)[keyof typeof COPY];
 
-function ProgressBar({ value }: { value: number }) {
-  const width = Math.max(0, Math.min(value, 100));
-  return (
-    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-      <div className="h-full rounded-full bg-[var(--amber)]" style={{ width: `${width}%` }} />
-    </div>
-  );
-}
-
-function OverviewCell({
-  icon,
-  label,
-  value,
+function ProjectContextOverview({
+  project,
+  projects,
+  locale,
+  copy,
+  goal,
+  onProjectsChanged,
 }: {
-  icon: ReactNode;
-  label: string;
-  value: string;
+  project: StudioProject;
+  projects: StudioProject[];
+  locale: string;
+  copy: ProjectCopy;
+  goal: string;
+  onProjectsChanged: () => void;
 }) {
-  return (
-    <div className="min-w-0 border-t border-border/60 px-4 py-3 first:border-t-0 md:border-l md:border-t-0 md:first:border-l-0">
-      <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
-        <span className="text-[var(--amber)]" aria-hidden="true">
-          {icon}
-        </span>
-        {label}
-      </div>
-      <div className="truncate text-sm font-medium text-foreground" title={value}>{value}</div>
-    </div>
+  const labels = useMemo(() => studioContextPickerCopy(locale), [locale]);
+  const [openPicker, setOpenPicker] = useState<StudioContextPickerKind | null>(null);
+  const [spaceQuery, setSpaceQuery] = useState('');
+  const [assistantQuery, setAssistantQuery] = useState('');
+  const workDir = getStudioProjectWorkDir(project);
+  const workDirLabel = getStudioProjectWorkDirLabel(project, locale);
+  const workDirTitle = workDir.path || workDir.label || workDirLabel;
+  const spaces = useMemo(() => getStudioProjectSpaceRefs(project, locale), [locale, project]);
+  const assistants = useMemo(() => getStudioProjectAssistantRefs(project), [project]);
+  const spaceCandidates = useMemo(
+    () => buildSpaceCandidates(projects, locale, copy.fromRecentProject),
+    [copy.fromRecentProject, locale, projects],
   );
-}
+  const assistantCandidates = useMemo(
+    () => buildAssistantCandidates(projects, locale, copy.fromRecentProject),
+    [copy.fromRecentProject, locale, projects],
+  );
 
-function StatusRow({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
+  const updateSpaces = (nextSpaces: typeof spaces) => {
+    updateStudioProjectDefaults(project.id, { spaces: normalizeSpaces(nextSpaces) });
+    onProjectsChanged();
+  };
+  const updateAssistants = (nextAssistants: typeof assistants) => {
+    updateStudioProjectDefaults(project.id, { assistants: normalizeAssistants(nextAssistants) });
+    onProjectsChanged();
+  };
+  const getLatestProject = () => findStudioProject(readStudioProjects(), project.id) ?? project;
+  const getLatestSpaces = () => getStudioProjectSpaceRefs(getLatestProject(), locale);
+  const getLatestAssistants = () => getStudioProjectAssistantRefs(getLatestProject());
+
   return (
-    <div className="flex min-w-0 gap-3 border-t border-border/60 px-4 py-3 first:border-t-0">
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
-        {icon}
+    <section className="overflow-visible rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-overview">
+      <div className="border-b border-border/60 px-4 py-4">
+        <div className="flex items-center gap-2">
+          <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
+          <h2 id="studio-project-overview" className="text-sm font-semibold text-foreground">{copy.overview}</h2>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{copy.overviewHint}</p>
       </div>
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-        <div className="mt-1 text-sm leading-relaxed text-foreground">{children}</div>
+
+      <div className="border-b border-border/60 px-4 py-4">
+        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <Target size={13} aria-hidden="true" />
+          <span>{copy.goal}</span>
+        </div>
+        <p className="max-w-[72ch] text-sm leading-relaxed text-foreground">{goal}</p>
       </div>
-    </div>
+
+      <div data-studio-project-overview-context className="space-y-3 px-4 py-4">
+        <div className="grid gap-1.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:items-start">
+          <div className="flex items-center gap-1.5 pt-1 text-[11px] font-medium text-muted-foreground">
+            <FolderOpen size={13} aria-hidden="true" />
+            <span>{copy.directory}</span>
+          </div>
+          <div className="min-w-0">
+            <span
+              className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/45 px-2 py-1 text-[11px] text-foreground"
+              title={workDirTitle}
+            >
+              <FolderOpen size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{workDirLabel}</span>
+            </span>
+          </div>
+        </div>
+
+        <ContextSelectionRow
+          kind="studio-project-spaces"
+          icon={<BookOpenText size={13} aria-hidden="true" />}
+          label={copy.space}
+          addTitle={labels.addSpace}
+          searchLabel={labels.searchSpaces}
+          noMatchesLabel={labels.noMatches}
+          query={spaceQuery}
+          candidates={spaceCandidates}
+          selectedIds={new Set(spaces.map((space) => space.path))}
+          open={openPicker === 'spaces'}
+          chips={spaces.map((space) => {
+            const label = contextChipLabel(space) || contextPathLabel(space.path);
+            return {
+              id: space.path,
+              label,
+              icon: space.icon || contextItemIcon(label),
+              title: label,
+              removeLabel: labels.remove(label),
+              onRemove: () => updateSpaces(getLatestSpaces().filter((item) => item.path !== space.path)),
+            };
+          })}
+          onQueryChange={setSpaceQuery}
+          onOpenChange={(open) => setOpenPicker(open ? 'spaces' : null)}
+          onSelect={(candidate) => {
+            updateSpaces([...getLatestSpaces(), spaceFromCandidate(candidate)]);
+            setSpaceQuery('');
+            setOpenPicker(null);
+          }}
+        />
+
+        <ContextSelectionRow
+          kind="studio-project-assistants"
+          icon={<Blocks size={13} aria-hidden="true" />}
+          label={copy.kits}
+          addTitle={labels.addAssistant}
+          searchLabel={labels.searchAssistants}
+          noMatchesLabel={labels.noMatches}
+          query={assistantQuery}
+          candidates={assistantCandidates}
+          selectedIds={new Set(assistants.map((assistant) => assistant.id))}
+          open={openPicker === 'assistants'}
+          chips={assistants.map((assistant) => {
+            const label = contextChipLabel(assistant) || assistant.id;
+            return {
+              id: assistant.id,
+              label,
+              icon: contextItemIcon(label),
+              title: label,
+              removeLabel: labels.remove(label),
+              onRemove: () => updateAssistants(getLatestAssistants().filter((item) => item.id !== assistant.id)),
+            };
+          })}
+          onQueryChange={setAssistantQuery}
+          onOpenChange={(open) => setOpenPicker(open ? 'assistants' : null)}
+          onSelect={(candidate) => {
+            updateAssistants([...getLatestAssistants(), assistantFromCandidate(candidate)]);
+            setAssistantQuery('');
+            setOpenPicker(null);
+          }}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -339,8 +449,14 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
   const activeSessionId = useActiveSessionId();
 
   useEffect(() => {
-    setProjects(readStudioProjects());
-  }, [projectId]);
+    const syncProjects = () => setProjects(readStudioProjects());
+    window.addEventListener(STUDIO_PROJECTS_UPDATED_EVENT, syncProjects);
+    window.addEventListener('storage', syncProjects);
+    return () => {
+      window.removeEventListener(STUDIO_PROJECTS_UPDATED_EVENT, syncProjects);
+      window.removeEventListener('storage', syncProjects);
+    };
+  }, []);
 
   useEffect(() => {
     void refreshSessions();
@@ -356,19 +472,17 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
     () => findStudioProject(projects, projectId) ?? null,
     [projectId, projects],
   );
+  const openedProjectId = project?.id;
+
+  useEffect(() => {
+    if (openedProjectId) markStudioProjectOpened(openedProjectId);
+  }, [openedProjectId]);
 
   const localized = useMemo(() => {
     if (!project) return null;
     return {
       title: localize(project.title, project.titleZh, locale),
       goal: localize(project.goal, project.goalZh, locale),
-      space: localize(project.space, project.spaceZh, locale),
-      workArea: localize(project.workArea, project.workAreaZh, locale),
-      cadence: localize(project.cadence, project.cadenceZh, locale),
-      nextAction: localize(project.nextAction, project.nextActionZh, locale),
-      kits: localizeList(project.kits, undefined, locale),
-      reviewItems: localizeList(project.reviewItems, project.reviewItemsZh, locale),
-      lessons: localizeList(project.lessons, project.lessonsZh, locale),
     };
   }, [locale, project]);
 
@@ -379,9 +493,22 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
       .map((session) => summarizeChatSession(session, activeSessionId, copy.untitledSession))
   ), [activeSessionId, copy.untitledSession, projectId, sessions]);
 
-  const displaySessions = useMemo(() => (
-    realProjectSessions.length > 0 ? realProjectSessions : (project?.sessions ?? [])
-  ), [project, realProjectSessions]);
+  const displaySessions = useMemo(() => {
+    if (realProjectSessions.length > 0) return realProjectSessions;
+    if (!project) return [];
+    return project.sessions.map((session) => {
+      if (session.href) return session;
+      const title = localize(session.title, session.titleZh, locale) || copy.untitledSession;
+      const params = new URLSearchParams({
+        projectId: project.id,
+        title,
+      });
+      return {
+        ...session,
+        href: `/chat/new?${params.toString()}`,
+      };
+    });
+  }, [copy.untitledSession, locale, project, realProjectSessions]);
 
   const agentOptions = useMemo(() => {
     const options = new Map<string, { id: string; label: string; count: number }>();
@@ -396,11 +523,14 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
     }
     return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [displaySessions]);
+  const effectiveAgentFilter = agentFilter === 'all' || agentOptions.some((option) => option.id === agentFilter)
+    ? agentFilter
+    : 'all';
 
   const filteredSessions = useMemo(() => {
     const query = sessionSearch.trim().toLowerCase();
     return displaySessions.filter((session) => {
-      if (agentFilter !== 'all' && sessionAgentId(session) !== agentFilter) return false;
+      if (effectiveAgentFilter !== 'all' && sessionAgentId(session) !== effectiveAgentFilter) return false;
       if (!query) return true;
       const haystack = [
         localize(session.title, session.titleZh, locale),
@@ -411,13 +541,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
       ].join(' ').toLowerCase();
       return haystack.includes(query);
     });
-  }, [agentFilter, displaySessions, locale, sessionSearch]);
-
-  useEffect(() => {
-    if (agentFilter === 'all') return;
-    if (agentOptions.some((option) => option.id === agentFilter)) return;
-    setAgentFilter('all');
-  }, [agentFilter, agentOptions]);
+  }, [displaySessions, effectiveAgentFilter, locale, sessionSearch]);
 
   const handleCreate = (draft: StudioProjectDraft) => {
     const nextProject = createStudioProject(draft);
@@ -455,12 +579,6 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
           </Link>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-card/70 px-2 text-[11px] font-medium text-muted-foreground">
-                  {stageLabel(project.stage, locale)}
-                </span>
-                <span className="text-[11px] font-medium text-muted-foreground">{project.updated}</span>
-              </div>
               <h1 className="text-2xl font-semibold text-foreground">
                 {localized.title}
               </h1>
@@ -479,49 +597,14 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-overview">
-          <div className="border-b border-border/60 px-4 py-4">
-            <div className="flex items-center gap-2">
-              <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
-              <h2 id="studio-project-overview" className="text-sm font-semibold text-foreground">{copy.overview}</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{copy.overviewHint}</p>
-          </div>
-
-          <div className="grid md:grid-cols-4">
-            <OverviewCell icon={<FolderOpen size={13} />} label={copy.directory} value={localized.workArea} />
-            <OverviewCell icon={<BookOpenText size={13} />} label={copy.space} value={localized.space} />
-            <OverviewCell icon={<Blocks size={13} />} label={copy.kits} value={localized.kits.join(' / ') || 'Basic assistant'} />
-            <OverviewCell icon={<Clock3 size={13} />} label={copy.cadence} value={localized.cadence} />
-          </div>
-
-          <div className="grid border-t border-border/60 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="min-w-0">
-              <StatusRow icon={<Target size={14} aria-hidden="true" />} label={copy.goal}>
-                {localized.goal}
-              </StatusRow>
-              <StatusRow icon={<ArrowRight size={14} aria-hidden="true" />} label={copy.nextAction}>
-                {localized.nextAction}
-              </StatusRow>
-            </div>
-            <div className="min-w-0 border-t border-border/60 lg:border-l lg:border-t-0">
-              <StatusRow icon={<CheckCircle2 size={14} aria-hidden="true" />} label={copy.progress}>
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <ProgressBar value={project.progress} />
-                  </div>
-                  <span className="shrink-0 text-sm font-semibold [font-variant-numeric:tabular-nums]">{project.progress}%</span>
-                </div>
-              </StatusRow>
-              <StatusRow icon={<MessageSquarePlus size={14} aria-hidden="true" />} label={copy.sessionMetric}>
-                {displaySessions.length}
-              </StatusRow>
-              <StatusRow icon={<ListChecks size={14} aria-hidden="true" />} label={copy.reviewMetric}>
-                {project.reviewItems.length}
-              </StatusRow>
-            </div>
-          </div>
-        </section>
+        <ProjectContextOverview
+          project={project}
+          projects={projects}
+          locale={locale}
+          copy={copy}
+          goal={localized.goal}
+          onProjectsChanged={() => setProjects(readStudioProjects())}
+        />
 
         <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-sessions">
           <div className="border-b border-border/60 px-4 py-4">
@@ -545,7 +628,7 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
                   <span className="sr-only">{copy.filterByAgent}</span>
                   <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <select
-                    value={agentFilter}
+                    value={effectiveAgentFilter}
                     onChange={(event) => setAgentFilter(event.target.value)}
                     className="h-9 w-full appearance-none rounded-lg border border-border bg-background pl-8 pr-8 text-sm text-foreground outline-none transition-colors focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
                   >

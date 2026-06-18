@@ -13,7 +13,7 @@ vi.mock('@/hooks/useSmoothRouterPush', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ children, href, ...props }: any) => (
+  default: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
     <a href={href} {...props}>
       {children}
     </a>
@@ -95,7 +95,7 @@ describe('StudioContent', () => {
     expect(firstContext).not.toBeNull();
     expect(firstContext?.textContent).toContain('Product Strategy');
     expect(firstContext?.textContent).toContain('Research Kit');
-    expect(firstContext?.textContent).toContain('Session drafts');
+    expect(firstContext?.textContent).toContain('Mind');
     expect(firstContext?.textContent).not.toContain('Work dir');
     expect(firstContext?.textContent).not.toContain('Mind Space');
     expect(firstContext?.textContent).not.toContain('AI Kit');
@@ -157,7 +157,7 @@ describe('StudioContent', () => {
     expect(host.textContent).not.toContain('2 Sessions');
   });
 
-  it('shows Sessions under the selected Project in the unified Studio panel', async () => {
+  it('keeps Studio panel Project rows flat without expandable Sessions', async () => {
     mockPathname = '/studio/launch-practice';
     host = document.createElement('div');
     document.body.appendChild(host);
@@ -168,8 +168,35 @@ describe('StudioContent', () => {
     });
 
     const sidebarSessions = host.querySelector('[aria-label="Launch Practice Sessions"]');
-    expect(sidebarSessions).not.toBeNull();
-    expect(sidebarSessions?.textContent).toContain('Launch brief review');
+    expect(sidebarSessions).toBeNull();
+    expect(host.textContent).toContain('Launch Practice');
+    expect(host.textContent).not.toContain('Launch brief review');
+    expect(host.querySelector('button[aria-expanded]')).toBeNull();
+  });
+
+  it('keeps Continue pinned to the last opened Project when hovering other Projects', async () => {
+    localStorage.setItem('mindos:studio-last-opened-project-id', 'research-practice');
+    await renderStudio();
+
+    const readContinueText = () => {
+      const panel = host.querySelector('[data-studio-continue-panel]');
+      expect(panel).not.toBeNull();
+      return panel!.textContent ?? '';
+    };
+
+    expect(readContinueText()).toContain('Research Practice');
+    expect(readContinueText()).toContain('Promote reusable reading rubric to Space.');
+
+    const launchLink = host.querySelector<HTMLAnchorElement>('a[href="/studio/launch-practice"]');
+    expect(launchLink).not.toBeNull();
+    await act(async () => {
+      launchLink!.dispatchEvent(new Event('pointerenter', { bubbles: true }));
+      launchLink!.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+    });
+
+    expect(readContinueText()).toContain('Research Practice');
+    expect(readContinueText()).toContain('Promote reusable reading rubric to Space.');
+    expect(readContinueText()).not.toContain('Draft launch brief from accepted evidence.');
   });
 
   it('creates a Project and navigates to its detail page', async () => {
@@ -197,7 +224,7 @@ describe('StudioContent', () => {
     expect(push).toHaveBeenCalledWith('/studio/growth-room');
   });
 
-  it('orders and selects Project setup choices before creating a Project', async () => {
+  it('uses WorkDir input and searchable chip pickers for Project setup', async () => {
     await renderStudio();
 
     const newProjectButton = Array.from(host.querySelectorAll('button')).find((button) => (
@@ -213,31 +240,50 @@ describe('StudioContent', () => {
     expect(form).not.toBeNull();
 
     const text = form!.textContent ?? '';
-    expect(text.indexOf('Work Area')).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf('Work Area')).toBeLessThan(text.indexOf('Mind Space'));
+    expect(text.indexOf('WorkDir')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('WorkDir')).toBeLessThan(text.indexOf('Mind Space'));
     expect(text.indexOf('Mind Space')).toBeLessThan(text.indexOf('AI Kit'));
 
-    const launchDrafts = Array.from(form!.querySelectorAll('button')).find((button) => (
-      button.textContent?.includes('Launch drafts')
-    ));
+    const workDir = form!.querySelector('input[aria-label="WorkDir"]') as HTMLInputElement | null;
+    expect(workDir).not.toBeNull();
+
+    await act(async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(workDir!), 'value');
+      descriptor?.set?.call(workDir!, '/Users/moonshot/projects/product/mindos-dev');
+      workDir!.dispatchEvent(new Event('input', { bubbles: true }));
+      workDir!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const addSpace = form!.querySelector('button[aria-label="Add Space"]') as HTMLButtonElement | null;
+    expect(addSpace).not.toBeNull();
+    await act(async () => {
+      addSpace!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await setInputValue('input[aria-label="Search Spaces"]', 'Product');
     const productStrategy = Array.from(form!.querySelectorAll('button')).find((button) => (
       button.textContent?.includes('Product Strategy')
     ));
+    expect(productStrategy).not.toBeNull();
+    await act(async () => {
+      productStrategy!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const addKit = form!.querySelector('button[aria-label="Add AI Kit"]') as HTMLButtonElement | null;
+    expect(addKit).not.toBeNull();
+    await act(async () => {
+      addKit!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await setInputValue('input[aria-label="Search AI Kit"]', 'Review');
     const reviewKit = Array.from(form!.querySelectorAll('button')).find((button) => (
       button.textContent?.includes('Review Kit')
     ));
-    expect(launchDrafts).not.toBeNull();
-    expect(productStrategy).not.toBeNull();
     expect(reviewKit).not.toBeNull();
-
     await act(async () => {
-      launchDrafts!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      productStrategy!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       reviewKit!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect((form!.querySelector('input[placeholder="Session drafts"]') as HTMLInputElement | null)?.value).toBe('Launch drafts');
-    expect((form!.querySelector('input[placeholder="Product Strategy"]') as HTMLInputElement | null)?.value).toBe('Product Strategy');
-    expect((form!.querySelector('input[placeholder="Research Kit"]') as HTMLInputElement | null)?.value).toBe('Review Kit');
+    expect(workDir!.value).toBe('/Users/moonshot/projects/product/mindos-dev');
+    expect(form!.textContent).toContain('Product Strategy');
+    expect(form!.textContent).toContain('Review Kit');
   });
 });

@@ -43,6 +43,15 @@ async function render(element: React.ReactElement) {
   };
 }
 
+async function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  await act(async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
+    descriptor?.set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 describe('Studio Project UI', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -72,22 +81,69 @@ describe('Studio Project UI', () => {
     const StudioProjectContent = (await import('@/components/studio/StudioProjectContent')).default;
     const view = await render(<StudioProjectContent projectId="launch-practice" />);
 
+    expect(localStorage.getItem('mindos:studio-last-opened-project-id')).toBe('launch-practice');
     expect(view.host.textContent).toContain('Launch Practice');
     expect(view.host.textContent).toContain('Overview');
-    expect(view.host.textContent).toContain('Directory');
+    expect(view.host.textContent).toContain('WorkDir');
     expect(view.host.textContent).toContain('Goal');
-    expect(view.host.textContent).toContain('Progress');
+    expect(view.host.textContent).not.toContain('Progress');
+    expect(view.host.textContent).not.toContain('Cadence');
+    expect(view.host.querySelector('[data-studio-project-overview-context]')).not.toBeNull();
     expect(view.host.textContent).toContain('Session history');
     expect(view.host.textContent).toContain('Launch brief review');
     expect(view.host.textContent).toContain('Product Strategy');
     expect(view.host.textContent).toContain('Research Kit');
-    expect(view.host.textContent).toContain('Session drafts');
+    expect(view.host.textContent).toContain('Mind');
     expect(view.host.querySelector('input[placeholder="Search title, artifact, or summary"]')).not.toBeNull();
     expect(view.host.querySelector('select')).not.toBeNull();
     expect(view.host.querySelector('[data-stable-row-trailing]')).not.toBeNull();
+    expect(view.host.querySelector<HTMLAnchorElement>('a[href*="title=Launch+brief+review"]')).not.toBeNull();
 
     const newSession = view.host.querySelector<HTMLAnchorElement>('a[href="/chat/new?projectId=launch-practice"]');
     expect(newSession).not.toBeNull();
+
+    await view.cleanup();
+  });
+
+  it('edits Project Space defaults directly from the Project overview', async () => {
+    const StudioProjectContent = (await import('@/components/studio/StudioProjectContent')).default;
+    const { findStudioProject, getStudioProjectSpaceRefs, readStudioProjects } = await import('@/lib/studio-projects');
+    const view = await render(<StudioProjectContent projectId="launch-practice" />);
+
+    const removeProductStrategy = view.host.querySelector<HTMLButtonElement>('button[aria-label="Remove Product Strategy"]');
+    expect(removeProductStrategy).not.toBeNull();
+
+    await act(async () => {
+      removeProductStrategy!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const project = findStudioProject(readStudioProjects(), 'launch-practice');
+    expect(project).toBeTruthy();
+    expect(getStudioProjectSpaceRefs(project!, 'en')).toEqual([]);
+    expect(view.host.querySelector('[data-studio-project-overview-context]')?.textContent).not.toContain('Product Strategy');
+
+    const addSpace = view.host.querySelector<HTMLButtonElement>('button[aria-label="Add Space"]');
+    expect(addSpace).not.toBeNull();
+
+    await act(async () => {
+      addSpace!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const search = view.host.querySelector<HTMLInputElement>('input[aria-label="Search Spaces"]');
+    expect(search).not.toBeNull();
+    await setInputValue(search!, '法');
+
+    const faOption = Array.from(view.host.querySelectorAll<HTMLButtonElement>('button')).find((button) => (
+      button.textContent?.includes('法')
+    ));
+    expect(faOption).not.toBeNull();
+
+    await act(async () => {
+      faOption!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const updatedProject = findStudioProject(readStudioProjects(), 'launch-practice');
+    expect(getStudioProjectSpaceRefs(updatedProject!, 'en').map((space) => space.path)).toEqual(['MIND_FA']);
 
     await view.cleanup();
   });

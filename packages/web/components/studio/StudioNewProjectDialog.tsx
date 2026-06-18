@@ -1,14 +1,35 @@
 'use client';
 
-import { Check, FolderOpen, Plus, Sparkles, Target, X, Zap } from 'lucide-react';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Bot, FolderOpen, Layers3, Plus, Sparkles, X } from 'lucide-react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
+import PathAutocompleteField from '@/components/shared/PathAutocompleteField';
 import {
+  contextChipLabel,
+  contextItemIcon,
+  contextPathLabel,
+  ContextSelectionRow,
+  type ContextSelectableItem,
+} from '@/components/shared/ContextTokenPicker';
+import { Button } from '@/components/ui/button';
+import type { ContextAssistantRef, ContextSpaceRef, SessionWorkDir } from '@/lib/types';
+import {
+  getStudioProjectWorkDir,
   localize,
   type StudioProject,
   type StudioProjectDraft,
 } from '@/lib/studio-projects';
+import {
+  assistantFromCandidate,
+  buildAssistantCandidates,
+  buildSpaceCandidates,
+  DEFAULT_ASSISTANTS,
+  DEFAULT_SPACES,
+  normalizeAssistants,
+  normalizeSpaces,
+  spaceFromCandidate,
+  studioContextPickerCopy,
+  type StudioContextPickerKind,
+} from './studioContextOptions';
 
 export interface StudioNewProjectCopy {
   createTitle: string;
@@ -38,12 +59,6 @@ export interface StudioNewProjectCopy {
   fromRecentProject: string;
 }
 
-interface ChoiceOption {
-  value: string;
-  label: string;
-  detail: string;
-}
-
 interface StudioNewProjectDialogProps {
   open: boolean;
   onClose: () => void;
@@ -53,63 +68,63 @@ interface StudioNewProjectDialogProps {
   projects: StudioProject[];
 }
 
-const WORK_AREA_DEFAULTS = ['Session drafts', 'Research notes', 'Launch drafts', 'Review queue', 'Project artifacts'];
-const SPACE_DEFAULTS = ['Mind', 'Product Strategy', 'Research Memory', 'Inbox + Personal Space', 'Personal Space'];
-const KIT_DEFAULTS = ['Basic assistant', 'Research Kit', 'Review Kit', 'Launch Writing Kit', 'Capture Organize Kit'];
+function shortPath(value: string | undefined, fallback: string): string {
+  if (!value?.trim()) return fallback;
+  const parts = value.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.at(-1) ?? value;
+}
 
-function uniqueOptions(options: ChoiceOption[]): ChoiceOption[] {
+function workDirFromInput(value: string, mindLabel: string): SessionWorkDir {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {
+      source: 'mind-root',
+      label: mindLabel,
+    };
+  }
+  return {
+    source: 'manual',
+    path: trimmed,
+    label: shortPath(trimmed, trimmed),
+  };
+}
+
+function workDirDisplay(value: string, mindLabel: string): string {
+  return value.trim() ? shortPath(value, value) : mindLabel;
+}
+
+function buildRecentWorkDirs(projects: StudioProject[], locale: string, sourceLabel: string): Array<{ value: string; label: string; detail: string }> {
   const seen = new Set<string>();
-  const result: ChoiceOption[] = [];
+  const result: Array<{ value: string; label: string; detail: string }> = [];
 
-  for (const option of options) {
-    const key = option.value.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push(option);
+  for (const project of projects) {
+    const workDir = getStudioProjectWorkDir(project);
+    const value = workDir.path?.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push({
+      value,
+      label: workDir.label || shortPath(value, value),
+      detail: `${sourceLabel}: ${localize(project.title, project.titleZh, locale)}`,
+    });
+    if (result.length >= 5) break;
   }
 
   return result;
 }
 
-function buildOptions({
-  defaults,
-  recent,
-  fallbackDetail,
-}: {
-  defaults: string[];
-  recent: ChoiceOption[];
-  fallbackDetail: string;
-}): ChoiceOption[] {
-  return uniqueOptions([
-    ...recent,
-    ...defaults.map((value) => ({
-      value,
-      label: value,
-      detail: fallbackDetail,
-    })),
-  ]).slice(0, 6);
-}
-
-function ChoiceSection({
+function SetupSection({
   step,
   title,
   description,
   icon,
-  value,
-  placeholder,
-  options,
-  customLabel,
-  onChange,
+  children,
 }: {
   step: number;
   title: string;
   description: string;
   icon: ReactNode;
-  value: string;
-  placeholder: string;
-  options: ChoiceOption[];
-  customLabel: string;
-  onChange: (value: string) => void;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-border/60 bg-background/45 p-3">
@@ -127,124 +142,79 @@ function ChoiceSection({
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {options.map((option) => {
-          const selected = value.trim() === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              title={option.detail}
-              aria-pressed={selected}
-              onClick={() => onChange(option.value)}
-              className={cn(
-                'group inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                selected
-                  ? 'border-[var(--amber)] bg-[var(--amber-subtle)]'
-                  : 'border-border/60 bg-card/45 hover:border-[var(--amber)]/45 hover:bg-card/80',
-              )}
-            >
-              <span className="truncate text-foreground">{option.label}</span>
-              {selected ? <Check size={13} className="shrink-0 text-[var(--amber)]" aria-hidden="true" /> : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <label className="mt-3 grid gap-1.5">
-        <span className="text-[11px] font-medium text-muted-foreground">{customLabel}</span>
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          className="h-8 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
-        />
-      </label>
+      <div className="mt-3">{children}</div>
     </section>
   );
 }
 
-export default function StudioNewProjectDialog({
-  open,
+export default function StudioNewProjectDialog({ open, ...props }: StudioNewProjectDialogProps) {
+  if (!open) return null;
+  return <StudioNewProjectDialogForm {...props} />;
+}
+
+function StudioNewProjectDialogForm({
   onClose,
   onCreate,
   copy,
   locale,
   projects,
-}: StudioNewProjectDialogProps) {
-  const [draft, setDraft] = useState<StudioProjectDraft>({
-    title: '',
-    goal: '',
-    space: 'Mind',
-    kit: 'Research Kit',
-    workArea: 'Session drafts',
-  });
+}: Omit<StudioNewProjectDialogProps, 'open'>) {
+  const labels = useMemo(() => studioContextPickerCopy(locale), [locale]);
+  const [title, setTitle] = useState('');
+  const [goal, setGoal] = useState('');
+  const [workDirInput, setWorkDirInput] = useState('');
+  const [spaces, setSpaces] = useState<ContextSpaceRef[]>(DEFAULT_SPACES);
+  const [assistants, setAssistants] = useState<ContextAssistantRef[]>(DEFAULT_ASSISTANTS);
+  const [openPicker, setOpenPicker] = useState<StudioContextPickerKind | null>(null);
+  const [spaceQuery, setSpaceQuery] = useState('');
+  const [assistantQuery, setAssistantQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    setDraft({
-      title: '',
-      goal: '',
-      space: 'Mind',
-      kit: 'Research Kit',
-      workArea: 'Session drafts',
-    });
-    setError(null);
-  }, [open]);
+  const spaceCandidates = useMemo(
+    () => buildSpaceCandidates(projects, locale, copy.fromRecentProject),
+    [copy.fromRecentProject, locale, projects],
+  );
+  const assistantCandidates = useMemo(
+    () => buildAssistantCandidates(projects, locale, copy.fromRecentProject),
+    [copy.fromRecentProject, locale, projects],
+  );
+  const recentWorkDirs = useMemo(
+    () => buildRecentWorkDirs(projects, locale, copy.fromRecentProject),
+    [copy.fromRecentProject, locale, projects],
+  );
 
-  const optionGroups = useMemo(() => {
-    const recentWorkAreas = projects.map((project) => ({
-      value: project.workArea,
-      label: localize(project.workArea, project.workAreaZh, locale),
-      detail: `${copy.fromRecentProject}: ${localize(project.title, project.titleZh, locale)}`,
-    }));
-    const recentSpaces = projects.map((project) => ({
-      value: project.space,
-      label: localize(project.space, project.spaceZh, locale),
-      detail: `${copy.fromRecentProject}: ${localize(project.title, project.titleZh, locale)}`,
-    }));
-    const recentKits = projects.flatMap((project) => (
-      project.kits.map((kit) => ({
-        value: kit,
-        label: kit,
-        detail: `${copy.fromRecentProject}: ${localize(project.title, project.titleZh, locale)}`,
-      }))
-    ));
+  const selectSpace = (candidate: ContextSelectableItem) => {
+    setSpaces((current) => normalizeSpaces([...current, spaceFromCandidate(candidate)]));
+    setSpaceQuery('');
+    setOpenPicker(null);
+  };
 
-    return {
-      workAreas: buildOptions({
-        defaults: WORK_AREA_DEFAULTS,
-        recent: recentWorkAreas,
-        fallbackDetail: copy.workAreaDescription,
-      }),
-      spaces: buildOptions({
-        defaults: SPACE_DEFAULTS,
-        recent: recentSpaces,
-        fallbackDetail: copy.spaceDescription,
-      }),
-      kits: buildOptions({
-        defaults: KIT_DEFAULTS,
-        recent: recentKits,
-        fallbackDetail: copy.kitDescription,
-      }),
-    };
-  }, [copy, locale, projects]);
-
-  if (!open) return null;
-
-  const updateDraft = (field: keyof StudioProjectDraft, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+  const selectAssistant = (candidate: ContextSelectableItem) => {
+    setAssistants((current) => normalizeAssistants([...current, assistantFromCandidate(candidate)]));
+    setAssistantQuery('');
+    setOpenPicker(null);
   };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft.title.trim() || !draft.goal.trim()) {
+    if (!title.trim() || !goal.trim()) {
       setError(copy.required);
       return;
     }
-    onCreate(draft);
+
+    const normalizedSpaces = normalizeSpaces(spaces);
+    const normalizedAssistants = normalizeAssistants(assistants);
+    const workDir = workDirFromInput(workDirInput, labels.mind);
+    onCreate({
+      title,
+      goal,
+      workDir,
+      spaces: normalizedSpaces,
+      assistants: normalizedAssistants,
+      space: normalizedSpaces[0]?.label || normalizedSpaces[0]?.path || 'Mind',
+      kit: normalizedAssistants[0]?.name || normalizedAssistants[0]?.id || '',
+      workArea: workDirDisplay(workDirInput, labels.mind),
+    });
   };
 
   return (
@@ -290,8 +260,8 @@ export default function StudioNewProjectDialog({
                   <span className="text-xs font-medium text-muted-foreground">{copy.titleLabel}</span>
                   <input
                     autoFocus
-                    value={draft.title}
-                    onChange={(event) => updateDraft('title', event.target.value)}
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
                     placeholder={copy.titlePlaceholder}
                     className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
                   />
@@ -299,8 +269,8 @@ export default function StudioNewProjectDialog({
                 <label className="grid gap-1.5">
                   <span className="text-xs font-medium text-muted-foreground">{copy.goalLabel}</span>
                   <textarea
-                    value={draft.goal}
-                    onChange={(event) => updateDraft('goal', event.target.value)}
+                    value={goal}
+                    onChange={(event) => setGoal(event.target.value)}
                     placeholder={copy.goalPlaceholder}
                     rows={4}
                     className="min-h-24 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/55 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
@@ -311,18 +281,9 @@ export default function StudioNewProjectDialog({
               <div className="mt-4 rounded-lg border border-border/60 bg-card/45 p-3">
                 <div className="text-[11px] font-semibold text-muted-foreground">{copy.selectedSummary}</div>
                 <dl className="mt-2 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-3">
-                    <dt className="text-muted-foreground">{copy.workAreaLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.workArea || copy.workAreaPlaceholder}</dd>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
-                    <dt className="text-muted-foreground">{copy.spaceLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.space || copy.spacePlaceholder}</dd>
-                  </div>
-                  <div className="flex items-start justify-between gap-3 border-t border-border/50 pt-2">
-                    <dt className="text-muted-foreground">{copy.kitLabel}</dt>
-                    <dd className="max-w-[150px] text-right font-medium text-foreground">{draft.kit || copy.kitPlaceholder}</dd>
-                  </div>
+                  <SummaryLine label={copy.workAreaLabel} value={workDirDisplay(workDirInput, labels.mind)} />
+                  <SummaryLine label={copy.spaceLabel} value={`${spaces.length}`} bordered />
+                  <SummaryLine label={copy.kitLabel} value={`${assistants.length}`} bordered />
                 </dl>
               </div>
 
@@ -332,39 +293,111 @@ export default function StudioNewProjectDialog({
 
           <div className="min-w-0 space-y-3">
             <p className="text-xs leading-relaxed text-muted-foreground">{copy.setupDescription}</p>
-            <ChoiceSection
+
+            <SetupSection
               step={1}
               title={copy.workAreaLabel}
               description={copy.workAreaDescription}
               icon={<FolderOpen size={15} aria-hidden="true" />}
-              value={draft.workArea}
-              placeholder={copy.workAreaPlaceholder}
-              options={optionGroups.workAreas}
-              customLabel={copy.customValue}
-              onChange={(value) => updateDraft('workArea', value)}
-            />
-            <ChoiceSection
+            >
+              <PathAutocompleteField
+                value={workDirInput}
+                onChange={setWorkDirInput}
+                placeholder={copy.workAreaPlaceholder}
+                ariaLabel={copy.workAreaLabel}
+                browseLabel={labels.chooseWorkDir}
+                browseUnavailableLabel={labels.chooseWorkDirUnavailable}
+                wrapperClassName="min-w-0"
+                inputClassName="h-9 border-border/70 bg-background/80 pr-10 text-xs"
+                browseButtonClassName="right-1 h-7 w-7"
+                suggestionsClassName="text-xs"
+                suggestionClassName="py-1.5 text-xs"
+              />
+              {recentWorkDirs.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {recentWorkDirs.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      title={item.detail}
+                      onClick={() => setWorkDirInput(item.value)}
+                      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-card/45 px-2 text-xs text-muted-foreground transition-colors hover:border-[var(--amber)]/45 hover:bg-card/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <FolderOpen size={12} className="shrink-0 text-[var(--amber)]" aria-hidden="true" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </SetupSection>
+
+            <SetupSection
               step={2}
               title={copy.spaceLabel}
               description={copy.spaceDescription}
-              icon={<Target size={15} aria-hidden="true" />}
-              value={draft.space}
-              placeholder={copy.spacePlaceholder}
-              options={optionGroups.spaces}
-              customLabel={copy.customValue}
-              onChange={(value) => updateDraft('space', value)}
-            />
-            <ChoiceSection
+              icon={<Layers3 size={15} aria-hidden="true" />}
+            >
+              <ContextSelectionRow
+                kind="studio-spaces"
+                icon={<Layers3 size={13} aria-hidden="true" />}
+                label={copy.spaceLabel}
+                addTitle={labels.addSpace}
+                searchLabel={labels.searchSpaces}
+                noMatchesLabel={labels.noMatches}
+                query={spaceQuery}
+                onQueryChange={setSpaceQuery}
+                open={openPicker === 'spaces'}
+                onOpenChange={(nextOpen) => setOpenPicker(nextOpen ? 'spaces' : null)}
+                candidates={spaceCandidates}
+                selectedIds={new Set(spaces.map((space) => space.path))}
+                onSelect={selectSpace}
+                chips={spaces.map((space) => {
+                  const label = contextChipLabel(space) || contextPathLabel(space.path);
+                  return {
+                    id: space.path,
+                    label,
+                    icon: space.icon || contextItemIcon(label, 'S'),
+                    title: space.path,
+                    removeLabel: labels.remove(label),
+                    onRemove: () => setSpaces((current) => current.filter((item) => item.path !== space.path)),
+                  };
+                })}
+              />
+            </SetupSection>
+
+            <SetupSection
               step={3}
               title={copy.kitLabel}
               description={copy.kitDescription}
-              icon={<Zap size={15} aria-hidden="true" />}
-              value={draft.kit}
-              placeholder={copy.kitPlaceholder}
-              options={optionGroups.kits}
-              customLabel={copy.customValue}
-              onChange={(value) => updateDraft('kit', value)}
-            />
+              icon={<Bot size={15} aria-hidden="true" />}
+            >
+              <ContextSelectionRow
+                kind="studio-assistants"
+                icon={<Bot size={13} aria-hidden="true" />}
+                label={copy.kitLabel}
+                addTitle={labels.addAssistant}
+                searchLabel={labels.searchAssistants}
+                noMatchesLabel={labels.noMatches}
+                query={assistantQuery}
+                onQueryChange={setAssistantQuery}
+                open={openPicker === 'assistants'}
+                onOpenChange={(nextOpen) => setOpenPicker(nextOpen ? 'assistants' : null)}
+                candidates={assistantCandidates}
+                selectedIds={new Set(assistants.map((assistant) => assistant.id))}
+                onSelect={selectAssistant}
+                chips={assistants.map((assistant) => {
+                  const label = contextChipLabel(assistant) || assistant.id;
+                  return {
+                    id: assistant.id,
+                    label,
+                    icon: contextItemIcon(label, 'A'),
+                    title: assistant.id,
+                    removeLabel: labels.remove(label),
+                    onRemove: () => setAssistants((current) => current.filter((item) => item.id !== assistant.id)),
+                  };
+                })}
+              />
+            </SetupSection>
           </div>
         </div>
 
@@ -389,6 +422,23 @@ export default function StudioNewProjectDialog({
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function SummaryLine({
+  label,
+  value,
+  bordered = false,
+}: {
+  label: string;
+  value: string;
+  bordered?: boolean;
+}) {
+  return (
+    <div className={`flex items-start justify-between gap-3 ${bordered ? 'border-t border-border/50 pt-2' : ''}`}>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="max-w-[150px] truncate text-right font-medium text-foreground" title={value}>{value}</dd>
     </div>
   );
 }

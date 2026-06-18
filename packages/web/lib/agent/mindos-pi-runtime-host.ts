@@ -1,12 +1,8 @@
 import path from 'path';
 import os from 'os';
-import type {
-  MindosAskMode,
-  MindosExecutableTool,
-} from '@geminilight/mindos/session';
+import type { MindosAskMode } from '@geminilight/mindos/session';
 import type { MindosPiCodingAgentRuntimeHostServices } from '@geminilight/mindos/session/pi-coding-agent';
 import { getModelConfig, hasImages } from '@/lib/agent/model';
-import { getToolsForMindosAgentPolicy } from '@/lib/agent/tools';
 import { estimateStringTokens, getOllamaContextWindow } from '@/lib/agent/context';
 import { isProviderId, toPiProvider, type ProviderId } from '@/lib/agent/providers';
 import { findProvider, isProviderEntryId } from '@/lib/custom-endpoints';
@@ -32,15 +28,6 @@ type WebServerSettings = {
     providers?: unknown[];
   };
 };
-
-export function getMindosWebRequestTools(mode: MindosAskMode): MindosExecutableTool[] {
-  return getMindosWebRequestToolsForPolicy(createMindosAgentPermissionPolicy(mode));
-}
-
-export function getMindosWebRequestToolsForPolicy(policy: MindosAgentPermissionPolicy): MindosExecutableTool[] {
-  const tools = getToolsForMindosAgentPolicy(policy);
-  return tools as unknown as MindosExecutableTool[];
-}
 
 export function getMindosWebPiRuntimePaths(input: {
   projectRoot: string;

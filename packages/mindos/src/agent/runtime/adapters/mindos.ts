@@ -3,7 +3,6 @@ import {
 } from '../../mindos-pi/runtime.js';
 import type {
   MindosAskMode,
-  MindosExecutableTool,
   MindosPiAgentRuntime,
   MindosPiAgentRuntimeOptions,
   MindosPiAgentRuntimeServices,
@@ -28,10 +27,9 @@ export type MindosAgentRuntimeHostServices = Pick<
 >;
 
 export type MindosAgentRuntimeAdapterOptions =
-  Omit<MindosPiAgentRuntimeOptions, 'mode' | 'messages' | 'requestTools' | 'services' | 'bashTool'> & {
+  Omit<MindosPiAgentRuntimeOptions, 'mode' | 'messages' | 'services' | 'bashTool'> & {
     mode: MindosAskMode;
     messages: MindosUiAskMessage[];
-    requestTools: MindosExecutableTool[];
     hostServices: MindosAgentRuntimeHostServices;
   };
 

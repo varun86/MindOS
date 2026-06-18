@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  collectMindosRuntimeToolsForFallback,
+  collectMindosPiRegisteredToolSummaries,
+  collectMindosPiRuntimeToolsForFallback,
   createMindosHeadlessExtensionContext,
 } from './extension-tools.js';
 import type { MindosPiResourceLoaderAdapter } from '../resource-types.js';
-import type { MindosExecutableTool } from '../../tool/index.js';
 
 describe('MindOS pi extension tools', () => {
   it('adapts pi extension tool wrappers for the non-streaming fallback', async () => {
-    const requestTool: MindosExecutableTool = {
-      name: 'read_file',
-      execute: async () => ({ content: [{ type: 'text', text: 'request result' }] }),
-    };
     const captured: {
       params?: unknown;
       ctx?: Record<string, unknown>;
@@ -67,14 +63,18 @@ describe('MindOS pi extension tools', () => {
       resourceLoader,
     });
 
-    const tools = collectMindosRuntimeToolsForFallback({
-      requestTools: [requestTool],
+    const tools = collectMindosPiRuntimeToolsForFallback({
       resourceLoader,
       extensionContext,
     });
 
     expect(tools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
-    expect(tools.find((tool) => tool.name === 'read_file')).toBe(requestTool);
+    await expect(tools.find((tool) => tool.name === 'read_file')?.execute(
+      'call-read',
+      {},
+      undefined,
+      undefined,
+    )).resolves.toEqual({ content: [{ type: 'text', text: 'extension result' }] });
 
     const updates: unknown[] = [];
     const webSearch = tools.find((tool) => tool.name === 'web_search');
@@ -98,5 +98,44 @@ describe('MindOS pi extension tools', () => {
       }),
     });
     expect(updates).toEqual([{ content: [{ type: 'text', text: 'Searching...' }] }]);
+  });
+
+  it('summarizes extension tools so the runtime prompt can answer capability questions', () => {
+    const resourceLoader: MindosPiResourceLoaderAdapter = {
+      reload: async () => {},
+      getExtensions: () => ({
+        extensions: [{
+          path: '/extensions/pi-web-access/index.ts',
+          tools: new Map<string, unknown>([
+            ['web_search', {
+              definition: {
+                name: 'web_search',
+                description: 'Search the web',
+              },
+              sourceInfo: { packageName: 'pi-web-access' },
+            }],
+            ['fetch_content', {
+              definition: {
+                name: 'fetch_content',
+                description: 'Fetch a URL',
+              },
+              sourceInfo: { packageName: 'pi-web-access' },
+            }],
+          ]),
+        }],
+        errors: [],
+      }),
+    };
+
+    const summaries = collectMindosPiRegisteredToolSummaries({
+      resourceLoader,
+      customTools: [{ name: 'bash', description: 'Run a shell command' }],
+    });
+
+    expect(summaries).toEqual([
+      { name: 'bash', description: 'Run a shell command', source: 'custom', sourceName: 'mindos-runtime' },
+      { name: 'fetch_content', description: 'Fetch a URL', source: 'extension', sourceName: 'pi-web-access' },
+      { name: 'web_search', description: 'Search the web', source: 'extension', sourceName: 'pi-web-access' },
+    ]);
   });
 });

@@ -21,6 +21,7 @@ import {
   getActiveSessionId,
   getSessions,
   loadSession,
+  renameSession,
   refreshSessions,
   resetSession,
   setActiveSessionId,
@@ -74,7 +75,8 @@ export default function ChatPageClient({ sessionId: rawSessionId }: { sessionId:
   const sessionId = decodeSessionId(rawSessionId);
   const isNew = sessionId === 'new';
   const projectId = searchParams.get('projectId')?.trim() || undefined;
-  const handlingKey = isNew ? `${sessionId}:${projectId ?? ''}` : sessionId;
+  const initialTitle = searchParams.get('title')?.trim() || undefined;
+  const handlingKey = isNew ? `${sessionId}:${projectId ?? ''}:${initialTitle ?? ''}` : sessionId;
 
   // Async resolution result, tagged with the id it was resolved for —
   // navigating /chat/A → /chat/B re-renders this same page component, so a
@@ -91,13 +93,13 @@ export default function ChatPageClient({ sessionId: rawSessionId }: { sessionId:
     if (isNew) {
       resetSession({ projectId });
       const id = getActiveSessionId();
+      if (id && initialTitle) renameSession(id, initialTitle);
       if (id) router.replace(`/chat/${encodeURIComponent(id)}`);
       return;
     }
 
     if (isSessionAlive(sessionId)) {
       selectSession(sessionId);
-      setResolved({ id: sessionId, status: 'ready' });
       return;
     }
 
@@ -112,7 +114,7 @@ export default function ChatPageClient({ sessionId: rawSessionId }: { sessionId:
         setResolved({ id: sessionId, status: 'missing' });
       }
     });
-  }, [sessionId, isNew, projectId, handlingKey, router]);
+  }, [sessionId, isNew, projectId, initialTitle, handlingKey, router]);
 
   // Synchronous fast path: in-app navigation hits the in-memory store before
   // the effect runs, so the chat mounts on the first paint without a loading

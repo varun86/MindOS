@@ -53,7 +53,6 @@ describe('MindOS Pi coding agent runtime', () => {
       workDir: '/repo/app',
       agentConfig: {},
       serverSettings: {},
-      requestTools: [],
       allowProjectBash: true,
       hostServices: {
         resolveModelConfig: () => ({

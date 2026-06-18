@@ -21,6 +21,13 @@ type MindosExtensionToolExecute = (
   ctx: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
 
+export type MindosRuntimeToolSummary = {
+  name: string;
+  description?: string;
+  source: 'extension' | 'custom';
+  sourceName?: string;
+};
+
 export function createMindosHeadlessExtensionContext(input: {
   cwd: string;
   model: unknown;
@@ -45,21 +52,59 @@ export function createMindosHeadlessExtensionContext(input: {
   };
 }
 
-export function collectMindosRuntimeToolsForFallback(input: {
-  requestTools: MindosExecutableTool[];
+export function collectMindosPiRegisteredToolSummaries(input: {
   resourceLoader: MindosPiResourceLoaderAdapter;
-  extensionContext: Record<string, unknown>;
-}): MindosExecutableTool[] {
-  const byName = new Map<string, MindosExecutableTool>();
-  for (const tool of input.requestTools) {
-    if (tool.name) byName.set(tool.name, tool);
-  }
+  customTools?: unknown[];
+}): MindosRuntimeToolSummary[] {
+  const byName = new Map<string, MindosRuntimeToolSummary>();
 
   let extensions: MindosExtensionEntry[] = [];
   try {
     extensions = input.resourceLoader.getExtensions?.().extensions ?? [];
   } catch {
-    return [...byName.values()];
+    extensions = [];
+  }
+
+  for (const extension of extensions) {
+    for (const [entryName, rawTool] of mindosExtensionToolEntries(extension.tools)) {
+      const tool = mindosExtensionToolDefinition(rawTool);
+      if (!tool) continue;
+      const name = typeof tool.name === 'string' ? tool.name : entryName;
+      if (!name || byName.has(name)) continue;
+      byName.set(name, {
+        name,
+        ...(typeof tool.description === 'string' ? { description: tool.description } : {}),
+        source: 'extension',
+        sourceName: extensionToolSourceName(rawTool, extension),
+      });
+    }
+  }
+
+  for (const customTool of input.customTools ?? []) {
+    if (!isRecord(customTool) || typeof customTool.name !== 'string' || !customTool.name) continue;
+    if (byName.has(customTool.name)) continue;
+    byName.set(customTool.name, {
+      name: customTool.name,
+      ...(typeof customTool.description === 'string' ? { description: customTool.description } : {}),
+      source: 'custom',
+      sourceName: 'mindos-runtime',
+    });
+  }
+
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function collectMindosPiRuntimeToolsForFallback(input: {
+  resourceLoader: MindosPiResourceLoaderAdapter;
+  extensionContext: Record<string, unknown>;
+}): MindosExecutableTool[] {
+  const byName = new Map<string, MindosExecutableTool>();
+
+  let extensions: MindosExtensionEntry[] = [];
+  try {
+    extensions = input.resourceLoader.getExtensions?.().extensions ?? [];
+  } catch {
+    return [];
   }
 
   for (const extension of extensions) {
@@ -93,6 +138,22 @@ function mindosExtensionToolEntries(tools: unknown): Array<[string | undefined, 
     return Object.entries(tools).map(([name, tool]) => [name, tool]);
   }
   return [];
+}
+
+function extensionToolSourceName(rawTool: unknown, extension: MindosExtensionEntry): string | undefined {
+  if (isRecord(rawTool) && isRecord(rawTool.sourceInfo)) {
+    const packageName = rawTool.sourceInfo.packageName;
+    if (typeof packageName === 'string' && packageName.trim()) return packageName.trim();
+  }
+  if (typeof extension.path === 'string' && extension.path.trim()) {
+    const normalized = extension.path.replace(/\\/g, '/').replace(/\/+$/g, '');
+    const parts = normalized.split('/').filter(Boolean);
+    const fileName = parts.at(-1);
+    const parent = parts.at(-2);
+    if (parent === 'pi-web-access') return 'pi-web-access';
+    if (fileName) return fileName.replace(/\.(?:mjs|cjs|js|jsx|ts|tsx)$/i, '');
+  }
+  return undefined;
 }
 
 function mindosExtensionToolDefinition(rawTool: unknown): MindosExtensionToolDefinition | null {

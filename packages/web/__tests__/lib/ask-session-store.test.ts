@@ -36,6 +36,7 @@ import {
   setMessages as storeSetMessages,
   startRun,
 } from '@/lib/ask-run-store';
+import { createStudioProject } from '@/lib/studio-projects';
 
 const codexRuntime: AgentRuntimeIdentity = { id: 'codex', name: 'Codex', kind: 'codex' };
 
@@ -114,6 +115,40 @@ describe('ask-session-store', () => {
     it('generates unique ids', () => {
       const ids = new Set(Array.from({ length: 50 }, () => createSessionEntry().id));
       expect(ids.size).toBe(50);
+    });
+
+    it('inherits WorkDir, Spaces, and AI Kit defaults from the requested Project', () => {
+      const project = createStudioProject({
+        title: 'Growth Room',
+        goal: 'Train launch review habits',
+        workDir: {
+          source: 'manual',
+          path: '/Users/moonshot/projects/product/mindos-dev',
+          label: 'mindos-dev',
+        },
+        spaces: [
+          { path: 'MIND_DAO', label: '道', icon: '道', source: 'project-default' },
+          { path: 'Product Strategy', label: 'Product Strategy', source: 'manual' },
+        ],
+        assistants: [
+          { id: 'research-kit', name: 'Research Kit', kind: 'team', source: 'builtin' },
+          { id: 'review-kit', name: 'Review Kit', kind: 'team', source: 'manual' },
+        ],
+      });
+
+      const session = createSessionEntry(undefined, null, project.id);
+
+      expect(session).toMatchObject({
+        source: 'project',
+        projectId: project.id,
+        workDir: {
+          source: 'manual',
+          path: '/Users/moonshot/projects/product/mindos-dev',
+          label: 'mindos-dev',
+        },
+      });
+      expect(session.contextSelection?.spaces.map((space) => space.path)).toEqual(['MIND_DAO', 'Product Strategy']);
+      expect(session.contextSelection?.assistants.map((assistant) => assistant.id)).toEqual(['research-kit', 'review-kit']);
     });
   });
 

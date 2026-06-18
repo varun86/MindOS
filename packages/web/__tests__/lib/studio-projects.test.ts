@@ -5,9 +5,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createStudioProject,
   findStudioProject,
+  getStudioProjectAssistantRefs,
   getStudioProjectHref,
+  getStudioProjectSpaceRefs,
   readStudioProjects,
   STUDIO_PROJECTS,
+  updateStudioProjectDefaults,
 } from '@/lib/studio-projects';
 
 describe('studio projects', () => {
@@ -41,9 +44,56 @@ describe('studio projects', () => {
     expect(readStudioProjects()[0]?.id).toBe('growth-room');
   });
 
+  it('stores typed Project defaults for WorkDir, Spaces, and AI Kit inheritance', () => {
+    const project = createStudioProject({
+      title: '  Growth Room  ',
+      goal: 'Train launch review habits',
+      workDir: {
+        source: 'manual',
+        path: '/Users/moonshot/projects/product/mindos-dev',
+        label: 'mindos-dev',
+      },
+      spaces: [
+        { path: 'MIND_DAO', label: '道', icon: '道', source: 'project-default' },
+        { path: 'Product Strategy', label: 'Product Strategy', source: 'manual' },
+      ],
+      assistants: [
+        { id: 'research-kit', name: 'Research Kit', kind: 'team', source: 'builtin' },
+        { id: 'review-kit', name: 'Review Kit', kind: 'team', source: 'manual' },
+      ],
+    });
+
+    expect(project.workDir).toMatchObject({
+      source: 'manual',
+      path: '/Users/moonshot/projects/product/mindos-dev',
+      label: 'mindos-dev',
+    });
+    expect(project.spaces?.map((space) => space.path)).toEqual(['MIND_DAO', 'Product Strategy']);
+    expect(project.assistants?.map((assistant) => assistant.id)).toEqual(['research-kit', 'review-kit']);
+    expect(project.space).toBe('道');
+    expect(project.kits).toEqual(['Research Kit', 'Review Kit']);
+  });
+
   it('keeps project routes segment-local and url encoded', () => {
     expect(getStudioProjectHref('launch-practice')).toBe('/studio/launch-practice');
     expect(getStudioProjectHref('产品 发布')).toBe('/studio/%E4%BA%A7%E5%93%81%20%E5%8F%91%E5%B8%83');
+  });
+
+  it('persists editable defaults for seeded Projects without falling back to legacy labels', () => {
+    const updated = updateStudioProjectDefaults('launch-practice', {
+      spaces: [],
+      assistants: [
+        { id: 'review-kit', name: 'Review Kit', kind: 'team', source: 'manual' },
+      ],
+    });
+
+    expect(updated?.id).toBe('launch-practice');
+    const project = findStudioProject(readStudioProjects(), 'launch-practice');
+    expect(project).toBeTruthy();
+    expect(getStudioProjectSpaceRefs(project!, 'en')).toEqual([]);
+    expect(getStudioProjectAssistantRefs(project!).map((assistant) => assistant.id)).toEqual(['review-kit']);
+    expect(project?.space).toBe('');
+    expect(project?.kits).toEqual(['Review Kit']);
   });
 
   it('keeps the Next app route at /studio/[projectId]', () => {

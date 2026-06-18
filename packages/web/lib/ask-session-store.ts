@@ -23,7 +23,6 @@ import type {
   AgentIdentity,
   AgentRuntimeIdentity,
   ChatSession,
-  Message,
   RuntimeSessionBinding,
   SessionContextSelection,
   SessionWorkDir,
@@ -58,6 +57,11 @@ import {
   setActiveSession as runStoreSetActiveSession,
   setMessages as storeSetMessages,
 } from '@/lib/ask-run-store';
+import {
+  findStudioProject,
+  getStudioProjectSessionDefaults,
+  readStudioProjects,
+} from '@/lib/studio-projects';
 
 export const MAX_SESSIONS = 30;
 
@@ -83,6 +87,26 @@ function emitActive() {
   activeListeners.forEach((fn) => fn());
 }
 
+function getProjectSessionDefaults(projectId: string | undefined, updatedAt: number): {
+  workDir: SessionWorkDir;
+  contextSelection: SessionContextSelection;
+} {
+  const trimmedProjectId = projectId?.trim();
+  if (!trimmedProjectId) {
+    return {
+      workDir: defaultSessionWorkDir(updatedAt),
+      contextSelection: defaultSessionContextSelection(updatedAt),
+    };
+  }
+  const project = findStudioProject(readStudioProjects(), trimmedProjectId);
+  return project
+    ? getStudioProjectSessionDefaults(project, updatedAt)
+    : {
+      workDir: defaultSessionWorkDir(updatedAt),
+      contextSelection: defaultSessionContextSelection(updatedAt),
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Factory (moved from useAskSession's module-private createSession)
 
@@ -93,6 +117,7 @@ export function createSessionEntry(
 ): ChatSession {
   const ts = Date.now();
   const trimmedProjectId = projectId?.trim();
+  const defaults = getProjectSessionDefaults(trimmedProjectId, ts);
   const session: ChatSession = {
     id: `${ts}-${Math.random().toString(36).slice(2, 8)}`,
     source: trimmedProjectId ? 'project' : 'quick',
@@ -101,8 +126,8 @@ export function createSessionEntry(
     createdAt: ts,
     updatedAt: ts,
     messages: [],
-    workDir: defaultSessionWorkDir(ts),
-    contextSelection: defaultSessionContextSelection(ts),
+    workDir: defaults.workDir,
+    contextSelection: defaults.contextSelection,
   };
 
   if (!runtime || runtime.kind === 'mindos') return session;

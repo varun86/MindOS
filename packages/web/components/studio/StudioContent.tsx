@@ -18,10 +18,16 @@ import { refreshSessions, useSessions } from '@/lib/ask-session-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import {
   createStudioProject,
+  getLastOpenedStudioProject,
   getStudioProjectHref,
+  getStudioProjectAssistantLabels,
+  getStudioProjectSpaceLabels,
+  getStudioProjectWorkDirLabel,
   localize,
+  readLastOpenedStudioProjectId,
   readStudioProjects,
   STUDIO_NEW_PROJECT_REQUESTED_EVENT,
+  STUDIO_PROJECTS_UPDATED_EVENT,
   type StudioProject,
   type StudioProjectDraft,
 } from '@/lib/studio-projects';
@@ -90,12 +96,12 @@ const COPY = {
     goalLabel: 'Goal',
     spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
-    workAreaLabel: 'Work Area',
+    workAreaLabel: 'WorkDir',
     titlePlaceholder: 'Launch practice',
     goalPlaceholder: 'Turn product evidence into launch decisions',
     spacePlaceholder: 'Product Strategy',
     kitPlaceholder: 'Research Kit',
-    workAreaPlaceholder: 'Session drafts',
+    workAreaPlaceholder: 'Mind',
     cancel: 'Cancel',
     create: 'Create Project',
     required: 'Add a project name and goal.',
@@ -103,7 +109,7 @@ const COPY = {
     noSessions: 'No Sessions yet.',
     setupTitle: 'Project setup',
     setupDescription: 'Pick defaults for new Sessions.',
-    workAreaDescription: 'Drafts and artifacts land here.',
+    workAreaDescription: 'The default directory for new Sessions.',
     spaceDescription: 'Long-term context for this Project.',
     kitDescription: 'Default AI capability for new Sessions.',
     customValue: 'Custom value',
@@ -166,12 +172,12 @@ const COPY = {
     goalLabel: '目标',
     spaceLabel: 'Mind Space',
     kitLabel: 'AI Kit',
-    workAreaLabel: 'Work Area',
+    workAreaLabel: 'WorkDir',
     titlePlaceholder: '发布实践',
     goalPlaceholder: '把产品证据整理成发布决策',
     spacePlaceholder: '产品策略',
     kitPlaceholder: 'Research Kit',
-    workAreaPlaceholder: 'Session 草稿',
+    workAreaPlaceholder: 'Mind',
     cancel: '取消',
     create: '创建 Project',
     required: '需要填写 Project 名称和目标。',
@@ -179,7 +185,7 @@ const COPY = {
     noSessions: '还没有 Session。',
     setupTitle: 'Project 设置',
     setupDescription: '为新 Session 选择默认设置。',
-    workAreaDescription: '草稿和产物放这里。',
+    workAreaDescription: '新 Session 默认使用的工作目录。',
     spaceDescription: '这个 Project 的长期上下文。',
     kitDescription: '新 Session 默认使用的 AI 能力。',
     customValue: '自定义',
@@ -272,10 +278,10 @@ function projectMatches(project: StudioProject, query: string, locale: string): 
   const fields = [
     localize(project.title, project.titleZh, locale),
     localize(project.goal, project.goalZh, locale),
-    localize(project.space, project.spaceZh, locale),
-    localize(project.workArea, project.workAreaZh, locale),
+    ...getStudioProjectSpaceLabels(project, locale),
+    getStudioProjectWorkDirLabel(project, locale),
     localize(project.nextAction, project.nextActionZh, locale),
-    ...project.kits,
+    ...getStudioProjectAssistantLabels(project),
   ];
   return fields.some((field) => field.toLowerCase().includes(normalized));
 }
@@ -295,7 +301,7 @@ function ContinueNextPanel({
 }) {
   if (!project) {
     return (
-      <section className="rounded-xl border border-border/60 bg-card/45 p-5">
+    <section data-studio-continue-panel className="rounded-xl border border-border/60 bg-card/45 p-5">
         <div className="text-sm font-semibold text-foreground">{copy.projects}</div>
         <p className="mt-1 text-sm text-muted-foreground">{copy.empty}</p>
       </section>
@@ -309,7 +315,7 @@ function ContinueNextPanel({
     ?? (project.sessions[0] ? localize(project.sessions[0].title, project.sessions[0].titleZh, locale) : copy.noSessions);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
+    <section data-studio-continue-panel className="overflow-hidden rounded-xl border border-border/60 bg-card/45">
       <div className="border-b border-border/55 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[var(--amber-subtle)] text-[var(--amber)]">
@@ -370,14 +376,12 @@ function StudioListView({
   copy,
   getProjectSessionCount,
   selectedProjectId,
-  onPreview,
 }: {
   projects: StudioProject[];
   locale: string;
   copy: StudioCopy;
   getProjectSessionCount: (project: StudioProject) => number;
   selectedProjectId?: string;
-  onPreview: (projectId: string) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-projects-list">
@@ -396,7 +400,6 @@ function StudioListView({
               locale={locale}
               sessionCount={getProjectSessionCount(project)}
               selected={project.id === selectedProjectId}
-              onPreview={onPreview}
             />
           ))}
         </div>
@@ -413,14 +416,12 @@ function StudioGroupedView({
   copy,
   getProjectSessionCount,
   selectedProjectId,
-  onPreview,
 }: {
   projects: StudioProject[];
   locale: string;
   copy: StudioCopy;
   getProjectSessionCount: (project: StudioProject) => number;
   selectedProjectId?: string;
-  onPreview: (projectId: string) => void;
 }) {
   const groups = [
     {
@@ -473,7 +474,6 @@ function StudioGroupedView({
                   locale={locale}
                   sessionCount={getProjectSessionCount(project)}
                   selected={project.id === selectedProjectId}
-                  onPreview={onPreview}
                 />
               ))}
             </div>
@@ -511,9 +511,9 @@ function StudioStatsView({
   const reviewProjects = projects.filter((project) => project.stage === 'review');
   const sessionTotal = projects.reduce((total, project) => total + getProjectSessionCount(project), 0);
   const maxSessions = Math.max(1, ...projects.map((project) => getProjectSessionCount(project)));
-  const workAreas = countValues(projects.map((project) => localize(project.workArea, project.workAreaZh, locale)));
-  const spaces = countValues(projects.map((project) => localize(project.space, project.spaceZh, locale)));
-  const kits = countValues(projects.flatMap((project) => project.kits));
+  const workAreas = countValues(projects.map((project) => getStudioProjectWorkDirLabel(project, locale)));
+  const spaces = countValues(projects.flatMap((project) => getStudioProjectSpaceLabels(project, locale)));
+  const kits = countValues(projects.flatMap((project) => getStudioProjectAssistantLabels(project)));
   const attentionProjects = reviewProjects.length ? reviewProjects : projects.filter((project) => project.reviewItems.length > 0).slice(0, 2);
 
   return (
@@ -617,14 +617,26 @@ export default function StudioContent() {
   const copy = locale === 'zh' ? COPY.zh : COPY.en;
   const [projects, setProjects] = useState<StudioProject[]>(() => readStudioProjects());
   const [isCreating, setIsCreating] = useState(false);
-  const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const [view, setView] = useState<StudioOverviewView>('list');
   const [query, setQuery] = useState('');
+  const [lastOpenedProjectId, setLastOpenedProjectId] = useState<string | null>(null);
   const chatSessions = useSessions();
 
   useEffect(() => {
-    setProjects(readStudioProjects());
+    const syncProjects = () => {
+      setProjects(readStudioProjects());
+      setLastOpenedProjectId(readLastOpenedStudioProjectId());
+    };
+    syncProjects();
     void refreshSessions();
+    window.addEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, syncProjects);
+    window.addEventListener(STUDIO_PROJECTS_UPDATED_EVENT, syncProjects);
+    window.addEventListener('storage', syncProjects);
+    return () => {
+      window.removeEventListener(STUDIO_NEW_PROJECT_REQUESTED_EVENT, syncProjects);
+      window.removeEventListener(STUDIO_PROJECTS_UPDATED_EVENT, syncProjects);
+      window.removeEventListener('storage', syncProjects);
+    };
   }, []);
 
   useEffect(() => {
@@ -660,11 +672,11 @@ export default function StudioContent() {
     () => projects.filter((project) => projectMatches(project, query, locale)),
     [locale, projects, query],
   );
-  const previewProject = useMemo(
-    () => filteredProjects.find((project) => project.id === previewProjectId) ?? filteredProjects[0] ?? projects[0],
-    [filteredProjects, previewProjectId, projects],
+  const continueProject = useMemo(
+    () => getLastOpenedStudioProject(projects, lastOpenedProjectId),
+    [lastOpenedProjectId, projects],
   );
-  const previewProjectIdResolved = previewProject?.id;
+  const continueProjectId = continueProject?.id;
 
   const handleCreate = (draft: StudioProjectDraft) => {
     const project = createStudioProject(draft);
@@ -712,11 +724,11 @@ export default function StudioContent() {
 
         <section className="space-y-5">
           <ContinueNextPanel
-            project={previewProject}
+            project={continueProject}
             locale={locale}
             copy={copy}
-            latestSessionTitle={previewProject ? projectSessionStats.get(previewProject.id)?.latestTitle : undefined}
-            sessionCount={previewProject ? getProjectSessionCount(previewProject) : 0}
+            latestSessionTitle={continueProject ? projectSessionStats.get(continueProject.id)?.latestTitle : undefined}
+            sessionCount={continueProject ? getProjectSessionCount(continueProject) : 0}
           />
 
           <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -733,8 +745,7 @@ export default function StudioContent() {
               locale={locale}
               copy={copy}
               getProjectSessionCount={getProjectSessionCount}
-              selectedProjectId={previewProjectIdResolved}
-              onPreview={setPreviewProjectId}
+              selectedProjectId={continueProjectId}
             />
           ) : null}
 
@@ -744,8 +755,7 @@ export default function StudioContent() {
               locale={locale}
               copy={copy}
               getProjectSessionCount={getProjectSessionCount}
-              selectedProjectId={previewProjectIdResolved}
-              onPreview={setPreviewProjectId}
+              selectedProjectId={continueProjectId}
             />
           ) : null}
 

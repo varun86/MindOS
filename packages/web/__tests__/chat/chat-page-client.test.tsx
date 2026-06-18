@@ -115,6 +115,21 @@ describe('/chat/new creation flow', () => {
     });
     expect(routerReplace).toHaveBeenCalledWith(`/chat/${encodeURIComponent(id!)}`);
   });
+
+  it('applies the optional title query when opening a Project history entry', async () => {
+    mockSearchParams.value = new URLSearchParams('projectId=launch-practice&title=Launch+brief+review');
+
+    await renderPage('new');
+
+    const id = getActiveSessionId();
+    const session = getSessions().find((item) => item.id === id);
+    expect(session).toMatchObject({
+      source: 'project',
+      projectId: 'launch-practice',
+      title: 'Launch brief review',
+    });
+    expect(routerReplace).toHaveBeenCalledWith(`/chat/${encodeURIComponent(id!)}`);
+  });
 });
 
 describe('/chat/<id> with an alive session', () => {

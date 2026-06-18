@@ -32,7 +32,7 @@ describe('MindOS runtime adapter', () => {
       },
     });
 
-    const options = { mode: 'agent', requestTools: [] };
+    const options = { mode: 'agent' };
     await expect(adapter.createRuntime(options as never)).resolves.toBe(fakeRuntime);
     expect(createdOptions).toEqual([options]);
   });

@@ -1,3 +1,16 @@
+import type {
+  ContextAssistantRef,
+  ContextSpaceRef,
+  SessionContextSelection,
+  SessionWorkDir,
+} from '@/lib/types';
+import {
+  defaultSessionContextSelection,
+  defaultSessionWorkDir,
+  normalizeSessionContextSelectionForClient,
+  normalizeSessionWorkDirForClient,
+} from '@/lib/session-context';
+
 export interface StudioSessionSummary {
   id: string;
   href?: string;
@@ -24,6 +37,9 @@ export interface StudioProject {
   kits: string[];
   workArea: string;
   workAreaZh?: string;
+  workDir?: SessionWorkDir;
+  spaces?: ContextSpaceRef[];
+  assistants?: ContextAssistantRef[];
   cadence: string;
   cadenceZh?: string;
   stage: 'active' | 'draft' | 'review';
@@ -41,16 +57,26 @@ export interface StudioProject {
 export interface StudioProjectDraft {
   title: string;
   goal: string;
-  space: string;
-  kit: string;
-  workArea: string;
+  space?: string;
+  kit?: string;
+  workArea?: string;
+  workDir?: SessionWorkDir;
+  spaces?: ContextSpaceRef[];
+  assistants?: ContextAssistantRef[];
+}
+
+export interface StudioProjectDefaultsUpdate {
+  spaces?: ContextSpaceRef[];
+  assistants?: ContextAssistantRef[];
 }
 
 const STORAGE_KEY = 'mindos:studio-projects';
+const LAST_OPENED_PROJECT_KEY = 'mindos:studio-last-opened-project-id';
 export const STUDIO_PROJECTS_UPDATED_EVENT = 'mindos:studio-projects-updated';
 export const STUDIO_NEW_PROJECT_REQUESTED_EVENT = 'mindos:studio-new-project-requested';
 let volatileCustomProjects: StudioProject[] = [];
 let useVolatileProjects = false;
+let volatileLastOpenedProjectId: string | null = null;
 
 export const STUDIO_PROJECTS: StudioProject[] = [
   {
@@ -227,6 +253,110 @@ export function localizeList(primary: string[], zh: string[] | undefined, locale
   return locale === 'zh' && zh ? zh : primary;
 }
 
+function cleanLabel(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function pathLabel(path: string): string {
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) || path;
+}
+
+function assistantIdFromName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'assistant';
+}
+
+function normalizeProjectSpaces(input: unknown, updatedAt?: number): ContextSpaceRef[] {
+  return normalizeSessionContextSelectionForClient({ version: 1, spaces: input, assistants: [], updatedAt }).spaces;
+}
+
+function normalizeProjectAssistants(input: unknown, updatedAt?: number): ContextAssistantRef[] {
+  return normalizeSessionContextSelectionForClient({ version: 1, spaces: [], assistants: input, updatedAt }).assistants;
+}
+
+function legacySpaceToRef(project: Pick<StudioProject, 'space' | 'spaceZh'>, locale: string): ContextSpaceRef | null {
+  const path = cleanLabel(project.space);
+  if (!path) return null;
+  return {
+    path,
+    label: localize(project.space, project.spaceZh, locale),
+    source: 'project-default',
+  };
+}
+
+function legacyKitToAssistant(name: string): ContextAssistantRef | null {
+  const label = cleanLabel(name);
+  if (!label) return null;
+  return {
+    id: assistantIdFromName(label),
+    name: label,
+    kind: 'team',
+    source: 'project-default',
+  };
+}
+
+export function getStudioProjectWorkDir(project: StudioProject, updatedAt?: number): SessionWorkDir {
+  if (project.workDir) return normalizeSessionWorkDirForClient(project.workDir, updatedAt);
+  return defaultSessionWorkDir(updatedAt);
+}
+
+export function getStudioProjectWorkDirLabel(project: StudioProject, locale: string): string {
+  const workDir = getStudioProjectWorkDir(project);
+  if (workDir.source === 'mind-root') return locale === 'zh' ? 'Mind' : 'Mind';
+  return workDir.label || (workDir.path ? pathLabel(workDir.path) : localize(project.workArea, project.workAreaZh, locale));
+}
+
+export function getStudioProjectSpaceRefs(project: StudioProject, locale: string): ContextSpaceRef[] {
+  if (Array.isArray(project.spaces)) return normalizeProjectSpaces(project.spaces);
+  const spaces = normalizeProjectSpaces(project.spaces);
+  if (spaces.length > 0) return spaces;
+  const legacy = legacySpaceToRef(project, locale);
+  return legacy ? [legacy] : [];
+}
+
+export function getStudioProjectSpaceLabels(project: StudioProject, locale: string): string[] {
+  const spaces = getStudioProjectSpaceRefs(project, locale);
+  if (spaces.length === 0) return [];
+  return spaces.map((space) => space.label?.trim() || pathLabel(space.path));
+}
+
+export function getStudioProjectAssistantRefs(project: StudioProject): ContextAssistantRef[] {
+  if (Array.isArray(project.assistants)) return normalizeProjectAssistants(project.assistants);
+  const assistants = normalizeProjectAssistants(project.assistants);
+  if (assistants.length > 0) return assistants;
+  return project.kits.map(legacyKitToAssistant).filter((assistant): assistant is ContextAssistantRef => Boolean(assistant));
+}
+
+export function getStudioProjectAssistantLabels(project: StudioProject): string[] {
+  const assistants = getStudioProjectAssistantRefs(project);
+  if (assistants.length === 0) return [];
+  return assistants.map((assistant) => assistant.name?.trim() || assistant.id);
+}
+
+export function getStudioProjectSessionDefaults(project: StudioProject, updatedAt?: number): {
+  workDir: SessionWorkDir;
+  contextSelection: SessionContextSelection;
+} {
+  const spaces = getStudioProjectSpaceRefs(project, 'en').map((space) => ({
+    ...space,
+    source: 'project-default' as const,
+  }));
+  const assistants = getStudioProjectAssistantRefs(project).map((assistant) => ({
+    ...assistant,
+    source: 'project-default' as const,
+  }));
+  return {
+    workDir: getStudioProjectWorkDir(project, updatedAt),
+    contextSelection: spaces.length || assistants.length
+      ? normalizeSessionContextSelectionForClient({ version: 1, spaces, assistants, updatedAt })
+      : defaultSessionContextSelection(updatedAt),
+  };
+}
+
 export function slugifyProjectTitle(value: string): string {
   const slug = value
     .trim()
@@ -251,9 +381,24 @@ export function buildStudioProjectFromDraft(
   const existingIds = new Set(existingProjects.map((project) => project.id));
   const title = draft.title.trim() || 'Untitled Project';
   const goal = draft.goal.trim() || 'Define the next durable outcome.';
-  const space = draft.space.trim() || 'Mind';
-  const kit = draft.kit.trim();
-  const workArea = draft.workArea.trim() || 'Session drafts';
+  const normalizedWorkDir = draft.workDir ? normalizeSessionWorkDirForClient(draft.workDir) : undefined;
+  const draftSpaces = normalizeProjectSpaces(draft.spaces);
+  const draftAssistants = normalizeProjectAssistants(draft.assistants);
+  const legacySpace = cleanLabel(draft.space);
+  const legacyKit = cleanLabel(draft.kit);
+  const space = draftSpaces[0]?.label?.trim()
+    || draftSpaces[0]?.path
+    || legacySpace
+    || 'Mind';
+  const kits = draftAssistants.length
+    ? draftAssistants.map((assistant) => assistant.name?.trim() || assistant.id)
+    : [legacyKit].filter((value): value is string => Boolean(value));
+  const workArea = cleanLabel(draft.workArea)
+    || (normalizedWorkDir
+      ? normalizedWorkDir.source === 'mind-root'
+        ? 'Mind'
+        : normalizedWorkDir.label || (normalizedWorkDir.path ? pathLabel(normalizedWorkDir.path) : 'Mind')
+      : 'Session drafts');
   const baseId = slugifyProjectTitle(title);
   let id = baseId;
   let suffix = 2;
@@ -267,8 +412,11 @@ export function buildStudioProjectFromDraft(
     title,
     goal,
     space,
-    kits: [kit].filter(Boolean),
+    kits,
     workArea,
+    ...(normalizedWorkDir ? { workDir: normalizedWorkDir } : {}),
+    ...(draftSpaces.length ? { spaces: draftSpaces } : {}),
+    ...(draftAssistants.length ? { assistants: draftAssistants } : {}),
     cadence: 'Project rhythm not set',
     cadenceZh: '尚未设置项目节奏',
     stage: 'draft',
@@ -319,15 +467,88 @@ function writeCustomProjects(projects: StudioProject[]): void {
   }
 }
 
+export function readLastOpenedStudioProjectId(): string | null {
+  if (!canUseStorage()) return volatileLastOpenedProjectId;
+  try {
+    return window.localStorage.getItem(LAST_OPENED_PROJECT_KEY) || volatileLastOpenedProjectId;
+  } catch {
+    return volatileLastOpenedProjectId;
+  }
+}
+
+export function markStudioProjectOpened(projectId: string): void {
+  const trimmed = projectId.trim();
+  if (!trimmed) return;
+  volatileLastOpenedProjectId = trimmed;
+  if (canUseStorage()) {
+    try {
+      window.localStorage.setItem(LAST_OPENED_PROJECT_KEY, trimmed);
+    } catch {
+      // The volatile copy keeps the current tab coherent if storage is blocked.
+    }
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(STUDIO_PROJECTS_UPDATED_EVENT, { detail: { lastOpenedProjectId: trimmed } }));
+  }
+}
+
 export function readStudioProjects(): StudioProject[] {
   const seedIds = new Set(STUDIO_PROJECTS.map((project) => project.id));
-  const customProjects = readCustomProjects().filter((project) => !seedIds.has(project.id));
-  return [...customProjects, ...STUDIO_PROJECTS];
+  const customProjects = readCustomProjects();
+  const customById = new Map(customProjects.map((project) => [project.id, project]));
+  const customOnlyProjects = customProjects.filter((project) => !seedIds.has(project.id));
+  const seedProjects = STUDIO_PROJECTS.map((project) => {
+    const override = customById.get(project.id);
+    return override ? { ...project, ...override } : project;
+  });
+  return [...customOnlyProjects, ...seedProjects];
+}
+
+function applyProjectDefaultsUpdate(project: StudioProject, updates: StudioProjectDefaultsUpdate): StudioProject {
+  const next: StudioProject = { ...project };
+  if ('spaces' in updates) {
+    const spaces = normalizeProjectSpaces(updates.spaces);
+    next.spaces = spaces;
+    next.space = spaces.map((space) => space.label?.trim() || pathLabel(space.path)).join(' / ');
+    delete next.spaceZh;
+  }
+  if ('assistants' in updates) {
+    const assistants = normalizeProjectAssistants(updates.assistants);
+    next.assistants = assistants;
+    next.kits = assistants.map((assistant) => assistant.name?.trim() || assistant.id);
+  }
+  return next;
+}
+
+export function updateStudioProjectDefaults(
+  projectId: string,
+  updates: StudioProjectDefaultsUpdate,
+): StudioProject | undefined {
+  const currentProject = findStudioProject(readStudioProjects(), projectId);
+  if (!currentProject) return undefined;
+
+  const updatedProject = applyProjectDefaultsUpdate(currentProject, updates);
+  writeCustomProjects([
+    updatedProject,
+    ...readCustomProjects().filter((project) => project.id !== projectId),
+  ]);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(STUDIO_PROJECTS_UPDATED_EVENT, { detail: updatedProject }));
+  }
+  return updatedProject;
+}
+
+export function getLastOpenedStudioProject(
+  projects: StudioProject[],
+  lastOpenedId = readLastOpenedStudioProjectId(),
+): StudioProject | undefined {
+  return (lastOpenedId ? findStudioProject(projects, lastOpenedId) : undefined) ?? projects[0];
 }
 
 export function createStudioProject(draft: StudioProjectDraft): StudioProject {
   const project = buildStudioProjectFromDraft(draft, readStudioProjects());
   writeCustomProjects([project, ...readCustomProjects()]);
+  markStudioProjectOpened(project.id);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(STUDIO_PROJECTS_UPDATED_EVENT, { detail: project }));
   }

@@ -79,7 +79,6 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
   const {
     createWebMindosPiRuntimeHostServices,
     getMindosWebPiRuntimePaths,
-    getMindosWebRequestToolsForPolicy,
   } = await import('@/lib/agent/mindos-pi-runtime-host');
   const { createMindosAgentRuntime } = await import('@geminilight/mindos/agent/runtime/adapters/mindos');
   const { runWithKbPermissionPolicy } = await import('@/lib/agent/kb-extension');
@@ -99,7 +98,6 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
     workDir,
     agentConfig,
     serverSettings,
-    requestTools: getMindosWebRequestToolsForPolicy(permissionPolicy),
     additionalSkillPaths: runtimePaths.additionalSkillPaths,
     additionalExtensionPaths: runtimePaths.additionalExtensionPaths,
     allowProjectBash: permissionPolicy.toolScope.terminal,

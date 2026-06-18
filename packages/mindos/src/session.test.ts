@@ -788,7 +788,6 @@ describe('MindOS session event contract', () => {
       workDir: '/repo/app',
       agentConfig: {},
       serverSettings: {},
-      requestTools: [],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: () => ({
@@ -815,7 +814,7 @@ describe('MindOS session event contract', () => {
       },
     });
 
-    const tool = runtime.requestTools.find((item) => item.name === 'capture_context');
+    const tool = runtime.fallbackTools.find((item) => item.name === 'capture_context');
     expect(tool).toBeTruthy();
     await tool!.execute('tool-1', {}, undefined, undefined);
 
@@ -825,11 +824,6 @@ describe('MindOS session event contract', () => {
   });
 
   it('runs extension-registered tools in the non-streaming fallback with headless context', async () => {
-    const requestReadTool = {
-      name: 'read_file',
-      description: 'Request-scoped read',
-      execute: async () => ({ content: [{ type: 'text', text: 'request read' }] }),
-    };
     const captured: {
       params?: unknown;
       ctx?: Record<string, unknown>;
@@ -860,7 +854,7 @@ describe('MindOS session event contract', () => {
     };
     const duplicateReadTool = {
       name: 'read_file',
-      description: 'Extension read should not override request tool',
+      description: 'Extension read should be used by fallback',
       execute: async () => ({ content: [{ type: 'text', text: 'extension read' }] }),
     };
     const resourceLoader = {
@@ -893,7 +887,6 @@ describe('MindOS session event contract', () => {
       mindRoot: '/mind',
       agentConfig: {},
       serverSettings: {},
-      requestTools: [requestReadTool],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: () => ({
@@ -914,8 +907,13 @@ describe('MindOS session event contract', () => {
       },
     });
 
-    expect(runtime.requestTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
-    expect(runtime.requestTools.find((tool) => tool.name === 'read_file')).toBe(requestReadTool);
+    expect(runtime.fallbackTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
+    await expect(runtime.fallbackTools.find((tool) => tool.name === 'read_file')?.execute(
+      'call-read',
+      {},
+      undefined,
+      undefined,
+    )).resolves.toEqual({ content: [{ type: 'text', text: 'extension read' }] });
 
     const events: Array<{ type: string; delta?: string; toolCallId?: string; toolName?: string; output?: string; isError?: boolean; args?: unknown }> = [];
     const calls: Array<{ body: Record<string, unknown> }> = [];
@@ -952,7 +950,7 @@ describe('MindOS session event contract', () => {
       systemPrompt: runtime.systemPrompt,
       historyMessages: runtime.llmHistoryMessages,
       userContent: runtime.lastUserContent,
-      tools: runtime.requestTools,
+      tools: runtime.fallbackTools,
       send: (event) => events.push(event),
       signal: new AbortController().signal,
       maxSteps: 3,
@@ -1195,7 +1193,6 @@ describe('MindOS session event contract', () => {
     const appendedMessages: unknown[] = [];
     let capturedSystemPrompt = '';
     let capturedSystemPromptOverride: ((base?: string) => string | undefined) | null = null;
-    const requestReadTool = { name: 'read_file', execute: async () => ({ content: [] }) };
     const extensionReadTool = { name: 'read_file', execute: async () => ({ content: [{ type: 'text', text: 'extension' }] }) };
     const extensionWebTool = {
       name: 'web_search',
@@ -1253,7 +1250,6 @@ describe('MindOS session event contract', () => {
       serverSettings: { disabledSkills: ['disabled-skill'] },
       additionalSkillPaths: ['/skills'],
       additionalExtensionPaths: ['/ext'],
-      requestTools: [requestReadTool],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: (input) => {
@@ -1309,15 +1305,24 @@ describe('MindOS session event contract', () => {
     expect(runtime.lastUserImages).toEqual([{ type: 'image', data: 'img', mimeType: 'image/png' }]);
     expect(runtime.modelName).toBe('gpt-test');
     expect(runtime.provider).toBe('anthropic');
-    expect(runtime.requestTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
-    expect(runtime.requestTools.find((tool) => tool.name === 'read_file')).toBe(requestReadTool);
-    expect(runtime.requestTools.find((tool) => tool.name === 'web_search')).toMatchObject({
+    expect(runtime.fallbackTools.map((tool) => tool.name)).toEqual(['read_file', 'web_search']);
+    await expect(runtime.fallbackTools.find((tool) => tool.name === 'read_file')?.execute(
+      'call-read',
+      {},
+      undefined,
+      undefined,
+    )).resolves.toEqual({ content: [{ type: 'text', text: 'extension' }] });
+    expect(runtime.fallbackTools.find((tool) => tool.name === 'web_search')).toMatchObject({
       name: 'web_search',
       description: 'Search the web',
       parameters: { type: 'object' },
     });
     expect(runtime.lastUserSkillName).toBe('third-party');
     expect(runtime.systemPrompt).toContain('<skills>third-party</skills>');
+    expect(runtime.systemPrompt).toContain('## MindOS Pi Runtime Tools');
+    expect(runtime.systemPrompt).toContain('- web_search [web]');
+    expect(runtime.systemPrompt).toContain('- read_file [web]');
+    expect(runtime.systemPrompt).toContain('- bash [mindos-runtime]');
     expect(runtime.systemPrompt).not.toContain('load_skill("third-party")');
     expect(runtime.systemPrompt).not.toContain('## Active Skill Request');
     expect(capturedSystemPrompt).toBe('base prompt');
@@ -1330,6 +1335,8 @@ describe('MindOS session event contract', () => {
     const effectiveSessionPrompt = capturedSystemPromptOverride!('base prompt');
     expect(effectiveSessionPrompt).toContain('base prompt');
     expect(effectiveSessionPrompt).toContain('<skills>third-party</skills>');
+    expect(effectiveSessionPrompt).toContain('## MindOS Pi Runtime Tools');
+    expect(effectiveSessionPrompt).toContain('- web_search [web]');
     expect(effectiveSessionPrompt).not.toContain('load_skill("third-party")');
     expect(effectiveSessionPrompt).not.toContain('## Active Skill Request');
     expect(effectiveSessionPrompt).toBe(runtime.systemPrompt);
@@ -1352,6 +1359,120 @@ describe('MindOS session event contract', () => {
     ]);
   });
 
+  it('returns deduplicated pi extension load errors for host diagnostics', async () => {
+    const session = {
+      subscribe: () => {},
+      prompt: async () => {},
+      steer: async () => {},
+      abort: async () => {},
+    };
+    const extensionError = {
+      path: '/repo/packages/web/node_modules/pi-web-access/index.ts',
+      error: 'Cannot load extension',
+    };
+    const reportedErrors: unknown[] = [];
+
+    const runtime = await createMindosPiAgentRuntime({
+      mode: 'organize',
+      messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      agentConfig: {},
+      serverSettings: {},
+      bashTool: { name: 'bash' },
+      services: {
+        resolveModelConfig: () => ({
+          model: { id: 'model-object' },
+          modelName: 'gpt-test',
+          apiKey: 'key',
+          provider: 'openai',
+        }),
+        toRuntimeProvider: (provider) => provider,
+        createAuthStorage: () => ({ setRuntimeApiKey: () => {} }),
+        createModelRegistry: () => ({}),
+        createSettingsManager: (settings) => ({ settings }),
+        createSessionManager: () => ({ appendMessage: () => {} }),
+        createResourceLoader: () => ({
+          reload: async () => {},
+          getSkills: () => ({ skills: [] }),
+          getExtensions: () => ({ extensions: [], errors: [extensionError] }),
+        }),
+        convertToLlm: (messages) => [...messages],
+        createAgentSession: async () => ({ session }),
+        setKbMode: () => {},
+        onExtensionLoadErrors: (errors) => { reportedErrors.push(errors); },
+      },
+    });
+
+    expect(runtime.extensionLoadErrors).toEqual([extensionError]);
+    expect(reportedErrors).toEqual([[extensionError]]);
+  });
+
+  it('reports when pi-web-access loads without the expected web tools', async () => {
+    const session = {
+      subscribe: () => {},
+      prompt: async () => {},
+      steer: async () => {},
+      abort: async () => {},
+    };
+    const webAccessPath = '/repo/packages/web/node_modules/pi-web-access/index.ts';
+
+    const runtime = await createMindosPiAgentRuntime({
+      mode: 'organize',
+      messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      agentConfig: {},
+      serverSettings: {},
+      additionalExtensionPaths: [webAccessPath],
+      bashTool: { name: 'bash' },
+      services: {
+        resolveModelConfig: () => ({
+          model: { id: 'model-object' },
+          modelName: 'gpt-test',
+          apiKey: 'key',
+          provider: 'openai',
+        }),
+        toRuntimeProvider: (provider) => provider,
+        createAuthStorage: () => ({ setRuntimeApiKey: () => {} }),
+        createModelRegistry: () => ({}),
+        createSettingsManager: (settings) => ({ settings }),
+        createSessionManager: () => ({ appendMessage: () => {} }),
+        createResourceLoader: () => ({
+          reload: async () => {},
+          getSkills: () => ({ skills: [] }),
+          getExtensions: () => ({
+            extensions: [{
+              path: webAccessPath,
+              tools: new Map<string, unknown>([
+                ['code_search', {
+                  definition: {
+                    name: 'code_search',
+                    description: 'Search code',
+                    execute: async () => ({ content: [] }),
+                  },
+                }],
+              ]),
+            }],
+            errors: [],
+          }),
+        }),
+        convertToLlm: (messages) => [...messages],
+        createAgentSession: async () => ({ session }),
+        setKbMode: () => {},
+      },
+    });
+
+    expect(runtime.extensionLoadErrors).toEqual([{
+      path: webAccessPath,
+      error: 'pi-web-access did not register expected tool(s): web_search, fetch_content',
+    }]);
+  });
+
   it('keeps builtins off and registers no SDK custom tools in organize mode (kb extension owns KB tools)', async () => {
     let captured: Record<string, unknown> | null = null;
     const session = {
@@ -1370,7 +1491,6 @@ describe('MindOS session event contract', () => {
       mindRoot: '/mind',
       agentConfig: {},
       serverSettings: {},
-      requestTools: [{ name: 'read_file', execute: async () => ({ content: [] }) }],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: () => ({
@@ -1426,7 +1546,6 @@ describe('MindOS session event contract', () => {
       mindRoot: '/mind',
       agentConfig: {},
       serverSettings: {},
-      requestTools: [{ name: 'read_file', execute: async () => ({ content: [] }) }],
       bashTool: { name: 'bash' },
       services: {
         resolveModelConfig: () => ({

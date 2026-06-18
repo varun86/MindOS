@@ -7,14 +7,15 @@ import {
   Blocks,
   CircleDashed,
   FolderOpen,
-  ListChecks,
   Rocket,
   type LucideIcon,
 } from 'lucide-react';
 import {
   getStudioProjectHref,
+  getStudioProjectAssistantLabels,
+  getStudioProjectSpaceLabels,
+  getStudioProjectWorkDirLabel,
   localize,
-  localizeList,
   stageLabel,
   type StudioProject,
 } from '@/lib/studio-projects';
@@ -22,7 +23,7 @@ import {
 export type StudioProjectItemDensity = 'default' | 'compact';
 
 function firstKit(project: StudioProject): string {
-  return project.kits[0] ?? 'Basic assistant';
+  return getStudioProjectAssistantLabels(project)[0] ?? 'Basic assistant';
 }
 
 function stageToneClass(stage: StudioProject['stage']): string {
@@ -37,26 +38,32 @@ function projectIcon(project: StudioProject): LucideIcon {
   return CircleDashed;
 }
 
+function renderProjectIcon(project: StudioProject, size: number) {
+  const Icon = projectIcon(project);
+  return <Icon size={size} aria-hidden="true" />;
+}
+
 function contextTokens(project: StudioProject, locale: string): Array<{
   label: string;
   value: string;
   icon: LucideIcon;
 }> {
-  const kits = localizeList(project.kits, undefined, locale);
+  const spaces = getStudioProjectSpaceLabels(project, locale);
+  const assistants = getStudioProjectAssistantLabels(project);
   return [
     {
       label: 'Work dir',
-      value: localize(project.workArea, project.workAreaZh, locale),
+      value: getStudioProjectWorkDirLabel(project, locale),
       icon: FolderOpen,
     },
     {
       label: 'Mind Space',
-      value: localize(project.space, project.spaceZh, locale),
+      value: spaces.length ? spaces.join(' / ') : localize(project.space, project.spaceZh, locale),
       icon: BookOpenText,
     },
     {
       label: 'AI Kit',
-      value: kits.length ? kits.join(' / ') : firstKit(project),
+      value: assistants.length ? assistants.join(' / ') : firstKit(project),
       icon: Blocks,
     },
   ];
@@ -133,7 +140,6 @@ export function StudioProjectItem({
   const title = localize(project.title, project.titleZh, locale);
   const goal = localize(project.goal, project.goalZh, locale);
   const nextAction = localize(project.nextAction, project.nextActionZh, locale);
-  const Icon = projectIcon(project);
   const compact = density === 'compact';
 
   return (
@@ -156,7 +162,7 @@ export function StudioProjectItem({
         <span className={`mt-0.5 hidden shrink-0 items-center justify-center rounded-lg border border-border/55 bg-background/50 text-[var(--amber)] sm:inline-flex ${
           compact ? 'h-8 w-8' : 'h-9 w-9'
         }`}>
-          <Icon size={compact ? 14 : 15} aria-hidden="true" />
+          {renderProjectIcon(project, compact ? 14 : 15)}
         </span>
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
