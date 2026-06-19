@@ -173,6 +173,45 @@ describe('materializeStandaloneAssets', () => {
     expect(readFileSync(path.join(materializedDependency, 'build', 'index.mjs'), 'utf-8')).toBe('export const Type = {};');
   });
 
+  it('materializes missing parent package dependencies at the top level by default', () => {
+    const appDir = makeTemp('mindos-app-standalone-top-level-deps-');
+    writeStandaloneApp(appDir);
+
+    const externalPackage = path.join(appDir, '.next', 'standalone', 'node_modules', '@earendil-works', 'pi-ai');
+    mkdirSync(externalPackage, { recursive: true });
+    writeFileSync(path.join(externalPackage, 'package.json'), JSON.stringify({
+      name: '@earendil-works/pi-ai',
+      dependencies: { '@aws-sdk/client-bedrock-runtime': '3.1048.0' },
+    }));
+
+    const fallbackDependency = path.join(appDir, 'node_modules', '@aws-sdk', 'client-bedrock-runtime');
+    mkdirSync(path.join(fallbackDependency, 'dist-cjs'), { recursive: true });
+    writeFileSync(path.join(fallbackDependency, 'package.json'), JSON.stringify({
+      name: '@aws-sdk/client-bedrock-runtime',
+      version: '3.1048.0',
+    }));
+    writeFileSync(path.join(fallbackDependency, 'dist-cjs', 'index.js'), 'module.exports = {};');
+
+    materializeStandaloneAssets(appDir);
+
+    expect(existsSync(path.join(
+      appDir,
+      '.next',
+      'standalone',
+      'node_modules',
+      '@aws-sdk',
+      'client-bedrock-runtime',
+      'dist-cjs',
+      'index.js',
+    ))).toBe(true);
+    expect(existsSync(path.join(
+      externalPackage,
+      'node_modules',
+      '@aws-sdk',
+      'client-bedrock-runtime',
+    ))).toBe(false);
+  });
+
   it('materializes explicit runtime dependency seeds even when Next did not trace them', () => {
     const appDir = makeTemp('mindos-app-runtime-seeds-');
     writeStandaloneApp(appDir);
@@ -282,6 +321,88 @@ describe('materializeStandaloneAssets', () => {
     expect(readFileSync(path.join(tracedExtension, 'index.ts'), 'utf-8')).toBe('export default function webAccess() {}');
   });
 
+  it('does not copy package-internal publish artifacts when materializing runtime seeds', () => {
+    const appDir = makeTemp('mindos-app-runtime-seed-artifacts-');
+    writeStandaloneApp(appDir);
+
+    const sourcePackage = path.join(appDir, 'node_modules', '@geminilight', 'mindos');
+    mkdirSync(path.join(sourcePackage, 'dist'), { recursive: true });
+    mkdirSync(path.join(sourcePackage, '_standalone'), { recursive: true });
+    mkdirSync(path.join(sourcePackage, '__node_modules', 'huge-runtime'), { recursive: true });
+    mkdirSync(path.join(sourcePackage, '__next'), { recursive: true });
+    mkdirSync(path.join(sourcePackage, '.turbo'), { recursive: true });
+    mkdirSync(path.join(sourcePackage, 'node_modules', 'nested-runtime'), { recursive: true });
+    writeFileSync(path.join(sourcePackage, 'package.json'), JSON.stringify({
+      name: '@geminilight/mindos',
+      version: '1.1.36',
+    }));
+    writeFileSync(path.join(sourcePackage, 'dist', 'index.js'), 'export {};');
+    writeFileSync(path.join(sourcePackage, '_standalone', 'server.js'), 'standalone');
+    writeFileSync(path.join(sourcePackage, '__node_modules', 'huge-runtime', 'index.js'), 'huge');
+    writeFileSync(path.join(sourcePackage, '__next', 'server.js'), 'next');
+    writeFileSync(path.join(sourcePackage, '.turbo', 'cache.bin'), 'cache');
+    writeFileSync(path.join(sourcePackage, 'node_modules', 'nested-runtime', 'index.js'), 'nested');
+
+    materializeStandaloneAssets(appDir, {
+      runtimeDependencySeeds: ['@geminilight/mindos'],
+    });
+
+    const bundledPackage = path.join(appDir, '.next', 'standalone', 'node_modules', '@geminilight', 'mindos');
+    expect(existsSync(path.join(bundledPackage, 'package.json'))).toBe(true);
+    expect(existsSync(path.join(bundledPackage, 'dist', 'index.js'))).toBe(true);
+    expect(existsSync(path.join(bundledPackage, '_standalone'))).toBe(false);
+    expect(existsSync(path.join(bundledPackage, '__node_modules'))).toBe(false);
+    expect(existsSync(path.join(bundledPackage, '__next'))).toBe(false);
+    expect(existsSync(path.join(bundledPackage, '.turbo'))).toBe(false);
+    expect(existsSync(path.join(bundledPackage, 'node_modules'))).toBe(false);
+  });
+
+  it('materializes declared dependencies without copying their nested node_modules payloads', () => {
+    const appDir = makeTemp('mindos-app-runtime-seed-node-modules-');
+    writeStandaloneApp(appDir);
+
+    const sourceParent = path.join(appDir, 'node_modules', '@earendil-works', 'pi-ai');
+    const sourceDependency = path.join(sourceParent, 'node_modules', '@aws-sdk', 'client-bedrock-runtime');
+    mkdirSync(path.join(sourceParent, 'dist'), { recursive: true });
+    mkdirSync(path.join(sourceDependency, 'dist-cjs'), { recursive: true });
+    mkdirSync(path.join(sourceDependency, 'node_modules', 'duplicated-sdk-tree'), { recursive: true });
+    writeFileSync(path.join(sourceParent, 'package.json'), JSON.stringify({
+      name: '@earendil-works/pi-ai',
+      version: '0.78.1',
+      dependencies: { '@aws-sdk/client-bedrock-runtime': '3.1048.0' },
+    }));
+    writeFileSync(path.join(sourceParent, 'dist', 'index.js'), 'export {};');
+    writeFileSync(path.join(sourceDependency, 'package.json'), JSON.stringify({
+      name: '@aws-sdk/client-bedrock-runtime',
+      version: '3.1048.0',
+    }));
+    writeFileSync(path.join(sourceDependency, 'dist-cjs', 'index.js'), 'module.exports = {};');
+    writeFileSync(path.join(sourceDependency, 'node_modules', 'duplicated-sdk-tree', 'huge.js'), 'huge');
+
+    materializeStandaloneAssets(appDir, {
+      runtimeDependencySeeds: ['@earendil-works/pi-ai'],
+    });
+
+    const bundledParent = path.join(appDir, '.next', 'standalone', 'node_modules', '@earendil-works', 'pi-ai');
+    const bundledDependency = path.join(
+      appDir,
+      '.next',
+      'standalone',
+      'node_modules',
+      '@aws-sdk',
+      'client-bedrock-runtime',
+    );
+    expect(existsSync(path.join(bundledParent, 'dist', 'index.js'))).toBe(true);
+    expect(existsSync(path.join(bundledDependency, 'dist-cjs', 'index.js'))).toBe(true);
+    expect(existsSync(path.join(bundledDependency, 'node_modules'))).toBe(false);
+    expect(existsSync(path.join(
+      bundledParent,
+      'node_modules',
+      '@aws-sdk',
+      'client-bedrock-runtime',
+    ))).toBe(false);
+  });
+
   it('prunes direct development tooling before dependency closure checks', () => {
     const appDir = makeTemp('mindos-app-dev-tooling-prune-');
     writeStandaloneApp(appDir);
@@ -326,7 +447,7 @@ describe('materializeStandaloneAssets', () => {
     expect(existsSync(nestedVitest)).toBe(false);
   });
 
-  it('keeps runtime @types packages when production packages declare them as dependencies', () => {
+  it('does not require runtime @types packages when production packages declare them as dependencies', () => {
     const appDir = makeTemp('mindos-app-runtime-types-');
     writeStandaloneApp(appDir);
 
@@ -348,7 +469,7 @@ describe('materializeStandaloneAssets', () => {
 
     materializeStandaloneAssets(appDir);
 
-    expect(existsSync(path.join(standaloneNodeModules, '@types', 'ws', 'package.json'))).toBe(true);
+    expect(existsSync(path.join(standaloneNodeModules, '@types', 'ws', 'package.json'))).toBe(false);
   });
 
   it('does not copy the repo root when resolving package names that also exist as Node builtins', () => {

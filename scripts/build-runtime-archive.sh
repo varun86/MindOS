@@ -186,6 +186,13 @@ elif command -v stat >/dev/null 2>&1; then
   SIZE_HUMAN="${SIZE_BYTES} bytes"
 fi
 
+MAX_RUNTIME_ARCHIVE_BYTES="${MINDOS_MAX_RUNTIME_ARCHIVE_BYTES:-125829120}"
+if [ "$SIZE_BYTES" -gt "$MAX_RUNTIME_ARCHIVE_BYTES" ]; then
+  echo "❌ Runtime archive is too large: ${SIZE_BYTES} bytes (limit ${MAX_RUNTIME_ARCHIVE_BYTES} bytes)"
+  echo "   Check for package-internal node_modules, _standalone, .next, or other generated artifacts in bundled dependencies."
+  exit 1
+fi
+
 echo ""
 echo "✅ mindos-runtime-${VERSION}.tar.gz"
 echo "   Size:   ${SIZE_HUMAN} (${SIZE_BYTES} bytes)"

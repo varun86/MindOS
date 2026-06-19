@@ -582,6 +582,12 @@ function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir
   if (parentPackageDir) {
     if (packageAtPathSatisfies(destPackage, dependencyRange, packageName)) return sourcePackage;
 
+    if (!existsSync(destPackage)) {
+      mkdirSync(path.dirname(destPackage), { recursive: true });
+      copyDereferenced(sourcePackage, destPackage);
+      return sourcePackage;
+    }
+
     const nestedDest = path.join(parentPackageDir, 'node_modules', packageName);
     if (packageAtPathSatisfies(nestedDest, dependencyRange, packageName)) return sourcePackage;
 
@@ -848,8 +854,7 @@ function copyDereferenced(fromAbs, toAbs) {
     mkdirSync(path.dirname(toAbs), { recursive: true });
     mkdirSync(toAbs, { recursive: true });
     for (const name of readdirSync(fromAbs)) {
-      if (name === '.pnpm') continue;
-      if (name === '.next') continue;
+      if (isExcludedDereferencedDirName(name)) continue;
       copyDereferenced(path.join(fromAbs, name), path.join(toAbs, name));
     }
     return;
@@ -859,4 +864,16 @@ function copyDereferenced(fromAbs, toAbs) {
     mkdirSync(path.dirname(toAbs), { recursive: true });
     copyFileSync(fromAbs, toAbs);
   }
+}
+
+function isExcludedDereferencedDirName(name) {
+  return [
+    '.next',
+    '.pnpm',
+    '.turbo',
+    '__next',
+    '__node_modules',
+    '_standalone',
+    'node_modules',
+  ].includes(name);
 }
