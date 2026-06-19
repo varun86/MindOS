@@ -51,7 +51,11 @@ export const MINDOS_WEB_RUNTIME_EXTENSION_SOURCE_ENTRIES = [
 
 export const RUNTIME_DEPENDENCY_SEEDS = [
   '@sinclair/typebox',
+  '@earendil-works/pi-agent-core',
   '@earendil-works/pi-ai',
+  'ignore',
+  'typebox',
+  'yaml',
   ...BUILTIN_AGENT_EXTENSION_RUNTIME_DEPENDENCY_SEEDS,
   ...IM_RUNTIME_DEPENDENCY_SEEDS,
 ];
@@ -229,6 +233,7 @@ function assertStandalonePackageDependencyClosure(standaloneDir) {
 
     for (const [dependencyName, dependencyRange] of Object.entries(pkg.dependencies ?? {})) {
       if (isNodeBuiltin(dependencyName)) continue;
+      if (isTypeOnlyPackage(dependencyName)) continue;
       if (!dependencyResolvableFromStandalonePackage(nodeModulesDir, packageDir, dependencyName, dependencyRange)) {
         missing.push(`${packageName} -> ${dependencyName}@${dependencyRange}`);
       }
@@ -250,6 +255,10 @@ function dependencyResolvableFromStandalonePackage(nodeModulesDir, packageDir, d
 
 function isNodeBuiltin(packageName) {
   return packageName.startsWith('node:');
+}
+
+function isTypeOnlyPackage(packageName) {
+  return packageName === '@types' || packageName.startsWith('@types/');
 }
 
 function listPackageNames(nodeModulesDir) {
@@ -417,6 +426,7 @@ function pruneDirectDevelopmentPackages(standaloneDir) {
   collectNestedNodeModulesDirs(nodeModulesDir, nodeModulesDir, nodeModulesDirs);
   for (const packageName of [
     '@eslint',
+    '@types',
     '@vitest',
     'eslint',
     'eslint-config-next',
