@@ -74,7 +74,7 @@ export default function AgentsPanelAgentDetail({
   };
 
   const dot =
-    agentStatus === 'connected' ? 'bg-[var(--success)]' : agentStatus === 'detected' ? 'bg-[var(--amber)]' : 'bg-muted-foreground';
+    agentStatus === 'connected' ? 'bg-[var(--amber)]' : agentStatus === 'detected' ? 'bg-[var(--amber)]/55' : 'bg-muted-foreground/45';
 
   return (
     <div className="flex flex-col h-full min-h-0">

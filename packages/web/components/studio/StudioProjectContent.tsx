@@ -120,62 +120,62 @@ const COPY = {
     fromRecentProject: 'Recent Project',
   },
   zh: {
-    back: 'Studio',
-    missingTitle: '找不到 Project',
-    missingText: '这个 Project 可能已归档，或是在另一个浏览器配置里创建的。',
-    returnStudio: '返回 Studio',
-    newSession: '新建 Session',
-    historicalSessions: 'Session 历史',
+    back: '工作台',
+    missingTitle: '找不到项目',
+    missingText: '这个项目可能已归档，或是在另一个浏览器配置里创建的。',
+    returnStudio: '返回工作台',
+    newSession: '新建对话',
+    historicalSessions: '对话历史',
     sessionsHint: '工作、产物和复盘记录。',
-    noSessions: '还没有 Session。',
-    noMatchingSessions: '没有匹配这个视图的 Session。',
-    untitledSession: '未命名 Session',
-    space: 'Space',
+    noSessions: '还没有对话。',
+    noMatchingSessions: '没有匹配这个视图的对话。',
+    untitledSession: '未命名对话',
+    space: '心智空间',
     kits: 'AI Kits',
     directory: 'WorkDir',
     cadence: '节奏',
     nextAction: '下一步',
     overview: '总览',
-    overviewHint: '目标，以及新 Session 默认继承的上下文。',
+    overviewHint: '目标，以及新对话默认继承的上下文。',
     configuration: '配置',
     status: '状态',
     goal: '目标',
     progress: '进度',
-    searchSessions: '搜索 Sessions',
+    searchSessions: '搜索对话',
     searchPlaceholder: '搜索标题、产物或摘要',
     filterByAgent: '按 Agent 过滤',
     allAgents: '全部 Agent',
-    sessionMetric: 'Sessions',
+    sessionMetric: '对话',
     reviewMetric: '待复盘',
     review: 'Review queue',
     growth: '可复用经验',
     artifact: '产物',
     updated: '更新',
-    createTitle: '新建 Project',
+    createTitle: '新建项目',
     createDescription: '设定目标、工作区、记忆和 AI。',
-    titleLabel: 'Project 名称',
+    titleLabel: '项目名称',
     goalLabel: '目标',
-    spaceLabel: 'Mind Space',
+    spaceLabel: '心智空间',
     kitLabel: 'AI Kit',
     workAreaLabel: 'WorkDir',
     titlePlaceholder: '发布实践',
     goalPlaceholder: '把产品证据整理成发布决策',
     spacePlaceholder: '产品策略',
     kitPlaceholder: 'Research Kit',
-    workAreaPlaceholder: 'Mind',
+    workAreaPlaceholder: '心智',
     cancel: '取消',
-    create: '创建 Project',
-    required: '需要填写 Project 名称和目标。',
-    setupTitle: 'Project 设置',
-    setupDescription: '为新 Session 选择默认设置。',
-    workAreaDescription: '新 Session 默认使用的工作目录。',
-    spaceDescription: '这个 Project 的长期上下文。',
-    kitDescription: '新 Session 默认使用的 AI 能力。',
+    create: '创建项目',
+    required: '需要填写项目名称和目标。',
+    setupTitle: '项目设置',
+    setupDescription: '为新对话选择默认设置。',
+    workAreaDescription: '新对话默认使用的工作目录。',
+    spaceDescription: '这个项目的长期上下文。',
+    kitDescription: '新对话默认使用的 AI 能力。',
     customValue: '自定义',
-    projectDetailsTitle: 'Project 细节',
+    projectDetailsTitle: '项目细节',
     projectDetailsDescription: '名称要短，目标要具体。',
     selectedSummary: '已选设置',
-    fromRecentProject: '来自近期 Project',
+    fromRecentProject: '来自近期项目',
   },
 } as const;
 
@@ -227,15 +227,7 @@ function ProjectContextOverview({
   const getLatestAssistants = () => getStudioProjectAssistantRefs(getLatestProject());
 
   return (
-    <section className="overflow-visible rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-overview">
-      <div className="border-b border-border/60 px-4 py-4">
-        <div className="flex items-center gap-2">
-          <Target size={15} className="text-[var(--amber)]" aria-hidden="true" />
-          <h2 id="studio-project-overview" className="text-sm font-semibold text-foreground">{copy.overview}</h2>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{copy.overviewHint}</p>
-      </div>
-
+    <section className="overflow-visible rounded-xl border border-border/60 bg-card/45" aria-label={copy.configuration}>
       <div className="border-b border-border/60 px-4 py-4">
         <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
           <Target size={13} aria-hidden="true" />
@@ -582,7 +574,6 @@ export default function StudioProjectContent({ projectId }: { projectId: string 
               <h1 className="text-2xl font-semibold text-foreground">
                 {localized.title}
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{localized.goal}</p>
             </div>
             <Button
               render={<Link href={`/chat/new?projectId=${encodeURIComponent(project.id)}`} />}

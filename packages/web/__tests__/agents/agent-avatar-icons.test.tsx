@@ -13,6 +13,16 @@ describe('AgentAvatar icon mapping', () => {
     expect(html).not.toContain('/agent-icons/google.svg');
   });
 
+  it('renders MindOS as the product avatar instead of a random green or teal fallback', () => {
+    const html = renderToStaticMarkup(<AgentAvatar name="MindOS" status="connected" />);
+
+    expect(html).toContain('/agent-icons/mindos.svg');
+    expect(html).toContain('border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-[var(--amber)]');
+    expect(html).toContain('bg-[var(--amber)]');
+    expect(html).not.toContain('bg-[var(--success)]');
+    expect(html).not.toMatch(/emerald|teal|cyan|lime/);
+  });
+
   it.each([
     ['MindOS', '/agent-icons/mindos.svg'],
     ['MindOS Agent', '/agent-icons/mindos.svg'],

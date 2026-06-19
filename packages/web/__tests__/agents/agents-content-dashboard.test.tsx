@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import AgentsContentPage from '@/components/agents/AgentsContentPage';
 import AgentDetailContent from '@/components/agents/AgentDetailContent';
+import AgentsLocalClientsSection from '@/components/agents/AgentsLocalClientsSection';
 import { messages } from '@/lib/i18n';
 
 const runtimeCapabilities = vi.hoisted(() => ({
@@ -183,7 +184,7 @@ vi.mock('@/hooks/useNativeRuntimeDetection', () => ({
 }));
 
 describe('Agents content dashboard', () => {
-  it('renders overview with five IA groups and clickable system model', () => {
+  it('renders overview with four onward IA targets and clickable system model', () => {
     const html = renderToStaticMarkup(<AgentsContentPage tab="overview" />);
     const a = messages.en.agentsContent;
     const capabilitiesHint = a.navHints.capabilities.replace('&', '&amp;');
@@ -197,12 +198,13 @@ describe('Agents content dashboard', () => {
     expect(html).toContain(a.title);
     expect(html).toContain(a.navAriaLabel);
     expect(html).not.toContain(a.backToOverview);
-    expect(html).toContain(a.navHints.overview);
+    expect(html).not.toContain(a.navHints.overview);
     expect(html).toContain(a.navHints.assistant);
     expect(html).toContain(a.navHints.agent);
     expect(html).toContain(capabilitiesHint);
     expect(html).toContain(channelsHint);
     expect(html).not.toContain('MCP :8781');
+    expect(html).not.toContain('href="/agents"');
     expect(html).toContain('href="/agents?tab=assistant"');
     expect(html).toContain('href="/agents?tab=agent"');
     expect(html).toContain('href="/agents?tab=capabilities"');
@@ -269,6 +271,21 @@ describe('Agents content dashboard', () => {
     expect(html).not.toContain(a.mcp.connectionGraph);
     expect(html).not.toContain(a.mcp.searchServersPlaceholder);
     expect(html).not.toContain('github');
+  });
+
+  it('keeps connected local clients on the MindOS amber palette instead of success green', () => {
+    const html = renderToStaticMarkup(
+      <AgentsLocalClientsSection
+        buckets={{
+          connected: [baseMcpState.agents[0]],
+          detected: [],
+          notFound: [],
+        }}
+      />,
+    );
+
+    expect(html).toContain('border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber)]');
+    expect(html).not.toContain('border-success/20 bg-success/10 text-success');
   });
 
   it('renders Skills & MCP section with MCP and skill management', () => {

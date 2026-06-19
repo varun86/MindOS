@@ -3,6 +3,10 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WikiHomeContent from '@/components/WikiHomeContent';
+import { en } from '@/lib/i18n/messages-en';
+import { zh } from '@/lib/i18n/messages-zh';
+import { registerMessages, useLocaleStore } from '@/lib/stores/locale-store';
+import type { Messages } from '@/lib/i18n';
 import type { MindSystemSlot } from '@/lib/mind-system';
 import type { BuiltInMindSystemSpaceRecord } from '@/lib/space-records';
 
@@ -93,6 +97,7 @@ describe('WikiHomeContent Mind System cards', () => {
     await act(async () => {
       root?.unmount();
     });
+    useLocaleStore.setState({ locale: 'en', t: en as unknown as Messages });
     host.remove();
     vi.unstubAllGlobals();
   });
@@ -138,6 +143,19 @@ describe('WikiHomeContent Mind System cards', () => {
       expect(icon?.className).toContain('border-[var(--amber)]/35');
       expect(icon?.className).toContain('bg-[var(--amber-subtle)]');
     }
+  });
+
+  it('does not render the removed built-in spaces description on the homepage', async () => {
+    registerMessages('zh', zh as unknown as Messages);
+    useLocaleStore.setState({ locale: 'zh', t: zh as unknown as Messages });
+
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<WikiHomeContent spaces={[]} recent={[]} mindSystemSpaces={mindSystemRecords()} />);
+    });
+
+    expect(host.querySelector('[data-mind-system-home-desc]')).toBeNull();
+    expect(host.textContent).not.toContain('用四个内置空间整理你的知识。');
   });
 
   it('shows a compact assistant count without expanding assistant details', async () => {

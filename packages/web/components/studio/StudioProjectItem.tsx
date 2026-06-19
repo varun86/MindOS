@@ -57,7 +57,7 @@ function contextTokens(project: StudioProject, locale: string): Array<{
       icon: FolderOpen,
     },
     {
-      label: 'Mind Space',
+      label: locale === 'zh' ? '心智空间' : 'Mind Space',
       value: spaces.length ? spaces.join(' / ') : localize(project.space, project.spaceZh, locale),
       icon: BookOpenText,
     },
@@ -191,7 +191,7 @@ export function StudioProjectItem({
 
       <div className={`${compact ? 'flex items-center justify-between gap-3 md:block' : 'flex items-center justify-between gap-3 md:block'} min-w-0`}>
         <div className="text-[11px] font-medium text-muted-foreground [font-variant-numeric:tabular-nums]">
-          {sessionCount} {locale === 'zh' ? 'Sessions' : sessionCount === 1 ? 'session' : 'sessions'}
+          {locale === 'zh' ? `${sessionCount} 个对话` : `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'}`}
         </div>
         <div className="mt-1 text-[11px] text-muted-foreground">
           {trailingMeta ?? project.updated}

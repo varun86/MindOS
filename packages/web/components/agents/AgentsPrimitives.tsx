@@ -242,6 +242,23 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function avatarShellClasses(name: string, iconFile: string | null): string {
+  if (iconFile === 'mindos.svg') {
+    return 'border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-[var(--amber)]';
+  }
+  if (iconFile) {
+    return 'border-border/60 bg-card/70 text-muted-foreground dark:bg-background/55';
+  }
+  const [bg, border, text] = AVATAR_PALETTES[hashName(name) % AVATAR_PALETTES.length];
+  return `${bg} ${border} ${text}`;
+}
+
+function avatarStatusDotClass(status: 'connected' | 'detected' | 'notFound'): string {
+  if (status === 'connected') return 'bg-[var(--amber)]';
+  if (status === 'detected') return 'bg-[var(--amber)]/55';
+  return 'bg-muted-foreground/45';
+}
+
 export function AgentAvatar({
   name,
   status,
@@ -254,15 +271,15 @@ export function AgentAvatar({
   onRemove?: () => void;
   href?: string;
 }) {
-  const [bg, border, text] = AVATAR_PALETTES[hashName(name) % AVATAR_PALETTES.length];
   const sizeClasses = size === 'sm' ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-xs';
   const iconSizeClasses = size === 'sm' ? 'w-3.5 h-3.5' : 'w-5 h-5';
-  const dotColor = status === 'connected' ? 'bg-[var(--success)]' : status === 'detected' ? 'bg-[var(--amber)]' : 'bg-muted-foreground';
   const iconFile = agentIconFile(name);
+  const shellClasses = avatarShellClasses(name, iconFile);
+  const dotColor = status ? avatarStatusDotClass(status) : '';
 
   return (
     <div className="relative group/avatar" title={name}>
-      <div className={`${sizeClasses} ${bg} ${border} ${text} border rounded-full flex items-center justify-center font-semibold select-none shadow-sm dark:shadow-none`}>
+      <div className={`${sizeClasses} ${shellClasses} border rounded-full flex items-center justify-center font-semibold select-none shadow-sm dark:shadow-none`}>
         {iconFile ? (
           <img
             src={`/agent-icons/${iconFile}`}

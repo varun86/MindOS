@@ -29,10 +29,10 @@ const COPY = {
     recentProjects: 'Projects',
   },
   zh: {
-    title: 'Studio',
-    overview: 'Overview',
-    newProject: '新建 Project',
-    recentProjects: 'Projects',
+    title: '工作台',
+    overview: '概览',
+    newProject: '新建项目',
+    recentProjects: '项目',
   },
 } as const;
 

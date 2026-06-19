@@ -39,9 +39,9 @@ describe('MindOS copy alignment', () => {
     expect(panelsZh.panels.im.emptyDesc).not.toContain('MindOS Agent');
   });
 
-  it('frames the local knowledge surface as Mind with a built-in mind system', () => {
+  it('frames the local knowledge surface as Mind in English and 心智 in Chinese', () => {
     expect(navigationEn.sidebar.files).toBe('Mind');
-    expect(navigationZh.sidebar.files).toBe('Mind');
+    expect(navigationZh.sidebar.files).toBe('心智');
     expect(navigationEn.sidebar.builtInSpacesTitle).toBe('MindOS System');
     expect(navigationZh.sidebar.builtInSpacesTitle).toBe('MindOS System');
     expect(navigationEn.sidebar.builtInSpacesRoot).toContain('Dao');
@@ -50,9 +50,10 @@ describe('MindOS copy alignment', () => {
     expect(navigationZh.sidebar.builtInSpacesRoot).toContain('术');
 
     expect(knowledgeEn.home.builtInSpacesTitle).toBe('Mind System');
-    expect(knowledgeZh.home.builtInSpacesTitle).toBe('Mind 系统');
+    expect(knowledgeZh.home.builtInSpacesTitle).toBe('心智系统');
     expect(knowledgeEn.home.builtInSpacesDesc).toBe('Organize your knowledge with four built-in spaces.');
-    expect(knowledgeZh.home.builtInSpacesDesc).toBe('用四个内置空间整理你的知识。');
+    expect(knowledgeZh.home.builtInSpacesDesc).toBe('');
+    expect(knowledgeZh.home.builtInSpacesDesc).not.toBe('用四个内置空间整理你的知识。');
     expect(knowledgeZh.home.builtInSpacesDesc).not.toContain('.mindos');
     expect(Object.keys(knowledgeEn.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
     expect(Object.keys(knowledgeZh.home.mindPillars)).toEqual(['dao', 'fa', 'shu', 'qi']);
@@ -71,8 +72,8 @@ describe('MindOS copy alignment', () => {
     expect(knowledgeZh.inbox.capturePageTitle).toBe('收集箱');
     expect(knowledgeZh.inbox.composerTitle).toBe('加入收集箱');
     expect(knowledgeZh.inbox.captureButton).toBe('保存到收集箱');
-    expect(knowledgeZh.inbox.organizeToMindAction).toBe('整理到 Mind');
-    expect(knowledgeZh.inbox.organizationAgentTitle).toBe('收集箱整理助手');
+    expect(knowledgeZh.inbox.organizeToMindAction).toBe('整理到心智');
+    expect(knowledgeZh.inbox.organizationAgentTitle).toBe('收集箱整理助理');
     expect(knowledgeZh.inbox.viewQueue).toBe('待处理');
     expect(knowledgeZh.inbox.viewShelved).toBe('已搁置');
     expect(knowledgeZh.inbox.viewHistory).toBe('已完成');

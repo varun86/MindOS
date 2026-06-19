@@ -15,7 +15,7 @@ export const featuresZh = {
     subtitle: '开始使用 MindOS 所需的一切',
     whatIs: {
       title: '什么是 MindOS？',
-      body: 'MindOS 是你的本地知识助手。它把项目、决策、SOP 和偏好整理在同一处，让你和已连接的 Agent 都能基于同一份上下文工作。文件保留在本地，知识可以反复复用，也不用每次都从头交代背景。',
+      body: 'MindOS 是你的本地知识助理。它把项目、决策、SOP 和偏好整理在同一处，让你和已连接的 Agent 都能基于同一份上下文工作。文件保留在本地，知识可以反复复用，也不用每次都从头交代背景。',
     },
     quickStart: {
       title: '快速开始',

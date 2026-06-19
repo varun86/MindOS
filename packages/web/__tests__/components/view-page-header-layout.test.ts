@@ -24,10 +24,13 @@ describe('ViewPageClient header layout', () => {
 
     expect(viewSource).toContain('className="view-header-actions flex items-center gap-1.5 md:gap-2 shrink-0"');
     expect(viewSource).toContain('className="view-header-breadcrumb min-w-0 flex-1 flex items-center gap-1.5"');
-    expect(viewSource).toContain("const markdownContentClassName = shouldReserveTocLane");
-    expect(viewSource).toContain("'content-width toc-reserved-content'");
+    expect(viewSource).toContain("const markdownFrameClassName = shouldReserveTocLane");
+    expect(viewSource).toContain("'content-width markdown-view-frame markdown-view-frame--with-toc'");
+    expect(viewSource).toContain('data-markdown-view-frame');
+    expect(viewSource).toContain("const markdownBodyClassName = 'markdown-view-body';");
     expect(viewSource).not.toContain("width: 'calc(100% + var(--toc-extra-right, 0px))'");
     expect(viewSource).not.toContain("marginRight: 'calc(var(--toc-extra-right, 0px) * -1)'");
+    expect(viewSource).not.toContain('toc-reserved-content');
     expect(viewSource).not.toContain('view-topbar-border-extension');
     expect(viewSource).not.toMatch(/paddingRight:\s*['"`][^'"`]*toc-extra-right/);
     expect(viewSource).not.toContain('view-header-actions-reserve');
@@ -39,7 +42,10 @@ describe('ViewPageClient header layout', () => {
     expect(layoutSource).toContain('padding-right: var(--right-dock-reserved-width) !important;');
     expect(layoutSource).not.toContain('var(--toc-extra-right');
 
-    expect(cssSource).toContain('.toc-reserved-content { margin-right: 220px; }');
+    expect(cssSource).toContain('.markdown-view-frame {');
+    expect(cssSource).toContain('.markdown-view-frame--with-toc {');
+    expect(cssSource).toContain('grid-template-columns: minmax(0, 1fr) 212px;');
+    expect(cssSource).not.toContain('.toc-reserved-content');
     expect(cssSource).not.toContain('.view-header-actions-reserve');
     expect(cssSource).not.toContain('.view-header-actions {');
     expect(cssSource).not.toContain('--toc-width');

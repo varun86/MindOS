@@ -105,10 +105,10 @@ export function buildAssistantCandidates(projects: StudioProject[], locale: stri
 export function studioContextPickerCopy(locale: string) {
   if (locale === 'zh') {
     return {
-      mind: 'Mind',
-      addSpace: '添加 Space',
+      mind: '心智',
+      addSpace: '添加空间',
       addAssistant: '添加 AI Kit',
-      searchSpaces: '搜索 Space',
+      searchSpaces: '搜索空间',
       searchAssistants: '搜索 AI Kit',
       noMatches: '没有匹配项',
       chooseWorkDir: '选择目录',

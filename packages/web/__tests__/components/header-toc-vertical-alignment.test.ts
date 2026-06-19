@@ -7,18 +7,17 @@ import path from 'node:path';
 // calc(var(--app-titlebar-h) + var(--workspace-header-h)), and JS scroll math must
 // measure the rendered view header at runtime. See wiki/41-dev-pitfall-patterns.md 规则 10.
 describe('Page header and TOC vertical alignment', () => {
-  it('TOC toggle and panel sit below titlebar row + view header', () => {
+  it('TOC rail sits below titlebar row + view header inside the Markdown layout', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
-    // Toggle button: just below the view header (titlebar + shared workspace header)
-    expect(source).toContain('top-[calc(var(--app-titlebar-h)+var(--workspace-header-h))]');
+    // The rail is sticky below the view header (titlebar + shared workspace header)
+    // with a small reading-layout gutter, not a free-floating fixed button.
+    expect(source).toContain('top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR} + 24px)`');
+    expect(source).toContain('maxHeight: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR} - 48px)`');
+    expect(source).not.toContain('top-[calc(var(--app-titlebar-h)+var(--workspace-header-h))]');
     expect(source).not.toContain('top-[46px]');
     expect(source).not.toContain('top-[52px]');
-
-    // Aside panel: starts below the titlebar row, full remaining height
-    expect(source).toContain('top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR})`');
-    expect(source).toContain('height: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR})`');
 
     // Scroll math (IntersectionObserver rootMargin + scrollTo) must include the
     // titlebar offset and the measured view header at runtime, not a hardcoded constant.

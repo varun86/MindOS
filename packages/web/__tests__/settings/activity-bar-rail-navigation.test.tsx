@@ -198,6 +198,42 @@ describe('ActivityBar rail navigation', () => {
     host.remove();
   });
 
+  it('places Agents in the capability group above Discover instead of the core workspace group', async () => {
+    const ActivityBar = (await import('@/components/ActivityBar')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ActivityBar
+          activePanel={null}
+          onPanelChange={vi.fn()}
+          syncStatus={null}
+          expanded
+          onExpandedChange={vi.fn()}
+          onSettingsClick={vi.fn()}
+          onSyncClick={vi.fn()}
+        />,
+      );
+    });
+
+    const echo = host.querySelector('[data-walkthrough="echo-panel"]');
+    const agents = host.querySelector('[data-walkthrough="agents-panel"]');
+    const discover = host.querySelector('a[aria-label="Discover"]');
+    expect(echo).not.toBeNull();
+    expect(agents).not.toBeNull();
+    expect(discover).not.toBeNull();
+    expect(echo?.compareDocumentPosition(agents!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(agents?.compareDocumentPosition(discover!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('shows Flow after the experiments preference is enabled', async () => {
     localStorage.setItem('mindos:labs-workflows', '1');
     const ActivityBar = (await import('@/components/ActivityBar')).default;

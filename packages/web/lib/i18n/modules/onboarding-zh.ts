@@ -15,9 +15,9 @@ export const onboardingZh = {
     dismiss: '关闭',
   },
   setup: {
-    stepTitles: ['Mind 空间', '连接 AI', '确认创建'],
+    stepTitles: ['心智空间', '连接 AI', '确认创建'],
     // Step 1
-    kbPath: 'Mind 位置',
+    kbPath: '心智位置',
     kbPathHint: '默认即可。你也可以指向已有的 Markdown 知识库目录。',
     kbPathDefault: '~/Documents/MindOS/mind',
     kbPathBrowse: '浏览...',
@@ -28,7 +28,7 @@ export const onboardingZh = {
     kbTemplateMerge: '选择模板合并',
     template: '初始模板',
     templateSkip: '跳过（目录已有文件）',
-    spaceKitTitle: '选择 Mind 空间',
+    spaceKitTitle: '选择心智空间',
     spaceKitDesc: '先选择最可能用到的空间，之后可以随时添加或删除。',
     spaceKitCount: (n: number) => n > 0 ? `已选 ${n}` : '可跳过',
     spaceKitLabels: {
@@ -47,7 +47,7 @@ export const onboardingZh = {
       product: '反馈',
       research: '论文',
     },
-    mindLocationTitle: '确认 Mind 位置',
+    mindLocationTitle: '确认心智位置',
     mindLocationDesc: 'Space 和笔记会保存在本地。不改也可以继续。',
     advancedMindSettings: '高级设置',
     // Step 2
@@ -143,10 +143,10 @@ export const onboardingZh = {
     aiSkipTitle: '暂时跳过',
     aiSkipDesc: '稍后可在 设置 → AI 中添加 API 密钥。',
     // Step 6 — Review
-    reviewReadyTitle: '准备创建你的 Mind',
+    reviewReadyTitle: '准备创建你的心智',
     reviewHint: '确认设置无误后，点击完成。',
     reviewSafety: '',
-    reviewSpaceKits: 'Mind 空间',
+    reviewSpaceKits: '心智空间',
     reviewSpaceKitsSkipped: '跳过',
     reviewLocalService: '本地服务',
     reviewInstallResults: 'Agent 配置结果：',
@@ -175,7 +175,7 @@ export const onboardingZh = {
     completeDone: '设置完成！',
     completeFailed: '设置失败，请重试。',
     // Health Check
-    healthKb: 'Mind 位置',
+    healthKb: '心智位置',
     healthKbNone: '未配置',
     healthAi: 'AI 服务',
     healthAiNone: '未配置 — AI 功能不可用',

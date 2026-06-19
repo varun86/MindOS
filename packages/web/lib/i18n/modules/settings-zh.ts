@@ -106,15 +106,15 @@ export const settingsZh = {
     navigation: {
       railTitle: 'Rail 项',
       railDesc: '选择哪些可选或实验性工作面显示在左侧 rail，让日常导航保持专注。',
-      hiddenHint: '隐藏的工作面仍可从搜索、直接链接和相关页面进入。Studio 默认显示；Flow 仍保持实验性。',
+      hiddenHint: '隐藏的工作面仍可从搜索、直接链接和相关页面进入。工作台默认显示；Flow 仍保持实验性。',
       visible: '已显示',
       hidden: '已隐藏',
       surfacePrefix: 'Rail 项：',
       toggleSuffix: 'rail 显示状态',
       items: {
         studio: {
-          label: 'Studio',
-          description: '用于长期 AI 工作、复盘和成长的 Project 工作面。默认显示。',
+          label: '工作台',
+          description: '用于长期 AI 工作、复盘和成长的项目工作面。默认显示。',
         },
         flow: {
           label: 'Flow',
@@ -753,8 +753,8 @@ export const settingsZh = {
       tokenNoneAction: '请在 设置 → 通用 → 安全 中生成令牌。',
       serverUrl: 'MCP 服务地址',
       serverUrlCopy: '复制地址',
-      howToConnect: '如何连接 AI 助手',
-      howToStep1: '打开你的 AI 助手的 MCP 设置（如 Claude Code、Cursor）',
+      howToConnect: '如何连接 AI 助理',
+      howToStep1: '打开你的 AI 助理的 MCP 设置（如 Claude Code、Cursor）',
       howToStep2: '添加一个新的 MCP 服务，填入上方地址',
       howToStep3: '将认证令牌设为 Bearer Token',
       howToStep4: '保存并验证连接',

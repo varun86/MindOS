@@ -239,42 +239,39 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
   };
 
   return (
-    <>
-      {/* Collapse / expand toggle — separate from aside so it stays visible */}
+    <aside
+      className="hidden xl:flex min-w-0 flex-col self-start sticky z-app-sticky relative overflow-visible"
+      data-markdown-toc-panel
+      style={{
+        top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR} + 24px)`,
+        maxHeight: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR} - 48px)`,
+        width: NAV_W,
+      }}
+    >
       <button
+        type="button"
         onClick={handleCollapsedToggle}
-        className="hidden xl:flex fixed z-10 top-[calc(var(--app-titlebar-h)+var(--workspace-header-h))] flex items-center justify-center w-5 h-8 rounded-l-md border border-r-0 border-border hover:bg-muted transition-colors"
-        style={{
-          right: `calc(var(--right-panel-width, 0px) + ${NAV_W}px)`,
-          background: 'var(--background)',
-          transition: 'right 200ms ease-in-out',
-        }}
+        className="absolute -left-5 top-0 z-10 flex h-8 w-5 items-center justify-center rounded-l-md border border-r-0 border-border bg-background text-muted-foreground/60 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         title={collapsed ? t.view.tocExpand : t.view.tocCollapse}
+        aria-label={collapsed ? t.view.tocExpand : t.view.tocCollapse}
+        aria-expanded={!collapsed}
+        data-markdown-toc-toggle
       >
         <ChevronRight
           size={11}
-          className="text-muted-foreground/60 transition-transform duration-200"
+          className="transition-transform duration-200"
           style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
         />
       </button>
-
-      {/* TOC panel */}
-      <aside
-        className="hidden xl:flex flex-col fixed z-10 overflow-hidden"
-        style={{
-          top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR})`,
-          height: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR})`,
-          width: NAV_W,
-          right: 'var(--right-panel-width, 0px)',
-          transform: collapsed ? `translateX(${NAV_W}px)` : 'translateX(0)',
-          transition: 'transform 200ms ease-in-out, right 200ms ease-out',
-        }}
-      >
       <nav
         ref={navRef}
         aria-label={t.view.tocTitle}
-        className="flex flex-col gap-0.5 overflow-y-auto min-h-0 flex-1 pt-3 pb-5 pl-2 pr-3 border-l border-border"
+        className={cn(
+          'flex flex-col gap-0.5 overflow-y-auto min-h-0 flex-1 pb-5 pl-2 pr-3 border-l border-border bg-background/95 transition-opacity duration-150',
+          collapsed ? 'pointer-events-none opacity-0' : 'opacity-100',
+        )}
         style={{ background: 'var(--background)' }}
+        aria-hidden={collapsed}
       >
         {headings.map((heading, i) => {
           const indent = (heading.level - minLevel) * 14;
@@ -318,6 +315,5 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
         })}
       </nav>
     </aside>
-    </>
   );
 }

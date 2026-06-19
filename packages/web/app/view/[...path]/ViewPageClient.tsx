@@ -586,9 +586,10 @@ export default function ViewPageClient({
       ? mdViewMode !== 'source' && hasTableOfContents(editContent)
       : hasTableOfContents(normalizedSavedMarkdown)
   );
-  const markdownContentClassName = shouldReserveTocLane
-    ? 'content-width toc-reserved-content'
-    : 'content-width';
+  const markdownFrameClassName = shouldReserveTocLane
+    ? 'content-width markdown-view-frame markdown-view-frame--with-toc'
+    : 'content-width markdown-view-frame';
+  const markdownBodyClassName = 'markdown-view-body';
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -949,46 +950,50 @@ export default function ViewPageClient({
         ) : isMarkdown && !showRenderer ? (
           <>
             {editing && (
-              <div className={markdownContentClassName}>
-                {isDraft && showSaveAs && (
-                  <div className="mb-3 rounded-lg border border-border bg-card p-3 flex flex-col gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground">{t.view?.saveDirectory ?? 'Directory'}</label>
-                      <div className="mt-1">
-                        <DirPicker
-                          dirPaths={draftDirectories}
-                          value={saveDir}
-                          onChange={setSaveDir}
-                          rootLabel={t.home?.rootLevel ?? 'Root'}
+              <div className={markdownFrameClassName} data-markdown-view-frame>
+                <div className={markdownBodyClassName}>
+                  {isDraft && showSaveAs && (
+                    <div className="mb-3 rounded-lg border border-border bg-card p-3 flex flex-col gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">{t.view?.saveDirectory ?? 'Directory'}</label>
+                        <div className="mt-1">
+                          <DirPicker
+                            dirPaths={draftDirectories}
+                            value={saveDir}
+                            onChange={setSaveDir}
+                            rootLabel={t.home?.rootLevel ?? 'Root'}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">{t.view?.saveFileName ?? 'File name'}</label>
+                        <input
+                          value={saveName}
+                          onChange={(e) => setSaveName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDraftSave(); }}
+                          className="mt-1 w-full px-2.5 py-1.5 text-sm bg-background border border-border rounded-lg text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          placeholder="Untitled.md"
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">{t.view?.saveFileName ?? 'File name'}</label>
-                      <input
-                        value={saveName}
-                        onChange={(e) => setSaveName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDraftSave(); }}
-                        className="mt-1 w-full px-2.5 py-1.5 text-sm bg-background border border-border rounded-lg text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="Untitled.md"
-                      />
-                    </div>
-                  </div>
-                )}
-                <MarkdownEditor
-                  value={editContent}
-                  onChange={setEditContent}
-                  viewMode={mdViewMode}
-                />
+                  )}
+                  <MarkdownEditor
+                    value={editContent}
+                    onChange={setEditContent}
+                    viewMode={mdViewMode}
+                  />
+                </div>
                 {mdViewMode !== 'source' && <TableOfContents content={editContent} />}
               </div>
             )}
             {!editing && (
-              <div ref={contentRef} className={markdownContentClassName}>
-                {findOpen && <FindInPage containerRef={contentRef} onClose={() => setFindOpen(false)} />}
-                <MarkdownView content={normalizedSavedMarkdown} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
+              <div ref={contentRef} className={markdownFrameClassName} data-markdown-view-frame>
+                <div className={markdownBodyClassName}>
+                  {findOpen && <FindInPage containerRef={contentRef} onClose={() => setFindOpen(false)} />}
+                  <MarkdownView content={normalizedSavedMarkdown} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
+                  <Backlinks filePath={filePath} />
+                </div>
                 <TableOfContents content={normalizedSavedMarkdown} />
-                <Backlinks filePath={filePath} />
               </div>
             )}
           </>

@@ -77,15 +77,16 @@ describe('Studio Project UI', () => {
     await view.cleanup();
   });
 
-  it('renders Project detail with historical Sessions and Project defaults', async () => {
+  it('renders Project detail with Goal and Project defaults without a redundant overview block', async () => {
     const StudioProjectContent = (await import('@/components/studio/StudioProjectContent')).default;
     const view = await render(<StudioProjectContent projectId="launch-practice" />);
 
     expect(localStorage.getItem('mindos:studio-last-opened-project-id')).toBe('launch-practice');
     expect(view.host.textContent).toContain('Launch Practice');
-    expect(view.host.textContent).toContain('Overview');
     expect(view.host.textContent).toContain('WorkDir');
     expect(view.host.textContent).toContain('Goal');
+    expect(view.host.textContent).not.toContain('Overview');
+    expect(view.host.textContent).not.toContain('Goal and context defaults');
     expect(view.host.textContent).not.toContain('Progress');
     expect(view.host.textContent).not.toContain('Cadence');
     expect(view.host.querySelector('[data-studio-project-overview-context]')).not.toBeNull();

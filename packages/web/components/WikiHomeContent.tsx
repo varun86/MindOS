@@ -310,9 +310,11 @@ function BuiltInMindSpacesSection({
       >
         {t.home.builtInSpacesTitle}
       </SectionTitle>
-      <div className="mb-3 max-w-2xl text-sm leading-normal text-muted-foreground" data-mind-system-home-desc>
-        {t.home.builtInSpacesDesc}
-      </div>
+      {t.home.builtInSpacesDesc ? (
+        <div className="mb-3 max-w-2xl text-sm leading-normal text-muted-foreground" data-mind-system-home-desc>
+          {t.home.builtInSpacesDesc}
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
           const desc = pillar.data?.desc ?? pillar.slot.role;

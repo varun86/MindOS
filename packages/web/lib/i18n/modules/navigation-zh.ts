@@ -2,10 +2,10 @@
 
 export const navigationZh = {
   sidebar: {
-    files: 'Mind',
+    files: '心智',
     home: '首页',
     homeAgentSessions: 'Agent Sessions',
-    homeMindFiles: 'Mind Files',
+    homeMindFiles: '心智文件',
     homeEmptySessions: '暂无会话',
     homeEmptySessionsHint: '可以从首页开始一段对话。',
     homeRuntimeMindOS: 'MindOS',
@@ -31,7 +31,7 @@ export const navigationZh = {
     settingsTitle: '设置',
     plugins: '插件',
     agents: '智能体',
-    studio: 'Studio',
+    studio: '工作台',
     echo: '回响',
     discover: '探索',
     workflows: '流程',
@@ -124,7 +124,7 @@ export const navigationZh = {
     restartWalkthrough: '重新开始引导',
     toggleDarkMode: '切换深色模式',
     goToAgents: '前往智能体',
-    goToStudio: '前往 Studio',
+    goToStudio: '前往工作台',
     goToDiscover: '前往探索',
     goToHelp: '前往帮助',
     walkthroughRestarted: '引导已重置',

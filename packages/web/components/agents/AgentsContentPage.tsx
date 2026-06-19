@@ -223,7 +223,6 @@ export default function AgentsContentPage({ tab }: { tab: AgentsDashboardTab }) 
             <AgentsPageNav
               tab={tab}
               copy={a}
-              detectedCount={buckets.detected.length}
               enabledSkillCount={enabledSkillCount}
               mcpRunning={!!mcp.status?.running}
               mcpEnabled={mcpEnabled}
@@ -433,7 +432,7 @@ function AgentModeOverview({
 
 function agentOverviewToneClass(tone: 'runtime' | 'client' | 'acp' | 'a2a'): string {
   if (tone === 'runtime') return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber)]';
-  if (tone === 'client') return 'border-success/20 bg-success/10 text-success';
+  if (tone === 'client') return 'border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber-text)]';
   if (tone === 'acp') return 'border-[var(--tool-search)]/20 bg-[var(--tool-search)]/10 text-[var(--tool-search)]';
   return 'border-[var(--tool-read)]/20 bg-[var(--tool-read)]/10 text-[var(--tool-read)]';
 }
@@ -441,7 +440,6 @@ function agentOverviewToneClass(tone: 'runtime' | 'client' | 'acp' | 'a2a'): str
 function AgentsPageNav({
   tab,
   copy,
-  detectedCount,
   enabledSkillCount,
   mcpRunning,
   mcpEnabled,
@@ -449,7 +447,6 @@ function AgentsPageNav({
 }: {
   tab: AgentsDashboardTab;
   copy: ReturnType<typeof useLocale>['t']['agentsContent'];
-  detectedCount: number;
   enabledSkillCount: number;
   mcpRunning: boolean;
   mcpEnabled: boolean;
@@ -467,14 +464,6 @@ function AgentsPageNav({
     badge?: string;
     tone?: 'ok' | 'warn' | 'neutral';
   }> = [
-    {
-      id: 'overview',
-      href: '/agents',
-      label: copy.navOverview,
-      hint: navHints.overview,
-      icon: <Bot size={14} />,
-      tone: detectedCount > 0 ? 'warn' : 'ok',
-    },
     {
       id: 'assistant',
       href: '/agents?tab=assistant',
@@ -513,7 +502,7 @@ function AgentsPageNav({
 
   return (
     <nav aria-label={copy.navAriaLabel} className="mt-5 overflow-x-auto pb-1">
-      <div className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm lg:grid lg:w-auto lg:grid-cols-5">
+      <div className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm lg:grid lg:w-auto lg:grid-cols-4">
         {navItems.map(item => (
           <Link
             key={item.id}

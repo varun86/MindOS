@@ -281,10 +281,13 @@ describe('i18n agents content IA', () => {
     for (const k of presetKeys) {
       expect((a.presets as Record<string, unknown>)[k], k).toBeTruthy();
     }
-    expect(a.navAssistant).toBe('Assistant');
-    expect(a.navPresets).toBe('Assistant');
+    expect(a.navAssistant).toBe('助理');
+    expect(a.navPresets).toBe('助理');
     expect(a.navCapabilities).toBe('Skills & MCP');
-    expect(a.presets.title).toBe('Assistant');
+    expect(a.presets.title).toBe('助理');
+    expect(a.presets.subtitle).toContain('助理档案');
+    expect(a.overview.assistantLabel).toBe('助理');
+    expect(a.overview.actionConfigureAssistantTitle).toBe('检查助理路由');
     expect(a.navHints.presets).not.toBe('内置能力');
   });
 });

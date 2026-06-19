@@ -27,7 +27,7 @@ function statusLabel(status: LocalClientStatus, copy: ReturnType<typeof useLocal
 }
 
 function statusClasses(status: LocalClientStatus): string {
-  if (status === 'connected') return 'border-success/20 bg-success/10 text-success';
+  if (status === 'connected') return 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber)]';
   if (status === 'detected') return 'border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber-text)]';
   return 'border-border bg-muted text-muted-foreground';
 }

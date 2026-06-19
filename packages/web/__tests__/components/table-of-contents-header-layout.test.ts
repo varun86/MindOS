@@ -3,16 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 describe('TableOfContents header layout', () => {
-  it('removes the label header so the TOC starts as a quiet edge rail', () => {
+  it('renders as an inline sticky rail owned by the Markdown page layout', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
     expect(source).toContain("const VIEW_HEADER_CSS_VAR = 'var(--workspace-header-h)';");
     expect(source).toContain('const VIEW_HEADER_FALLBACK_H = 40;');
-    expect(source).toContain('className="flex flex-col gap-0.5 overflow-y-auto min-h-0 flex-1 pt-3 pb-5 pl-2 pr-3 border-l border-border"');
+    expect(source).toContain('data-markdown-toc-panel');
+    expect(source).toContain('sticky z-app-sticky relative overflow-visible');
+    expect(source).toContain('data-markdown-toc-toggle');
+    expect(source).toContain('className="absolute -left-5 top-0 z-10 flex h-8 w-5 items-center justify-center rounded-l-md border border-r-0 border-border bg-background');
     expect(source).not.toContain('className="flex items-center h-[46px] px-4 border-l border-b border-border"');
+    expect(source).not.toContain('className="flex h-9 shrink-0 items-center justify-end border-l border-border bg-background/95 pl-2 pr-2"');
+    expect(source).not.toContain('className="hidden xl:flex fixed');
     expect(source).not.toContain('font-semibold uppercase tracking-wider');
-    expect(source).not.toContain('py-5 pl-2 pr-3 border-l border-border');
   });
 
   it('keeps collapse state global without publishing layout width to the app shell', () => {
@@ -33,11 +37,15 @@ describe('TableOfContents header layout', () => {
     expect(source).not.toContain('useDeferredValue');
   });
 
-  it('keeps the TOC handle anchored to a stable right-side lane', () => {
+  it('keeps the TOC handle inside the rail instead of floating as a viewport button', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
-    expect(source).toContain('right: `calc(var(--right-panel-width, 0px) + ${NAV_W}px)`');
+    expect(source).toContain('data-markdown-toc-toggle');
+    expect(source).toContain('className="absolute -left-5 top-0');
+    expect(source).toContain('aria-expanded={!collapsed}');
+    expect(source).not.toContain('className="hidden xl:flex fixed');
+    expect(source).not.toContain('right: `calc(var(--right-panel-width, 0px) + ${NAV_W}px)`');
     expect(source).not.toContain('right: `calc(var(--right-panel-width, 0px) + ${collapsed ? 0 : NAV_W}px)`');
   });
 

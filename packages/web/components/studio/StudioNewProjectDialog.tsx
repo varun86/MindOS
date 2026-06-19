@@ -211,7 +211,7 @@ function StudioNewProjectDialogForm({
       workDir,
       spaces: normalizedSpaces,
       assistants: normalizedAssistants,
-      space: normalizedSpaces[0]?.label || normalizedSpaces[0]?.path || 'Mind',
+      space: normalizedSpaces[0]?.label || normalizedSpaces[0]?.path || labels.mind,
       kit: normalizedAssistants[0]?.name || normalizedAssistants[0]?.id || '',
       workArea: workDirDisplay(workDirInput, labels.mind),
     });
