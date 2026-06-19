@@ -41,9 +41,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packages/web/.next/cache
-          key: nextjs-runtime-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('packages/web/**/*.ts', 'packages/web/**/*.tsx', 'packages/**/*.ts') }}
+          key: nextjs-runtime-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/web/package.json', 'packages/web/next.config.*') }}
           restore-keys: |
-            nextjs-runtime-${{ hashFiles('pnpm-lock.yaml') }}-
+            nextjs-runtime-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nextjs-runtime-${{ runner.os }}-
             nextjs-runtime-
 
       - name: Build Next.js standalone
