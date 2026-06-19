@@ -568,10 +568,6 @@ function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir
   const sourcePackage = resolvePackageDir(appDir, packageName, fromDir, dependencyRange);
   const destPackage = path.join(standaloneDir, 'node_modules', packageName);
   if (!existsSync(sourcePackage)) return null;
-  if (!existsSync(destPackage)) {
-    mkdirSync(path.dirname(destPackage), { recursive: true });
-    copyDereferenced(sourcePackage, destPackage);
-  }
 
   if (parentPackageDir) {
     if (packageAtPathSatisfies(destPackage, dependencyRange, packageName)) return sourcePackage;
@@ -582,6 +578,13 @@ function materializePackage(appDir, standaloneDir, packageName, fromDir = appDir
     rmSync(nestedDest, { recursive: true, force: true });
     mkdirSync(path.dirname(nestedDest), { recursive: true });
     copyDereferenced(sourcePackage, nestedDest);
+    return sourcePackage;
+  }
+
+  if (!packageAtPathSatisfies(destPackage, dependencyRange, packageName)) {
+    rmSync(destPackage, { recursive: true, force: true });
+    mkdirSync(path.dirname(destPackage), { recursive: true });
+    copyDereferenced(sourcePackage, destPackage);
   }
   return sourcePackage;
 }

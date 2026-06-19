@@ -291,7 +291,7 @@ function copyRuntimeDependencyClosure(destNodeModules, seeds) {
 
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     const destDir = resolve(destNodeModules, next.name);
-    if (!existsSync(destDir)) {
+    if (!existsSync(resolve(destDir, 'package.json'))) {
       rmSync(destDir, { recursive: true, force: true });
       cpSync(packageDir, destDir, {
         recursive: true,
