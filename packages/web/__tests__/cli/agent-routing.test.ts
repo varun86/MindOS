@@ -1,5 +1,5 @@
 /**
- * Tests for agent/ask CLI routing logic:
+ * Tests for agent CLI routing logic:
  * - `-p` flag → non-interactive (print mode)
  * - No `-p` + no args → interactive REPL
  * - Management subcommands → direct execution
@@ -30,18 +30,9 @@ function classifyAgentArgs(
   return 'interactive';
 }
 
-function classifyAskArgs(
-  args: string[],
-  flags: Record<string, unknown> = {},
-): 'interactive' | 'print' {
-  if (flags.p || flags.print) return 'print';
-  if (args.length > 0) return 'print';
-  return 'interactive';
-}
-
 function buildAskBody(
   content: string | string[],
-  mode: 'agent' | 'chat',
+  mode: 'agent' | 'organize',
   opts: { file?: string; maxSteps?: number } = {},
 ) {
   const messages = Array.isArray(content)
@@ -112,26 +103,6 @@ describe('Agent CLI routing', () => {
   });
 });
 
-// ── Ask routing ───────────────────────────────────────────────────────────────
-
-describe('Ask CLI routing', () => {
-  it('routes empty args to interactive', () => {
-    expect(classifyAskArgs([])).toBe('interactive');
-  });
-
-  it('routes -p with question to print', () => {
-    expect(classifyAskArgs(['what is RAG'], { p: true })).toBe('print');
-  });
-
-  it('routes bare question (no -p) to print for backward compat', () => {
-    expect(classifyAskArgs(['what is RAG'])).toBe('print');
-  });
-
-  it('routes --print flag to print', () => {
-    expect(classifyAskArgs(['hello'], { print: true })).toBe('print');
-  });
-});
-
 // ── API body construction ─────────────────────────────────────────────────────
 
 describe('Ask API body construction', () => {
@@ -145,13 +116,13 @@ describe('Ask API body construction', () => {
     expect(msg.timestamp).toBeTypeOf('number');
   });
 
-  it('builds chat mode body', () => {
-    const body = buildAskBody('what is RAG', 'chat');
-    expect(body.mode).toBe('chat');
+  it('builds organize mode body', () => {
+    const body = buildAskBody('organize inbox', 'organize');
+    expect(body.mode).toBe('organize');
   });
 
   it('builds multi-turn conversation body', () => {
-    const body = buildAskBody(['hello', 'hi there', 'how are you'], 'chat');
+    const body = buildAskBody(['hello', 'hi there', 'how are you'], 'agent');
     expect(body.messages).toHaveLength(3);
     const msgs = body.messages as any[];
     expect(msgs[0].role).toBe('user');

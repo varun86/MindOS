@@ -17,6 +17,61 @@ const scriptPath = fs.realpathSync(__filename);
 const scriptDir = path.dirname(scriptPath);
 const packageRoot = path.resolve(scriptDir, '..');
 const requireFromHere = createRequire(scriptPath);
+const userArgs = process.argv.slice(2);
+
+function productVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf-8'));
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function printStaticHelp() {
+  const version = productVersion() || '?';
+  console.log(`
+MindOS CLI v${version}
+
+USAGE
+  mindos <command> [flags]
+
+COMMANDS
+  agent         AI Agent: interactive REPL or one-shot (-p)
+  start         Start MindOS services
+  stop          Stop services
+  status        Show service status
+  open          Open Web UI in browser
+  file          Manage files (list, read, write, edit, search, ...)
+  space         Manage spaces (list, tree, create, rename)
+  search        Search your knowledge base
+  mcp           Manage AI agent connections
+  init          First-time setup wizard
+  config        View or update configuration
+  auth          Manage local Web UI authentication
+  channel       Manage IM platform configurations
+  feishu-ws     Start Feishu long connection client
+  doctor        Check installation health
+  update        Update to latest version
+
+FLAGS
+  --help, -h    Show help
+  --version, -v Show version
+  --json        Output as JSON
+
+  Run mindos <command> --help for details on any command.
+`);
+}
+
+if (userArgs.length === 0 || (userArgs.length === 1 && (userArgs[0] === '--help' || userArgs[0] === '-h' || userArgs[0] === 'help'))) {
+  printStaticHelp();
+  process.exit(0);
+}
+
+if (userArgs.length === 1 && (userArgs[0] === '--version' || userArgs[0] === '-v')) {
+  console.log(`mindos/${productVersion() || '?'} node/${process.version} ${process.platform}-${process.arch}`);
+  process.exit(0);
+}
 
 function runNodeScript(target) {
   const result = childProcess.spawnSync(process.execPath, [target, ...process.argv.slice(2)], {
@@ -221,15 +276,6 @@ function resolveDownloadedRuntimeEntrypoint() {
 
 function runtimeCacheRoot() {
   return path.resolve(process.env.MINDOS_RUNTIME_CACHE_DIR || path.join(os.homedir(), '.mindos', 'runtime-cache'));
-}
-
-function productVersion() {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf-8'));
-    return typeof pkg.version === 'string' ? pkg.version : null;
-  } catch {
-    return null;
-  }
 }
 
 function findCachedRuntimeEntrypoint(version) {

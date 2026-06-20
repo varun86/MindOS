@@ -76,7 +76,7 @@ export type MindosAskStreamRequest = {
   attachedFiles?: string[];
   uploadedFiles?: MindosUploadedFile[];
   maxSteps?: number;
-  mode?: 'chat' | 'agent' | 'organize';
+  mode?: 'agent' | 'organize';
   selectedRuntime?: MindosSelectedRuntime | null;
   selectedAcpAgent?: { id: string; name: string } | null;
   providerOverride?: string;

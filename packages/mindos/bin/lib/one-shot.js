@@ -1,8 +1,8 @@
 /**
- * One-shot (non-interactive) execution for CLI agent/chat commands.
+ * One-shot (non-interactive) execution for CLI agent commands.
  *
  * Counterpart to lib/repl.js (interactive mode).
- * Shared between `mindos agent -p` and `mindos ask -p`.
+ * Shared by `mindos agent -p` and the deprecated `mindos ask` alias.
  */
 
 import { dim, red } from './colors.js';
@@ -16,7 +16,7 @@ import { EXIT } from './command.js';
  * @param {string} opts.baseUrl - e.g. http://localhost:3456
  * @param {string} opts.token - auth token
  * @param {string} opts.message - user message / task
- * @param {'agent'|'chat'} opts.mode
+ * @param {'agent'|'organize'} opts.mode
  * @param {boolean} [opts.showTools=false] - show tool calls in output
  * @param {number} [opts.maxSteps] - max agent steps
  * @param {string[]} [opts.attachedFiles] - file attachments

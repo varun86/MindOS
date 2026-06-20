@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CONFIG_PATH, PRODUCT_PACKAGE_JSON } from '../lib/constants.js';
 import { bold, dim, cyan, green, red } from '../lib/colors.js';
 import { EXIT } from '../lib/command.js';
+import { isProviderMissingRequiredKey, redactSecrets, resolveAiConfig } from '../lib/ai-config.js';
 
 export const meta = {
   name: 'config',
@@ -21,12 +22,6 @@ export const meta = {
     'mindos config unset sync.remote',
     'mindos config validate',
   ],
-};
-
-const maskKey = (val) => {
-  if (!val) return val;
-  if (val.length <= 8) return '****';
-  return val.slice(0, 6) + '****';
 };
 
 const readConfig = () => {
@@ -73,21 +68,7 @@ export const run = (args, flags) => {
 
   if (sub === 'show') {
     const config = readConfig();
-    const display = JSON.parse(JSON.stringify(config));
-    if (display.ai?.providers?.anthropic?.apiKey)
-      display.ai.providers.anthropic.apiKey = maskKey(display.ai.providers.anthropic.apiKey);
-    if (display.ai?.providers?.openai?.apiKey)
-      display.ai.providers.openai.apiKey = maskKey(display.ai.providers.openai.apiKey);
-    if (display.ai?.anthropicApiKey)
-      display.ai.anthropicApiKey = maskKey(display.ai.anthropicApiKey);
-    if (display.ai?.openaiApiKey)
-      display.ai.openaiApiKey = maskKey(display.ai.openaiApiKey);
-    if (display.authToken)
-      display.authToken = maskKey(display.authToken);
-    if (display.webPassword)
-      display.webPassword = maskKey(display.webPassword);
-    if (display.webSessionSecret)
-      display.webSessionSecret = maskKey(display.webSessionSecret);
+    const display = redactSecrets(config);
 
     if (flags.json) {
       console.log(JSON.stringify(display, null, 2));
@@ -104,14 +85,12 @@ export const run = (args, flags) => {
     const config = readConfig();
     const issues = [];
     if (!config.mindRoot) issues.push('missing required field: mindRoot');
-    if (!config.ai?.provider) issues.push('missing field: ai.provider');
-    if (config.ai?.provider === 'anthropic') {
-      const key = config.ai?.providers?.anthropic?.apiKey || config.ai?.anthropicApiKey;
-      if (!key) issues.push('ai.provider is "anthropic" but no API key found');
+    const ai = resolveAiConfig(config.ai);
+    if (ai.activeProvider && ai.activeProvider !== 'skip' && !ai.activeEntry) {
+      issues.push(`active provider not found: ${ai.activeProvider}`);
     }
-    if (config.ai?.provider === 'openai') {
-      const key = config.ai?.providers?.openai?.apiKey || config.ai?.openaiApiKey;
-      if (!key) issues.push('ai.provider is "openai" but no API key found');
+    if (isProviderMissingRequiredKey(ai.activeEntry)) {
+      issues.push(`active AI provider "${ai.activeEntry.protocol}" has no API key`);
     }
     if (issues.length) {
       console.error(`\n${red('✘ Config has issues:')}`);
@@ -131,7 +110,7 @@ export const run = (args, flags) => {
       console.error(dim('  Examples:'));
       console.error(dim('    mindos config set port 3002'));
       console.error(dim('    mindos config set mcpPort 8788'));
-      console.error(dim('    mindos config set ai.provider openai'));
+      console.error(dim('    mindos config set ai.activeProvider p_openai01'));
       process.exit(EXIT.ARGS);
     }
     assertSafeConfigKey(key);
@@ -183,7 +162,7 @@ ${row('mindos config unset <key>',   'Remove a config field')}
 
 ${bold('Examples:')}
   ${dim('mindos config set port 3002')}
-  ${dim('mindos config set ai.provider openai')}
+  ${dim('mindos config set ai.activeProvider p_openai01')}
   ${dim('mindos config set setupPending false')}
   ${dim('mindos config unset webPassword')}
 `);

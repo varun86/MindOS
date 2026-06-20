@@ -45,7 +45,16 @@ describe('cli-runtime lazy command loading', () => {
     expect(stdout).toContain('COMMANDS');
     expect(stdout).toContain('mcp');
     expect(stdout).toContain('agent');
+    expect(stdout).not.toContain('ask');
     expect(stdout).toContain('mindos <command> [flags]');
+  });
+
+  it('keeps ask as a deprecated compatibility alias for agent', async () => {
+    const { stdout, stderr, code } = await runCli(['ask', '--help']);
+    expect(code).toBe(0);
+    expect(stderr).toContain('mindos ask has been replaced by mindos agent');
+    expect(stdout).toContain('mindos agent');
+    expect(stdout).not.toContain('Chat mode');
   });
 
   it('shows command help for an invoked command (mcp --help)', async () => {

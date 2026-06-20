@@ -1,6 +1,5 @@
 export const MINDOS_CORE_COMMANDS = [
   'agent',
-  'ask',
   'start',
   'stop',
   'status',

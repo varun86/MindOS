@@ -17,6 +17,8 @@ import { replaceSection, insertAfterHeading, listHeadings } from '../lib/markdow
 import { escapeCsvRow } from '../lib/csv.js';
 import { resolveInsideRoot } from '../lib/safe-path.js';
 
+const DEFAULT_LIST_LIMIT = 200;
+
 function getMindRoot() {
   loadConfig();
   const root = process.env.MIND_ROOT;
@@ -47,7 +49,9 @@ export const meta = {
     '--content <text>': 'Content for write/create/append',
     '-H, --heading <h>': 'Target heading for edit-section/insert-heading',
     '--row <csv>': 'CSV row values (comma-separated)',
-    '--limit <n>': 'Limit results (recent, history)',
+    '--limit <n>': 'Limit results (list, search, recent, history)',
+    '--offset <n>': 'Offset for file list pagination',
+    '--all': 'Return all file list results',
   },
   examples: [
     'mindos file list',
@@ -109,7 +113,7 @@ export function printHelp() {
 ${bold('mindos file')} — Knowledge base file operations
 
 ${bold('SUBCOMMANDS')}
-  ${sub('list')}${dim('List files in knowledge base')}
+  ${sub('list')}${dim('List files in knowledge base (paginated by default)')}
   ${sub('read <path>')}${dim('Read file content')}
   ${sub('write <path>')}${dim('Write/overwrite file (--content or stdin)')}
   ${sub('create <path>')}${dim('Create a new file (--content "...")')}
@@ -127,7 +131,7 @@ ${bold('SUBCOMMANDS')}
 ${bold('ALIASES')}  ls=list  cat=read  rm=delete  mv=rename
 
 ${bold('EXAMPLES')}
-  ${dim('mindos file list --json')}
+  ${dim('mindos file list --json --limit 50')}
   ${dim('mindos file read "notes/meeting.md"')}
   ${dim('mindos file write "plan.md" --content "# Plan"')}
   ${dim('mindos file edit-section "plan.md" -H "## Status" --content "Done"')}
@@ -162,28 +166,81 @@ function walkFiles(dir, root, opts = {}) {
   return results;
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function pageFiles(files, flags) {
+  const offset = parseNonNegativeInt(flags.offset, 0);
+  if (flags.all === true) {
+    const page = files.slice(offset);
+    return {
+      count: files.length,
+      returned: page.length,
+      offset,
+      limit: null,
+      hasMore: false,
+      nextOffset: null,
+      files: page,
+    };
+  }
+
+  const limit = parsePositiveInt(flags.limit, DEFAULT_LIST_LIMIT);
+  const page = files.slice(offset, offset + limit);
+  const nextOffset = offset + page.length;
+  const hasMore = nextOffset < files.length;
+  return {
+    count: files.length,
+    returned: page.length,
+    offset,
+    limit,
+    hasMore,
+    nextOffset: hasMore ? nextOffset : null,
+    files: page,
+  };
+}
+
+function printFileListPage(page) {
+  if (page.files.length === 0) {
+    console.log(dim('No files found.'));
+    return;
+  }
+
+  const suffix = page.returned === page.count
+    ? `${page.count}`
+    : `${page.returned} of ${page.count}`;
+  console.log(`\n${bold(`Files (${suffix}):`)}\n`);
+  for (const f of page.files) {
+    const sizeStr = f.size === undefined
+      ? ''
+      : dim(f.size < 1024 ? `${f.size}B` : `${(f.size / 1024).toFixed(1)}K`);
+    console.log(`  ${f.path || f}  ${sizeStr}`);
+  }
+  if (page.hasMore) {
+    console.log(`\n  ${dim(`More files available: mindos file list --offset ${page.nextOffset} --limit ${page.limit}`)}`);
+  }
+  console.log();
+}
+
 function fileList(root, _args, flags) {
   const files = walkFiles(root, root, {
     recursive: flags.recursive ?? flags.r ?? true,
     space: flags.space || null,
   });
+  const page = pageFiles(files, flags);
 
   if (isJsonMode(flags)) {
-    output({ count: files.length, files }, flags);
+    output(page, flags);
     return;
   }
 
-  if (files.length === 0) {
-    console.log(dim('No files found.'));
-    return;
-  }
-
-  console.log(`\n${bold(`Files (${files.length}):`)}\n`);
-  for (const f of files) {
-    const sizeStr = f.size < 1024 ? `${f.size}B` : `${(f.size / 1024).toFixed(1)}K`;
-    console.log(`  ${f.path}  ${dim(sizeStr)}`);
-  }
-  console.log();
+  printFileListPage(page);
 }
 
 function fileRead(root, filePath, flags) {
@@ -673,25 +730,40 @@ async function remoteFileDispatch(sub, args, flags) {
     switch (sub) {
       case 'list':
       case 'ls': {
-        const res = await apiCall('/api/files');
+        const query = new URLSearchParams();
+        if (flags.limit !== undefined && flags.all !== true) query.set('limit', String(flags.limit));
+        if (flags.offset !== undefined) query.set('offset', String(flags.offset));
+        const suffix = query.toString() ? `?${query.toString()}` : '';
+        const res = await apiCall(`/api/files${suffix}`);
         const data = await res.json();
-        if (isJsonMode(flags)) {
-          output(data, flags);
-          return;
-        }
-        // data is a tree; flatten for display
-        const files = [];
+        const files = Array.isArray(data.files)
+          ? data.files.map((file) => (typeof file === 'string' ? { path: file } : file))
+          : [];
         function walk(nodes, prefix = '') {
           for (const n of nodes || []) {
             const p = prefix ? `${prefix}/${n.name}` : n.name;
-            if (n.type === 'file') files.push(p);
+            if (n.type === 'file') files.push({ path: p });
             if (n.children) walk(n.children, p);
           }
         }
-        walk(data.tree || data);
-        console.log(`\n${bold(`Files (${files.length}):`)}\n`);
-        for (const f of files) console.log(`  ${f}`);
-        console.log();
+        if (files.length === 0) walk(data.tree || data);
+        const page = typeof data.count === 'number' && Array.isArray(data.files)
+          ? {
+              count: data.count,
+              returned: files.length,
+              offset: parseNonNegativeInt(flags.offset, 0),
+              limit: flags.all === true ? null : parsePositiveInt(flags.limit, DEFAULT_LIST_LIMIT),
+              hasMore: Boolean(data.hasMore),
+              nextOffset: data.nextOffset ?? null,
+              files,
+            }
+          : pageFiles(files, flags);
+
+        if (isJsonMode(flags)) {
+          output(page, flags);
+          return;
+        }
+        printFileListPage(page);
         return;
       }
 

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CONFIG_PATH } from './constants.js';
 import { stripBom } from './jsonc.js';
 import { ensureWebSessionSecret } from './auth-session-secret.js';
+import { providerEnvKeys, resolveAiConfig } from './ai-config.js';
 
 let loaded = false;
 
@@ -40,26 +41,31 @@ export function loadConfig() {
   set('MINDOS_AUTH_TOKEN',  config.authToken);
   set('WEB_PASSWORD',       config.webPassword);
   set('WEB_SESSION_SECRET', config.webSessionSecret);
-  set('AI_PROVIDER',        config.ai?.provider);
+  const ai = resolveAiConfig(config.ai);
+  set('AI_PROVIDER',        ai.activeEntry?.protocol || config.ai?.provider);
   // Remote URL: allows CLI to operate against a remote MindOS instance
   if (config.url && !process.env.MINDOS_URL) {
     process.env.MINDOS_URL = String(config.url);
   }
 
-  const providers = config.ai?.providers;
-  if (providers) {
-    set('ANTHROPIC_API_KEY', providers.anthropic?.apiKey);
-    set('ANTHROPIC_MODEL',   providers.anthropic?.model);
-    set('OPENAI_API_KEY',    providers.openai?.apiKey);
-    set('OPENAI_MODEL',      providers.openai?.model);
-    set('OPENAI_BASE_URL',   providers.openai?.baseUrl);
-  } else {
-    set('ANTHROPIC_API_KEY', config.ai?.anthropicApiKey);
-    set('ANTHROPIC_MODEL',   config.ai?.anthropicModel);
-    set('OPENAI_API_KEY',    config.ai?.openaiApiKey);
-    set('OPENAI_MODEL',      config.ai?.openaiModel);
-    set('OPENAI_BASE_URL',   config.ai?.openaiBaseUrl);
+  const orderedProviders = [
+    ai.activeEntry,
+    ...ai.providers.filter((provider) => provider.id !== ai.activeEntry?.id),
+  ].filter(Boolean);
+  for (const provider of orderedProviders) {
+    for (const envKey of providerEnvKeys(provider)) {
+      set(envKey, provider.apiKey);
+    }
+    const prefix = provider.protocol.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    set(`${prefix}_MODEL`, provider.model);
+    set(`${prefix}_BASE_URL`, provider.baseUrl);
   }
+
+  set('ANTHROPIC_API_KEY', config.ai?.anthropicApiKey);
+  set('ANTHROPIC_MODEL',   config.ai?.anthropicModel);
+  set('OPENAI_API_KEY',    config.ai?.openaiApiKey);
+  set('OPENAI_MODEL',      config.ai?.openaiModel);
+  set('OPENAI_BASE_URL',   config.ai?.openaiBaseUrl);
 }
 
 export function getStartMode() {

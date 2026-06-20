@@ -12,6 +12,7 @@ import { bold, dim, cyan, green, red, yellow } from '../lib/colors.js';
 import { isPortInUse } from '../lib/port.js';
 import { EXIT } from '../lib/command.js';
 import { stripBom } from '../lib/jsonc.js';
+import { hasProviderEnvKey, isProviderMissingRequiredKey, providerEnvKeys, resolveAiConfig } from '../lib/ai-config.js';
 
 export const meta = {
   name: 'doctor',
@@ -78,20 +79,17 @@ export const run = async (_args, flags) => {
 
   // 3. AI config
   if (config) {
-    const provider = config.ai?.provider;
-    const providers = config.ai?.providers;
-    const hasAnthropic = providers?.anthropic?.apiKey || config.ai?.anthropicApiKey;
-    const hasOpenai = providers?.openai?.apiKey || config.ai?.openaiApiKey;
-    if (!provider) {
+    const ai = resolveAiConfig(config.ai);
+    if (!ai.activeProvider || ai.activeProvider === 'skip' || ai.providers.length === 0) {
       warn('AI provider not configured (run `mindos onboard` to set up)');
-    } else if (provider === 'anthropic' && !hasAnthropic) {
-      err('AI provider is "anthropic" but no API key found');
-      hasError = true;
-    } else if (provider === 'openai' && !hasOpenai) {
-      err('AI provider is "openai" but no API key found');
+    } else if (isProviderMissingRequiredKey(ai.activeEntry) && !hasProviderEnvKey(ai.activeEntry)) {
+      const envHint = providerEnvKeys(ai.activeEntry).length
+        ? ` or env ${providerEnvKeys(ai.activeEntry).join('/')}`
+        : '';
+      err(`AI provider "${ai.activeEntry.protocol}" has no API key${envHint}`);
       hasError = true;
     } else {
-      ok(`AI provider configured  ${dim(provider)}`);
+      ok(`AI provider configured  ${dim(ai.activeEntry.protocol)}`);
     }
   }
 

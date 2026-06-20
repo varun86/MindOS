@@ -1,8 +1,8 @@
 /**
- * Interactive REPL for CLI agent/chat sessions.
+ * Interactive REPL for CLI agent sessions.
  *
  * Provides a multi-turn conversation loop with SSE streaming.
- * Shared between `mindos agent` and `mindos ask` commands.
+ * Shared by `mindos agent` and the deprecated `mindos ask` alias.
  */
 
 import * as readline from 'node:readline';
@@ -14,7 +14,7 @@ import { EXIT } from './command.js';
  * @param {object} opts
  * @param {string} opts.baseUrl - e.g. http://localhost:3456
  * @param {string} opts.token - auth token
- * @param {'agent'|'chat'} opts.mode
+ * @param {'agent'|'organize'} opts.mode
  * @param {string} opts.prompt - readline prompt string (e.g. "agent> ")
  * @param {string} opts.welcome - welcome message shown on start
  * @param {boolean} opts.showTools - show tool calls in output

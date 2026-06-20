@@ -241,6 +241,6 @@ ${bold('Options:')}
   ${dim('--max-steps <n>')}      Max agent steps (default: 20)
   ${dim('--json')}               JSON output (implies -p)
 
-${bold('Note:')} For lightweight Q&A (read-only), use ${cyan('mindos ask')}.
+${bold('Note:')} ${cyan('mindos agent')} is the single CLI entrypoint for AI tasks.
 `);
 }

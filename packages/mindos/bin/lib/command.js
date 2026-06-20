@@ -23,10 +23,42 @@ export const EXIT = {
 // ── Arg parsing ───────────────────────────────────────────────────────────────
 
 /** Parse process.argv into { command, args, flags } */
+const BOOLEAN_FLAGS = new Set([
+  'a',
+  'all',
+  'force',
+  'g',
+  'global',
+  'json',
+  'no-follow',
+  'non-interactive',
+  'p',
+  'print',
+  'r',
+  'recursive',
+  'skip-verify',
+  'v',
+  'verbose',
+  'version',
+  'y',
+  'yes',
+]);
+
 function looksLikeFlag(s) {
   if (!s || s.length < 2) return false;
   if (s.startsWith('--')) return true;
   return s.length === 2 && s[0] === '-' && /[a-zA-Z]/.test(s[1]);
+}
+
+function parseFlagValue(raw) {
+  if (raw === '') return '';
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+
+function flagTakesValue(key) {
+  return !BOOLEAN_FLAGS.has(key);
 }
 
 export function parseArgs(argv = process.argv.slice(2)) {
@@ -36,9 +68,19 @@ export function parseArgs(argv = process.argv.slice(2)) {
 
   while (i < argv.length) {
     const arg = argv[i];
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2);
-      if (i + 1 < argv.length && !looksLikeFlag(argv[i + 1])) {
+    if (arg === '--') {
+      args.push(...argv.slice(i + 1));
+      break;
+    } else if (arg.startsWith('--')) {
+      const eq = arg.indexOf('=');
+      const key = eq >= 0 ? arg.slice(2, eq) : arg.slice(2);
+      if (!key) {
+        args.push(arg);
+        i++;
+      } else if (eq >= 0) {
+        flags[key] = parseFlagValue(arg.slice(eq + 1));
+        i++;
+      } else if (flagTakesValue(key) && i + 1 < argv.length && !looksLikeFlag(argv[i + 1])) {
         flags[key] = argv[i + 1];
         i += 2;
       } else {
@@ -47,7 +89,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
       }
     } else if (arg.startsWith('-') && arg.length === 2 && /[a-zA-Z]/.test(arg[1])) {
       const key = arg.slice(1);
-      if (i + 1 < argv.length && !looksLikeFlag(argv[i + 1])) {
+      if (flagTakesValue(key) && i + 1 < argv.length && !looksLikeFlag(argv[i + 1])) {
         flags[key] = argv[i + 1];
         i += 2;
       } else {
