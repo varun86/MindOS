@@ -10,7 +10,6 @@ export {
   listAgentAuditEvents,
   listContentChanges,
   markContentChangesSeen,
-  parseAgentAuditJsonLines,
   type AgentAuditEvent,
   type AgentAuditInput,
   type ContentChangeEvent,

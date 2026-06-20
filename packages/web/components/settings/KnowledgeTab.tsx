@@ -10,7 +10,7 @@ import { apiFetch } from '@/lib/api';
 import { useVisiblePolling } from '@/lib/use-visible-polling';
 import { copyToClipboard } from '@/lib/clipboard';
 import { formatBytes, formatUptime } from '@/lib/format';
-import { setShowHiddenFiles } from '@/components/FileTree';
+import { setShowHiddenFiles } from '@/lib/stores/hidden-files';
 import { scanExampleFilesAction, cleanupExamplesAction } from '@/lib/actions';
 import WebPortSection from './WebPortSection';
 import { restartWalkthrough } from '@/lib/stores/walkthrough-store';

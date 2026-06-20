@@ -1,9 +1,5 @@
-import fs from 'fs';
-import path from 'path';
 import { getMindRoot } from '@/lib/fs';
 import { appendAgentAuditEvent } from '@/lib/core/agent-audit-log';
-
-const LEGACY_LOG_FILE = '.agent-log.json';
 
 interface AgentOpEntry {
   ts: string;
@@ -16,9 +12,7 @@ interface AgentOpEntry {
 }
 
 /**
- * Append an agent operation entry to .agent-log.json (JSON Lines format).
- * Each line is a self-contained JSON object — easy to parse, grep, and tail.
- * Auto-truncates when file exceeds MAX_SIZE.
+ * Append an agent operation entry to the structured agent audit log.
  */
 export function logAgentOp(entry: AgentOpEntry): void {
   try {
@@ -32,12 +26,6 @@ export function logAgentOp(entry: AgentOpEntry): void {
       durationMs: entry.durationMs,
       agentName: entry.agentName,
     });
-    // Best-effort cleanup of legacy JSONL path.
-    try {
-      fs.rmSync(path.join(root, LEGACY_LOG_FILE), { force: true });
-    } catch {
-      // ignore
-    }
   } catch {
     // Logging should never break tool execution
   }

@@ -72,7 +72,7 @@ Obsidian host 的渲染组件只保留交互状态和页面结构；runtime summ
 |------|---------|------|
 | TODO Board | `TODO.md/csv` | checkbox → 交互看板，按 `##` 分列，变更即时写回；作为 MindOS 内建能力，不在插件面板管理 |
 | CSV Views | 任意 `.csv`（排除 TODO） | Table/Gallery/Board 视图；作为 MindOS 内建能力，不在插件面板管理 |
-| Agent Inspector | `.mindos/agent-audit-log.json`（兼容旧 `.agent-log.json`） | Agent 工具调用日志可视化；作为 MindOS 内建能力，不在插件面板管理 |
+| Agent Inspector | `.mindos/agent-audit-log.json` | Agent 工具调用日志可视化；作为 MindOS 内建能力，不在插件面板管理 |
 | Config Panel | `CONFIG.json` | 配置编辑面板；作为 MindOS 内建能力，不在插件面板管理 |
 | Diff Viewer | `.mindos/change-log.json` 关联文件 | 文件变更 inline diff 可视化；作为 MindOS 内建能力，不在插件面板管理 |
 

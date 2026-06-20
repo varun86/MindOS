@@ -105,24 +105,6 @@ describe('core/agent-audit-log', () => {
     expect(fs.existsSync(legacyPath)).toBe(false);
   });
 
-  it('imports legacy .agent-log.json JSONL into JSON log and removes legacy file', () => {
-    const legacyPath = path.join(testMindRoot, '.agent-log.json');
-    const entry = {
-      ts: '2026-03-25T11:00:00.000Z',
-      tool: 'mindos_update_lines',
-      params: { path: 'x.md', start: 1, end: 1 },
-      result: 'ok',
-      message: 'updated',
-    };
-    fs.writeFileSync(legacyPath, `${JSON.stringify(entry)}\n`, 'utf-8');
-
-    const events = listAgentAuditEvents(testMindRoot, 10);
-    expect(events.length).toBe(1);
-    expect(events[0].op).toBe('legacy_agent_log_jsonl_import');
-    expect(events[0].tool).toBe('mindos_update_lines');
-    expect(fs.existsSync(legacyPath)).toBe(false);
-  });
-
   it('appends without rewriting earlier lines and skips corrupted lines on read', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-audit-log-append-'));
     try {

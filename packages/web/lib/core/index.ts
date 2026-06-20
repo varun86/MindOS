@@ -92,7 +92,6 @@ export type {
 export {
   appendAgentAuditEvent,
   listAgentAuditEvents,
-  parseAgentAuditJsonLines,
 } from './agent-audit-log';
 export type {
   AgentAuditEvent,

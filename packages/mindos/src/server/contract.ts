@@ -40,6 +40,7 @@ export const MINDOS_SERVER_ROUTES: MindosServerRouteContract[] = [
   { id: 'backlinks', method: 'GET', path: '/api/backlinks', auth: 'required' },
   { id: 'graph', method: 'GET', path: '/api/graph', auth: 'required' },
   { id: 'agent-activity', method: 'GET', path: '/api/agent-activity', auth: 'required' },
+  { id: 'agent-activity.append', method: 'POST', path: '/api/agent-activity', auth: 'required' },
   { id: 'assistants', method: 'GET', path: '/api/assistants', auth: 'required' },
   { id: 'assistants.create', method: 'POST', path: '/api/assistants', auth: 'required' },
   { id: 'assistants.delete', method: 'DELETE', path: '/api/assistants', auth: 'required' },

@@ -25,9 +25,6 @@ import { useShowHiddenFiles, setShowHiddenFiles, filterHiddenNodes } from '@/lib
 import { notifyFilesChanged } from '@/lib/files-changed';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import { requestAddAskContext } from '@/lib/ask-context-events';
-
-// Re-export for backward compatibility (Panel.tsx, KnowledgeTab.tsx import from FileTree)
-export { setShowHiddenFiles, useShowHiddenFiles };
 import { ContextMenuShell, SpaceContextMenu, FolderContextMenu, MENU_ITEM, MENU_DANGER, MENU_DIVIDER, type ContextMenuAlign } from '@/components/file-tree/FileTreeContextMenus';
 import { useDirectoryDragDrop } from '@/lib/hooks/useDirectoryDragDrop';
 import { ActivePathContext, createActivePathStore, useIsActiveFile, useIsOnActivePath, type ActivePathStore } from '@/components/file-tree/active-path';

@@ -121,6 +121,7 @@ describe('Product server extraction contract', () => {
     expect(contract).toContain("id: 'graph'");
     expect(contract).toContain("path: '/api/graph'");
     expect(contract).toContain("id: 'agent-activity'");
+    expect(contract).toContain("id: 'agent-activity.append'");
     expect(contract).toContain("path: '/api/agent-activity'");
     expect(contract).toContain("id: 'agent-runtimes'");
     expect(contract).toContain("path: '/api/agent-runtimes'");

@@ -17,6 +17,7 @@ import {
   handleGraph,
   handleAskStream,
   handleAgentActivity,
+  handleAgentActivityPost,
   handleAssistantsDelete,
   handleAssistantsGet,
   handleAssistantsPost,
@@ -289,6 +290,12 @@ describe('MindOS server contract: core, files, HTTP', () => {
     expect(contract.routes).toContainEqual({
       id: 'agent-activity',
       method: 'GET',
+      path: '/api/agent-activity',
+      auth: 'required',
+    });
+    expect(contract.routes).toContainEqual({
+      id: 'agent-activity.append',
+      method: 'POST',
       path: '/api/agent-activity',
       auth: 'required',
     });
@@ -1176,19 +1183,16 @@ hidden: true
     expect(existsSync(join(outside, 'new.md'))).toBe(false);
   });
 
-  it('rejects Product Server legacy agent audit writes through symlinked metadata directories', async () => {
+  it('rejects Product Server agent activity writes through symlinked metadata directories', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-file-audit-symlink-root-'));
     const outside = mkdtempSync(join(tmpdir(), 'mindos-file-audit-symlink-outside-'));
     symlinkSync(outside, join(root, '.mindos'), 'dir');
 
-    const res = await handleFilePost(
-      {
-        op: 'append_to_file',
-        path: '.agent-log.json',
-        content: '{"tool":"legacy","params":{},"result":"ok"}\n',
-      },
-      { mindRoot: root },
-    );
+    const res = handleAgentActivityPost({
+      tool: 'audit',
+      params: {},
+      result: 'ok',
+    }, { mindRoot: root });
 
     expect(res.status).toBe(403);
     expect(existsSync(join(outside, 'agent-audit-log.json'))).toBe(false);
@@ -1275,6 +1279,13 @@ hidden: true
       expect(await (await fetch(`${base}/api/changes?op=summary`)).json()).toMatchObject({ unreadCount: 0 });
       expect(await (await fetch(`${base}/api/backlinks?path=Space/note.md`)).json()).toEqual([]);
       expect(await (await fetch(`${base}/api/graph`)).json()).toMatchObject({ nodes: expect.any(Array), edges: expect.any(Array) });
+      const appendActivity = await fetch(`${base}/api/agent-activity`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tool: 'http_smoke_tool', params: {}, result: 'ok' }),
+      });
+      expect(appendActivity.status).toBe(201);
+      expect(await appendActivity.json()).toMatchObject({ ok: true, count: 1 });
       expect(await (await fetch(`${base}/api/agent-activity`)).json()).toMatchObject({ events: expect.any(Array) });
       expect(await (await fetch(`${base}/api/bootstrap`)).json()).toMatchObject({
         file_index: expect.stringContaining('Space/'),

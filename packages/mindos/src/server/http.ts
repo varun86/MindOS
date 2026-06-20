@@ -31,7 +31,7 @@ import {
   handleAcpSessionGet,
   handleAcpSessionPost,
 } from './handlers/acp.js';
-import { handleAgentActivity } from './handlers/agent-activity.js';
+import { handleAgentActivity, handleAgentActivityPost } from './handlers/agent-activity.js';
 import {
   handleCodexThreadArchivePost,
   handleCodexThreadForkPost,
@@ -370,6 +370,10 @@ async function handleRequest(
     }
     if (route === 'GET /api/agent-activity') {
       writeResponse(res, await handleAgentActivity(url.searchParams, services));
+      return;
+    }
+    if (route === 'POST /api/agent-activity') {
+      writeResponse(res, handleAgentActivityPost(await readJsonBody(req), services));
       return;
     }
     if (route === 'GET /api/assistants') {

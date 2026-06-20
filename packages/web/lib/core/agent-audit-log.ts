@@ -16,9 +16,9 @@ import {
  * On-disk format is shared with
  * `packages/mindos/src/server/handlers/audit-log.ts`:
  * `.mindos/agent-audit-log.json` holds one normalized event per line
- * (oldest-first) and `.mindos/agent-audit-log.meta.json` tracks migration and
- * legacy import counters. Events are redacted/summarized at write time and
- * defensively re-normalized at read time.
+ * (oldest-first) and `.mindos/agent-audit-log.meta.json` tracks migration
+ * metadata. Events are redacted/summarized at write time and defensively
+ * re-normalized at read time.
  */
 
 export interface AgentAuditEvent {
@@ -33,7 +33,7 @@ export interface AgentAuditEvent {
   /** Name of the agent that performed this operation (e.g. "claude-code", "cursor"). */
   agentName?: string;
   rawDebug?: Record<string, unknown>;
-  op?: 'append' | 'legacy_agent_audit_md_import' | 'legacy_agent_log_jsonl_import';
+  op?: 'append' | 'legacy_agent_audit_md_import';
 }
 
 export interface AgentAuditInput {
@@ -53,7 +53,6 @@ const LOG_DIR_NAME = '.mindos';
 const LOG_FILE_NAME = 'agent-audit-log.json';
 const META_FILE_NAME = 'agent-audit-log.meta.json';
 const LEGACY_MD_FILE = 'Agent-Audit.md';
-const LEGACY_JSONL_FILE = '.agent-log.json';
 const MAX_EVENTS = 1000;
 const MAX_MESSAGE_CHARS = 2000;
 const COMPACTION: JsonlCompactionConfig = {
@@ -142,18 +141,6 @@ export function listAgentAuditEvents(mindRoot: string, limit = 100): AgentAuditE
   }
 }
 
-export function parseAgentAuditJsonLines(raw: string): AgentAuditInput[] {
-  return parseJsonLines(raw).map((entry) => ({
-    ts: validIso(entry.ts),
-    tool: typeof entry.tool === 'string' && entry.tool.trim() ? entry.tool.trim() : 'unknown-tool',
-    params: summarizeAuditParams(entry.params && typeof entry.params === 'object' ? entry.params : {}),
-    result: entry.result === 'error' ? 'error' : 'ok',
-    message: normalizeMessage(entry.message),
-    durationMs: typeof entry.durationMs === 'number' ? entry.durationMs : undefined,
-    agentName: typeof entry.agentName === 'string' ? entry.agentName : undefined,
-  }));
-}
-
 interface LegacyAgentOp {
   ts?: string;
   tool?: string;
@@ -178,21 +165,6 @@ function parseLegacyMdBlocks(raw: string): LegacyAgentOp[] {
   return blocks;
 }
 
-function parseJsonLines(raw: string): LegacyAgentOp[] {
-  const entries: LegacyAgentOp[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) entries.push(parsed as LegacyAgentOp);
-    } catch {
-      // Ignore malformed lines.
-    }
-  }
-  return entries;
-}
-
 function toImportedEvent(entry: LegacyAgentOp, op: AgentAuditEvent['op'], idx: number): AgentAuditEvent {
   const tool = typeof entry.tool === 'string' && entry.tool.trim() ? entry.tool.trim() : 'unknown-tool';
   const result = entry.result === 'error' ? 'error' : 'ok';
@@ -213,13 +185,12 @@ function toImportedEvent(entry: LegacyAgentOp, op: AgentAuditEvent['op'], idx: n
 
 function importLegacySources(mindRoot: string): void {
   importLegacyFile(mindRoot, LEGACY_MD_FILE, 'mdImportedCount', 'legacy_agent_audit_md_import', parseLegacyMdBlocks);
-  importLegacyFile(mindRoot, LEGACY_JSONL_FILE, 'jsonlImportedCount', 'legacy_agent_log_jsonl_import', parseJsonLines);
 }
 
 function importLegacyFile(
   mindRoot: string,
   legacyFileName: string,
-  counterKey: 'mdImportedCount' | 'jsonlImportedCount',
+  counterKey: 'mdImportedCount',
   op: AgentAuditEvent['op'],
   parse: (raw: string) => LegacyAgentOp[],
 ): void {

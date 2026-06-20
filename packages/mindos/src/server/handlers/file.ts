@@ -27,7 +27,6 @@ import {
 } from '../../knowledge/knowledge-ops/index.js';
 import { queryValue, type MindosRequestQuery } from '../context.js';
 import { json, type MindosServerResponse } from '../response.js';
-import { appendAgentAuditEvents, parseAgentAuditJsonLines } from './audit-log.js';
 import { isMindosBuiltinAssistantId } from './assistants.js';
 
 export type FileGetHandlerServices = {
@@ -315,11 +314,6 @@ function createFile(mindRoot: string, filePath: string, params: Record<string, u
 
 function appendToFile(mindRoot: string, filePath: string, params: Record<string, unknown>) {
   const content = requireString(params.content, 'content');
-  if (filePath === '.agent-log.json') {
-    // Batch append: one JSONL write for all entries (was O(N^2) rewrite-per-entry).
-    appendAgentAuditEvents(mindRoot, parseAgentAuditJsonLines(content));
-    return { response: json({ ok: true, path: filePath }), changeEvent: null };
-  }
   const before = safeRead(mindRoot, filePath);
   const abs = resolveExistingSafe(mindRoot, filePath);
   const normalizedPath = relativeKnowledgePath(mindRoot, abs);

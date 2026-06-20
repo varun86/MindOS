@@ -6,7 +6,7 @@ import { ChevronsDownUp, ChevronsUpDown, Plus, Import, RefreshCw, FileText, Laye
 import type { PanelId } from '@/lib/navigation-panel';
 import type { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
-import { setShowHiddenFiles, useShowHiddenFiles } from './FileTree';
+import { setShowHiddenFiles, useShowHiddenFiles } from '@/lib/stores/hidden-files';
 import SyncStatusBar from './SyncStatusBar';
 import PanelHeader from './panels/PanelHeader';
 import HomePanel from './panels/HomePanel';

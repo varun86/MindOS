@@ -16,15 +16,14 @@ import {
  *
  * On-disk format is shared with `packages/web/lib/core/agent-audit-log.ts`:
  * `.mindos/agent-audit-log.json` holds one normalized event per line
- * (oldest-first) and `.mindos/agent-audit-log.meta.json` tracks migration and
- * legacy import counters. Events are redacted/summarized at write time and
- * defensively re-normalized at read time.
+ * (oldest-first) and `.mindos/agent-audit-log.meta.json` tracks migration
+ * metadata. Events are redacted/summarized at write time and defensively
+ * re-normalized at read time.
  */
 
 const LOG_FILE = '.mindos/agent-audit-log.json';
 const META_FILE = '.mindos/agent-audit-log.meta.json';
 const LEGACY_MD_FILE = 'Agent-Audit.md';
-const LEGACY_JSONL_FILE = '.agent-log.json';
 const MAX_EVENTS = 1000;
 const MAX_MESSAGE_CHARS = 2000;
 const COMPACTION: JsonlCompactionConfig = {
@@ -86,11 +85,7 @@ function buildEvent(input: AgentAuditInput): AgentAuditEvent {
   };
 }
 
-/**
- * Appends a batch of audit events in a single file append (one line per
- * event). This replaces the previous whole-file rewrite per entry, which made
- * batched `.agent-log.json` appends O(N^2).
- */
+/** Appends a batch of audit events in a single file append (one line per event). */
 export function appendAgentAuditEvents(mindRoot: string, inputs: AgentAuditInput[]): AgentAuditEvent[] {
   const file = logPath(mindRoot);
   const metaFile = metaPath(mindRoot);
@@ -114,31 +109,6 @@ export function listAgentAuditEventsFromLog(mindRoot: string, limit = 100): Agen
   } catch {
     return [];
   }
-}
-
-/** Parses raw `.agent-log.json`-style JSONL content leniently into audit inputs. */
-export function parseAgentAuditJsonLines(raw: string): AgentAuditInput[] {
-  const entries: AgentAuditInput[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
-      entries.push({
-        ts: typeof parsed.ts === 'string' ? parsed.ts : nowIso(),
-        tool: typeof parsed.tool === 'string' && parsed.tool.trim() ? parsed.tool : 'unknown-tool',
-        params: parsed.params && typeof parsed.params === 'object' ? parsed.params as Record<string, unknown> : {},
-        result: parsed.result === 'error' ? 'error' : 'ok',
-        message: typeof parsed.message === 'string' ? parsed.message : undefined,
-        durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined,
-        agentName: typeof parsed.agentName === 'string' ? parsed.agentName : undefined,
-      });
-    } catch {
-      // Ignore malformed lines.
-    }
-  }
-  return entries;
 }
 
 interface LegacyAgentOp {
@@ -185,13 +155,12 @@ function toImportedEvent(entry: LegacyAgentOp, op: AgentAuditEvent['op'], idx: n
 
 function importLegacySources(mindRoot: string): void {
   importLegacyFile(mindRoot, LEGACY_MD_FILE, 'mdImportedCount', 'legacy_agent_audit_md_import', parseLegacyMdBlocks);
-  importLegacyFile(mindRoot, LEGACY_JSONL_FILE, 'jsonlImportedCount', 'legacy_agent_log_jsonl_import', (raw) => parseAgentAuditJsonLines(raw) as LegacyAgentOp[]);
 }
 
 function importLegacyFile(
   mindRoot: string,
   legacyFileName: string,
-  counterKey: 'mdImportedCount' | 'jsonlImportedCount',
+  counterKey: 'mdImportedCount',
   op: AgentAuditEvent['op'],
   parse: (raw: string) => LegacyAgentOp[],
 ): void {

@@ -24,7 +24,7 @@ vi.mock('@/lib/actions', () => ({
   cleanupExamplesAction: vi.fn(async () => ({ success: true, deleted: 0 })),
 }));
 
-vi.mock('@/components/FileTree', () => ({
+vi.mock('@/lib/stores/hidden-files', () => ({
   setShowHiddenFiles: vi.fn(),
 }));
 

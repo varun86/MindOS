@@ -47,6 +47,8 @@ export {
 
 export {
   handleAgentActivity,
+  handleAgentActivityPost,
+  type AgentActivityAppendPayload,
   type AgentActivityHandlerServices,
   type AgentActivityPayload,
 } from './handlers/agent-activity.js';

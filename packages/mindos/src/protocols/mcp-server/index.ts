@@ -102,13 +102,7 @@ function truncate(text: string, limit = CHARACTER_LIMIT): string {
 async function logOp(tool: string, params: Record<string, unknown>, result: 'ok' | 'error', message: string, agentName?: string) {
   try {
     const entry = { ts: new Date().toISOString(), tool, params, result, message: message.slice(0, 200), agentName: agentName || undefined };
-    const line = JSON.stringify(entry) + '\n';
-    // Append to .agent-log.json via the app API
-    await fetch(new URL("/api/file", BASE_URL).toString(), {
-      method: "POST",
-      headers: headers(agentName),
-      body: JSON.stringify({ op: "append_to_file", path: ".agent-log.json", content: line }),
-    }).catch(() => {});
+    await post("/api/agent-activity", entry, agentName).catch(() => {});
   } catch {
     // Logging should never break tool execution
   }

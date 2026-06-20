@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import {
   appendAgentAuditEvents,
   listAgentAuditEventsFromLog,
-  parseAgentAuditJsonLines,
 } from './audit-log.js';
 
 function makeRoot(): string {
@@ -94,7 +93,7 @@ describe('handlers/audit-log store', () => {
     expect(events[0].tool).toBe('good');
   });
 
-  it('imports legacy Agent-Audit.md and .agent-log.json files and removes them', () => {
+  it('imports legacy Agent-Audit.md files and removes them', () => {
     const root = makeRoot();
     writeFileSync(join(root, 'Agent-Audit.md'), [
       '# Audit',
@@ -102,13 +101,11 @@ describe('handlers/audit-log store', () => {
       JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', tool: 'md_tool', params: {}, result: 'ok' }),
       '```',
     ].join('\n'), 'utf-8');
-    writeFileSync(join(root, '.agent-log.json'), `${JSON.stringify({ ts: '2026-01-02T00:00:00.000Z', tool: 'jsonl_tool', params: {}, result: 'ok' })}\n`, 'utf-8');
 
     const events = listAgentAuditEventsFromLog(root, 10);
-    expect(events.map((event) => event.tool)).toEqual(expect.arrayContaining(['md_tool', 'jsonl_tool']));
-    expect(events.find((event) => event.tool === 'md_tool')?.op).toBe('legacy_agent_audit_md_import');
+    expect(events.map((event) => event.tool)).toEqual(['md_tool']);
+    expect(events[0].op).toBe('legacy_agent_audit_md_import');
     expect(existsSync(join(root, 'Agent-Audit.md'))).toBe(false);
-    expect(existsSync(join(root, '.agent-log.json'))).toBe(false);
   });
 
   it('returns an empty list for a missing log without creating files', () => {
@@ -130,19 +127,5 @@ describe('handlers/audit-log store', () => {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
     }
-  });
-
-  it('parses agent audit JSON lines leniently, skipping comments and bad lines', () => {
-    const parsed = parseAgentAuditJsonLines([
-      '# comment',
-      '// another',
-      JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', tool: 't', params: { a: 1 }, result: 'error' }),
-      '{bad',
-      JSON.stringify({ result: 'ok' }),
-    ].join('\n'));
-
-    expect(parsed).toHaveLength(2);
-    expect(parsed[0]).toMatchObject({ tool: 't', result: 'error', params: { a: 1 } });
-    expect(parsed[1].tool).toBe('unknown-tool');
   });
 });
