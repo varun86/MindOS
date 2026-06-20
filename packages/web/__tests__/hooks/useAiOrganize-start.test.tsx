@@ -37,7 +37,7 @@ describe('useAiOrganize start request', () => {
     }));
   });
 
-  it('passes Capture-specific provider, model, and assistant workflow to /api/ask', async () => {
+  it('routes assistant-backed organize runs through /api/assistant-runs', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -48,7 +48,7 @@ describe('useAiOrganize start request', () => {
     });
 
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock).toHaveBeenCalledWith('/api/ask', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/assistant-runs', expect.objectContaining({
       method: 'POST',
     }));
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);

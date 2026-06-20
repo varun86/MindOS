@@ -1,4 +1,5 @@
 import { getAssistantMarkdownPath } from './mind-system-assistant-paths';
+import { buildAssistantRunPrompt, loadAssistantMarkdownPrompt } from './assistant-runner';
 
 export const INBOX_ORGANIZER_ASSISTANT_ID = 'inbox-organizer';
 export const INBOX_ORGANIZER_ASSISTANT_NAME = 'Inbox Organizer';
@@ -51,41 +52,28 @@ export function buildInboxOrganizerRunPrompt(
   fileNames: string[],
   assistantPrompt = INBOX_ORGANIZER_DEFAULT_PROMPT,
 ): string {
-  const basePrompt = assistantPrompt.trim() || INBOX_ORGANIZER_DEFAULT_PROMPT.trim();
   const fileList = fileNames
     .map(normalizeInboxOrganizerFilePath)
-    .map(filePath => `- ${filePath}`)
-    .join('\n') || '- Inbox/(no files selected)';
+    .filter(Boolean);
 
-  return `${basePrompt}
-
----
-
-# Current Inbox Review Run
-
-Use the assistant instructions above as the operating prompt for this run.
-
-Files in this review run:
-${fileList}
-
-Run rules:
-
-- Treat the attached file content as the source of truth.
-- Propose or write only clear, source-preserving changes.
-- Do not delete, rename, or overwrite Inbox source files directly. MindOS archives source files only after a fully successful run.
-`;
+  return buildAssistantRunPrompt({
+    assistantPrompt: assistantPrompt.trim() || INBOX_ORGANIZER_DEFAULT_PROMPT.trim(),
+    runTitle: 'Current Inbox Review Run',
+    intro: 'Use the assistant instructions above as the operating prompt for this run.',
+    itemsLabel: 'Files in this review run',
+    items: fileList.length > 0 ? fileList : ['Inbox/(no files selected)'],
+    rules: [
+      'Treat the attached file content as the source of truth.',
+      'Propose or write only clear, source-preserving changes.',
+      'Do not delete, rename, or overwrite Inbox source files directly. MindOS archives source files only after a fully successful run.',
+    ],
+  });
 }
 
 export async function loadInboxOrganizerPrompt(fetcher?: typeof fetch): Promise<string> {
-  try {
-    const read = fetcher ?? (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
-    if (!read) return INBOX_ORGANIZER_DEFAULT_PROMPT;
-    const res = await read(`/api/file?path=${encodeURIComponent(INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH)}&op=read_file`);
-    if (!res.ok) return INBOX_ORGANIZER_DEFAULT_PROMPT;
-    const data = await res.json() as { content?: unknown };
-    const content = typeof data.content === 'string' ? data.content.trim() : '';
-    return content.length > 0 ? content : INBOX_ORGANIZER_DEFAULT_PROMPT;
-  } catch {
-    return INBOX_ORGANIZER_DEFAULT_PROMPT;
-  }
+  return loadAssistantMarkdownPrompt({
+    assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
+    fallbackPrompt: INBOX_ORGANIZER_DEFAULT_PROMPT,
+    fetcher,
+  });
 }

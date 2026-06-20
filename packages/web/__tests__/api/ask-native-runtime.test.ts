@@ -542,14 +542,14 @@ describe('/api/ask native runtime routing', () => {
     });
   });
 
-  it('maps Inbox Organizer assistant native runtime requests to readonly permission mode', async () => {
+  it('maps Inbox Organizer assistant native runtime requests to full access permission mode', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
     const { POST } = await import('../../app/api/ask/route');
     const res = await POST(askRequest({
-      messages: [{ role: 'user', content: 'Organize without granting full harness writes' }],
+      messages: [{ role: 'user', content: 'Organize with full assistant access' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       mode: 'agent',
       assistantId: 'inbox-organizer',
@@ -559,10 +559,10 @@ describe('/api/ask native runtime routing', () => {
     await res.text();
 
     expect(capturedNativeOptions?.runtime.kind).toBe('codex');
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('agent');
   });
 
-  it('forces Inbox Organizer assistant runs to readonly even when native runtime options request agent permissions', async () => {
+  it('keeps Inbox Organizer assistant runs on full access when native runtime options request agent permissions', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -579,9 +579,29 @@ describe('/api/ask native runtime routing', () => {
     expect(res.status).toBe(200);
     await res.text();
 
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('agent');
     expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
     expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
+  });
+
+  it('honors explicit readonly permission for registered assistant preview runs', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Preview without writes' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      runtimeOptions: { permissionMode: 'readonly' },
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
+    }));
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
   });
 
   it('ignores invalid native runtime permission options and passes Claude reasoning effort', async () => {
@@ -1021,7 +1041,7 @@ describe('/api/ask native runtime routing', () => {
     ]);
   });
 
-  it('maps selected ACP runtime in Inbox Organizer assistant runs to readonly session permission', async () => {
+  it('maps selected ACP runtime in Inbox Organizer assistant runs to full access session permission', async () => {
     mockRunMindosAcpAskSession.mockImplementationOnce(async (options: Record<string, any>) => {
       capturedAcpOptions = options;
       await options.createSession(options.agentId, { cwd: '/tmp/mindos-test' });
@@ -1048,7 +1068,7 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedAcpOptions?.cwd).toBe(realpathSync(workDir));
     expect(mockCreateAcpSession).toHaveBeenCalledWith('gemini', expect.objectContaining({
       cwd: '/tmp/mindos-test',
-      permissionMode: 'readonly',
+      permissionMode: 'agent',
     }));
     const acpRuns = listAgentRuns({ kind: 'acp' });
     expect(acpRuns).toEqual([
@@ -1059,7 +1079,7 @@ describe('/api/ask native runtime routing', () => {
         status: 'completed',
         chatSessionId: 'chat-acp-1',
         cwd: realpathSync(workDir),
-        permissionMode: 'readonly',
+        permissionMode: 'agent',
         outputSummary: 'acp assistant ok',
       }),
     ]);

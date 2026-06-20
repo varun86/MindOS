@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import { buildAssistantAskRequestBody } from '@/lib/assistant-runner';
 import { AgentSectionHeading } from './AgentsPrimitives';
 
 type MindosAssistantSource = 'builtin' | 'custom';
@@ -466,9 +467,7 @@ export default function AgentsPresetsSection({
     setRunningAssistantId(assistant.id);
     setRunResult(null);
     try {
-      const output = assistant.id === 'dreaming'
-        ? await runDedicatedAssistant(assistant)
-        : await runPromptAssistant(assistant);
+      const output = await runAssistantRun(assistant);
       setRunResult({ assistantId: assistant.id, output });
       toast.success(copy.runCompleted ?? 'Assistant run completed');
     } catch (runError) {
@@ -1964,69 +1963,28 @@ function titleizeAssistantId(value: string): string {
     .join(' ') || 'Assistant';
 }
 
-async function runPromptAssistant(assistant: AssistantView): Promise<string> {
-  const res = await fetch('/api/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      mode: 'agent',
+async function runAssistantRun(assistant: AssistantView): Promise<string> {
+  const requestBody = assistant.id === 'dreaming'
+    ? {
+      assistantId: assistant.id,
+      trigger: 'manual',
+    }
+    : buildAssistantAskRequestBody({
+      assistantId: assistant.id,
       runtimeOptions: { permissionMode: 'readonly' },
       messages: [{
         role: 'user',
         content: buildAssistantRunPrompt(assistant),
       }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Assistant run failed (${res.status})`);
-  return readAskTextResponse(res);
-}
+    });
 
-async function runDedicatedAssistant(assistant: AssistantView): Promise<string> {
   const res = await fetch('/api/assistant-runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      assistantId: assistant.id,
-      trigger: 'manual',
-    }),
+    body: JSON.stringify(requestBody),
   });
-  const payload = await res.json().catch(() => null) as {
-    ok?: boolean;
-    error?: { message?: unknown };
-    run?: {
-      scope?: unknown;
-      proposals?: unknown[];
-      lint?: { healthScore?: unknown };
-    };
-    artifacts?: {
-      reportMarkdown?: unknown;
-      pendingJson?: unknown;
-    };
-  } | null;
-  if (!res.ok || payload?.ok !== true) {
-    const message = typeof payload?.error?.message === 'string'
-      ? payload.error.message
-      : `Assistant run failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  const proposalCount = Array.isArray(payload.run?.proposals) ? payload.run.proposals.length : 0;
-  const healthScore = typeof payload.run?.lint?.healthScore === 'number'
-    ? payload.run.lint.healthScore
-    : null;
-  const scope = typeof payload.run?.scope === 'string' ? payload.run.scope : 'all';
-  const reportPath = typeof payload.artifacts?.reportMarkdown === 'string'
-    ? payload.artifacts.reportMarkdown
-    : '.mindos/dreaming/dreaming-report.md';
-  const pendingPath = typeof payload.artifacts?.pendingJson === 'string'
-    ? payload.artifacts.pendingJson
-    : '.mindos/dreaming/pending.json';
-  return [
-    `Dreaming completed for ${scope}.`,
-    `${proposalCount} review proposal(s) generated${healthScore === null ? '' : `, health ${healthScore}/100`}.`,
-    `Report: ${reportPath}`,
-    `Pending review: ${pendingPath}`,
-  ].join('\n');
+  if (!res.ok) throw new Error(`Assistant run failed (${res.status})`);
+  return readAskTextResponse(res);
 }
 
 function buildAssistantRunPrompt(assistant: AssistantView): string {
@@ -2065,9 +2023,10 @@ async function readAskTextResponse(res: Response): Promise<string> {
       const raw = line.slice(5).trim();
       if (!raw || raw === '[DONE]') continue;
       try {
-        const event = JSON.parse(raw) as { type?: string; delta?: string; error?: string };
+        const event = JSON.parse(raw) as { type?: string; delta?: string; error?: string; message?: string };
         if (event.type === 'text_delta' && typeof event.delta === 'string') output += event.delta;
         if (event.type === 'error' && event.error) throw new Error(event.error);
+        if (event.type === 'error' && event.message) throw new Error(event.message);
       } catch (error) {
         if (error instanceof SyntaxError) continue;
         throw error;

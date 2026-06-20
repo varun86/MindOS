@@ -145,18 +145,9 @@ function mockAssistantsFetch(
       });
     }
     if (href === '/api/assistant-runs' && init?.method === 'POST') {
-      return jsonResponse({
-        ok: true,
-        assistantId: 'dreaming',
-        run: {
-          scope: 'all',
-          proposals: [{ id: 'repair-missing-link' }],
-          lint: { healthScore: 91 },
-        },
-        artifacts: {
-          reportMarkdown: '.mindos/dreaming/dreaming-report.md',
-          pendingJson: '.mindos/dreaming/pending.json',
-        },
+      return new Response('data: {"type":"text_delta","delta":"Run summary"}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
       });
     }
     throw new Error(`Unexpected fetch: ${href}`);
@@ -448,10 +439,11 @@ Write an updated morning brief.
       await flushEffects();
     });
 
-    const askCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/ask' && init?.method === 'POST');
+    const askCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/assistant-runs' && init?.method === 'POST');
     expect(askCall).toBeTruthy();
     const askBody = JSON.parse(askCall![1]!.body as string);
     expect(askBody.mode).toBe('agent');
+    expect(askBody.assistantId).toBe('research-scout');
     expect(askBody.runtimeOptions).toEqual({ permissionMode: 'readonly' });
     expect(askBody.messages[0].content).toContain('Research Scout');
     expect(askBody.messages[0].content).toContain('readonly mode');
@@ -473,7 +465,7 @@ Write an updated morning brief.
     });
   });
 
-  it('runs Dreaming through the dedicated AssistantRun endpoint', async () => {
+  it('runs Dreaming through the AssistantRun endpoint', async () => {
     const fetchMock = mockAssistantsFetch({
       ...localAssistantsPayload,
       assistants: [
@@ -543,9 +535,7 @@ Review the local knowledge base for maintenance signals.
       trigger: 'manual',
     });
     expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/ask' && init?.method === 'POST')).toBe(false);
-    expect(host.textContent).toContain('Dreaming completed for all.');
-    expect(host.textContent).toContain('1 review proposal(s) generated, health 91/100.');
-    expect(host.textContent).toContain('.mindos/dreaming/dreaming-report.md');
+    expect(host.textContent).toContain('Run summary');
 
     await act(async () => {
       root.unmount();

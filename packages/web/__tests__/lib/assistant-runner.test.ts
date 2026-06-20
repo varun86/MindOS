@@ -1,0 +1,89 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  buildAssistantAskRequestBody,
+  buildAssistantRunPrompt,
+  loadAssistantMarkdownPrompt,
+} from '@/lib/assistant-runner';
+import {
+  assistantPermissionLevelToPolicyMode,
+  getAssistantPermissionLevel,
+  getAssistantPermissionMode,
+  isRegisteredAssistantRun,
+  resolveAssistantAskPermissionPolicyMode,
+} from '@/lib/assistant-runtime-registry';
+
+describe('assistant runner utilities', () => {
+  it('builds a stable /api/ask body for assistant-backed runs', () => {
+    const body = buildAssistantAskRequestBody({
+      assistantId: 'inbox-organizer',
+      messages: [{ role: 'user', content: 'Organize this' }],
+      uploadedFiles: [{ name: 'capture.md', content: 'source' }],
+      maxSteps: 15,
+      providerOverride: 'p_stepfun',
+      modelOverride: 'step-2',
+    });
+
+    expect(body).toEqual({
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
+      messages: [{ role: 'user', content: 'Organize this' }],
+      uploadedFiles: [{ name: 'capture.md', content: 'source' }],
+      maxSteps: 15,
+      providerOverride: 'p_stepfun',
+      modelOverride: 'step-2',
+    });
+  });
+
+  it('loads assistant markdown from the shared assistant path and falls back safely', async () => {
+    const fetcher = vi.fn(async (url: string) => {
+      expect(url).toBe('/api/file?path=.mindos%2Fassistants%2Finbox-organizer.md&op=read_file');
+      return {
+        ok: true,
+        json: async () => ({ content: '# Custom Inbox Organizer' }),
+      };
+    }) as unknown as typeof fetch;
+
+    await expect(loadAssistantMarkdownPrompt({
+      assistantId: 'inbox-organizer',
+      fallbackPrompt: '# Fallback',
+      fetcher,
+    })).resolves.toBe('# Custom Inbox Organizer');
+
+    const failingFetcher = vi.fn(async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
+    await expect(loadAssistantMarkdownPrompt({
+      assistantId: 'inbox-organizer',
+      fallbackPrompt: '# Fallback',
+      fetcher: failingFetcher,
+    })).resolves.toBe('# Fallback');
+  });
+
+  it('uses the assistant runtime registry only for assistant run permissions', () => {
+    expect(resolveAssistantAskPermissionPolicyMode('inbox-organizer', 'readonly')).toBe('agent');
+    expect(resolveAssistantAskPermissionPolicyMode('unknown-assistant', 'readonly')).toBe('readonly');
+    expect(resolveAssistantAskPermissionPolicyMode('dreaming', 'readonly')).toBe('agent');
+    expect(isRegisteredAssistantRun('inbox-organizer')).toBe(true);
+    expect(isRegisteredAssistantRun('dreaming')).toBe(true);
+    expect(isRegisteredAssistantRun('unknown-assistant')).toBe(false);
+    expect(assistantPermissionLevelToPolicyMode('full-access')).toBe('agent');
+    expect(getAssistantPermissionLevel('dreaming')).toBe('full-access');
+    expect(getAssistantPermissionMode('dreaming')).toBe('agent');
+    expect(getAssistantPermissionLevel('unknown-assistant')).toBeUndefined();
+  });
+
+  it('composes assistant instructions with per-run context without inventing a new mode', () => {
+    const prompt = buildAssistantRunPrompt({
+      assistantPrompt: '# Assistant\n\n## Role\n\nReview inputs.',
+      runTitle: 'Current Inbox Review Run',
+      intro: 'Use the assistant instructions above.',
+      itemsLabel: 'Files in this review run',
+      items: ['Inbox/a.md', 'Inbox/b.md'],
+      rules: ['Treat attachments as source of truth.'],
+    });
+
+    expect(prompt).toContain('# Assistant');
+    expect(prompt).toContain('# Current Inbox Review Run');
+    expect(prompt).toContain('- Inbox/a.md');
+    expect(prompt).toContain('- Treat attachments as source of truth.');
+    expect(prompt).not.toContain('mode: organize');
+  });
+});

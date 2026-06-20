@@ -1,21 +1,107 @@
-import fs from 'fs';
-import path from 'path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/assistant-runs/route';
-import { getTestMindRoot, seedFile } from '../setup';
-import {
-  listAgentEvents,
-  listAgentRuns,
-  resetAgentRunsForTest,
-} from '@geminilight/mindos/agent/ledger/run-ledger';
+
+const askPostMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/app/api/ask/runner', () => ({
+  runAskRequestBody: askPostMock,
+}));
 
 describe('POST /api/assistant-runs', () => {
   beforeEach(() => {
-    resetAgentRunsForTest();
+    askPostMock.mockReset();
   });
 
-  it('runs the Dreaming Assistant and records an agent ledger entry', async () => {
-    seedFile('source.md', 'See [[missing-page]] in a note with enough body text to avoid being only a stub.');
+  it('delegates Inbox Organizer runs to the shared ask-backed streaming runner', async () => {
+    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+
+    const response = await POST(new Request('http://localhost/api/assistant-runs', {
+      method: 'POST',
+      headers: { 'accept-language': 'zh-CN' },
+      body: JSON.stringify({
+        assistantId: 'inbox-organizer',
+        trigger: 'manual',
+        messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
+        uploadedFiles: [{ name: 'capture.md', content: 'source' }],
+        providerOverride: 'p_stepfun',
+        modelOverride: 'step-2',
+        maxSteps: 15,
+      }),
+    }));
+
+    expect(askPostMock).toHaveBeenCalledTimes(1);
+    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const delegatedContext = askPostMock.mock.calls[0]?.[1] as { headers?: Headers; request?: Request; signal?: AbortSignal };
+    expect(delegatedContext.headers?.get('accept-language')).toBe('zh-CN');
+    expect(delegatedContext.request?.url).toBe('http://localhost/api/assistant-runs');
+    expect(delegatedBody).toMatchObject({
+      assistantId: 'inbox-organizer',
+      mode: 'agent',
+      messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
+      uploadedFiles: [{ name: 'capture.md', content: 'source' }],
+      providerOverride: 'p_stepfun',
+      modelOverride: 'step-2',
+      maxSteps: 15,
+    });
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    await expect(response.text()).resolves.toContain('"type":"done"');
+  });
+
+  it('rejects ask-backed assistant runs without messages before touching the ask runner', async () => {
+    const response = await POST(new Request('http://localhost/api/assistant-runs', {
+      method: 'POST',
+      body: JSON.stringify({ assistantId: 'inbox-organizer' }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_MESSAGES' },
+    });
+    expect(askPostMock).not.toHaveBeenCalled();
+  });
+
+  it('normalizes ask-backed assistant bodies without leaking invalid raw fields', async () => {
+    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+
+    await POST(new Request('http://localhost/api/assistant-runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        assistantId: 'inbox-organizer',
+        messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
+        uploadedFiles: 'not-files',
+        providerOverride: '   ',
+        modelOverride: '',
+        runtimeOptions: 'not-options',
+        maxSteps: -1,
+        selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+        chatSessionId: 'chat-1',
+      }),
+    }));
+
+    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(delegatedBody).toMatchObject({
+      assistantId: 'inbox-organizer',
+      mode: 'agent',
+      messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      chatSessionId: 'chat-1',
+    });
+    expect(delegatedBody).not.toHaveProperty('uploadedFiles');
+    expect(delegatedBody).not.toHaveProperty('providerOverride');
+    expect(delegatedBody).not.toHaveProperty('modelOverride');
+    expect(delegatedBody).not.toHaveProperty('runtimeOptions');
+    expect(delegatedBody).not.toHaveProperty('maxSteps');
+  });
+
+  it('delegates Dreaming runs to the shared ask runner with the local dreaming tool instruction', async () => {
+    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"text_delta","delta":"Dreaming queued"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
 
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',
@@ -24,61 +110,28 @@ describe('POST /api/assistant-runs', () => {
         trigger: 'manual',
       }),
     }));
-    const body = await response.json();
 
-    expect(response.status, JSON.stringify(body)).toBe(200);
-    expect(body).toMatchObject({
-      ok: true,
+    expect(askPostMock).toHaveBeenCalledTimes(1);
+    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(delegatedBody).toMatchObject({
       assistantId: 'dreaming',
-      trigger: 'manual',
-      runtimeContextSnapshot: {
-        assistantId: 'dreaming',
-        trigger: 'manual',
-        runner: 'dreaming',
-        permissionMode: 'agent',
-        outputPolicy: {
-          mode: 'review',
-          target: '.mindos/dreaming',
-        },
-        context: {
-          space: 'all',
-        },
-        dryRun: false,
-      },
+      mode: 'agent',
+      maxSteps: 16,
     });
-    expect(body.agentRunId).toEqual(expect.any(String));
-    expect(body.run.proposals.length).toBeGreaterThan(0);
-    expect(body.report).toContain('Dreaming Report');
-    expect(fs.existsSync(path.join(getTestMindRoot(), '.mindos/dreaming/latest.json'))).toBe(true);
-    expect(fs.existsSync(path.join(getTestMindRoot(), '.mindos/dreaming/pending.json'))).toBe(true);
-
-    const runs = listAgentRuns({ kind: 'mindos-headless' });
-    expect(runs).toEqual([
-      expect.objectContaining({
-        id: body.agentRunId,
-        runtimeId: 'assistant:dreaming',
-        displayName: 'Dreaming Assistant',
-        status: 'completed',
-        permissionMode: 'agent',
-        metadata: expect.objectContaining({
-          source: 'assistant-run',
-          assistantId: 'dreaming',
-          trigger: 'manual',
-          dryRun: false,
-          space: 'all',
-          dreamingRunId: body.run.id,
-          proposalCount: body.run.proposals.length,
-        }),
-      }),
-    ]);
-    expect(listAgentEvents({ runId: body.agentRunId, category: 'tool' }).map(event => event.type)).toEqual([
-      'tool_completed',
-      'tool_started',
-    ]);
+    const messages = delegatedBody.messages as Array<{ role: string; content: string }>;
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe('user');
+    expect(messages[0].content).toContain('First call the local `dreaming` tool exactly once');
+    expect(messages[0].content).toContain('space: all');
+    expect(messages[0].content).toContain('writeArtifacts: true');
+    expect(messages[0].content).toContain('.mindos/dreaming');
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
   });
 
-  it('supports dry runs without writing Dreaming artifacts', async () => {
-    seedFile('Projects/source.md', 'See [[missing-page]] in a note with enough body text to avoid being only a stub.');
+  it('passes Dreaming dry-run scope through the ask prompt instead of running a server branch', async () => {
+    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
 
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',
@@ -90,38 +143,38 @@ describe('POST /api/assistant-runs', () => {
         },
       }),
     }));
-    const body = await response.json();
 
-    expect(response.status, JSON.stringify(body)).toBe(200);
-    expect(body.run.scope).toBe('Projects');
-    expect(body.run.artifacts).toBeUndefined();
-    expect(body.artifacts).toBeUndefined();
-    expect(fs.existsSync(path.join(getTestMindRoot(), '.mindos/dreaming/latest.json'))).toBe(false);
-    expect(listAgentRuns({ kind: 'mindos-headless' })[0]).toMatchObject({
-      status: 'completed',
-      metadata: expect.objectContaining({
-        dryRun: true,
-        space: 'Projects',
-      }),
-    });
+    expect(response.status).toBe(200);
+    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const messages = delegatedBody.messages as Array<{ content: string }>;
+    expect(messages[0].content).toContain('space: Projects');
+    expect(messages[0].content).toContain('writeArtifacts: false');
+    expect(messages[0].content).toContain('space "Projects"');
+    expect(messages[0].content).toContain('dryRun true');
   });
 
-  it('rejects assistants without a dedicated runner', async () => {
+  it('delegates custom assistant runs through ask with readonly permission', async () => {
+    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',
-      body: JSON.stringify({ assistantId: 'daily-signal' }),
+      body: JSON.stringify({
+        assistantId: 'daily-signal',
+        messages: [{ role: 'user', content: 'Run this assistant.' }],
+        runtimeOptions: { permissionMode: 'agent', reasoningEffort: 'high' },
+      }),
     }));
-    const body = await response.json();
 
-    expect(response.status).toBe(501);
-    expect(body).toEqual({
-      ok: false,
-      error: {
-        code: 'UNSUPPORTED_ASSISTANT',
-        message: 'Assistant "daily-signal" does not have a dedicated runner yet.',
-      },
+    expect(response.status).toBe(200);
+    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(delegatedBody).toMatchObject({
+      assistantId: 'daily-signal',
+      mode: 'agent',
+      messages: [{ role: 'user', content: 'Run this assistant.' }],
+      runtimeOptions: { permissionMode: 'readonly', reasoningEffort: 'high' },
     });
-    expect(listAgentRuns()).toEqual([]);
   });
 
   it('rejects unsafe assistant ids and spaces before starting a run', async () => {
@@ -144,6 +197,6 @@ describe('POST /api/assistant-runs', () => {
       ok: false,
       error: { code: 'INVALID_SPACE' },
     });
-    expect(listAgentRuns()).toEqual([]);
+    expect(askPostMock).not.toHaveBeenCalled();
   });
 });

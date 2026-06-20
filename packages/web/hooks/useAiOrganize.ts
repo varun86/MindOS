@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { LocalAttachment, Message } from '@/lib/types';
 import type { OrganizeSource } from '@/lib/organize-history';
+import { buildAssistantAskRequestBody } from '@/lib/assistant-runner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -315,17 +316,17 @@ export function useAiOrganize() {
     }));
 
     try {
-      const requestBody: Record<string, unknown> = {
+      const requestBody = buildAssistantAskRequestBody({
         messages,
         uploadedFiles: truncatedFiles,
         maxSteps: 15,
-        mode: 'agent',
-      };
-      if (options.providerOverride) requestBody.providerOverride = options.providerOverride;
-      if (options.modelOverride) requestBody.modelOverride = options.modelOverride;
-      if (options.assistantId) requestBody.assistantId = options.assistantId;
+        providerOverride: options.providerOverride,
+        modelOverride: options.modelOverride,
+        assistantId: options.assistantId,
+      });
 
-      const res = await fetch('/api/ask', {
+      const endpoint = options.assistantId ? '/api/assistant-runs' : '/api/ask';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
