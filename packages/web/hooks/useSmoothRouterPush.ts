@@ -27,15 +27,18 @@ export function shouldHandleSmoothNavigation(event: MouseNavigationEvent): boole
  * Defers route work to the next frame and runs it in a transition. This lets
  * pressed/active UI state paint before Next starts rendering the destination.
  */
-export function useSmoothRouterPush(): (href: string) => void {
-  let router: { push: (href: string) => void } | null = null;
+function useRouterOrNull() {
   try {
-    router = useRouter();
+    return useRouter();
   } catch {
     // Static render tests and non-Next hosts can render client components
     // without an app-router context. Clicks still get a browser fallback.
-    router = null;
+    return null;
   }
+}
+
+export function useSmoothRouterPush(): (href: string) => void {
+  const router = useRouterOrNull();
   const [, startTransition] = useTransition();
   const frameRef = useRef<number | null>(null);
 

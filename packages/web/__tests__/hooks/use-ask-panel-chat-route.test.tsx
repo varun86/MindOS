@@ -15,12 +15,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navState.pathname,
 }));
 
-let latestState: AskPanelState | null = null;
+const latestState = { current: null as AskPanelState | null };
 
 function Probe() {
   const state = useAskPanel();
   const askModal = useAskModal();
-  latestState = state;
+  latestState.current = state;
   return (
     <div
       data-ask-open={state.askPanelOpen ? 'true' : 'false'}
@@ -47,7 +47,7 @@ describe('useAskPanel full-page chat guard', () => {
     document.body.innerHTML = '';
     localStorage.clear();
     closeAskModal();
-    latestState = null;
+    latestState.current = null;
     navState.pathname = '/wiki';
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
@@ -57,12 +57,12 @@ describe('useAskPanel full-page chat guard', () => {
     const probe = host.querySelector('div');
 
     act(() => {
-      latestState?.toggleAskPanel();
+      latestState.current?.toggleAskPanel();
     });
     expect(probe?.getAttribute('data-ask-open')).toBe('true');
 
     act(() => {
-      latestState?.closeAskPanel();
+      latestState.current?.closeAskPanel();
     });
     expect(probe?.getAttribute('data-ask-open')).toBe('false');
 
@@ -78,20 +78,20 @@ describe('useAskPanel full-page chat guard', () => {
     const { root } = renderProbe();
 
     act(() => {
-      latestState?.handleAskWidthChange(760);
+      latestState.current?.handleAskWidthChange(760);
     });
-    expect(latestState?.askPanelWidth).toBe(760);
+    expect(latestState.current?.askPanelWidth).toBe(760);
 
     act(() => {
-      latestState?.toggleAskMaximized(420);
+      latestState.current?.toggleAskMaximized(420);
     });
-    expect(latestState?.askMaximized).toBe(true);
+    expect(latestState.current?.askMaximized).toBe(true);
 
     act(() => {
-      latestState?.toggleAskMaximized();
+      latestState.current?.toggleAskMaximized();
     });
-    expect(latestState?.askMaximized).toBe(false);
-    expect(latestState?.askPanelWidth).toBe(420);
+    expect(latestState.current?.askMaximized).toBe(false);
+    expect(latestState.current?.askPanelWidth).toBe(420);
 
     act(() => root.unmount());
   });
@@ -102,7 +102,7 @@ describe('useAskPanel full-page chat guard', () => {
     const probe = host.querySelector('div');
 
     act(() => {
-      latestState?.toggleAskPanel();
+      latestState.current?.toggleAskPanel();
     });
     expect(probe?.getAttribute('data-ask-open')).toBe('false');
 

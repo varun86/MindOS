@@ -431,13 +431,14 @@ function RuntimePermissionControls({ part }: { part: ToolCallPart }) {
   const permission = part.runtimePermission;
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState('');
-  if (!permission) return null;
-  const permissionState = permission;
+  const waiting = permission?.status === 'waiting';
 
-  const waiting = permissionState.status === 'waiting';
   useEffect(() => {
     if (!waiting) setSubmitting(null);
   }, [waiting]);
+
+  if (!permission) return null;
+  const permissionState = permission;
   const statusText = permissionState.status === 'approved'
     ? 'Approved'
     : permissionState.status === 'denied'

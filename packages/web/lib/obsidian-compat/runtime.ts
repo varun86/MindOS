@@ -378,6 +378,7 @@ export class ObsidianRuntimeHost extends Events {
   async runWithPluginContext<T>(pluginId: string, callback: () => Promise<T> | T): Promise<T> {
     this.pluginContextStack.push(pluginId);
     const previousHost = activeRuntimeHost;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     activeRuntimeHost = this;
     try {
       return await callback();

@@ -46,7 +46,7 @@ const host: MindosKbToolsHost = {
     // the full core barrel, which must not load at tools module-init time.
     updateLines: async (mindRoot, filePath, startIndex, endIndex, lines) => {
       const { updateLines } = await import('@/lib/core');
-      updateLines(mindRoot, filePath, startIndex, endIndex, lines);
+      await updateLines(mindRoot, filePath, startIndex, endIndex, lines);
     },
     moveToTrashFile,
     renameFile,

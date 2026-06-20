@@ -98,7 +98,7 @@ export interface PreflightObsidianCommunityPluginPackageOptions {
   timeoutMs?: number;
 }
 
-export interface FetchObsidianCommunityPluginPackageOptions extends PreflightObsidianCommunityPluginPackageOptions {}
+export type FetchObsidianCommunityPluginPackageOptions = PreflightObsidianCommunityPluginPackageOptions;
 
 export interface ObsidianCommunityPluginPreflight {
   ok: true;

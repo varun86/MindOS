@@ -6,9 +6,9 @@
  * choice) — it refreshes session metadata instead. The default path (no
  * initialSessionId) keeps calling initSessions unchanged.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import AskContent from '@/components/ask/AskContent';
 import type { ChatSession } from '@/lib/types';
@@ -237,10 +237,13 @@ vi.mock('@/lib/agent/stream-consumer', () => ({
   consumeUIMessageStream: () => new Promise(() => {}),
 }));
 
+const mountedRoots: Array<{ root: Root; host: HTMLDivElement }> = [];
+
 async function renderAskContent(props: Partial<React.ComponentProps<typeof AskContent>> = {}) {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const root = createRoot(host);
+  mountedRoots.push({ root, host });
   flushSync(() => {
     root.render(<AskContent visible variant="home" {...props} />);
   });
@@ -262,6 +265,16 @@ beforeEach(() => {
     json: async () => ([]),
     body: new ReadableStream(),
   } as unknown as Response)));
+});
+
+afterEach(() => {
+  for (const { root, host } of mountedRoots.splice(0)) {
+    flushSync(() => {
+      root.unmount();
+    });
+    host.remove();
+  }
+  vi.unstubAllGlobals();
 });
 
 describe('AskContent initialSessionId', () => {
