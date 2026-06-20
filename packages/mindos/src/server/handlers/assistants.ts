@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { posix } from 'node:path';
+import { normalizeMindosPermissionMode, type MindosPermissionMode } from '../../agent/permission/index.js';
 import { resolveExistingSafe, resolveSafe } from '../../foundation/security/index.js';
 import { json, privateCacheHeaders, type MindosServerResponse } from '../response.js';
 
@@ -27,7 +28,7 @@ const DEFAULT_ASSISTANT_PROFILE = {
   mode: 'subagent',
   runtime: 'mindos',
   model: 'default',
-  permission: 'ask',
+  permissionMode: 'ask',
   hidden: false,
 } as const;
 
@@ -77,7 +78,7 @@ export type MindosAssistantLibraryItem = {
   mode: string;
   runtime: string;
   model: string;
-  permission: string;
+  permissionMode: MindosPermissionMode;
   hidden: boolean;
   color?: string;
   steps?: number;
@@ -176,7 +177,7 @@ export function handleAssistantsPost(
       mode: 'subagent',
       runtime,
       model: sanitizeString(record.model, 120) ?? 'default',
-      permission: sanitizePermission(record.permission),
+      permissionMode: sanitizePermissionMode(record.permissionMode ?? record.permission),
       hidden: readBoolean(record.hidden, false),
       color: sanitizeString(record.color, 48) ?? 'amber',
       steps: sanitizePositiveInteger(record.steps) ?? 12,
@@ -296,7 +297,7 @@ function readAssistantMarkdownFile(mindRoot: string, assistantId: string): Mindo
     mode: parsed.profile.mode,
     runtime: parsed.profile.runtime,
     model: parsed.profile.model,
-    permission: parsed.profile.permission,
+    permissionMode: parsed.profile.permissionMode,
     hidden: parsed.profile.hidden,
     ...(parsed.profile.color ? { color: parsed.profile.color } : {}),
     ...(parsed.profile.steps ? { steps: parsed.profile.steps } : {}),
@@ -356,7 +357,7 @@ function readAssistantDirectory(mindRoot: string, assistantId: string): MindosAs
     mode: DEFAULT_ASSISTANT_PROFILE.mode,
     runtime,
     model: DEFAULT_ASSISTANT_PROFILE.model,
-    permission: DEFAULT_ASSISTANT_PROFILE.permission,
+    permissionMode: DEFAULT_ASSISTANT_PROFILE.permissionMode,
     hidden: false,
     ...(profile.preferredAgent ? { preferredAgent: profile.preferredAgent } : {}),
     skills: profile.skills,
@@ -406,7 +407,7 @@ type AssistantMarkdownProfile = {
   mode: string;
   runtime: string;
   model: string;
-  permission: string;
+  permissionMode: MindosPermissionMode;
   hidden: boolean;
   color?: string;
   steps?: number;
@@ -516,7 +517,7 @@ function parseAssistantMarkdown(content: string): AssistantMarkdownReadResult {
     mode: sanitizeMode(split.fields.mode),
     runtime: sanitizeRuntime(split.fields.runtime) ?? DEFAULT_ASSISTANT_PROFILE.runtime,
     model: sanitizeString(split.fields.model, 120) ?? DEFAULT_ASSISTANT_PROFILE.model,
-    permission: sanitizePermission(split.fields.permission),
+    permissionMode: sanitizePermissionMode(split.fields.permissionMode ?? split.fields.permission),
     hidden: readBoolean(split.fields.hidden, DEFAULT_ASSISTANT_PROFILE.hidden),
     ...(color ? { color } : {}),
     ...(steps ? { steps } : {}),
@@ -657,9 +658,8 @@ function runtimeToPreferredAgent(runtime: string): string {
   return runtime === 'mindos' ? 'mindos-agent' : runtime;
 }
 
-function sanitizePermission(value: unknown): string {
-  if (value === 'read' || value === 'ask' || value === 'auto' || value === 'full') return value;
-  return DEFAULT_ASSISTANT_PROFILE.permission;
+function sanitizePermissionMode(value: unknown): MindosPermissionMode {
+  return normalizeMindosPermissionMode(value, DEFAULT_ASSISTANT_PROFILE.permissionMode);
 }
 
 function sanitizePositiveInteger(value: unknown): number | undefined {
@@ -755,7 +755,7 @@ function serializeAssistantMarkdown(profile: AssistantMarkdownProfile, body: str
     ['mode', profile.mode],
     ['runtime', profile.runtime],
     ['model', profile.model],
-    ['permission', profile.permission],
+    ['permissionMode', profile.permissionMode],
     ['hidden', profile.hidden],
     ['color', profile.color],
     ['steps', profile.steps],

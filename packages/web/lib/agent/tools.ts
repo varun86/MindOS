@@ -22,10 +22,10 @@ import {
   type MindosKbFileTreeNode,
   type MindosKbToolsHost,
 } from '@geminilight/mindos/agent/tool/kb-tools';
-import type { MindosAgentPermissionPolicy } from '@geminilight/mindos/agent/tool/permission-policy';
+import type { MindosAgentPermissionPolicy } from '@geminilight/mindos/agent/mindos-pi/permission';
 
 export {
-  KB_WRITE_TOOL_NAMES,
+  KNOWLEDGE_WRITE_TOOL_NAMES,
   READONLY_TOOL_NAMES,
   WRITE_TOOLS,
   truncate,
@@ -99,9 +99,9 @@ export function getToolsForMindosAgentPolicy(policy: MindosAgentPermissionPolicy
   return toolkit.getToolsForPolicy(policy);
 }
 
-/** Bounded KB write tool set - skips destructive moves/deletes and delegation tools. */
-export function getKbWriteTools(): MindosAgentTool[] {
-  return toolkit.getKbWriteTools();
+/** Bounded knowledge-write tool set - skips destructive moves/deletes and delegation tools. */
+export function getKnowledgeWriteTools(): MindosAgentTool[] {
+  return toolkit.getKnowledgeWriteTools();
 }
 
 /** Read-only knowledge-base tool set. */

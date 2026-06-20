@@ -9,12 +9,13 @@ import { Type, type Static } from '@sinclair/typebox';
 import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import {
   createMindosAgentPermissionPolicy,
+  createMindosKnowledgeWritePermissionPolicy,
   getMindosKbToolNameSet,
   MINDOS_READONLY_KB_TOOL_NAMES,
-  MINDOS_KB_WRITE_TOOL_NAMES,
+  MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES,
   MINDOS_WRITE_TOOL_NAMES,
   type MindosAgentPermissionPolicy,
-} from './permission-policy.js';
+} from '../mindos-pi/permission/index.js';
 import { withAgentFileWriteLock, withAgentFileWriteLocks } from './file-write-lock.js';
 import { getCurrentAgentRunContext } from '../agent-run-context.js';
 import { appendAgentRunEvent } from '../run-ledger.js';
@@ -303,7 +304,7 @@ const LoadSkillParams = Type.Object({
 export const WRITE_TOOLS = new Set<string>(MINDOS_WRITE_TOOL_NAMES);
 
 /** Tool names allowed by the bounded KB write permission policy. */
-export const KB_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KB_WRITE_TOOL_NAMES);
+export const KNOWLEDGE_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES);
 
 /** Knowledge-base tool names allowed by the read-only permission policy. */
 export const READONLY_TOOL_NAMES = new Set<string>(MINDOS_READONLY_KB_TOOL_NAMES);
@@ -315,7 +316,7 @@ export interface MindosKbToolkit {
   knowledgeBaseTools: MindosAgentTool[];
   getToolsForPolicy(policy: MindosAgentPermissionPolicy): MindosAgentTool[];
   /** Bounded KB write tool set — skips destructive moves/deletes and delegation tools. */
-  getKbWriteTools(): MindosAgentTool[];
+  getKnowledgeWriteTools(): MindosAgentTool[];
   getReadonlyTools(): MindosAgentTool[];
   getRequestScopedTools(): MindosAgentTool[];
 }
@@ -345,9 +346,9 @@ export function createMindosKbToolkit(host: MindosKbToolsHost): MindosKbToolkit 
   return {
     knowledgeBaseTools,
     getToolsForPolicy,
-    getKbWriteTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('kb-write')),
-    getReadonlyTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('readonly')),
-    getRequestScopedTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('agent')),
+    getKnowledgeWriteTools: () => getToolsForPolicy(createMindosKnowledgeWritePermissionPolicy('ask')),
+    getReadonlyTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('read')),
+    getRequestScopedTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('ask')),
   };
 }
 

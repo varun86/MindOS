@@ -242,7 +242,7 @@ export type AskModeApi = AskMode;
 /** Chat Panel permission preset shown in the composer controls. */
 export type AskPermissionLevel = 'read' | 'ask' | 'auto' | 'full';
 
-export type NativeRuntimePermissionMode = 'readonly' | 'agent';
+export type NativeRuntimePermissionMode = AskPermissionLevel;
 export type NativeRuntimeEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface NativeRuntimeOptions {

@@ -17,7 +17,7 @@ describe('appendSseEventToAgentRun', () => {
       agentKind: 'native-runtime',
       runtimeId: 'claude',
       displayName: 'Claude Code',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Use Claude Code',
     });
 
@@ -60,7 +60,7 @@ describe('appendSseEventToAgentRun', () => {
       agentKind: 'native-runtime',
       runtimeId: 'codex',
       displayName: 'Codex',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Run tests',
     });
 

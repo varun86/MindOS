@@ -1,5 +1,6 @@
 import type { MindOSSSEvent } from '../session/index.js';
 import { redactSensitiveText } from '../session/index.js';
+import type { MindosPermissionMode } from '../permission/index.js';
 import {
   createClaudeCodeCliClient,
   createClaudeCodeCliStdioTransport,
@@ -138,7 +139,7 @@ export type MindosAgentRuntimeAskOptions = {
   prompt: string;
   attachments?: MindosRuntimeAttachment[];
   selectedSkills?: MindosSelectedSkill[];
-  permissionMode?: 'readonly' | 'agent';
+  permissionMode?: MindosPermissionMode;
   modelOverride?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   timeoutMs?: number;
@@ -452,13 +453,13 @@ function shouldFallbackFromClaudeSdkTurnError(error: Error, signal?: AbortSignal
 function claudeCliPermissionModeForMindosMode(
   mode: MindosAgentRuntimeAskOptions['permissionMode'],
 ): ClaudeCodeCliPermissionMode {
-  return mode === 'readonly' ? 'dontAsk' : 'default';
+  return mode === 'read' ? 'dontAsk' : 'default';
 }
 
 function codexPermissionOptionsForMindosMode(
   mode: MindosAgentRuntimeAskOptions['permissionMode'],
 ): { approvalPolicy?: string; sandbox?: Record<string, unknown> } {
-  if (mode !== 'readonly') return {};
+  if (mode !== 'read') return {};
   return {
     approvalPolicy: 'never',
     sandbox: { mode: 'read-only' },

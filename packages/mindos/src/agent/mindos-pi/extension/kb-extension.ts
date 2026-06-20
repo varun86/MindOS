@@ -5,7 +5,7 @@
 // Hosts keep a real extension entry file (the pi DefaultResourceLoader loads
 // it by file path) that wires their toolkit into createMindosKbExtension().
 //
-// Permission-based filtering (readonly/kb-write/agent) is controlled by
+// Permission-based filtering is controlled by
 // runWithKbPermissionPolicy() (request-scoped) or setKbMode()/
 // setKbPermissionPolicy() (process fallback), evaluated at reload() time.
 //
@@ -21,9 +21,9 @@ import type { TSchema } from '@sinclair/typebox';
 import { assertNotProtected } from '../../../foundation/security/index.js';
 import {
   createMindosAgentPermissionPolicy,
-  type MindosAgentPermissionPolicyMode,
+  type MindosPermissionMode,
   type MindosAgentPermissionPolicy,
-} from '../../tool/permission-policy.js';
+} from '../permission/index.js';
 import {
   getProcessGlobal,
   KB_EXTENSION_HOST_KEY,
@@ -34,7 +34,7 @@ import { WRITE_TOOLS, type MindosAgentTool } from '../../tool/kb-tools.js';
 
 // ─── Permission-based tool filtering ─────────────────────────────────────────
 
-export type KbMode = MindosAgentPermissionPolicyMode;
+export type KbMode = MindosPermissionMode;
 
 function getPolicyStorage(): AsyncLocalStorage<MindosAgentPermissionPolicy> {
   return getProcessGlobal(
@@ -46,7 +46,7 @@ function getPolicyStorage(): AsyncLocalStorage<MindosAgentPermissionPolicy> {
 function getPolicyFallback(): { policy: MindosAgentPermissionPolicy } {
   return getProcessGlobal(
     KB_PERMISSION_POLICY_FALLBACK_KEY,
-    () => ({ policy: createMindosAgentPermissionPolicy('agent') }),
+    () => ({ policy: createMindosAgentPermissionPolicy('ask') }),
   );
 }
 

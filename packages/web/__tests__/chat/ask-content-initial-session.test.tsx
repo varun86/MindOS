@@ -231,7 +231,7 @@ vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
   getPersistedPermissionLevel: () => 'ask',
   permissionLevelToAskMode: () => 'agent',
-  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level,
 }));
 vi.mock('@/lib/agent/stream-consumer', () => ({
   consumeUIMessageStream: () => new Promise(() => {}),

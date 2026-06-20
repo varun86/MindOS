@@ -111,7 +111,7 @@ describe('MindOS server contract: product operations', () => {
           description: 'Read notes',
           source: 'mindos',
           status: 'available',
-          permissionRequired: 'readonly',
+          permissionRequired: 'read',
           availableInModes: ['agent'],
           metadata: {
             toolName: 'read_file',
@@ -126,7 +126,7 @@ describe('MindOS server contract: product operations', () => {
           description: 'Delete notes',
           source: 'mindos',
           status: 'available',
-          permissionRequired: 'agent',
+          permissionRequired: 'ask',
           availableInModes: ['agent'],
         },
       ],
@@ -142,7 +142,7 @@ describe('MindOS server contract: product operations', () => {
         id: 'kb:read',
         kind: 'kb-tool',
         source: 'mindos',
-        permissionRequired: 'readonly',
+        permissionRequired: 'read',
         availableInModes: ['agent'],
         metadata: {
           toolName: 'read_file',
@@ -153,7 +153,7 @@ describe('MindOS server contract: product operations', () => {
         id: 'kb:delete',
         kind: 'kb-tool',
         source: 'mindos',
-        permissionRequired: 'agent',
+        permissionRequired: 'ask',
         availableInModes: ['agent'],
       }),
     ]));
@@ -172,7 +172,7 @@ describe('MindOS server contract: product operations', () => {
         name: 'Delete File',
         description: 'Delete notes',
         source: 'mindos',
-        permissionRequired: 'agent',
+        permissionRequired: 'ask',
       }],
       mcp: () => [{
         kind: 'mcp-tool',
@@ -180,7 +180,7 @@ describe('MindOS server contract: product operations', () => {
         description: 'Search code',
         source: 'mcp',
         status: 'cached',
-        permissionRequired: 'agent',
+        permissionRequired: 'ask',
         metadata: { serverName: 'github', authToken: 'token-secret' },
       }],
       a2a: () => [{
@@ -188,7 +188,7 @@ describe('MindOS server contract: product operations', () => {
         name: 'Remote Reviewer',
         description: 'Remote agent',
         source: 'a2a',
-        permissionRequired: 'agent',
+        permissionRequired: 'ask',
       }],
     });
 

@@ -58,15 +58,15 @@ describe('assistant runner utilities', () => {
   });
 
   it('uses the assistant runtime registry only for assistant run permissions', () => {
-    expect(resolveAssistantAskPermissionPolicyMode('inbox-organizer', 'readonly')).toBe('agent');
-    expect(resolveAssistantAskPermissionPolicyMode('unknown-assistant', 'readonly')).toBe('readonly');
-    expect(resolveAssistantAskPermissionPolicyMode('dreaming', 'readonly')).toBe('agent');
+    expect(resolveAssistantAskPermissionPolicyMode('inbox-organizer', 'read')).toBe('ask');
+    expect(resolveAssistantAskPermissionPolicyMode('unknown-assistant', 'read')).toBe('read');
+    expect(resolveAssistantAskPermissionPolicyMode('dreaming', 'read')).toBe('ask');
     expect(isRegisteredAssistantRun('inbox-organizer')).toBe(true);
     expect(isRegisteredAssistantRun('dreaming')).toBe(true);
     expect(isRegisteredAssistantRun('unknown-assistant')).toBe(false);
-    expect(assistantPermissionLevelToPolicyMode('full-access')).toBe('agent');
+    expect(assistantPermissionLevelToPolicyMode('full-access')).toBe('ask');
     expect(getAssistantPermissionLevel('dreaming')).toBe('full-access');
-    expect(getAssistantPermissionMode('dreaming')).toBe('agent');
+    expect(getAssistantPermissionMode('dreaming')).toBe('ask');
     expect(getAssistantPermissionLevel('unknown-assistant')).toBeUndefined();
   });
 

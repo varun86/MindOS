@@ -90,7 +90,7 @@ describe('/api/agent-runs/stream', () => {
       runtimeId: 'mindos',
       displayName: 'MindOS Agent',
       chatSessionId: 'chat-stream',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Root task',
     });
     const child = startAgentRun({
@@ -100,7 +100,7 @@ describe('/api/agent-runs/stream', () => {
       rootRunId: root.id,
       parentRunId: root.id,
       chatSessionId: 'chat-stream',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review',
     });
     startAgentRun({
@@ -108,7 +108,7 @@ describe('/api/agent-runs/stream', () => {
       runtimeId: 'other',
       displayName: 'Other ACP',
       chatSessionId: 'chat-other',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Other',
     });
 
@@ -137,7 +137,7 @@ describe('/api/agent-runs/stream', () => {
       runtimeId: 'other',
       displayName: 'Other Chat',
       chatSessionId: 'chat-other',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Other task',
     });
     const run = startAgentRun({
@@ -145,7 +145,7 @@ describe('/api/agent-runs/stream', () => {
       runtimeId: 'claude',
       displayName: 'Claude Code',
       chatSessionId: 'chat-live',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Use Claude',
     });
     appendAgentRunEvent(run.id, {

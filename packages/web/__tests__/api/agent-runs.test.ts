@@ -17,14 +17,14 @@ describe('/api/agent-runs', () => {
       agentKind: 'acp',
       runtimeId: 'gemini',
       displayName: 'Gemini',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Ask Gemini',
     });
     const subagentRun = startAgentRun({
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review this',
     });
     completeAgentRun(subagentRun.id, { outputSummary: 'Looks good.' });
@@ -54,7 +54,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'codex',
       displayName: 'Codex',
       chatSessionId: 'chat-a',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Use Codex',
     });
     const target = startAgentRun({
@@ -62,7 +62,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'claude',
       displayName: 'Claude Code',
       chatSessionId: 'chat-b',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Use Claude',
     });
 
@@ -87,7 +87,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'mindos',
       displayName: 'MindOS Agent',
       chatSessionId: 'chat-root',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Root task',
     });
     const child = startAgentRun({
@@ -97,7 +97,7 @@ describe('/api/agent-runs', () => {
       rootRunId: root.id,
       parentRunId: root.id,
       chatSessionId: 'chat-root',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review',
     });
     startAgentRun({
@@ -105,7 +105,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'gemini',
       displayName: 'Gemini ACP',
       chatSessionId: 'chat-other',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Other task',
     });
     completeAgentRun(child.id, { outputSummary: 'Reviewed.' });
@@ -131,7 +131,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'codex',
       displayName: 'Codex',
       chatSessionId: 'chat-events',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Old turn',
     });
     appendAgentRunEvent(oldRun.id, {
@@ -145,7 +145,7 @@ describe('/api/agent-runs', () => {
       runtimeId: 'claude',
       displayName: 'Claude Code',
       chatSessionId: 'chat-events',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Current turn',
     });
     appendAgentRunEvent(target.id, {

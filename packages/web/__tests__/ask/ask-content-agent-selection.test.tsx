@@ -338,7 +338,7 @@ vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
   getPersistedPermissionLevel: () => 'ask',
   permissionLevelToAskMode: () => 'agent',
-  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level,
 }));
 vi.mock('@/lib/utils', () => ({ cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ') }));
 vi.mock('@/lib/agent/reconnect', () => ({
@@ -832,7 +832,7 @@ describe('AskContent ACP session binding', () => {
     localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
     }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
@@ -883,7 +883,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
 
@@ -897,7 +897,7 @@ describe('AskContent ACP session binding', () => {
     localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'xhigh',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
     }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
@@ -947,7 +947,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'xhigh',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     });
 
     await act(async () => {
@@ -968,7 +968,7 @@ describe('AskContent ACP session binding', () => {
     localStorage.setItem('mindos-native-runtime-options.v1:codex', JSON.stringify({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     }));
     mockNativeRuntimeDescriptors = [{
       id: 'codex',
@@ -1016,7 +1016,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     });
 
     await act(async () => {
@@ -1029,7 +1029,7 @@ describe('AskContent ACP session binding', () => {
     localStorage.setItem('mindos-native-runtime-options.v1:claude', JSON.stringify({
       modelOverride: 'claude-sonnet-4-20250514',
       reasoningEffort: 'medium',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     }));
     mockNativeRuntimeDescriptors = [{
       id: 'claude',
@@ -1079,7 +1079,7 @@ describe('AskContent ACP session binding', () => {
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'claude-sonnet-4-20250514',
       reasoningEffort: 'medium',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
     });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude' });
 

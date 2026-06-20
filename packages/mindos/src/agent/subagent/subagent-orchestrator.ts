@@ -253,7 +253,7 @@ function buildTaskRunInput(
     parentRunId: parentRun.id,
     ...(plan.chatSessionId ? { chatSessionId: plan.chatSessionId } : {}),
     ...(task.cwd || plan.cwd ? { cwd: task.cwd ?? plan.cwd } : {}),
-    permissionMode: task.permissionMode ?? plan.permissionMode ?? 'agent',
+    permissionMode: task.permissionMode ?? plan.permissionMode ?? 'ask',
     inputSummary: inputSummaryForTask(task),
     metadata: {
       source: 'mindos-subagent-orchestrator',
@@ -371,7 +371,7 @@ export async function executeSubagentOrchestrationPlan(
     parentRunId: plan.parentRunId,
     chatSessionId: plan.chatSessionId,
     cwd: plan.cwd,
-    permissionMode: plan.permissionMode ?? 'agent',
+    permissionMode: plan.permissionMode ?? 'ask',
     inputSummary: JSON.stringify({
       tasks: plan.tasks.map((task) => ({
         id: task.id,

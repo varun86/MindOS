@@ -62,7 +62,7 @@ describe('MindOS subagent ledger extension', () => {
       { agent: 'reviewer', task: 'Review the patch.', cwd: '/tmp/mindos' },
       undefined,
       undefined,
-      { cwd: '/tmp/fallback', permissionMode: 'readonly' },
+      { cwd: '/tmp/fallback', permissionMode: 'read' },
     );
 
     expect(result).toEqual({
@@ -79,7 +79,7 @@ describe('MindOS subagent ledger extension', () => {
         displayName: 'reviewer',
         status: 'completed',
         cwd: '/tmp/mindos',
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         inputSummary: expect.stringContaining('Review the patch.'),
         outputSummary: 'Review completed.',
         metadata: expect.objectContaining({ toolCallId: 'tool-call-1', source: 'pi-subagents' }),

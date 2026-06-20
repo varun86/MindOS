@@ -1,4 +1,4 @@
-export type AssistantPermissionPolicyMode = 'readonly' | 'kb-write' | 'agent';
+export type AssistantPermissionPolicyMode = 'read' | 'ask' | 'auto' | 'full';
 export type AssistantAskPermissionPolicyMode = AssistantPermissionPolicyMode;
 export type AssistantPermissionLevel = 'full-access';
 
@@ -10,7 +10,7 @@ export const ASSISTANT_RUN_REGISTRY = {
 export function assistantPermissionLevelToPolicyMode(permission: AssistantPermissionLevel): AssistantPermissionPolicyMode {
   switch (permission) {
     case 'full-access':
-      return 'agent';
+      return 'ask';
   }
 }
 

@@ -29,7 +29,7 @@ export function permissionLevelToAskMode(level: AskPermissionLevel): AskMode {
 }
 
 export function permissionLevelToNativeRuntimePermission(level: AskPermissionLevel): NativeRuntimePermissionMode {
-  return level === 'read' ? 'readonly' : 'agent';
+  return level;
 }
 
 export function getPersistedPermissionLevel(): AskPermissionLevel {

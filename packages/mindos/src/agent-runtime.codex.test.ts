@@ -807,7 +807,7 @@ describe('agent runtime adapters: Codex app-server', () => {
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Summarize this repo.',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
       send: (event) => events.push(event),

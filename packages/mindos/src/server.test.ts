@@ -482,7 +482,7 @@ Write a ranked reading queue.
           mode: string;
           runtime: string;
           model: string;
-          permission: string;
+          permissionMode: string;
           source: 'builtin' | 'custom';
           deletable: boolean;
           preferredAgent?: string;
@@ -507,7 +507,7 @@ Write a ranked reading queue.
         mode: 'subagent',
         runtime: 'codex',
         model: 'gpt-5',
-        permission: 'ask',
+        permissionMode: 'ask',
         source: 'custom',
         deletable: true,
         preferredAgent: 'codex',
@@ -548,7 +548,7 @@ Write a ranked reading queue.
         runtime: 'codex',
         model: 'gpt-5',
         permission: 'ask',
-        permissionMode: 'readonly',
+        permissionMode: 'ask',
         schedule: { mode: 'daily' },
         surface: ['agents'],
         outputPolicy: { mode: 'draft' },
@@ -579,9 +579,9 @@ Write a ranked reading queue.
       expect(savedMarkdown).toContain('mode: subagent');
       expect(savedMarkdown).toContain('runtime: codex');
       expect(savedMarkdown).toContain('model: gpt-5');
-      expect(savedMarkdown).toContain('permission: ask');
+      expect(savedMarkdown).toContain('permissionMode: ask');
       expect(savedMarkdown).not.toContain('schemaVersion');
-      expect(savedMarkdown).not.toContain('permissionMode');
+      expect(savedMarkdown).not.toContain('permission:');
       expect(savedMarkdown).not.toContain('schedule:');
       expect(savedMarkdown).not.toContain('surface:');
       expect(savedMarkdown).not.toContain('outputPolicy');

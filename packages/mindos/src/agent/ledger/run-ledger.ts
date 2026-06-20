@@ -10,6 +10,7 @@ import {
   deleteProcessGlobal,
   getProcessGlobal,
 } from '../global-state.js';
+import { readLegacyMindosPermissionMode } from '../permission/index.js';
 import { redactSensitiveObject, redactSensitiveText } from '../redaction.js';
 
 /**
@@ -637,9 +638,7 @@ function redactMetadata(metadata: Record<string, unknown>): Record<string, unkno
 }
 
 function normalizePermissionMode(mode: unknown): AgentRunPermissionMode {
-  if (mode === 'readonly') return 'readonly';
-  if (mode === 'kb-write') return 'kb-write';
-  return 'agent';
+  return readLegacyMindosPermissionMode(mode);
 }
 
 function normalizeArchiveRef(value: AgentRunArchiveRef | undefined): AgentRunArchiveRef | undefined {

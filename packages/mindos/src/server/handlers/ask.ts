@@ -2,6 +2,7 @@ import {
   MINDOS_SSE_HEADERS,
   type MindOSSSEvent,
 } from '../../session/index.js';
+import type { MindosPermissionMode } from '../../agent/permission/index.js';
 
 export type MindosAskMessage = Record<string, unknown>;
 
@@ -62,7 +63,7 @@ export type MindosSessionContextSelection = {
 };
 
 export type MindosNativeRuntimeOptions = {
-  permissionMode?: 'agent' | 'readonly';
+  permissionMode?: MindosPermissionMode;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   modelOverride?: string;
 };
@@ -130,6 +131,20 @@ function parseAskStreamRequest(body: unknown):
   const runtimeBinding = normalizeRuntimeSessionBinding(record.runtimeBinding);
   const workDir = normalizeSessionWorkDir(record.workDir);
   const contextSelection = normalizeSessionContextSelection(record.contextSelection);
+  const runtimeOptionsRecord = record.runtimeOptions && typeof record.runtimeOptions === 'object' && !Array.isArray(record.runtimeOptions)
+    ? record.runtimeOptions as Record<string, unknown>
+    : undefined;
+  if (
+    runtimeOptionsRecord
+    && runtimeOptionsRecord.permissionMode !== undefined
+    && !isMindosPermissionMode(runtimeOptionsRecord.permissionMode)
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: 'runtimeOptions.permissionMode must be read, ask, auto, or full' },
+    };
+  }
   const runtimeOptions = normalizeNativeRuntimeOptions(record.runtimeOptions);
 
   return {
@@ -243,9 +258,7 @@ function normalizeContextAssistantRef(value: unknown): MindosContextAssistantRef
 function normalizeNativeRuntimeOptions(value: unknown): MindosNativeRuntimeOptions | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
-  const permissionMode = record.permissionMode === 'agent' || record.permissionMode === 'readonly'
-    ? record.permissionMode
-    : undefined;
+  const permissionMode = isMindosPermissionMode(record.permissionMode) ? record.permissionMode : undefined;
   const reasoningEffort = isNativeReasoningEffort(record.reasoningEffort) ? record.reasoningEffort : undefined;
   const modelOverride = cleanString(record.modelOverride, 240);
   if (!permissionMode && !reasoningEffort && !modelOverride) return undefined;
@@ -254,6 +267,10 @@ function normalizeNativeRuntimeOptions(value: unknown): MindosNativeRuntimeOptio
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(modelOverride ? { modelOverride } : {}),
   };
+}
+
+function isMindosPermissionMode(value: unknown): value is MindosPermissionMode {
+  return value === 'read' || value === 'ask' || value === 'auto' || value === 'full';
 }
 
 function isSelectedAcpAgent(value: unknown): value is { id: string; name: string } | null {

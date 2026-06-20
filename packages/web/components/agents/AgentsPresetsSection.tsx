@@ -46,6 +46,7 @@ type MindosAssistantLibraryItem = {
   mode?: string;
   runtime?: string;
   model?: string;
+  permissionMode?: string;
   permission?: string;
   hidden?: boolean;
   color?: string;
@@ -493,7 +494,7 @@ export default function AgentsPresetsSection({
           description: createDraft.description.trim(),
           runtime: 'mindos',
           model: 'default',
-          permission: 'ask',
+          permissionMode: 'ask',
         }),
       });
       if (!res.ok) throw new Error(`Assistant create failed (${res.status})`);
@@ -981,7 +982,7 @@ function AssistantUnifiedDetail({
   ];
   const resources = `${assistant.skills.length} ${copy.skillsTitle} · ${assistant.mcp.length} ${copy.mcpTitle ?? 'MCP'}`;
   const description = assistant.sections.role || assistant.description || assistant.promptPreview || (copy.promptMissingHint ?? 'Create a prompt to describe how this assistant should work.');
-  const permissionLabel = formatAssistantPermission(assistant.permission, copy);
+  const permissionLabel = formatAssistantPermission(assistantPermissionMode(assistant), copy);
 
   return (
     <article data-assistant-command-column="workspace" className="min-h-full bg-background/30">
@@ -1790,7 +1791,7 @@ function serializeAssistantMarkdownForSave(
     mode: assistant.mode === 'subagent' ? 'subagent' : 'subagent',
     runtime: normalizeRuntimeForSave(edit?.preferredAgent || assistant.runtime || assistant.preferredAgent || 'mindos'),
     model: assistant.model || 'default',
-    permission: normalizePermissionForSave(assistant.permission),
+    permissionMode: normalizePermissionForSave(assistantPermissionMode(assistant)),
     hidden: Boolean(assistant.hidden),
     color: assistant.color || 'amber',
     steps: assistant.steps && Number.isInteger(assistant.steps) && assistant.steps > 0 ? assistant.steps : 12,
@@ -1802,7 +1803,7 @@ function serializeAssistantMarkdownForSave(
     ['mode', profile.mode],
     ['runtime', profile.runtime],
     ['model', profile.model],
-    ['permission', profile.permission],
+    ['permissionMode', profile.permissionMode],
     ['hidden', profile.hidden],
     ['color', profile.color],
     ['steps', profile.steps],
@@ -1823,6 +1824,10 @@ function runtimeToPreferredAgent(runtime: string): string {
 
 function normalizePermissionForSave(value: string | undefined): string {
   return value === 'read' || value === 'ask' || value === 'auto' || value === 'full' ? value : 'ask';
+}
+
+function assistantPermissionMode(assistant: AssistantView): string {
+  return normalizePermissionForSave(assistant.permissionMode ?? assistant.permission);
 }
 
 function formatFrontmatterScalar(value: string | number | boolean): string {
@@ -1971,7 +1976,7 @@ async function runAssistantRun(assistant: AssistantView): Promise<string> {
     }
     : buildAssistantAskRequestBody({
       assistantId: assistant.id,
-      runtimeOptions: { permissionMode: 'readonly' },
+      runtimeOptions: { permissionMode: 'read' },
       messages: [{
         role: 'user',
         content: buildAssistantRunPrompt(assistant),
@@ -1988,7 +1993,7 @@ async function runAssistantRun(assistant: AssistantView): Promise<string> {
 }
 
 function buildAssistantRunPrompt(assistant: AssistantView): string {
-  return `Run the local MindOS Assistant "${assistant.name}" (${assistant.id}) in readonly mode.
+  return `Run the local MindOS Assistant "${assistant.name}" (${assistant.id}) in read mode.
 
 Use this assistant profile:
 - preferredAgent: ${assistant.preferredAgent ?? 'mindos-agent'}

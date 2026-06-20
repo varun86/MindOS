@@ -20,8 +20,8 @@ import type {
 } from '../../server/handlers/agent-capabilities.js';
 import {
   MINDOS_READONLY_KB_TOOL_NAMES,
-  MINDOS_KB_WRITE_TOOL_NAMES,
-} from './permission-policy.js';
+  MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES,
+} from '../mindos-pi/permission/index.js';
 import type { MindosAgentTool } from './kb-tools.js';
 
 type PiSubagentModule = {
@@ -111,7 +111,7 @@ export interface MindosAgentCapabilityRegistryServices {
 }
 
 const READONLY_KB_TOOL_NAMES = new Set<string>(MINDOS_READONLY_KB_TOOL_NAMES);
-const KB_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KB_WRITE_TOOL_NAMES);
+const KNOWLEDGE_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES);
 
 export function createAgentCapabilitiesServices(
   services: MindosAgentCapabilityRegistryServices,
@@ -167,7 +167,7 @@ async function listPiSubagentCapabilities(services: MindosAgentCapabilityRegistr
     description: agent.description || '',
     source: 'pi-subagents',
     status: 'available',
-    permissionRequired: 'agent',
+    permissionRequired: 'ask',
     availableInModes: ['agent'],
     inputKinds: ['text', 'files', 'context'],
     outputKinds: ['text', 'structured'],
@@ -221,7 +221,7 @@ function listMcpToolCapabilities(services: MindosAgentCapabilityRegistryServices
       description: tool.description ?? '',
       source: 'mcp',
       status: serverCache ? 'cached' : 'available',
-      permissionRequired: 'agent',
+      permissionRequired: 'ask',
       availableInModes: ['agent'],
       inputKinds: ['json'],
       outputKinds: ['text', 'structured'],
@@ -288,7 +288,7 @@ function listA2aAgentCapabilities(services: MindosAgentCapabilityRegistryService
     description: agent.card.description,
     source: 'a2a',
     status: agent.reachable ? 'available' : 'error',
-    permissionRequired: 'agent',
+    permissionRequired: 'ask',
     availableInModes: ['agent'],
     inputKinds: agent.card.defaultInputModes,
     outputKinds: agent.card.defaultOutputModes,
@@ -342,8 +342,8 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
       : runtime.status === 'missing'
         ? 'missing'
         : 'error',
-    permissionRequired: runtime.kind === 'mindos' ? 'readonly' : 'agent',
-    availableInModes: runtime.kind === 'mindos' ? modesForPermission('readonly') : ['agent'],
+    permissionRequired: runtime.kind === 'mindos' ? 'read' : 'ask',
+    availableInModes: runtime.kind === 'mindos' ? modesForPermission('read') : ['agent'],
     inputKinds: ['text', 'files', 'context'],
     outputKinds: ['text', 'tool-events'],
     supportsStreaming: true,
@@ -369,14 +369,14 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
   };
 }
 
-function permissionForKbTool(toolName: string): 'readonly' | 'kb-write' | 'agent' {
-  if (READONLY_KB_TOOL_NAMES.has(toolName)) return 'readonly';
-  if (KB_WRITE_TOOL_NAMES.has(toolName)) return 'kb-write';
-  return 'agent';
+function permissionForKbTool(toolName: string): 'read' | 'ask' {
+  if (READONLY_KB_TOOL_NAMES.has(toolName)) return 'read';
+  if (KNOWLEDGE_WRITE_TOOL_NAMES.has(toolName)) return 'ask';
+  return 'ask';
 }
 
-function modesForPermission(permission: 'readonly' | 'kb-write' | 'agent'): Array<'agent'> {
-  if (permission === 'readonly' || permission === 'kb-write') return ['agent'];
+function modesForPermission(permission: 'read' | 'ask' | 'auto' | 'full'): Array<'agent'> {
+  if (permission === 'read' || permission === 'ask' || permission === 'auto' || permission === 'full') return ['agent'];
   return ['agent'];
 }
 

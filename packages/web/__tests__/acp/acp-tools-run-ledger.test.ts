@@ -71,7 +71,7 @@ describe('call_acp_agent run ledger integration', () => {
         runtimeId: 'gemini',
         displayName: 'Gemini CLI',
         status: 'completed',
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         inputSummary: 'Summarize this folder.',
         outputSummary: 'Here is the answer.',
         metadata: expect.objectContaining({
@@ -82,14 +82,14 @@ describe('call_acp_agent run ledger integration', () => {
     ]);
   });
 
-  it.each(['readonly', 'kb-write'] as const)('uses readonly ACP sessions when tool context carries %s policy', async (permissionMode) => {
+  it('uses readonly ACP sessions when tool context carries read policy', async () => {
     mockFindAcpAgent.mockResolvedValue({
       id: 'gemini',
       name: 'Gemini CLI',
       description: 'Gemini local agent',
       transport: 'stdio',
     });
-    mockCreateSessionFromEntry.mockResolvedValue({ id: `session-${permissionMode}` });
+    mockCreateSessionFromEntry.mockResolvedValue({ id: 'session-read' });
     mockPrompt.mockResolvedValue({ text: 'Read-only answer.' });
     mockCloseSession.mockResolvedValue(undefined);
 
@@ -102,7 +102,7 @@ describe('call_acp_agent run ledger integration', () => {
       },
       undefined,
       undefined,
-      { permissionMode },
+      { permissionMode: 'read' },
     );
 
     expect(result.content[0]?.text).toContain('**Gemini CLI** responded');
@@ -115,7 +115,7 @@ describe('call_acp_agent run ledger integration', () => {
         agentKind: 'acp',
         runtimeId: 'gemini',
         status: 'completed',
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         inputSummary: 'Inspect this folder.',
         outputSummary: 'Read-only answer.',
       }),
@@ -138,7 +138,7 @@ describe('call_acp_agent run ledger integration', () => {
         runtimeId: 'missing',
         displayName: 'missing',
         status: 'failed',
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         inputSummary: 'Hello?',
         error: 'ACP agent not found: missing.',
       }),

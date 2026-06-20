@@ -1,6 +1,9 @@
-import type { AgentRunPermissionMode } from '../run-ledger-types.js';
+import {
+  assertMindosPermissionMode,
+  normalizeMindosPermissionMode,
+  type MindosPermissionMode,
+} from '../../permission/index.js';
 
-export type MindosAgentPermissionPolicyMode = 'readonly' | 'kb-write' | 'agent';
 export type MindosHarnessPermissionMode = 'readonly' | 'agent';
 export type MindosKbWriteScope = 'none' | 'bounded' | 'all';
 
@@ -30,8 +33,8 @@ export interface MindosAgentToolScope {
 }
 
 export interface MindosAgentPermissionPolicy {
-  mode: MindosAgentPermissionPolicyMode;
-  permissionMode: AgentRunPermissionMode;
+  mode: MindosPermissionMode;
+  permissionMode: MindosPermissionMode;
   runtimePermissionMode: MindosHarnessPermissionMode;
   acpPermissionMode: MindosHarnessPermissionMode;
   toolScope: MindosAgentToolScope;
@@ -65,7 +68,7 @@ export const MINDOS_READONLY_KB_TOOL_NAMES = [
   'get_backlinks',
 ] as const;
 
-export const MINDOS_KB_WRITE_TOOL_NAMES = [
+export const MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES = [
   'list_files',
   'read_file',
   'search',
@@ -93,12 +96,6 @@ const AGENT_EXTENSION_SCOPES = [
   'schedule-prompt',
 ] as const satisfies readonly MindosExtensionScope[];
 
-function normalizePolicyMode(mode: unknown): MindosAgentPermissionPolicyMode {
-  if (mode === 'readonly') return 'readonly';
-  if (mode === 'kb-write' || mode === 'agent') return mode;
-  return 'agent';
-}
-
 function fullToolScope(): MindosAgentToolScope {
   return {
     kbRead: true,
@@ -116,66 +113,36 @@ function fullToolScope(): MindosAgentToolScope {
   };
 }
 
-export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPermissionPolicy {
-  const normalized = normalizePolicyMode(mode);
-
-  if (normalized === 'readonly') {
-    return {
-      mode: 'readonly',
-      permissionMode: 'readonly',
-      runtimePermissionMode: 'readonly',
-      acpPermissionMode: 'readonly',
-      toolScope: {
-        kbRead: true,
-        kbWrite: 'none',
-        web: true,
-        askUserQuestion: true,
-        terminal: false,
-        mcp: false,
-        subagents: false,
-        acpDelegation: false,
-        a2aDelegation: false,
-        im: false,
-        schedule: false,
-        userExtensions: false,
-      },
-      kbToolNames: [...MINDOS_READONLY_KB_TOOL_NAMES],
-      writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-      extensionScopes: [...SAFE_EXTENSION_SCOPES],
-    };
-  }
-
-  if (normalized === 'kb-write') {
-    return {
-      mode: 'kb-write',
-      permissionMode: 'kb-write',
-      // External harnesses currently support only readonly/agent. Keep bounded
-      // KB writes inside MindOS-owned tools until a runtime-specific allowlist exists.
-      runtimePermissionMode: 'readonly',
-      acpPermissionMode: 'readonly',
-      toolScope: {
-        kbRead: true,
-        kbWrite: 'bounded',
-        web: true,
-        askUserQuestion: true,
-        terminal: false,
-        mcp: false,
-        subagents: false,
-        acpDelegation: false,
-        a2aDelegation: false,
-        im: false,
-        schedule: false,
-        userExtensions: false,
-      },
-      kbToolNames: [...MINDOS_KB_WRITE_TOOL_NAMES],
-      writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-      extensionScopes: [...SAFE_EXTENSION_SCOPES],
-    };
-  }
-
+function readOnlyPolicy(): MindosAgentPermissionPolicy {
   return {
-    mode: 'agent',
-    permissionMode: 'agent',
+    mode: 'read',
+    permissionMode: 'read',
+    runtimePermissionMode: 'readonly',
+    acpPermissionMode: 'readonly',
+    toolScope: {
+      kbRead: true,
+      kbWrite: 'none',
+      web: true,
+      askUserQuestion: true,
+      terminal: false,
+      mcp: false,
+      subagents: false,
+      acpDelegation: false,
+      a2aDelegation: false,
+      im: false,
+      schedule: false,
+      userExtensions: false,
+    },
+    kbToolNames: [...MINDOS_READONLY_KB_TOOL_NAMES],
+    writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
+    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+  };
+}
+
+function interactiveAgentPolicy(mode: Exclude<MindosPermissionMode, 'read'>): MindosAgentPermissionPolicy {
+  return {
+    mode,
+    permissionMode: mode,
     runtimePermissionMode: 'agent',
     acpPermissionMode: 'agent',
     toolScope: fullToolScope(),
@@ -185,21 +152,57 @@ export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPer
   };
 }
 
+export function createMindosAgentPermissionPolicy(
+  mode: MindosPermissionMode = 'ask',
+): MindosAgentPermissionPolicy {
+  const normalized = assertMindosPermissionMode(mode);
+  return normalized === 'read' ? readOnlyPolicy() : interactiveAgentPolicy(normalized);
+}
+
+export function createMindosKnowledgeWritePermissionPolicy(
+  mode: MindosPermissionMode = 'ask',
+): MindosAgentPermissionPolicy {
+  const normalized = normalizeMindosPermissionMode(mode);
+  return {
+    mode: normalized,
+    permissionMode: normalized,
+    runtimePermissionMode: 'readonly',
+    acpPermissionMode: 'readonly',
+    toolScope: {
+      kbRead: true,
+      kbWrite: 'bounded',
+      web: true,
+      askUserQuestion: true,
+      terminal: false,
+      mcp: false,
+      subagents: false,
+      acpDelegation: false,
+      a2aDelegation: false,
+      im: false,
+      schedule: false,
+      userExtensions: false,
+    },
+    kbToolNames: [...MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES],
+    writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
+    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+  };
+}
+
 export function createMindosAgentPermissionPolicyFromContext(
   context: unknown,
-  fallbackMode: MindosAgentPermissionPolicyMode = 'agent',
+  fallbackMode: MindosPermissionMode = 'ask',
 ): MindosAgentPermissionPolicy {
   if (!context || typeof context !== 'object') {
     return createMindosAgentPermissionPolicy(fallbackMode);
   }
   const record = context as Record<string, unknown>;
   return createMindosAgentPermissionPolicy(
-    record.permissionMode ?? record.mode ?? fallbackMode,
+    normalizeMindosPermissionMode(record.permissionMode, fallbackMode),
   );
 }
 
 export function getMindosKbToolNameSet(policy: MindosAgentPermissionPolicy): ReadonlySet<string> | null {
-  if (policy.mode === 'agent') return null;
+  if (policy.toolScope.kbWrite === 'all') return null;
   return new Set(policy.kbToolNames);
 }
 

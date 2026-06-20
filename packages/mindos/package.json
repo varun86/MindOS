@@ -77,6 +77,14 @@
       "types": "./dist/agent/prompt/*.d.ts",
       "import": "./dist/agent/prompt/*.js"
     },
+    "./agent/permission": {
+      "types": "./dist/agent/permission/index.d.ts",
+      "import": "./dist/agent/permission/index.js"
+    },
+    "./agent/permission/*": {
+      "types": "./dist/agent/permission/*.d.ts",
+      "import": "./dist/agent/permission/*.js"
+    },
     "./agent/session": {
       "types": "./dist/agent/session/index.d.ts",
       "import": "./dist/agent/session/index.js"
@@ -144,6 +152,14 @@
     "./agent/mindos-pi/extension/*": {
       "types": "./dist/agent/mindos-pi/extension/*.d.ts",
       "import": "./dist/agent/mindos-pi/extension/*.js"
+    },
+    "./agent/mindos-pi/permission": {
+      "types": "./dist/agent/mindos-pi/permission/index.d.ts",
+      "import": "./dist/agent/mindos-pi/permission/index.js"
+    },
+    "./agent/mindos-pi/permission/*": {
+      "types": "./dist/agent/mindos-pi/permission/*.d.ts",
+      "import": "./dist/agent/mindos-pi/permission/*.js"
     },
     "./agent/mindos-pi/*": {
       "types": "./dist/agent/mindos-pi/*.d.ts",

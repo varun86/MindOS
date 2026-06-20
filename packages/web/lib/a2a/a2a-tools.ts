@@ -21,7 +21,7 @@ import {
 import {
   linkAbortSignalToAgentRun,
 } from '@geminilight/mindos/agent/ledger/run-cancellation';
-import { createMindosAgentPermissionPolicyFromContext } from '@geminilight/mindos/agent/tool/permission-policy';
+import { createMindosAgentPermissionPolicyFromContext } from '@geminilight/mindos/agent/mindos-pi/permission';
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }], details: {} };
@@ -36,7 +36,7 @@ type MindosAgentTool = {
 };
 
 function permissionModeFromContext(ctx: unknown): AgentRunPermissionMode {
-  return createMindosAgentPermissionPolicyFromContext(ctx, 'agent').permissionMode;
+  return createMindosAgentPermissionPolicyFromContext(ctx, 'ask').permissionMode;
 }
 
 function textFromTask(task: Awaited<ReturnType<typeof delegateTask>>): string {

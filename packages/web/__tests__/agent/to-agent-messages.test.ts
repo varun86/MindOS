@@ -23,7 +23,7 @@ describe('toMindosUiAskMessages', () => {
                 runtimeId: 'codex',
                 displayName: 'Codex',
                 status: 'completed',
-                permissionMode: 'agent',
+                permissionMode: 'ask',
                 inputSummary: 'Work',
                 outputSummary: 'Done',
                 startedAt: 1,

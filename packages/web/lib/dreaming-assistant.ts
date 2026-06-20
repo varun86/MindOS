@@ -12,7 +12,7 @@ version: 1
 mode: subagent
 runtime: mindos
 model: default
-permission: ask
+permissionMode: ask
 hidden: true
 color: teal
 steps: 16

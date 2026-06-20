@@ -27,7 +27,7 @@ const KB_SKILLS: AgentSkill[] = [
     outputModes: ['text/plain'],
   },
   {
-    id: 'kb-write',
+    id: 'kb-note-write',
     name: 'Write Note',
     description: 'Create or update a note in the knowledge base. Supports .md and .csv files.',
     tags: ['write', 'create', 'update'],

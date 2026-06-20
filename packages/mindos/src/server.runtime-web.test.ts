@@ -1011,7 +1011,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         assistants: [{ id: 'ui-reviewer', name: 'UI Reviewer', kind: 'assistant' }],
         updatedAt: 789,
       },
-      runtimeOptions: { permissionMode: 'readonly', reasoningEffort: 'high', modelOverride: 'gpt-test' },
+      runtimeOptions: { permissionMode: 'read', reasoningEffort: 'high', modelOverride: 'gpt-test' },
       chatSessionId: 'chat-context-1',
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
@@ -1031,7 +1031,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     expect(events).toEqual([
       { type: 'status', message: 'mode=agent;runtime=codex:codex' },
       { type: 'status', message: 'binding=codex-thread:thr_123' },
-      { type: 'status', message: 'context=chat-context-1;cwd=/repo/app;spaces=Research;permission=readonly' },
+      { type: 'status', message: 'context=chat-context-1;cwd=/repo/app;spaces=Research;permission=read' },
       { type: 'text_delta', delta: 'hello' },
       { type: 'done' },
     ]);

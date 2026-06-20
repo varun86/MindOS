@@ -2,14 +2,15 @@
  * Tests for the KB pi-extension factory (Wave 3, spec-agent-core-consolidation).
  * Migrated from packages/web/__tests__/agent/kb-extension-policy.test.ts and
  * extended with write-protection + audit coverage. Policy state is process-
- * global (Symbol.for) — every test restores the 'agent' fallback afterwards.
+ * global (Symbol.for) — every test restores the 'ask' fallback afterwards.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import {
   createMindosAgentPermissionPolicy,
+  createMindosKnowledgeWritePermissionPolicy,
   type MindosAgentPermissionPolicy,
-} from '../../tool/permission-policy.js';
+} from '../permission/index.js';
 import {
   createMindosKbExtension,
   createMindosKbExtensionFromRegisteredHost,
@@ -51,28 +52,28 @@ function makeTool(name: string, outputText = `${name} ok`): MindosAgentTool {
 
 afterEach(() => {
   // Policy fallback is process-global state — restore the default.
-  setKbMode('agent');
+  setKbMode('ask');
 });
 
 describe('KB permission policy resolution', () => {
   it('prefers the request-scoped policy over the process fallback', () => {
-    setKbMode('readonly');
-    const agentPolicy = createMindosAgentPermissionPolicy('agent');
+    setKbMode('read');
+    const agentPolicy = createMindosAgentPermissionPolicy('ask');
 
     const observed = runWithKbPermissionPolicy(agentPolicy, () => getEffectiveKbPermissionPolicy());
 
     expect(observed).toBe(agentPolicy);
-    expect(getEffectiveKbPermissionPolicy().mode).toBe('readonly');
+    expect(getEffectiveKbPermissionPolicy().mode).toBe('read');
   });
 
   it('returns sync and async results from runWithKbPermissionPolicy', async () => {
-    const policy = createMindosAgentPermissionPolicy('kb-write');
+    const policy = createMindosKnowledgeWritePermissionPolicy('ask');
     expect(runWithKbPermissionPolicy(policy, () => 42)).toBe(42);
     await expect(runWithKbPermissionPolicy(policy, async () => 'done')).resolves.toBe('done');
   });
 
   it('uses the fallback policy set via setKbPermissionPolicy outside any scope', () => {
-    const custom = createMindosAgentPermissionPolicy('kb-write');
+    const custom = createMindosKnowledgeWritePermissionPolicy('ask');
     setKbPermissionPolicy(custom);
     expect(getEffectiveKbPermissionPolicy()).toBe(custom);
   });
@@ -88,7 +89,7 @@ describe('createMindosKbExtension', () => {
       },
     });
     const { pi, registered } = createFakePi();
-    const readonlyPolicy = createMindosAgentPermissionPolicy('readonly');
+    const readonlyPolicy = createMindosAgentPermissionPolicy('read');
 
     runWithKbPermissionPolicy(readonlyPolicy, () => extension(pi));
 

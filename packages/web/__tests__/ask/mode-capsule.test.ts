@@ -75,17 +75,17 @@ describe('Permission capsule persistence', () => {
 });
 
 describe('Permission level mapping', () => {
-  it('maps read permission to agent prompt mode plus readonly runtime behavior', async () => {
+  it('keeps read permission as the native runtime product mode', async () => {
     const { permissionLevelToAskMode, permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
     expect(permissionLevelToAskMode('read')).toBe('agent');
-    expect(permissionLevelToNativeRuntimePermission('read')).toBe('readonly');
+    expect(permissionLevelToNativeRuntimePermission('read')).toBe('read');
   });
 
-  it('maps ask, auto, and full to existing agent runtime behavior', async () => {
+  it('keeps ask, auto, and full as native runtime product modes', async () => {
     const { permissionLevelToAskMode, permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
     for (const level of ['ask', 'auto', 'full'] as const) {
       expect(permissionLevelToAskMode(level)).toBe('agent');
-      expect(permissionLevelToNativeRuntimePermission(level)).toBe('agent');
+      expect(permissionLevelToNativeRuntimePermission(level)).toBe(level);
     }
   });
 });

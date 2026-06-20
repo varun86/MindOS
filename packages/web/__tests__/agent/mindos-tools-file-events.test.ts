@@ -27,7 +27,7 @@ function startTestRun(id = 'agent-run-file-events') {
     agentKind: 'mindos-main',
     runtimeId: 'mindos',
     displayName: 'MindOS Agent',
-    permissionMode: 'agent',
+    permissionMode: 'ask',
     inputSummary: 'Test KB file event wiring.',
   });
 }

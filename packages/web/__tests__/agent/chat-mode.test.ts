@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getReadonlyTools, getKbWriteTools, knowledgeBaseTools, WRITE_TOOLS } from '@/lib/agent/tools';
+import { getReadonlyTools, getKnowledgeWriteTools, knowledgeBaseTools, WRITE_TOOLS } from '@/lib/agent/tools';
 import { MINDOS_SYSTEM_PROMPT } from '@/lib/agent/prompt';
 
 // ---------------------------------------------------------------------------
@@ -57,13 +57,13 @@ describe('getReadonlyTools', () => {
   });
 });
 
-describe('getKbWriteTools', () => {
+describe('getKnowledgeWriteTools', () => {
   it('keeps skill loading available for selected skill workflows', () => {
-    expect(getKbWriteTools().map(t => t.name)).toContain('load_skill');
+    expect(getKnowledgeWriteTools().map(t => t.name)).toContain('load_skill');
   });
 
   it('allows only bounded KB writes', () => {
-    const kbWriteToolNames = getKbWriteTools().map(t => t.name);
+    const kbWriteToolNames = getKnowledgeWriteTools().map(t => t.name);
 
     expect(kbWriteToolNames).toEqual(expect.arrayContaining([
       'list_files',

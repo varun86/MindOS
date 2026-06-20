@@ -180,7 +180,7 @@ vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => <div data-testid="permission-capsule">permission</div>,
   getPersistedPermissionLevel: () => 'ask',
   permissionLevelToAskMode: () => 'agent',
-  permissionLevelToNativeRuntimePermission: (level: string) => level === 'read' ? 'readonly' : 'agent',
+  permissionLevelToNativeRuntimePermission: (level: string) => level,
 }));
 vi.mock('@/components/ask/ProviderModelCapsule', () => ({
   default: () => <div data-testid="provider-capsule">provider</div>,

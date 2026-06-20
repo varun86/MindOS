@@ -21,7 +21,7 @@ describe('GET /api/agent-capabilities', () => {
         description: 'Read notes',
         source: 'mindos',
         status: 'available',
-        permissionRequired: 'readonly',
+        permissionRequired: 'read',
         availableInModes: ['agent'],
       }],
       mcp: () => [{
@@ -31,7 +31,7 @@ describe('GET /api/agent-capabilities', () => {
         description: 'Search code',
         source: 'mcp',
         status: 'cached',
-        permissionRequired: 'agent',
+        permissionRequired: 'ask',
         availableInModes: ['agent'],
       }],
     });

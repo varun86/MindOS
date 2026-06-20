@@ -4,8 +4,8 @@
  *
  * Two concurrent /api/ask requests with different permission policies used
  * to race on setKbMode(): whichever request set the module-level policy last
- * decided the tools for BOTH reloads — a readonly request could get agent write
- * tools (privilege escalation) or an agent request could lose its tools.
+ * decided the tools for BOTH reloads — a read request could get write tools
+ * (privilege escalation) or an ask request could lose its tools.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import kbExtension, {
@@ -13,7 +13,10 @@ import kbExtension, {
   setKbPermissionPolicy,
 } from '@/lib/agent/kb-extension';
 import { registerWebKbExtensionHost } from '@/lib/agent/kb-extension-host';
-import { createMindosAgentPermissionPolicy } from '@geminilight/mindos/agent/tool/permission-policy';
+import {
+  createMindosAgentPermissionPolicy,
+  createMindosKnowledgeWritePermissionPolicy,
+} from '@geminilight/mindos/agent/mindos-pi/permission';
 import { getToolsForMindosAgentPolicy } from '@/lib/agent/tools';
 
 function registeredToolNames(run: (register: (def: { name: string }) => void) => void): string[] {
@@ -22,8 +25,14 @@ function registeredToolNames(run: (register: (def: { name: string }) => void) =>
   return names.sort();
 }
 
-function expectedToolNames(mode: 'readonly' | 'agent' | 'kb-write'): string[] {
+function expectedToolNames(mode: 'read' | 'ask'): string[] {
   return getToolsForMindosAgentPolicy(createMindosAgentPermissionPolicy(mode))
+    .map((tool) => tool.name)
+    .sort();
+}
+
+function expectedKnowledgeWriteToolNames(): string[] {
+  return getToolsForMindosAgentPolicy(createMindosKnowledgeWritePermissionPolicy('ask'))
     .map((tool) => tool.name)
     .sort();
 }
@@ -37,10 +46,10 @@ describe('kbExtension permission policy scoping', () => {
   });
 
   it('registers the policy-scoped tool set even when another request flips the global policy', () => {
-    const readonlyPolicy = createMindosAgentPermissionPolicy('readonly');
-    const agentPolicy = createMindosAgentPermissionPolicy('agent');
+    const readonlyPolicy = createMindosAgentPermissionPolicy('read');
+    const agentPolicy = createMindosAgentPermissionPolicy('ask');
     // The two modes must actually differ for this test to mean anything.
-    expect(expectedToolNames('readonly')).not.toEqual(expectedToolNames('agent'));
+    expect(expectedToolNames('read')).not.toEqual(expectedToolNames('ask'));
 
     const names = registeredToolNames((register) => {
       runWithKbPermissionPolicy(readonlyPolicy, () => {
@@ -51,22 +60,22 @@ describe('kbExtension permission policy scoping', () => {
       });
     });
 
-    expect(names).toEqual(expectedToolNames('readonly'));
+    expect(names).toEqual(expectedToolNames('read'));
   });
 
   it('returns the callback result and supports async callbacks', async () => {
-    const policy = createMindosAgentPermissionPolicy('agent');
+    const policy = createMindosAgentPermissionPolicy('ask');
     expect(runWithKbPermissionPolicy(policy, () => 'sync-result')).toBe('sync-result');
     await expect(runWithKbPermissionPolicy(policy, async () => 'async-result')).resolves.toBe('async-result');
   });
 
   it('falls back to the module-level policy outside a scoped run', () => {
-    setKbPermissionPolicy(createMindosAgentPermissionPolicy('kb-write'));
+    setKbPermissionPolicy(createMindosKnowledgeWritePermissionPolicy('ask'));
     const names = registeredToolNames((register) => {
       kbExtension({ registerTool: register } as never);
     });
-    expect(names).toEqual(expectedToolNames('kb-write'));
+    expect(names).toEqual(expectedKnowledgeWriteToolNames());
     // Restore the default so other suites see the historical baseline.
-    setKbPermissionPolicy(createMindosAgentPermissionPolicy('agent'));
+    setKbPermissionPolicy(createMindosAgentPermissionPolicy('ask'));
   });
 });

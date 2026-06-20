@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setMindRootResolverForTests } from '../../foundation/mind-root/index.js';
 import { runWithAgentRunContext } from '../agent-run-context.js';
-import { createMindosAgentPermissionPolicy } from './permission-policy.js';
+import { createMindosAgentPermissionPolicy } from '../mindos-pi/permission/index.js';
 import { listAgentEvents, resetAgentRunsForTest, startAgentRun } from '../run-ledger.js';
 import {
   createMindosKbToolkit,
@@ -150,13 +150,13 @@ describe('createMindosKbToolkit', () => {
     expect(readonlyNames.has('call_a2a_agent')).toBe(false);
 
     const agentNames = new Set(
-      toolkit.getToolsForPolicy(createMindosAgentPermissionPolicy('agent')).map((tool) => tool.name),
+      toolkit.getToolsForPolicy(createMindosAgentPermissionPolicy('ask')).map((tool) => tool.name),
     );
     expect(agentNames.has('write_file')).toBe(true);
     expect(agentNames.has('call_a2a_agent')).toBe(true);
     expect(agentNames.has('call_acp_agent')).toBe(true);
 
-    const kbWriteNames = new Set(toolkit.getKbWriteTools().map((tool) => tool.name));
+    const kbWriteNames = new Set(toolkit.getKnowledgeWriteTools().map((tool) => tool.name));
     expect(kbWriteNames.has('create_file')).toBe(true);
     expect(kbWriteNames.has('call_acp_agent')).toBe(false);
   });
@@ -198,7 +198,7 @@ describe('createMindosKbToolkit', () => {
       agentKind: 'mindos-main',
       runtimeId: 'mindos',
       displayName: 'MindOS Agent',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'KB toolkit write test.',
     });
 

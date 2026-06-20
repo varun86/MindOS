@@ -43,7 +43,7 @@ function makeRecord(overrides: Partial<AgentRunRecord> & { id: string }): AgentR
     runtimeId: 'foreign-proc',
     displayName: 'Foreign Process Run',
     status: 'completed',
-    permissionMode: 'readonly',
+    permissionMode: 'read',
     inputSummary: 'foreign input',
     startedAt: 100,
     completedAt: 110,
@@ -94,7 +94,7 @@ describe('agent run ledger', () => {
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
       cwd: '/tmp/project',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review the patch.',
     });
 
@@ -125,7 +125,7 @@ describe('agent run ledger', () => {
       agentKind: 'acp',
       runtimeId: 'gemini',
       displayName: 'Gemini',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Research this topic.',
     });
 
@@ -151,7 +151,7 @@ describe('agent run ledger', () => {
       agentKind: 'a2a',
       runtimeId: 'remote-agent',
       displayName: 'Remote Agent',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Delegate this task.',
     });
 
@@ -182,7 +182,7 @@ describe('agent run ledger', () => {
       agentKind: 'acp',
       runtimeId: 'missing-agent',
       displayName: 'missing-agent',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'hello',
     });
 
@@ -208,7 +208,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'claude',
       displayName: 'Claude Code',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'archive me',
       archive: { sessionId: 'claude-session-1' },
     });
@@ -232,7 +232,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'codex',
       displayName: 'Codex',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'no archive',
       archive: { sessionId: '   ' },
     });
@@ -244,7 +244,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'claude',
       displayName: 'Claude Code',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'late archive on complete',
     });
     completeAgentRun(completed.id, {
@@ -257,7 +257,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'codex',
       displayName: 'Codex',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'late archive on fail',
       archive: { sessionId: 'codex-thread-1' },
     });
@@ -293,7 +293,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'codex',
       displayName: 'Codex',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Use Codex',
     });
     completeAgentRun(run.id, { outputSummary: 'Done.' });
@@ -317,7 +317,7 @@ describe('agent run ledger', () => {
       runtimeId: 'claude',
       displayName: 'Claude Code',
       chatSessionId: 'chat-events',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Use Claude',
     });
 
@@ -386,14 +386,14 @@ describe('agent run ledger', () => {
       runtimeId: 'mindos',
       displayName: 'MindOS Agent',
       chatSessionId: 'chat-1',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Root turn',
     });
     const run = runWithAgentRunContext({ chatSessionId: 'chat-1', rootRunId: rootRun.id, parentRunId: rootRun.id }, () => startAgentRun({
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review this patch.',
     }));
 
@@ -422,7 +422,7 @@ describe('agent run ledger', () => {
       agentKind: 'acp',
       runtimeId: 'gemini',
       displayName: 'Gemini CLI',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'persist this run',
     });
     completeAgentRun(run.id, { outputSummary: 'persisted output' });
@@ -463,7 +463,7 @@ describe('agent run ledger', () => {
       agentKind: 'native-runtime',
       runtimeId: 'claude',
       displayName: 'Claude Code',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'curl -H "Authorization: Bearer sk-ledger-secret-1234567890" https://example.test?token=abc123',
       metadata: {
         apiKey: 'sk-ledger-secret-abcdefghijkl',
@@ -576,7 +576,7 @@ describe('agent run ledger', () => {
         agentKind: 'pi-subagent',
         runtimeId: `reviewer-${index}`,
         displayName: `Reviewer ${index}`,
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         inputSummary: `${index}:${largeSummary}`,
       });
       completeAgentRun(run.id, { outputSummary: `done:${index}:${largeSummary}` });
@@ -606,7 +606,7 @@ describe('agent run ledger', () => {
       agentKind: 'acp',
       runtimeId: 'local-proc',
       displayName: 'Local Process Run',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'local input',
     });
     completeAgentRun(mine.id, { outputSummary: 'local output' });
@@ -625,7 +625,7 @@ describe('agent run ledger', () => {
         agentKind: 'acp',
         runtimeId: 'local-proc-2',
         displayName: 'Compaction Trigger Run',
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         inputSummary: 'trigger input',
       });
       completeAgentRun(trigger.id, { outputSummary: 'trigger output' });
@@ -733,7 +733,7 @@ describe('agent run ledger', () => {
       agentKind: 'acp',
       runtimeId: 'gemini',
       displayName: 'Gemini CLI',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'before the crash',
     });
     completeAgentRun(run.id, { outputSummary: 'survived' });

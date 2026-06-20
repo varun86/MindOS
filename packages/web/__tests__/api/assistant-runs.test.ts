@@ -153,7 +153,7 @@ describe('POST /api/assistant-runs', () => {
     expect(messages[0].content).toContain('dryRun true');
   });
 
-  it('delegates custom assistant runs through ask with readonly permission', async () => {
+  it('delegates custom assistant runs through ask with read permission', async () => {
     askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
@@ -163,7 +163,7 @@ describe('POST /api/assistant-runs', () => {
       body: JSON.stringify({
         assistantId: 'daily-signal',
         messages: [{ role: 'user', content: 'Run this assistant.' }],
-        runtimeOptions: { permissionMode: 'agent', reasoningEffort: 'high' },
+        runtimeOptions: { permissionMode: 'ask', reasoningEffort: 'high' },
       }),
     }));
 
@@ -173,7 +173,7 @@ describe('POST /api/assistant-runs', () => {
       assistantId: 'daily-signal',
       mode: 'agent',
       messages: [{ role: 'user', content: 'Run this assistant.' }],
-      runtimeOptions: { permissionMode: 'readonly', reasoningEffort: 'high' },
+      runtimeOptions: { permissionMode: 'read', reasoningEffort: 'high' },
     });
   });
 

@@ -24,7 +24,7 @@ const localAssistantsPayload = {
       mode: 'subagent',
       runtime: 'mindos',
       model: 'default',
-      permission: 'ask',
+      permissionMode: 'ask',
       hidden: true,
       preferredAgent: 'mindos-agent',
       skills: [],
@@ -79,7 +79,7 @@ Write an organization proposal.
       mode: 'subagent',
       runtime: 'codex',
       model: 'default',
-      permission: 'ask',
+      permissionMode: 'ask',
       preferredAgent: 'codex',
       skills: [],
       mcp: [],
@@ -444,9 +444,9 @@ Write an updated morning brief.
     const askBody = JSON.parse(askCall![1]!.body as string);
     expect(askBody.mode).toBe('agent');
     expect(askBody.assistantId).toBe('research-scout');
-    expect(askBody.runtimeOptions).toEqual({ permissionMode: 'readonly' });
+    expect(askBody.runtimeOptions).toEqual({ permissionMode: 'read' });
     expect(askBody.messages[0].content).toContain('Research Scout');
-    expect(askBody.messages[0].content).toContain('readonly mode');
+    expect(askBody.messages[0].content).toContain('read mode');
     expect(host.textContent).toContain('Run summary');
 
     await act(async () => {
@@ -477,7 +477,7 @@ Write an updated morning brief.
           mode: 'subagent',
           runtime: 'mindos',
           model: 'default',
-          permission: 'ask',
+          permissionMode: 'ask',
           hidden: true,
           preferredAgent: 'mindos-agent',
           skills: [],

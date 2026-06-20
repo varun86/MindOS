@@ -23,7 +23,7 @@ export type AgentRunStatus =
   | 'canceled'
   | 'timed_out';
 
-export type AgentRunPermissionMode = 'readonly' | 'kb-write' | 'agent';
+export type AgentRunPermissionMode = 'read' | 'ask' | 'auto' | 'full';
 
 /**
  * Pointer to the runtime's own conversation archive. Each runtime keeps its

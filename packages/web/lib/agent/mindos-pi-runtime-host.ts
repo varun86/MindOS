@@ -20,7 +20,8 @@ import {
   createMindosAgentPermissionPolicy,
   hasMindosExtensionScope,
   type MindosAgentPermissionPolicy,
-} from '@geminilight/mindos/agent/tool/permission-policy';
+  type MindosPermissionMode,
+} from '@geminilight/mindos/agent/mindos-pi/permission';
 
 type WebServerSettings = {
   disabledSkills?: string[];
@@ -33,6 +34,10 @@ type WebServerSettings = {
   };
 };
 
+function permissionModeFromAskMode(mode: MindosAskMode): MindosPermissionMode {
+  return mode === 'agent' ? 'ask' : 'ask';
+}
+
 export function getMindosWebPiRuntimePaths(input: {
   projectRoot: string;
   mindRoot: string;
@@ -40,7 +45,7 @@ export function getMindosWebPiRuntimePaths(input: {
   mode: MindosAskMode;
   permissionPolicy?: MindosAgentPermissionPolicy;
 }): { agentDir: string; additionalSkillPaths: string[]; additionalExtensionPaths: string[] } {
-  const policy = input.permissionPolicy ?? createMindosAgentPermissionPolicy(input.mode);
+  const policy = input.permissionPolicy ?? createMindosAgentPermissionPolicy(permissionModeFromAskMode(input.mode));
   const webAppDir = path.join(input.projectRoot, 'packages', 'web');
   const additionalExtensionPaths: string[] = [];
 
@@ -121,7 +126,7 @@ export function createWebMindosPiRuntimeHostServices(
       });
     },
     toRuntimeProvider: (provider) => toPiProvider(provider as ProviderId),
-    setKbMode: (mode) => setKbPermissionPolicy(createMindosAgentPermissionPolicy(mode)),
+    setKbMode: (mode) => setKbPermissionPolicy(createMindosAgentPermissionPolicy(permissionModeFromAskMode(mode))),
     generateSkillsXml: (skills) => generateSkillsXml(skills as any),
     getOllamaContextWindow,
     estimateTokens: estimateStringTokens,

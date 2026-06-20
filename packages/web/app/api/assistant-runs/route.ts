@@ -121,7 +121,7 @@ function normalizeAssistantRuntimeOptions(
   if (isRegisteredAssistantRun(assistantId)) return runtimeOptions;
   return {
     ...runtimeOptions,
-    permissionMode: 'readonly',
+    permissionMode: 'read',
   };
 }
 

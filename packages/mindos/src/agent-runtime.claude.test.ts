@@ -740,7 +740,7 @@ describe('agent runtime adapters: Claude Code', () => {
     expect(promptArg).toContain('- materialized_from: text_projection');
   });
 
-  it('maps readonly MindOS native mode to Claude Code dontAsk permission mode', async () => {
+  it('maps read MindOS native mode to Claude Code dontAsk permission mode', async () => {
     const transport = createFakeClaudeTransport([
       JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-session-readonly' }),
     ]);
@@ -749,7 +749,7 @@ describe('agent runtime adapters: Claude Code', () => {
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp/mind',
       prompt: 'Read only.',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       modelOverride: 'claude-sonnet-4-20250514',
       reasoningEffort: 'high',
       send: () => {},

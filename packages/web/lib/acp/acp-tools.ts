@@ -12,9 +12,8 @@ import {
   failAgentRun,
   startAgentRun,
   updateAgentRun,
-  type AgentRunPermissionMode,
 } from '@geminilight/mindos/agent/ledger/run-ledger';
-import { createMindosAgentPermissionPolicyFromContext } from '@geminilight/mindos/agent/tool/permission-policy';
+import { createMindosAgentPermissionPolicyFromContext } from '@geminilight/mindos/agent/mindos-pi/permission';
 import {
   abortErrorFromSignal,
   isAbortLikeError,
@@ -38,8 +37,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function permissionModeFromContext(ctx: unknown): AgentRunPermissionMode {
-  return createMindosAgentPermissionPolicyFromContext(ctx, 'agent').acpPermissionMode;
+function permissionPolicyFromContext(ctx: unknown) {
+  return createMindosAgentPermissionPolicyFromContext(ctx, 'ask');
 }
 
 async function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -118,13 +117,13 @@ export const acpTools: MindosAgentTool[] = [
     parameters: CallAcpAgentParams,
     execute: async (_id: string, params: Static<typeof CallAcpAgentParams>, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: unknown) => {
       const cwd = getMindRoot();
-      const permissionMode = permissionModeFromContext(ctx);
+      const permissionPolicy = permissionPolicyFromContext(ctx);
       const run = startAgentRun({
         agentKind: 'acp',
         runtimeId: params.agent_id,
         displayName: params.agent_id,
         cwd,
-        permissionMode,
+        permissionMode: permissionPolicy.permissionMode,
         inputSummary: params.message,
         metadata: {
           toolCallId: _id,
@@ -154,7 +153,7 @@ export const acpTools: MindosAgentTool[] = [
           displayName: entry.name,
           metadata: { phase: 'create_session' },
         });
-        session = await createSessionFromEntry(entry, { cwd, permissionMode: permissionMode === 'readonly' ? 'readonly' : 'agent' });
+        session = await createSessionFromEntry(entry, { cwd, permissionMode: permissionPolicy.acpPermissionMode });
         updateAgentRun(run.id, {
           archive: { sessionId: session.id },
           metadata: {

@@ -58,21 +58,21 @@ describe('kb-tool capabilities', () => {
     expect(readFile).toMatchObject({
       kind: 'kb-tool',
       name: 'Read file',
-      permissionRequired: 'readonly',
+      permissionRequired: 'read',
       availableInModes: ['agent'],
       supportsApprovals: false,
     });
 
     const writeFile = byId.get('kb-tool:write_file');
     expect(writeFile).toMatchObject({
-      permissionRequired: 'kb-write',
+      permissionRequired: 'ask',
       availableInModes: ['agent'],
       supportsApprovals: false,
     });
 
     const deleteFile = byId.get('kb-tool:delete_file');
     expect(deleteFile).toMatchObject({
-      permissionRequired: 'agent',
+      permissionRequired: 'ask',
       availableInModes: ['agent'],
       supportsApprovals: false,
     });
@@ -124,7 +124,7 @@ describe('pi-subagent capabilities', () => {
       kind: 'pi-subagent',
       name: 'reviewer',
       description: 'Reviews code changes',
-      permissionRequired: 'agent',
+      permissionRequired: 'ask',
       supportsUserInput: true,
       defaultTimeoutMs: 60_000,
     });

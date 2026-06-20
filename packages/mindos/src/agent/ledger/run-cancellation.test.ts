@@ -43,7 +43,7 @@ describe('agent run cancellation bridge', () => {
       agentKind: 'acp',
       runtimeId: 'gemini',
       displayName: 'Gemini',
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'Work on this.',
     });
     registerAgentRunCancelHandler(run.id, handler);
@@ -70,7 +70,7 @@ describe('agent run cancellation bridge', () => {
       agentKind: 'pi-subagent',
       runtimeId: 'reviewer',
       displayName: 'Reviewer',
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: 'Review this.',
     });
     registerAgentRunCancelHandler(run.id, handler);

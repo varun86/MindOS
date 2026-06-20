@@ -238,7 +238,7 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Review the note' }],
       providerOverride: 'anthropic',
       modelOverride: 'claude-sonnet-4-20250514',
-      runtimeOptions: { permissionMode: 'readonly' },
+      runtimeOptions: { permissionMode: 'read' },
       agentOptions: { enableThinking: true, thinkingBudget: 8000 },
       mode: 'agent',
     }));
@@ -307,7 +307,7 @@ describe('/api/ask native runtime routing', () => {
       runtimeOptions: {
         modelOverride: 'gpt-5.4-codex',
         reasoningEffort: 'high',
-        permissionMode: 'readonly',
+        permissionMode: 'read',
       },
       mode: 'agent',
       chatSessionId: 'chat-native-1',
@@ -322,7 +322,7 @@ describe('/api/ask native runtime routing', () => {
       kind: 'codex',
       binaryPath: '/usr/local/bin/codex',
     });
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('read');
     expect(capturedNativeOptions?.cwd).toBe(realpathSync(workDir));
     expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
     expect(capturedNativeOptions?.reasoningEffort).toBe('high');
@@ -370,7 +370,7 @@ describe('/api/ask native runtime routing', () => {
         status: 'completed',
         chatSessionId: 'chat-native-1',
         cwd: realpathSync(workDir),
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         outputSummary: 'native ok',
         metadata: expect.objectContaining({
           runtimeKind: 'codex',
@@ -392,7 +392,7 @@ describe('/api/ask native runtime routing', () => {
       displayName: 'Codex',
       chatSessionId: 'chat-locked-workdir',
       cwd: process.cwd(),
-      permissionMode: 'agent',
+      permissionMode: 'ask',
       inputSummary: 'existing run',
     });
 
@@ -509,14 +509,14 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Read the workspace only' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
       mode: 'agent',
-      runtimeOptions: { permissionMode: 'readonly' },
+      runtimeOptions: { permissionMode: 'read' },
     }));
 
     expect(res.status).toBe(200);
     await res.text();
 
     expect(capturedNativeOptions?.runtime.kind).toBe('claude');
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('read');
   });
 
   it('uses the server-detected native runtime path instead of trusting the request body', async () => {
@@ -559,7 +559,7 @@ describe('/api/ask native runtime routing', () => {
     await res.text();
 
     expect(capturedNativeOptions?.runtime.kind).toBe('codex');
-    expect(capturedNativeOptions?.permissionMode).toBe('agent');
+    expect(capturedNativeOptions?.permissionMode).toBe('ask');
   });
 
   it('keeps Inbox Organizer assistant runs on full access when native runtime options request agent permissions', async () => {
@@ -571,7 +571,7 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Organize safely' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      runtimeOptions: { permissionMode: 'agent', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
+      runtimeOptions: { permissionMode: 'ask', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
       mode: 'agent',
       assistantId: 'inbox-organizer',
     }));
@@ -579,7 +579,7 @@ describe('/api/ask native runtime routing', () => {
     expect(res.status).toBe(200);
     await res.text();
 
-    expect(capturedNativeOptions?.permissionMode).toBe('agent');
+    expect(capturedNativeOptions?.permissionMode).toBe('ask');
     expect(capturedNativeOptions?.modelOverride).toBe('gpt-5.4-codex');
     expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
   });
@@ -593,7 +593,7 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Preview without writes' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      runtimeOptions: { permissionMode: 'readonly' },
+      runtimeOptions: { permissionMode: 'read' },
       mode: 'agent',
       assistantId: 'inbox-organizer',
     }));
@@ -601,10 +601,10 @@ describe('/api/ask native runtime routing', () => {
     expect(res.status).toBe(200);
     await res.text();
 
-    expect(capturedNativeOptions?.permissionMode).toBe('readonly');
+    expect(capturedNativeOptions?.permissionMode).toBe('read');
   });
 
-  it('ignores invalid native runtime permission options and passes Claude reasoning effort', async () => {
+  it('rejects invalid native runtime permission options', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -621,13 +621,14 @@ describe('/api/ask native runtime routing', () => {
       mode: 'agent',
     }));
 
-    expect(res.status).toBe(200);
-    await res.text();
-
-    expect(capturedNativeOptions?.runtime.kind).toBe('claude');
-    expect(capturedNativeOptions?.permissionMode).toBe('agent');
-    expect(capturedNativeOptions?.modelOverride).toBe('claude-sonnet-4-20250514');
-    expect(capturedNativeOptions?.reasoningEffort).toBe('xhigh');
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'runtimeOptions.permissionMode must be read, ask, auto, or full',
+      },
+    });
+    expect(capturedNativeOptions).toBeNull();
   });
 
   it('does not resume a native runtime when the matching session binding is non-active', async () => {
@@ -927,7 +928,7 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Claude Code',
         status: 'failed',
         chatSessionId: 'chat-native-throw',
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         error: 'native bridge exploded',
       }),
     ]);
@@ -962,7 +963,7 @@ describe('/api/ask native runtime routing', () => {
         displayName: 'Codex',
         status: 'failed',
         chatSessionId: 'chat-native-error',
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         outputSummary: 'partial native output',
         error: 'native runtime returned failure',
         metadata: expect.objectContaining({
@@ -1032,7 +1033,7 @@ describe('/api/ask native runtime routing', () => {
         runtimeId: 'legacy-acp',
         displayName: 'Legacy ACP',
         status: 'completed',
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         outputSummary: 'acp ok',
         metadata: expect.objectContaining({
           source: 'selected-acp-runtime',
@@ -1079,7 +1080,7 @@ describe('/api/ask native runtime routing', () => {
         status: 'completed',
         chatSessionId: 'chat-acp-1',
         cwd: realpathSync(workDir),
-        permissionMode: 'agent',
+        permissionMode: 'ask',
         outputSummary: 'acp assistant ok',
       }),
     ]);
@@ -1103,7 +1104,7 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Use the selected ACP agent' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
       mode: 'agent',
-      runtimeOptions: { permissionMode: 'readonly' },
+      runtimeOptions: { permissionMode: 'read' },
     }));
     const text = await res.text();
 
@@ -1115,7 +1116,7 @@ describe('/api/ask native runtime routing', () => {
         runtimeId: 'gemini',
         displayName: 'Gemini ACP',
         status: 'failed',
-        permissionMode: 'readonly',
+        permissionMode: 'read',
         outputSummary: 'partial acp output',
         error: 'acp crashed',
       }),

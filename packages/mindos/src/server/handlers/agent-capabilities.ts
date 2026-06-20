@@ -21,7 +21,7 @@ export type AgentCapabilitySource =
   | 'a2a';
 
 export type AgentCapabilityStatus = 'available' | 'missing' | 'disabled' | 'cached' | 'error';
-export type AgentCapabilityPermissionRequired = 'readonly' | 'kb-write' | 'agent';
+export type AgentCapabilityPermissionRequired = 'read' | 'ask' | 'auto' | 'full';
 
 export type AgentCapabilityInput = {
   id?: unknown;
@@ -97,7 +97,7 @@ const KIND_SET = new Set<AgentCapabilityKind>([
 ]);
 const SOURCE_SET = new Set<AgentCapabilitySource>(['mindos', 'pi-subagents', 'acp', 'native', 'mcp', 'a2a']);
 const STATUS_SET = new Set<AgentCapabilityStatus>(['available', 'missing', 'disabled', 'cached', 'error']);
-const PERMISSION_SET = new Set<AgentCapabilityPermissionRequired>(['readonly', 'kb-write', 'agent']);
+const PERMISSION_SET = new Set<AgentCapabilityPermissionRequired>(['read', 'ask', 'auto', 'full']);
 
 export async function handleAgentCapabilitiesGet(
   searchParams: URLSearchParams,
@@ -175,7 +175,7 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
 
   const permissionRequired = typeof input.permissionRequired === 'string' && PERMISSION_SET.has(input.permissionRequired as AgentCapabilityPermissionRequired)
     ? input.permissionRequired as AgentCapabilityPermissionRequired
-    : 'agent';
+    : 'ask';
   const availableInModes = normalizeModes(input.availableInModes);
   if (availableInModes.length === 0) return null;
 

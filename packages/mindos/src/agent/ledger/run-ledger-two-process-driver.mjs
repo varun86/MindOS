@@ -20,7 +20,7 @@ if (mode === 'start-and-exit') {
     agentKind: 'acp',
     runtimeId: 'crashed-proc',
     displayName: 'Crashed Process Run',
-    permissionMode: 'readonly',
+    permissionMode: 'read',
     inputSummary: 'run that never finishes',
   });
   process.stdout.write(JSON.stringify({ pid: process.pid, runId: run.id }));
@@ -39,7 +39,7 @@ if (mode === 'append-many') {
       agentKind: 'pi-subagent',
       runtimeId: `${prefix}-${index}`,
       displayName: `${prefix} ${index}`,
-      permissionMode: 'readonly',
+      permissionMode: 'read',
       inputSummary: `${prefix}:${index}:${big}`,
     });
     ledger.completeAgentRun(run.id, { outputSummary: `${prefix}:done:${index}:${big}` });

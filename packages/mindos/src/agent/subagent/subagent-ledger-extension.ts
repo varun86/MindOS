@@ -36,7 +36,7 @@ import {
   linkAbortSignalToAgentRun,
   registerAgentRunCancelHandler,
 } from '../ledger/run-cancellation.js';
-import { createMindosAgentPermissionPolicyFromContext } from '../tool/permission-policy.js';
+import { createMindosAgentPermissionPolicyFromContext } from '../mindos-pi/permission/index.js';
 import {
   executeSubagentOrchestrationPlan,
   type SubagentOrchestrationPlan,
@@ -318,7 +318,7 @@ function subagentCwd(params: unknown, ctx?: Record<string, any>): string | undef
 }
 
 function subagentPermissionMode(ctx?: Record<string, any>) {
-  return createMindosAgentPermissionPolicyFromContext(ctx, 'agent').permissionMode;
+  return createMindosAgentPermissionPolicyFromContext(ctx, 'ask').permissionMode;
 }
 
 function sessionManagerFromToolContext(ctx?: Record<string, any>): unknown {

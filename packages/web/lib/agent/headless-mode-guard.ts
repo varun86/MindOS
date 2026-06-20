@@ -1,5 +1,5 @@
 import type { MindosAskMode } from '@geminilight/mindos/session';
-import type { MindosAgentPermissionPolicyMode } from '@geminilight/mindos/agent/tool/permission-policy';
+import type { MindosPermissionMode } from '@geminilight/mindos/agent/mindos-pi/permission';
 
 export type HeadlessAgentEntryPoint = 'headless' | 'im' | 'schedule';
 
@@ -11,7 +11,7 @@ export interface HeadlessAgentModeGuardInput {
 
 export interface HeadlessAgentModeGuardDecision {
   effectiveMode: MindosAskMode;
-  permissionPolicyMode: MindosAgentPermissionPolicyMode;
+  permissionPolicyMode: MindosPermissionMode;
   entrypoint: HeadlessAgentEntryPoint;
   downgraded: boolean;
   reason?: 'headless_agent_mode_requires_explicit_opt_in';
@@ -28,7 +28,7 @@ export function resolveHeadlessAgentMode(input: HeadlessAgentModeGuardInput = {}
   if (explicitAllow) {
     return {
       effectiveMode: 'agent',
-      permissionPolicyMode: 'agent',
+      permissionPolicyMode: 'ask',
       entrypoint,
       downgraded: false,
     };
@@ -36,7 +36,7 @@ export function resolveHeadlessAgentMode(input: HeadlessAgentModeGuardInput = {}
 
   return {
     effectiveMode: 'agent',
-    permissionPolicyMode: 'readonly',
+    permissionPolicyMode: 'read',
     entrypoint,
     downgraded: true,
     reason: 'headless_agent_mode_requires_explicit_opt_in',

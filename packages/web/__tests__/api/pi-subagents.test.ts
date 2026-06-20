@@ -99,7 +99,10 @@ describe('pi-subagents built-in extension', () => {
       vi.resetModules();
       try {
         const { getMindosWebPiRuntimePaths } = await import('@/lib/agent/mindos-pi-runtime-host');
-        const { createMindosAgentPermissionPolicy } = await import('@geminilight/mindos/agent/tool/permission-policy');
+        const {
+          createMindosAgentPermissionPolicy,
+          createMindosKnowledgeWritePermissionPolicy,
+        } = await import('@geminilight/mindos/agent/mindos-pi/permission');
         const base = {
           projectRoot: path.resolve(PROJECT_ROOT, '..', '..'),
           mindRoot: PROJECT_ROOT,
@@ -109,7 +112,7 @@ describe('pi-subagents built-in extension', () => {
         const readonlyPaths = getMindosWebPiRuntimePaths({
           ...base,
           mode: 'agent',
-          permissionPolicy: createMindosAgentPermissionPolicy('readonly'),
+          permissionPolicy: createMindosAgentPermissionPolicy('read'),
         });
         const readonlyExtensionList = readonlyPaths.additionalExtensionPaths.join('\n');
         expect(readonlyExtensionList).toContain('kb-extension');
@@ -123,7 +126,7 @@ describe('pi-subagents built-in extension', () => {
         const kbWritePaths = getMindosWebPiRuntimePaths({
           ...base,
           mode: 'agent',
-          permissionPolicy: createMindosAgentPermissionPolicy('kb-write'),
+          permissionPolicy: createMindosKnowledgeWritePermissionPolicy('ask'),
         });
         const kbWriteExtensionList = kbWritePaths.additionalExtensionPaths.join('\n');
         expect(kbWriteExtensionList).toContain('kb-extension');

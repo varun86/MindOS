@@ -36,7 +36,7 @@ describe('buildAgentCard', () => {
     const ids = card.skills.map(s => s.id);
     expect(ids).toContain('kb-search');
     expect(ids).toContain('kb-read');
-    expect(ids).toContain('kb-write');
+    expect(ids).toContain('kb-note-write');
     expect(ids).toContain('kb-list');
   });
 

@@ -88,7 +88,10 @@ import {
   getCachedAvailableNativeRuntimeDescriptor,
   rememberAvailableNativeRuntimeDescriptor,
 } from '@/lib/agent/native-runtime-descriptor-cache';
-import { createMindosAgentPermissionPolicy } from '@geminilight/mindos/agent/tool/permission-policy';
+import {
+  createMindosAgentPermissionPolicy,
+  type MindosPermissionMode,
+} from '@geminilight/mindos/agent/mindos-pi/permission';
 import {
   runWithAgentRunContext,
   setAgentRunContextForResource,
@@ -209,7 +212,10 @@ function isMindosRuntimeSelection(runtime: unknown): boolean {
 function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
-  const permissionMode = record.permissionMode === 'readonly' || record.permissionMode === 'agent'
+  const permissionMode = record.permissionMode === 'read'
+    || record.permissionMode === 'ask'
+    || record.permissionMode === 'auto'
+    || record.permissionMode === 'full'
     ? record.permissionMode as NativeRuntimePermissionMode
     : undefined;
   const reasoningEffort = record.reasoningEffort === 'low'
@@ -228,6 +234,25 @@ function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
   };
 }
 
+function validateNativeRuntimeOptions(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.permissionMode !== undefined
+    && record.permissionMode !== 'read'
+    && record.permissionMode !== 'ask'
+    && record.permissionMode !== 'auto'
+    && record.permissionMode !== 'full'
+  ) {
+    return apiError(
+      ErrorCodes.INVALID_REQUEST,
+      'runtimeOptions.permissionMode must be read, ask, auto, or full',
+      400,
+    );
+  }
+  return null;
+}
+
 function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean; thinkingBudget?: number } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
@@ -244,28 +269,19 @@ function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean
   return options;
 }
 
-function effectiveNativePermissionMode(
-  permissionPolicyMode: 'readonly' | 'kb-write' | 'agent',
-  fallback: NativeRuntimePermissionMode,
-  runtimeOptions: NativeRuntimeOptions,
-): NativeRuntimePermissionMode {
-  if (permissionPolicyMode === 'kb-write') return fallback;
-  return runtimeOptions.permissionMode ?? fallback;
-}
-
 function normalizeAskModeApiInput(value: unknown): AskModeApi | null {
   if (value === undefined || value === null) return 'agent';
   return value === 'agent' ? value : null;
 }
 
-function permissionPolicyModeForRequest(
+function permissionModeForRequest(
   assistantId: string | undefined,
   runtimeOptions: NativeRuntimeOptions,
-): 'readonly' | 'kb-write' | 'agent' {
-  if (runtimeOptions.permissionMode === 'readonly') return 'readonly';
+): MindosPermissionMode {
+  if (runtimeOptions.permissionMode) return runtimeOptions.permissionMode;
   return resolveAssistantAskPermissionPolicyMode(
     assistantId,
-    'agent',
+    'ask',
   );
 }
 
@@ -586,16 +602,13 @@ export async function runAskRequestBody(
     return apiError(ErrorCodes.INVALID_REQUEST, 'mode must be agent', 400);
   }
   const assistantId = normalizeAssistantId(body.assistantId);
+  const nativeRuntimeOptionsError = validateNativeRuntimeOptions(body.runtimeOptions);
+  if (nativeRuntimeOptionsError) return nativeRuntimeOptionsError;
   const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions);
   const mindosAgentOptions = normalizeMindosAgentOptions(body.agentOptions);
-  const permissionPolicy = createMindosAgentPermissionPolicy(
-    permissionPolicyModeForRequest(assistantId, nativeRuntimeOptions),
-  );
-  const nativePermissionMode = effectiveNativePermissionMode(
-    permissionPolicy.mode,
-    permissionPolicy.runtimePermissionMode,
-    nativeRuntimeOptions,
-  );
+  const requestPermissionMode = permissionModeForRequest(assistantId, nativeRuntimeOptions);
+  const permissionPolicy = createMindosAgentPermissionPolicy(requestPermissionMode);
+  const nativePermissionMode = requestPermissionMode;
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
     ? body.chatSessionId.trim()
     : undefined;
@@ -734,6 +747,11 @@ export async function runAskRequestBody(
           metadata: {
             runtimeKind: nativeRuntime.kind,
             source: 'selected-native-runtime',
+            permissionCompilation: {
+              requested: nativePermissionMode,
+              applied: permissionPolicy.runtimePermissionMode,
+              target: nativeRuntime.kind,
+            },
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
@@ -807,6 +825,11 @@ export async function runAskRequestBody(
             ...(result.externalSessionId ? { archive: { sessionId: result.externalSessionId } } : {}),
             metadata: {
               runtimeKind: nativeRuntime.kind,
+              permissionCompilation: {
+                requested: nativePermissionMode,
+                applied: permissionPolicy.runtimePermissionMode,
+                target: nativeRuntime.kind,
+              },
               ...(result.externalSessionId ? { externalSessionId: result.externalSessionId } : {}),
             },
           });
@@ -835,11 +858,16 @@ export async function runAskRequestBody(
           runtimeId: selectedAcpAgent.id,
           displayName: selectedAcpAgent.name,
           cwd: executionCwd,
-          permissionMode: permissionPolicy.acpPermissionMode,
+          permissionMode: permissionPolicy.permissionMode,
           inputSummary: externalPrompt,
           metadata: {
             source: 'selected-acp-runtime',
             phase: 'create_session',
+            permissionCompilation: {
+              requested: permissionPolicy.permissionMode,
+              applied: permissionPolicy.acpPermissionMode,
+              target: 'acp',
+            },
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
@@ -1114,6 +1142,11 @@ export async function runAskRequestBody(
         inputSummary: typeof lastUserContent === 'string' ? lastUserContent : JSON.stringify(lastUserContent),
         metadata: {
           sessionWorkDir: sessionContext.resolvedWorkDir.path,
+          permissionCompilation: {
+            requested: permissionPolicy.permissionMode,
+            applied: permissionPolicy.runtimePermissionMode,
+            target: 'mindos-pi',
+          },
           sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
           sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
           ...(assistantId ? { assistantId } : {}),

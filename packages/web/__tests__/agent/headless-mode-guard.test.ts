@@ -2,20 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { resolveHeadlessAgentMode } from '@/lib/agent/headless-mode-guard';
 
 describe('headless agent mode guard', () => {
-  it('downgrades default headless agent permissions to readonly scope', () => {
+  it('downgrades default headless agent permissions to read scope', () => {
     expect(resolveHeadlessAgentMode()).toMatchObject({
       effectiveMode: 'agent',
-      permissionPolicyMode: 'readonly',
+      permissionPolicyMode: 'read',
       downgraded: true,
       reason: 'headless_agent_mode_requires_explicit_opt_in',
     });
   });
 
-  it('keeps IM inbound conversations readonly unless explicitly opted in', () => {
+  it('keeps IM inbound conversations in read mode unless explicitly opted in', () => {
     expect(resolveHeadlessAgentMode({ entrypoint: 'im' })).toMatchObject({
       entrypoint: 'im',
       effectiveMode: 'agent',
-      permissionPolicyMode: 'readonly',
+      permissionPolicyMode: 'read',
       downgraded: true,
     });
   });
@@ -23,7 +23,7 @@ describe('headless agent mode guard', () => {
   it('allows full agent mode only with explicit opt-in', () => {
     expect(resolveHeadlessAgentMode({ allowAgentMode: true })).toMatchObject({
       effectiveMode: 'agent',
-      permissionPolicyMode: 'agent',
+      permissionPolicyMode: 'ask',
       downgraded: false,
     });
     expect(resolveHeadlessAgentMode({
@@ -31,7 +31,7 @@ describe('headless agent mode guard', () => {
       env: { MINDOS_IM_ALLOW_AGENT_MODE: '1' },
     })).toMatchObject({
       effectiveMode: 'agent',
-      permissionPolicyMode: 'agent',
+      permissionPolicyMode: 'ask',
       downgraded: false,
     });
   });
