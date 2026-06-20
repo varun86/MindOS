@@ -115,7 +115,7 @@ export default function WorkflowsPanel({ active, maximized, onMaximize }: Workfl
         </button>
       </PanelHeader>
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0">
         {/* Create form */}
         {showCreate && (
           <div className="px-3 py-3 border-b border-border">

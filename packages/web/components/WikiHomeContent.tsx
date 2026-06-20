@@ -8,6 +8,7 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils';
 import { InboxSection } from '@/components/home/InboxSection';
 import { StableRowActionButton, StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
+import { ContentPageShell } from '@/components/shared/ContentPageShell';
 import type { BuiltInMindSystemSpaceRecord, SpaceInfo } from '@/lib/space-records';
 import { Select } from '@/components/settings/Primitives';
 
@@ -86,22 +87,21 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: Wi
   const lastFile = recent[0];
 
   return (
-    <div className="content-width px-4 md:px-6 py-10 md:py-14">
+    <ContentPageShell className="wiki-content-page" data-content-page-shell="wiki">
 
-      {/* ══════════ Hero ══════════ */}
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-1 h-7 rounded-full bg-gradient-to-b from-[var(--amber)] to-[var(--amber)]/20" />
+      {/* ══════════ Page header ══════════ */}
+      <header className="mb-10">
+        <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {t.sidebar.files}
           </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t.home.mindTagline}
+          </p>
         </div>
-        <p className="pl-4 -mt-3 mb-5 text-sm text-muted-foreground">
-          {t.home.mindTagline}
-        </p>
 
         {/* Command bar */}
-        <div className="w-full max-w-xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pl-4">
+        <div className="w-full max-w-xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <button
             onClick={triggerAsk}
             title="⌘/"
@@ -130,7 +130,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: Wi
         </div>
 
         {/* Quick actions */}
-        <div className="flex items-center gap-3 mt-4 pl-4">
+        <div className="flex items-center gap-3 mt-4">
           <Link
             href="/view/Untitled.md"
             className="hit-target-box inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 text-[var(--amber-foreground)] [--hit-target-bg:var(--amber)] [--hit-target-hover-bg:var(--amber)] [--hit-target-radius:var(--radius-lg)] [--hit-target-hover-shadow:0_4px_6px_-1px_color-mix(in_srgb,var(--foreground)_10%,transparent)]"
@@ -151,7 +151,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: Wi
             </Link>
           )}
         </div>
-      </div>
+      </header>
 
       {/* ══════════ Built-in Mind Spaces ══════════ */}
       <BuiltInMindSpacesSection spaces={mindSystemSpaces} />
@@ -285,7 +285,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: Wi
         <Sparkles size={10} className="text-[var(--amber)]/40" />
         <span>{t.app.footer}</span>
       </div>
-    </div>
+    </ContentPageShell>
   );
 }
 

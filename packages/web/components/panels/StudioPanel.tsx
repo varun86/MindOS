@@ -116,7 +116,7 @@ export default function StudioPanel({ active }: StudioPanelProps) {
           <Plus size={13} aria-hidden="true" />
         </button>
       </PanelHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto">
         <div className={PANEL_NAV_SECTION_CLASS}>
           <PanelNavRow
             href="/studio"

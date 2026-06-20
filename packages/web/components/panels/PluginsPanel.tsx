@@ -69,7 +69,7 @@ export default function PluginsPanel({ active, maximized, onMaximize }: PluginsP
       </PanelHeader>
 
       {/* Plugin list */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0">
         {mounted && renderers.length === 0 && (
           <p className="px-4 py-8 text-sm text-muted-foreground text-center">{p.noPlugins}</p>
         )}

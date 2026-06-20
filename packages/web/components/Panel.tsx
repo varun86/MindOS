@@ -446,7 +446,7 @@ export default function Panel({
           </div>
         </PanelHeader>
         <div
-          className="flex-1 overflow-y-auto min-h-0 px-2 py-2"
+          className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0 px-2 py-2"
           onDragEnter={(e) => { if (e.dataTransfer.types.includes('Files')) e.stopPropagation(); }}
           onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); } }}
           onDrop={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); } }}

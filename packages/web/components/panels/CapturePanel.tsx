@@ -169,7 +169,7 @@ export default function CapturePanel() {
     <div className="flex h-full flex-col">
       <PanelHeader title={t.sidebar.capture} />
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto px-3 py-3">
         <div className="px-1">
           <button
             type="button"

@@ -95,7 +95,7 @@ export default function AgentsPanel({
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
       <PanelHeader title={p.title} />
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0">
         {isAgentTab ? (
           <div className="pb-3">
             {hub}

@@ -29,7 +29,7 @@ export default function EchoPanel({ active }: EchoPanelProps) {
   return (
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
       <PanelHeader title={e.title} />
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0 flex flex-col">
         <div className={PANEL_NAV_STACK_CLASS}>
           {ECHO_SEGMENT_ORDER.map((segment) => {
             const row = rowBySegment[segment];

@@ -171,7 +171,7 @@ describe('AgentsPanel hub layout', () => {
     expect(statusLead).not.toContain('<svg');
 
     const headerStart = html.indexOf('panel-header');
-    const headerEnd = html.indexOf('<div class="flex-1 overflow-y-auto', headerStart);
+    const headerEnd = html.indexOf('<div class="sidebar-scroll-area flex-1 overflow-y-auto', headerStart);
     const headerHtml = html.slice(headerStart, headerEnd);
     expect(headerHtml).not.toContain(runtime.panelTitle);
     expect(headerHtml).not.toContain(a.connected);

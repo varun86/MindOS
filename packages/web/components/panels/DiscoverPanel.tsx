@@ -73,7 +73,7 @@ export default function DiscoverPanel({ active }: DiscoverPanelProps) {
   return (
     <div className={`flex flex-col h-full ${active ? '' : 'hidden'}`}>
       <PanelHeader title={d.title} />
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0">
         {/* Navigation entries */}
         <div className={PANEL_NAV_STACK_CLASS}>
           <PanelNavRow

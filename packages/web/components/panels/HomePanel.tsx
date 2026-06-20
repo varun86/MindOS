@@ -402,7 +402,7 @@ export default function HomePanel({
       {mode === 'sessions' ? (
         <>
           <HomeAgentFilter value={agentFilter} onChange={setAgentFilter} counts={agentCounts} />
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" data-home-session-list>
+          <div className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto px-2 pb-2" data-home-session-list>
           {sortedSessions.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-5 text-center">
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/40 text-muted-foreground">
@@ -428,7 +428,7 @@ export default function HomePanel({
         </>
       ) : (
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
+          className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto px-2 py-2"
           data-home-mind-files
           onDragEnter={(e) => { if (e.dataTransfer.types.includes('Files')) e.stopPropagation(); }}
           onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); } }}

@@ -58,6 +58,10 @@ body {
   scrollbar-gutter: stable;
 }
 
+.sidebar-scroll-area {
+  scrollbar-gutter: stable;
+}
+
 
 :root {
   --font-inter: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

@@ -34,7 +34,7 @@ export const knowledgeEn = {
     cancelCreate: 'Cancel',
     continueEditing: 'Continue editing',
     newNote: 'New Notes',
-    mindTagline: 'Local Markdown, organized as your personal Mind.',
+    mindTagline: 'Grow your mind. Evolve your agents.',
     builtInSpacesTitle: 'Mind System',
     builtInSpacesDesc: 'Organize your knowledge with four built-in spaces.',
     builtInSpacesReview: 'Review loop',

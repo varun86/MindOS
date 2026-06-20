@@ -97,7 +97,7 @@ export default function ImportHistoryPanel({ active, maximized, onMaximize, refr
         )}
       </PanelHeader>
 
-      <div className="flex-1 overflow-y-auto min-h-0 px-2 py-2">
+      <div className="sidebar-scroll-area flex-1 overflow-y-auto min-h-0 px-2 py-2">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
             <FileInput size={28} className="text-muted-foreground/30" />

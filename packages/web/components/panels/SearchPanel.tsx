@@ -501,7 +501,7 @@ export default function SearchPanel({ active, focusRequest = 0, onNavigate, onCl
       </div>
 
       {/* Results */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2" role="listbox" aria-label="Search results">
+      <div className="sidebar-scroll-area min-h-0 flex-1 overflow-y-auto px-2 py-2" role="listbox" aria-label="Search results">
         {/* Empty state with prompt */}
         {results.length === 0 && visiblePluginCommands.length === 0 && !query && !loading && (
           <div className="flex h-full flex-col items-center justify-center px-5 py-10 text-center">
