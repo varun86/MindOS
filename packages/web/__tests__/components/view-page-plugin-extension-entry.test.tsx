@@ -59,6 +59,8 @@ vi.mock('@/components/EditorWrapper', () => ({ default: () => <div /> }));
 vi.mock('@/components/TableOfContents', () => ({
   default: () => <div />,
   hasTableOfContents: () => false,
+  readTableOfContentsCollapsed: () => false,
+  subscribeTableOfContentsCollapsed: () => () => {},
 }));
 vi.mock('@/components/FindInPage', () => ({ default: () => <div /> }));
 vi.mock('@/components/DirPicker', () => ({ default: () => <div /> }));

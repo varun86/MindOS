@@ -62,8 +62,29 @@ export function hasTableOfContents(content: string): boolean {
 const VIEW_HEADER_FALLBACK_H = 40;
 const VIEW_HEADER_CSS_VAR = 'var(--workspace-header-h)';
 const NAV_W = 212;
-const TOC_COLLAPSED_KEY = 'mindos.toc.collapsed';
-const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';
+const TOC_COLLAPSED_W = 28;
+export const TOC_COLLAPSED_KEY = 'mindos.toc.collapsed';
+export const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';
+
+export function readTableOfContentsCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(TOC_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function subscribeTableOfContentsCollapsed(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const sync = () => callback();
+  window.addEventListener('storage', sync);
+  window.addEventListener(TOC_COLLAPSED_EVENT, sync);
+  return () => {
+    window.removeEventListener('storage', sync);
+    window.removeEventListener(TOC_COLLAPSED_EVENT, sync);
+  };
+}
 
 // Desktop has a fixed titlebar row above the view header (wiki/41 rule 10).
 // Read var(--app-titlebar-h) at runtime so JS scroll math stays in sync with CSS.
@@ -146,21 +167,10 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
     return { headings: h, minLevel: h.length > 0 ? Math.min(...h.map(x => x.level)) : 1 };
   }, [content]);
   const [activeIdx, setActiveIdx] = useState(-1);
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem(TOC_COLLAPSED_KEY) === '1';
-  });
+  const [collapsed, setCollapsed] = useState(readTableOfContentsCollapsed);
 
   useEffect(() => {
-    const sync = () => {
-      setCollapsed(window.localStorage.getItem(TOC_COLLAPSED_KEY) === '1');
-    };
-    window.addEventListener('storage', sync);
-    window.addEventListener(TOC_COLLAPSED_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(TOC_COLLAPSED_EVENT, sync);
-    };
+    return subscribeTableOfContentsCollapsed(() => setCollapsed(readTableOfContentsCollapsed()));
   }, []);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -185,7 +195,11 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
   const handleCollapsedToggle = useCallback(() => {
     const next = !collapsed;
     setCollapsed(next);
-    window.localStorage.setItem(TOC_COLLAPSED_KEY, next ? '1' : '0');
+    try {
+      window.localStorage.setItem(TOC_COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // Keep the in-memory toggle responsive even when storage is unavailable.
+    }
     window.dispatchEvent(new Event(TOC_COLLAPSED_EVENT));
   }, [collapsed]);
 
@@ -245,13 +259,18 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
       style={{
         top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR} + 24px)`,
         maxHeight: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR} - 48px)`,
-        width: NAV_W,
+        width: collapsed ? TOC_COLLAPSED_W : NAV_W,
       }}
     >
       <button
         type="button"
         onClick={handleCollapsedToggle}
-        className="absolute -left-5 top-0 z-10 flex h-8 w-5 items-center justify-center rounded-l-md border border-r-0 border-border bg-background text-muted-foreground/60 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          'absolute top-0 z-10 flex h-8 items-center justify-center border border-border bg-background text-muted-foreground/60 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          collapsed
+            ? 'left-0 w-7 rounded-md'
+            : '-left-5 w-5 rounded-l-md border-r-0',
+        )}
         title={collapsed ? t.view.tocExpand : t.view.tocCollapse}
         aria-label={collapsed ? t.view.tocExpand : t.view.tocCollapse}
         aria-expanded={!collapsed}

@@ -12,20 +12,24 @@ describe('TableOfContents header layout', () => {
     expect(source).toContain('data-markdown-toc-panel');
     expect(source).toContain('sticky z-app-sticky relative overflow-visible');
     expect(source).toContain('data-markdown-toc-toggle');
-    expect(source).toContain('className="absolute -left-5 top-0 z-10 flex h-8 w-5 items-center justify-center rounded-l-md border border-r-0 border-border bg-background');
+    expect(source).toContain("collapsed ? TOC_COLLAPSED_W : NAV_W");
+    expect(source).toContain("collapsed\n            ? 'left-0 w-7 rounded-md'\n            : '-left-5 w-5 rounded-l-md border-r-0'");
     expect(source).not.toContain('className="flex items-center h-[46px] px-4 border-l border-b border-border"');
     expect(source).not.toContain('className="flex h-9 shrink-0 items-center justify-end border-l border-border bg-background/95 pl-2 pr-2"');
     expect(source).not.toContain('className="hidden xl:flex fixed');
     expect(source).not.toContain('font-semibold uppercase tracking-wider');
   });
 
-  it('keeps collapse state global without publishing layout width to the app shell', () => {
+  it('publishes collapse state so the Markdown grid can stop reserving an empty TOC lane', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
     expect(source).toContain('export function hasTableOfContents(content: string): boolean');
-    expect(source).toContain("const TOC_COLLAPSED_KEY = 'mindos.toc.collapsed';");
-    expect(source).toContain("const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';");
+    expect(source).toContain('const TOC_COLLAPSED_W = 28;');
+    expect(source).toContain("export const TOC_COLLAPSED_KEY = 'mindos.toc.collapsed';");
+    expect(source).toContain("export const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';");
+    expect(source).toContain('export function readTableOfContentsCollapsed(): boolean');
+    expect(source).toContain('export function subscribeTableOfContentsCollapsed(callback: () => void): () => void');
     expect(source).toContain('parseHeadings(content)');
     expect(source).toContain('const handleCollapsedToggle = useCallback(() => {');
     expect(source).toContain('onClick={handleCollapsedToggle}');
@@ -42,7 +46,8 @@ describe('TableOfContents header layout', () => {
     const source = fs.readFileSync(filePath, 'utf8');
 
     expect(source).toContain('data-markdown-toc-toggle');
-    expect(source).toContain('className="absolute -left-5 top-0');
+    expect(source).toContain("'absolute top-0 z-10 flex h-8 items-center justify-center");
+    expect(source).toContain("'left-0 w-7 rounded-md'");
     expect(source).toContain('aria-expanded={!collapsed}');
     expect(source).not.toContain('className="hidden xl:flex fixed');
     expect(source).not.toContain('right: `calc(var(--right-panel-width, 0px) + ${NAV_W}px)`');

@@ -24,8 +24,11 @@ describe('ViewPageClient header layout', () => {
 
     expect(viewSource).toContain('className="view-header-actions flex items-center gap-1.5 md:gap-2 shrink-0"');
     expect(viewSource).toContain('className="view-header-breadcrumb min-w-0 flex-1 flex items-center gap-1.5"');
-    expect(viewSource).toContain("const markdownFrameClassName = shouldReserveTocLane");
+    expect(viewSource).toContain('const tocCollapsed = useSyncExternalStore(');
+    expect(viewSource).toContain('const hasMarkdownToc = isMarkdown && !showRenderer && (');
     expect(viewSource).toContain("'content-width markdown-view-frame markdown-view-frame--with-toc'");
+    expect(viewSource).toContain("'content-width markdown-view-frame markdown-view-frame--toc-collapsed'");
+    expect(viewSource).toContain('const shouldRenderToc = hasMarkdownToc;');
     expect(viewSource).toContain('data-markdown-view-frame');
     expect(viewSource).toContain("const markdownBodyClassName = 'markdown-view-body';");
     expect(viewSource).not.toContain("width: 'calc(100% + var(--toc-extra-right, 0px))'");
@@ -47,6 +50,8 @@ describe('ViewPageClient header layout', () => {
     expect(cssSource).toContain('.markdown-view-frame {');
     expect(cssSource).toContain('.markdown-view-frame--with-toc {');
     expect(cssSource).toContain('grid-template-columns: minmax(0, 1fr) 212px;');
+    expect(cssSource).toContain('.markdown-view-frame--toc-collapsed {');
+    expect(cssSource).toContain('grid-template-columns: minmax(0, 1fr) 28px;');
     expect(cssSource).not.toContain('.toc-reserved-content');
     expect(cssSource).not.toContain('.view-header-actions-reserve');
     expect(cssSource).not.toContain('.view-header-actions {');

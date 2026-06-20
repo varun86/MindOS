@@ -27,6 +27,7 @@ describe('ViewPageClient header scroll stability', () => {
     expect(source).toContain('className="view-page-topbar sticky top-[52px] md:top-[var(--app-titlebar-h)] z-20 border-b border-border');
     expect(source).toContain('className={markdownFrameClassName}');
     expect(source).toContain('markdown-view-frame--with-toc');
+    expect(source).toContain('markdown-view-frame--toc-collapsed');
     expect(source).not.toContain('toc-reserved-content');
     expect(source).not.toContain("width: 'calc(100% + var(--toc-extra-right, 0px))'");
     expect(source).not.toContain("marginRight: 'calc(var(--toc-extra-right, 0px) * -1)'");

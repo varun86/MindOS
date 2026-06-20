@@ -13,7 +13,11 @@ import '@/lib/renderers/index';
 import Breadcrumb from '@/components/Breadcrumb';
 import MarkdownEditor, { MdViewMode } from '@/components/MarkdownEditor';
 import EditorWrapper from '@/components/EditorWrapper';
-import TableOfContents, { hasTableOfContents } from '@/components/TableOfContents';
+import TableOfContents, {
+  hasTableOfContents,
+  readTableOfContentsCollapsed,
+  subscribeTableOfContentsCollapsed,
+} from '@/components/TableOfContents';
 import FindInPage from '@/components/FindInPage';
 import { resolveRenderer, isRendererEnabled } from '@/lib/renderers/registry';
 import { encodePath } from '@/lib/utils';
@@ -581,14 +585,23 @@ export default function ViewPageClient({
     ? 'preview'
     : (mdViewMode === 'source' ? 'source' : 'wysiwyg');
   const activeMarkdownModeOption = markdownModeOptions.find(option => option.id === activeMarkdownMode) ?? markdownModeOptions[0];
-  const shouldReserveTocLane = isMarkdown && !showRenderer && (
+  const tocCollapsed = useSyncExternalStore(
+    subscribeTableOfContentsCollapsed,
+    readTableOfContentsCollapsed,
+    () => false,
+  );
+  const hasMarkdownToc = isMarkdown && !showRenderer && (
     editing
       ? mdViewMode !== 'source' && hasTableOfContents(editContent)
       : hasTableOfContents(normalizedSavedMarkdown)
   );
-  const markdownFrameClassName = shouldReserveTocLane
-    ? 'content-width markdown-view-frame markdown-view-frame--with-toc'
+  const markdownFrameClassName = hasMarkdownToc
+    ? tocCollapsed
+      ? 'content-width markdown-view-frame markdown-view-frame--toc-collapsed'
+      : 'content-width markdown-view-frame markdown-view-frame--with-toc'
     : 'content-width markdown-view-frame';
+  const shouldRenderToc = hasMarkdownToc;
+  const shouldRenderEditingToc = shouldRenderToc && mdViewMode !== 'source';
   const markdownBodyClassName = 'markdown-view-body';
 
   useEffect(() => {
@@ -983,7 +996,7 @@ export default function ViewPageClient({
                     viewMode={mdViewMode}
                   />
                 </div>
-                {mdViewMode !== 'source' && <TableOfContents content={editContent} />}
+                {shouldRenderEditingToc && <TableOfContents content={editContent} />}
               </div>
             )}
             {!editing && (
@@ -993,7 +1006,7 @@ export default function ViewPageClient({
                   <MarkdownView content={normalizedSavedMarkdown} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
                   <Backlinks filePath={filePath} />
                 </div>
-                <TableOfContents content={normalizedSavedMarkdown} />
+                {shouldRenderToc && <TableOfContents content={normalizedSavedMarkdown} />}
               </div>
             )}
           </>
