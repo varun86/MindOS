@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Footprints, GitBranch, LayoutDashboard, Sprout } from 'lucide-react';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -27,19 +28,31 @@ function segmentMeta(
 export default function EchoSegmentNav({ activeSegment }: { activeSegment: EchoSegment }) {
   const { t } = useLocale();
   const smoothPush = useSmoothRouterPush();
+  const navRef = useRef<HTMLElement | null>(null);
+  const activeLinkRef = useRef<HTMLAnchorElement | null>(null);
   const echo = t.panels.echo;
   const aria = t.echoPages.segmentNavAria;
 
+  useEffect(() => {
+    const nav = navRef.current;
+    const activeLink = activeLinkRef.current;
+    if (!nav || !activeLink) return;
+
+    const nextLeft = activeLink.offsetLeft - (nav.clientWidth - activeLink.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, nextLeft), behavior: 'auto' });
+  }, [activeSegment]);
+
   return (
-    <nav aria-label={aria} className="mt-5 border-t border-border/50 pt-4 font-sans">
-      <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-0.5 [scrollbar-width:thin]">
+    <nav ref={navRef} aria-label={aria} className="mt-5 overflow-x-auto pb-1 font-sans">
+      <ul className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm md:grid md:w-auto md:grid-cols-4">
         {ECHO_SEGMENT_ORDER.map((segment) => {
           const href = ECHO_SEGMENT_HREF[segment];
           const { label, icon } = segmentMeta(segment, echo);
           const isActive = segment === activeSegment;
           return (
-            <li key={segment} className="snap-start shrink-0">
+            <li key={segment} className="shrink-0 border-r border-border/45 last:border-r-0">
               <Link
+                ref={isActive ? activeLinkRef : undefined}
                 href={href}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={(event) => {
@@ -48,14 +61,19 @@ export default function EchoSegmentNav({ activeSegment }: { activeSegment: EchoS
                   if (!isActive) smoothPush(href);
                 }}
                 className={cn(
-                  'inline-flex min-h-9 max-w-44 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-[background-color,border-color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                  'group flex min-h-[58px] w-[172px] items-center gap-2 px-3 py-3 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-auto md:px-4',
                   isActive
-                    ? 'border-[var(--amber)]/50 bg-[var(--amber-dim)]/50 font-medium text-foreground'
-                    : 'border-transparent bg-muted/25 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                    ? 'bg-[var(--amber)]/[0.08] font-medium text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground',
                 )}
               >
-                <span className={cn('shrink-0', isActive ? 'text-foreground' : 'text-muted-foreground')} aria-hidden>{icon}</span>
-                <span className="truncate">{label}</span>
+                <span className={cn(
+                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors',
+                  isActive
+                    ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
+                    : 'bg-background text-muted-foreground group-hover:text-foreground',
+                )} aria-hidden>{icon}</span>
+                <span className="min-w-0 truncate text-xs font-medium">{label}</span>
               </Link>
             </li>
           );

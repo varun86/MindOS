@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { useSettingsAiAvailable } from '@/hooks/useSettingsAiAvailable';
 import { useLocale } from '@/lib/stores/locale-store';
+import { Button } from '@/components/ui/button';
 
 type InsightMarkdownComponent = ComponentType<{ markdown: string }>;
 
@@ -162,12 +163,13 @@ export function EchoInsightCollapsible({
           <div className="border-t border-border/60 px-5 pb-5 pt-4">
             <p className="font-sans text-sm leading-relaxed text-muted-foreground">{hint}</p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="button"
                 disabled={generateDisabled}
                 title={generateDisabled ? t.hints.aiNotConfigured : undefined}
                 onClick={runGenerate}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--amber)] px-3 py-2 font-sans text-sm font-medium text-[var(--amber-foreground)] transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                variant="amber"
+                size="lg"
               >
                 {streaming ? (
                   <Loader2 size={16} className="animate-spin shrink-0" aria-hidden />
@@ -175,17 +177,19 @@ export function EchoInsightCollapsible({
                   <Sparkles size={15} className="shrink-0" aria-hidden />
                 )}
                 {streaming ? generatingLabel : generateLabel}
-              </button>
+              </Button>
               {err ? (
-                <button
+                <Button
                   type="button"
                   onClick={runGenerate}
                   disabled={streaming || !aiReady}
                   title={streaming || !aiReady ? t.hints.generationInProgress : undefined}
-                  className="font-sans text-sm text-[var(--amber)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  variant="ghost"
+                  size="sm"
+                  className="text-[var(--amber)]"
                 >
                   {retryLabel}
-                </button>
+                </Button>
               ) : null}
             </div>
             {!aiLoading && !aiReady ? (

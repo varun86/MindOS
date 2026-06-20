@@ -11,6 +11,7 @@ import { Zap, AlertCircle, Loader2 } from 'lucide-react';
 import type { DailyEchoReport } from '@/lib/daily-echo/types';
 import { generateDailyEchoReport } from '@/lib/daily-echo/generator';
 import { loadDailyEchoConfig } from '@/lib/daily-echo/config';
+import { Button } from '@/components/ui/button';
 
 interface DailyEchoReportButtonProps {
   onGenerated: (report: DailyEchoReport) => void;
@@ -47,10 +48,11 @@ export default function DailyEchoReportButton({
 
   if (error) {
     return (
-      <button
+      <Button
         onClick={handleGenerate}
         disabled={isLoading}
-        className="inline-flex items-center justify-center gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-2 font-sans text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        variant="destructive"
+        size="xl"
         type="button"
         title={error}
       >
@@ -60,15 +62,16 @@ export default function DailyEchoReportButton({
             ? t.dailyReportGenerating || 'Generating…'
             : t.dailyReportRetry || 'Retry'}
         </span>
-      </button>
+      </Button>
     );
   }
 
   return (
-    <button
+    <Button
       onClick={handleGenerate}
       disabled={isLoading}
-      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--amber)] text-[var(--amber-foreground)] px-4 py-2 font-sans text-sm font-medium transition-all duration-150 hover:bg-[var(--amber)]/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      variant="amber"
+      size="xl"
       type="button"
       aria-busy={isLoading}
     >
@@ -83,6 +86,6 @@ export default function DailyEchoReportButton({
           <span>{t.dailyReportGenerate || 'Generate report'}</span>
         </>
       )}
-    </button>
+    </Button>
   );
 }

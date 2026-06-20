@@ -7,23 +7,16 @@ import {
   ArrowUpRight,
   BookOpen,
   Bookmark,
-  CalendarDays,
   Check,
-  ChevronDown,
   ChevronLeft,
-  ChevronRight,
   Flag,
   Infinity,
   Leaf,
-  Menu,
   MessageSquareText,
   Moon,
-  MoreVertical,
   NotebookText,
-  Plus,
   Repeat2,
   Scale,
-  Search,
   SunMedium,
   Target,
 } from 'lucide-react';
@@ -34,6 +27,9 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { cn } from '@/lib/utils';
 import { openAskModal } from '@/hooks/useAskModal';
 import { ContentPageShell } from '@/components/shared/ContentPageShell';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { EchoHero } from './EchoHero';
+import EchoSegmentNav from './EchoSegmentNav';
 import { EchoInsightCollapsible } from './EchoInsightCollapsible';
 import DailyEchoReportButton from './DailyEcho/DailyEchoReportButton';
 import DailyEchoReportDrawer from './DailyEcho/DailyEchoReportDrawer';
@@ -101,107 +97,31 @@ const habitIcons = [
 ];
 
 const echoPageClass =
-  'echo-content-page min-h-full bg-[radial-gradient(circle_at_72%_8%,color-mix(in_srgb,var(--amber)_12%,transparent),transparent_28%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_94%,var(--card))_0%,var(--background)_100%)] px-4 py-5 md:px-7 md:py-7';
+  'echo-content-page min-h-full bg-background';
 
-const paperSurfaceClass =
-  'rounded-lg border border-border/55 bg-[color-mix(in_srgb,var(--card)_72%,var(--background))] shadow-[0_18px_55px_color-mix(in_srgb,var(--foreground)_8%,transparent)]';
+const echoBodyClass =
+  'mx-auto flex w-full max-w-5xl flex-col gap-6';
 
-const paperPanelClass =
-  'rounded-lg border border-border/45 bg-[color-mix(in_srgb,var(--background)_76%,var(--card))] shadow-[0_16px_45px_color-mix(in_srgb,var(--foreground)_7%,transparent)]';
+const echoSurfaceClass =
+  'rounded-xl border border-border/60 bg-card/45 shadow-sm';
 
-const subtleButtonClass =
-  'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-border/55 bg-[color-mix(in_srgb,var(--background)_78%,var(--card))] px-3 py-2 font-sans text-sm text-foreground transition-[background-color,border-color,color,transform] duration-150 hover:border-[var(--amber)]/30 hover:bg-[var(--amber-subtle)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
-
-const pageHeadingClass =
-  'font-sans text-3xl font-medium leading-tight tracking-normal text-foreground md:text-4xl';
+const echoPanelClass =
+  'rounded-xl border border-border/50 bg-background/55 shadow-sm';
 
 const panelHeadingClass =
-  'font-sans text-xl font-medium leading-tight tracking-normal text-foreground';
-
-function EchoIconButton({
-  label,
-  children,
-  onClick,
-}: {
-  label: string;
-  children: ReactNode;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-[var(--amber-subtle)] hover:text-foreground active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {children}
-    </button>
-  );
-}
-
-function PrimaryButton({
-  label,
-  onClick,
-  href,
-}: {
-  label: string;
-  onClick?: () => void;
-  href?: string;
-}) {
-  const className =
-    'inline-flex min-h-10 items-center justify-center rounded-lg bg-[var(--amber)] px-5 py-2 font-sans text-sm font-medium text-[var(--amber-foreground)] shadow-[0_12px_24px_color-mix(in_srgb,var(--amber)_24%,transparent)] transition-[filter,transform] duration-150 hover:brightness-105 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
-
-  if (href) {
-    return (
-      <Link href={href} className={className}>
-        {label}
-      </Link>
-    );
-  }
-
-  return (
-    <button type="button" onClick={onClick} className={className}>
-      {label}
-    </button>
-  );
-}
-
-function EchoTopBar({
-  leading,
-  trailing,
-}: {
-  leading: ReactNode;
-  trailing?: ReactNode;
-}) {
-  return (
-    <div className="mb-7 flex min-h-9 items-center justify-between gap-3 font-sans text-sm text-muted-foreground">
-      <div className="flex min-w-0 items-center gap-1.5">{leading}</div>
-      <div className="flex shrink-0 items-center gap-1.5">{trailing}</div>
-    </div>
-  );
-}
-
-function BackForwardControls() {
-  return (
-    <>
-      <EchoIconButton label="Back">
-        <ChevronLeft size={20} strokeWidth={1.8} aria-hidden />
-      </EchoIconButton>
-      <EchoIconButton label="Forward">
-        <ChevronRight size={20} strokeWidth={1.8} aria-hidden />
-      </EchoIconButton>
-    </>
-  );
-}
+  'font-sans text-lg font-semibold leading-tight text-foreground';
 
 function BackToOverviewLink({ label, ariaLabel }: { label: string; ariaLabel: string }) {
   return (
     <Link
       href={ECHO_SEGMENT_HREF.overview}
       aria-label={ariaLabel}
-      className="inline-flex min-h-9 items-center gap-2 rounded-md px-0 py-1 font-sans text-lg font-medium text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className={cn(
+        buttonVariants({ variant: 'ghost', size: 'sm' }),
+        '-ml-2 w-fit text-muted-foreground',
+      )}
     >
-      <ChevronLeft size={23} strokeWidth={1.8} aria-hidden />
+      <ChevronLeft size={15} strokeWidth={1.8} aria-hidden />
       {label}
     </Link>
   );
@@ -209,31 +129,31 @@ function BackToOverviewLink({ label, ariaLabel }: { label: string; ariaLabel: st
 
 function EchoPageHeader({
   p,
+  segment,
   title,
   lead,
+  titleId,
   actions,
-  topTrailing,
 }: {
   p: EchoCopy;
+  segment: EchoSegment;
   title: string;
-  lead?: string;
+  lead: string;
+  titleId: string;
   actions?: ReactNode;
-  topTrailing?: ReactNode;
 }) {
   return (
-    <header className="mb-7">
-      <div className="flex min-h-9 items-center justify-between gap-4">
+    <EchoHero
+      pageTitle={title}
+      lead={lead}
+      titleId={titleId}
+      beforeTitle={segment === 'overview' ? undefined : (
         <BackToOverviewLink label={p.backToOverviewLabel} ariaLabel={p.backToOverviewAriaLabel} />
-        {topTrailing ? <div className="flex shrink-0 items-center gap-1.5">{topTrailing}</div> : null}
-      </div>
-      <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="min-w-0">
-          <h1 className={pageHeadingClass}>{title}</h1>
-          {lead ? <p className="mt-3 max-w-xl font-sans text-sm leading-6 text-muted-foreground">{lead}</p> : null}
-        </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
-    </header>
+      )}
+      actions={actions}
+    >
+      <EchoSegmentNav activeSegment={segment} />
+    </EchoHero>
   );
 }
 
@@ -247,39 +167,24 @@ function OverviewPanel({
   onContinue: () => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <EchoTopBar
-        leading={(
-          <>
-            <BackForwardControls />
-            <button type="button" className="ml-1 inline-flex items-center gap-1 rounded-lg px-2 py-1 font-sans text-base font-medium text-foreground hover:bg-[var(--amber-subtle)]">
-              {p.todayLabel}
-              <ChevronDown size={16} aria-hidden />
-            </button>
-          </>
-        )}
-        trailing={(
-          <>
-            <EchoIconButton label="Search"><Search size={21} aria-hidden /></EchoIconButton>
-            <EchoIconButton label="Calendar"><CalendarDays size={21} aria-hidden /></EchoIconButton>
-          </>
-        )}
-      />
-
-      <header className="relative isolate overflow-hidden rounded-lg px-7 pb-9 pt-3 md:px-9 md:pb-11">
+    <>
+      <section className={cn(echoSurfaceClass, 'relative isolate overflow-hidden p-6 md:p-8')} aria-labelledby="echo-overview-rhythm-title">
         <div className="pointer-events-none absolute inset-0 -z-10">
-          <div className="absolute right-10 top-10 h-16 w-16 rounded-full bg-[radial-gradient(circle_at_35%_35%,color-mix(in_srgb,var(--amber)_56%,var(--background)),color-mix(in_srgb,var(--amber)_18%,transparent)_68%,transparent_70%)] blur-[0.2px]" />
-          <div className="absolute bottom-0 right-0 h-36 w-[72%] rounded-t-[100%] bg-[linear-gradient(160deg,transparent_10%,color-mix(in_srgb,var(--muted)_72%,transparent)_45%,transparent_78%)] opacity-90" />
-          <div className="absolute bottom-1 right-8 h-28 w-[62%] rounded-t-[100%] bg-[linear-gradient(160deg,transparent_20%,color-mix(in_srgb,var(--muted-foreground)_18%,transparent)_48%,transparent_82%)] opacity-80" />
-          <div className="absolute bottom-4 right-24 h-20 w-[46%] rounded-t-[100%] bg-[linear-gradient(160deg,transparent_24%,color-mix(in_srgb,var(--amber)_12%,transparent)_52%,transparent_82%)]" />
+          <div className="absolute right-10 top-10 h-16 w-16 rounded-full border border-[var(--amber)]/20 bg-[var(--amber)]/10" />
+          <div className="absolute -bottom-10 right-[-4%] h-40 w-[76%] rounded-t-full border-t border-muted-foreground/15" />
+          <div className="absolute -bottom-5 right-8 h-32 w-[62%] rounded-t-full border-t border-muted-foreground/20" />
+          <div className="absolute bottom-3 right-24 h-24 w-[48%] rounded-t-full border-t border-[var(--amber)]/20" />
         </div>
-        <h1 className={pageHeadingClass}>
+        <span className="mb-3 inline-flex rounded-full bg-muted/45 px-3 py-1 font-sans text-xs font-medium text-muted-foreground">
+          {p.todayLabel}
+        </span>
+        <h2 id="echo-overview-rhythm-title" className="max-w-2xl font-sans text-xl font-semibold leading-tight text-foreground md:text-2xl">
           {p.overviewHeroTitle}
-        </h1>
-        <p className="mt-3 font-sans text-base text-muted-foreground">{p.overviewHeroSubtitle}</p>
-      </header>
+        </h2>
+        <p className="mt-3 max-w-2xl font-sans text-sm leading-6 text-muted-foreground">{p.overviewHeroSubtitle}</p>
+      </section>
 
-      <section className={cn(paperSurfaceClass, 'mt-6 p-6 md:p-7')}>
+      <section className={cn(echoSurfaceClass, 'p-6 md:p-7')}>
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -290,11 +195,13 @@ function OverviewPanel({
               {dailyLine.trim() || p.overviewNarrativeBody}
             </p>
           </div>
-          <PrimaryButton label={p.continueLabel} onClick={onContinue} />
+          <Button type="button" variant="amber" size="xl" onClick={onContinue}>
+            {p.continueLabel}
+          </Button>
         </div>
       </section>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <OverviewStatCard
           href={ECHO_SEGMENT_HREF.imprint}
           icon={<NotebookText size={25} strokeWidth={1.65} />}
@@ -320,7 +227,7 @@ function OverviewPanel({
           tone="sage"
         />
       </div>
-    </div>
+    </>
   );
 }
 
@@ -349,8 +256,8 @@ function OverviewStatCard({
     <Link
       href={href}
       className={cn(
-        paperPanelClass,
-        'group block min-h-[8.75rem] p-5 transition-[background-color,border-color,transform] duration-150 hover:border-[var(--amber)]/28 hover:bg-[color-mix(in_srgb,var(--background)_84%,var(--card))] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        echoPanelClass,
+        'group block min-h-[8.75rem] p-5 transition-[background-color,border-color,transform] duration-150 hover:border-[var(--amber)]/30 hover:bg-muted/25 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )}
     >
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -368,55 +275,27 @@ function OverviewStatCard({
 
 function ImprintPanel({
   p,
-  title,
   dailyLine,
   setDailyLine,
   dailySaved,
   persistDaily,
-  onOpenAgent,
-  onDailyEchoGenerated,
 }: {
   p: EchoCopy;
-  title: string;
   dailyLine: string;
   setDailyLine: (value: string) => void;
   dailySaved: boolean;
   persistDaily: () => void;
-  onOpenAgent: () => void;
-  onDailyEchoGenerated: (report: DailyEchoReport) => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-4xl">
-      <EchoPageHeader
-        p={p}
-        title={title}
-        topTrailing={(
-          <>
-            <EchoIconButton label="Search"><Search size={20} aria-hidden /></EchoIconButton>
-            <EchoIconButton label="Theme"><SunMedium size={20} aria-hidden /></EchoIconButton>
-            <EchoIconButton label="Menu"><Menu size={21} aria-hidden /></EchoIconButton>
-          </>
-        )}
-        actions={(
-          <>
-            <DailyEchoReportButton
-              onGenerated={onDailyEchoGenerated}
-              onError={(err) => console.error('[EchoImprint]', err)}
-              locale={{ t: p }}
-            />
-            <PrimaryButton label={p.continueRecordLabel} onClick={onOpenAgent} />
-          </>
-        )}
-      />
-
-      <div className="mb-7">
+    <>
+      <div>
         <div className="inline-flex rounded-full bg-muted/55 p-1 font-sans text-sm">
           <span className="rounded-full bg-[var(--amber)] px-5 py-1.5 text-[var(--amber-foreground)] shadow-sm">{p.todayLabel}</span>
           <span className="px-5 py-1.5 text-muted-foreground">{p.weekLabel}</span>
         </div>
       </div>
 
-      <section className={cn(paperSurfaceClass, 'overflow-hidden')}>
+      <section className={cn(echoSurfaceClass, 'overflow-hidden')}>
         <div className="divide-y divide-border/55">
           {p.imprintLogEntries.map((entry, index) => (
             <div key={`${entry.time}-${entry.title}`} className="grid grid-cols-[4.25rem_1fr] gap-4 px-4 py-4 md:grid-cols-[5rem_1fr] md:px-6">
@@ -426,7 +305,7 @@ function ImprintPanel({
                   'absolute left-0 top-2 h-full w-px bg-border',
                   index === p.imprintLogEntries.length - 1 && 'hidden',
                 )} aria-hidden />
-                <span className="absolute left-[-4px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-[color-mix(in_srgb,var(--amber)_16%,var(--background))] bg-[color-mix(in_srgb,var(--amber)_18%,var(--background))] shadow-[0_0_0_4px_color-mix(in_srgb,var(--amber)_8%,transparent)]" aria-hidden />
+                <span className="absolute left-[-4px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--amber)]/25 bg-[var(--amber)]/20 shadow-[0_0_0_4px_var(--amber-subtle)]" aria-hidden />
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <h2 className="font-sans text-base font-medium text-foreground">{entry.title}</h2>
@@ -446,7 +325,7 @@ function ImprintPanel({
         </div>
       </section>
 
-      <section className={cn(paperPanelClass, 'mt-5 p-5')}>
+      <section className={cn(echoPanelClass, 'p-5')}>
         <label htmlFor="echo-daily-line" className="font-sans text-sm font-medium text-foreground">
           {p.dailyLineLabel}
         </label>
@@ -466,41 +345,25 @@ function ImprintPanel({
           </span>
         </p>
       </section>
-    </div>
+    </>
   );
 }
 
 function ThreadsPanel({
   p,
-  title,
   selectedIndex,
   onSelect,
 }: {
   p: EchoCopy;
-  title: string;
   selectedIndex: number;
   onSelect: (index: number) => void;
 }) {
   const selected = p.threadItems[selectedIndex] ?? p.threadItems[0];
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      <EchoPageHeader
-        p={p}
-        title={title}
-        lead={p.threadsLead}
-        topTrailing={(
-          <>
-            <EchoIconButton label="Search"><Search size={22} aria-hidden /></EchoIconButton>
-            <button type="button" aria-label="New thread" className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--amber)] text-[var(--amber-foreground)] shadow-[0_10px_22px_color-mix(in_srgb,var(--amber)_22%,transparent)]">
-              <Plus size={20} aria-hidden />
-            </button>
-          </>
-        )}
-      />
-
+    <>
       <div className="grid min-h-[31rem] gap-5 lg:grid-cols-[minmax(16rem,0.82fr)_minmax(0,1.4fr)]">
-        <section className={cn(paperPanelClass, 'overflow-hidden')}>
+        <section className={cn(echoPanelClass, 'overflow-hidden')}>
           <div className="border-b border-border/45 px-5 py-4">
             <h2 className="font-sans text-sm font-medium text-foreground">{p.threadsListTitle}</h2>
           </div>
@@ -513,7 +376,7 @@ function ThreadsPanel({
                 onClick={() => onSelect(index)}
                 className={cn(
                   'group relative flex w-full items-center gap-4 border-b border-border/45 px-5 py-5 text-left transition-[background-color,color] duration-150 last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  active ? 'bg-[color-mix(in_srgb,var(--amber)_14%,var(--background))]' : 'hover:bg-muted/30',
+                  active ? 'bg-[var(--amber)]/10' : 'hover:bg-muted/30',
                 )}
               >
                 {active ? <span className="absolute bottom-0 left-0 top-0 w-1 rounded-r-full bg-[var(--amber)]" aria-hidden /> : null}
@@ -529,11 +392,11 @@ function ThreadsPanel({
           })}
         </section>
 
-        <section className={cn(paperSurfaceClass, 'flex flex-col p-7 md:p-9')}>
+        <section className={cn(echoSurfaceClass, 'flex flex-col p-7 md:p-9')}>
           <div className="flex items-start gap-4">
             <span className="mt-1 text-[var(--amber)]" aria-hidden>{threadIcons[selectedIndex % threadIcons.length]}</span>
             <div className="min-w-0">
-              <h1 className="font-sans text-2xl font-medium leading-tight tracking-normal text-foreground">{selected.title}</h1>
+              <h2 className="font-sans text-xl font-semibold leading-tight text-foreground">{selected.title}</h2>
               <p className="mt-3 font-sans text-sm text-muted-foreground">{selected.meta}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {selected.tags.map((tag) => (
@@ -556,65 +419,32 @@ function ThreadsPanel({
             <h2 className="font-sans text-lg font-medium text-foreground">{p.threadExtendTitle}</h2>
             <p className="mt-4 max-w-xl font-sans text-sm leading-7 text-muted-foreground">{selected.reflection}</p>
           </div>
-
-          <div className="mt-auto flex items-center gap-2 pt-8">
-            <EchoIconButton label="Bookmark"><Bookmark size={19} aria-hidden /></EchoIconButton>
-            <EchoIconButton label="More"><MoreVertical size={19} aria-hidden /></EchoIconButton>
-          </div>
         </section>
       </div>
-    </div>
+    </>
   );
 }
 
 function GrowthPanel({
   p,
-  title,
   growthIntent,
   setGrowthIntent,
   growthSaved,
   persistGrowth,
-  onOpenAgent,
 }: {
   p: EchoCopy;
-  title: string;
   growthIntent: string;
   setGrowthIntent: (value: string) => void;
   growthSaved: boolean;
   persistGrowth: () => void;
-  onOpenAgent: () => void;
 }) {
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      <EchoPageHeader
-        p={p}
-        title={title}
-        lead={p.growthLead}
-        topTrailing={(
-          <>
-            <EchoIconButton label="Calendar"><CalendarDays size={21} aria-hidden /></EchoIconButton>
-            <EchoIconButton label="More"><MoreVertical size={21} aria-hidden /></EchoIconButton>
-          </>
-        )}
-        actions={(
-          <>
-            <div className="inline-flex items-center gap-1 rounded-lg bg-muted/35 px-1.5 py-1">
-              <button type="button" className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-sans text-sm font-medium text-foreground hover:bg-background/65">
-                {p.seasonLabel}
-                <ChevronDown size={15} aria-hidden />
-              </button>
-              <BackForwardControls />
-            </div>
-            <PrimaryButton label={p.growthChatLabel} onClick={onOpenAgent} />
-          </>
-        )}
-      />
-
+    <>
       <div className="grid gap-5 lg:grid-cols-2">
-        <section className={cn(paperSurfaceClass, 'p-7')}>
+        <section className={cn(echoSurfaceClass, 'p-7')}>
           <div className="mb-7 flex items-center gap-3">
             <Flag size={22} className="text-[var(--amber)]" aria-hidden />
-            <h1 className={panelHeadingClass}>{p.growthMilestonesTitle}</h1>
+            <h2 className={panelHeadingClass}>{p.growthMilestonesTitle}</h2>
           </div>
           <div className="space-y-0">
             {p.growthMilestones.map((item, index) => (
@@ -632,7 +462,7 @@ function GrowthPanel({
           </div>
         </section>
 
-        <section className={cn(paperSurfaceClass, 'p-7')}>
+        <section className={cn(echoSurfaceClass, 'p-7')}>
           <div className="mb-7 flex items-center gap-3">
             <Repeat2 size={22} className="text-foreground" aria-hidden />
             <h2 className={panelHeadingClass}>{p.growthHabitsTitle}</h2>
@@ -659,7 +489,7 @@ function GrowthPanel({
         </section>
       </div>
 
-      <section className={cn(paperSurfaceClass, 'relative mt-5 overflow-hidden p-7 md:p-8')}>
+      <section className={cn(echoSurfaceClass, 'relative overflow-hidden p-7 md:p-8')}>
         <div className="max-w-2xl">
           <div className="mb-5 flex items-center gap-3">
             <Leaf size={24} className="text-[var(--success)]" aria-hidden />
@@ -676,9 +506,9 @@ function GrowthPanel({
               className="min-h-24 resize-y rounded-lg border border-border/50 bg-background/70 px-3 py-3 font-sans text-sm leading-6 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <div className="flex flex-row items-center gap-2 md:flex-col md:items-stretch">
-              <button type="button" onClick={persistGrowth} className={subtleButtonClass}>
+              <Button type="button" variant="outline" size="lg" onClick={persistGrowth}>
                 {growthSaved ? p.savedFlash : p.growthSaveLabel}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -690,7 +520,7 @@ function GrowthPanel({
           <span className="absolute bottom-24 left-14 h-12 w-7 origin-bottom rotate-45 rounded-full bg-current opacity-50" />
         </div>
       </section>
-    </div>
+    </>
   );
 }
 
@@ -804,69 +634,81 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
     [locale, segment, title, p.factsHeading, snapshot, p.dailyLineLabel, dailyLine, p.growthIntentLabel, growthIntent],
   );
 
+  const headerActions = segment === 'imprint'
+    ? (
+        <>
+          <DailyEchoReportButton
+            onGenerated={handleDailyEchoGenerated}
+            onError={(err) => console.error('[EchoImprint]', err)}
+            locale={{ t: p }}
+          />
+          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
+            {p.continueRecordLabel}
+          </Button>
+        </>
+      )
+    : segment === 'growth'
+      ? (
+          <Button type="button" variant="amber" size="xl" onClick={openSegmentAsk}>
+            {p.growthChatLabel}
+          </Button>
+        )
+      : undefined;
+
   return (
     <ContentPageShell
       as="article"
       className={echoPageClass}
+      data-content-page-shell="echo"
       aria-labelledby={pageTitleId}
     >
-      <h1 id={pageTitleId} className="sr-only">{title}</h1>
-
-      {segment === 'overview' && (
-        <OverviewPanel
+      <div className={echoBodyClass}>
+        <EchoPageHeader
           p={p}
-          dailyLine={dailyLine}
-          onContinue={openImprintAsk}
+          segment={segment}
+          title={title}
+          lead={lead}
+          titleId={pageTitleId}
+          actions={headerActions}
         />
-      )}
 
-      {segment === 'imprint' && (
-        <>
+        {segment === 'overview' && (
+          <OverviewPanel
+            p={p}
+            dailyLine={dailyLine}
+            onContinue={openImprintAsk}
+          />
+        )}
+
+        {segment === 'imprint' && (
           <ImprintPanel
             p={p}
-            title={echo.imprintTitle}
             dailyLine={dailyLine}
             setDailyLine={setDailyLine}
             dailySaved={dailySaved}
             persistDaily={persistDaily}
-            onOpenAgent={openImprintAsk}
-            onDailyEchoGenerated={handleDailyEchoGenerated}
           />
-          <DailyEchoReportDrawer
-            isOpen={isDailyEchoOpen}
-            report={dailyEchoReport}
-            isGenerating={isDailyEchoGenerating}
-            onClose={() => setIsDailyEchoOpen(false)}
-            onRegenerate={handleDailyEchoRegenerate}
-            onContinueAgent={handleDailyEchoContinueAgent}
-            locale={{ t: p }}
+        )}
+
+        {segment === 'threads' && (
+          <ThreadsPanel
+            p={p}
+            selectedIndex={selectedThreadIndex}
+            onSelect={setSelectedThreadIndex}
           />
-        </>
-      )}
+        )}
 
-      {segment === 'threads' && (
-        <ThreadsPanel
-          p={p}
-          title={echo.threadsTitle}
-          selectedIndex={selectedThreadIndex}
-          onSelect={setSelectedThreadIndex}
-        />
-      )}
+        {segment === 'growth' && (
+          <GrowthPanel
+            p={p}
+            growthIntent={growthIntent}
+            setGrowthIntent={setGrowthIntent}
+            growthSaved={growthSaved}
+            persistGrowth={persistGrowth}
+          />
+        )}
 
-      {segment === 'growth' && (
-        <GrowthPanel
-          p={p}
-          title={echo.growthTitle}
-          growthIntent={growthIntent}
-          setGrowthIntent={setGrowthIntent}
-          growthSaved={growthSaved}
-          persistGrowth={persistGrowth}
-          onOpenAgent={openSegmentAsk}
-        />
-      )}
-
-      {(segment === 'threads' || segment === 'growth') && (
-        <div className="mx-auto mt-6 w-full max-w-5xl">
+        {(segment === 'threads' || segment === 'growth') && (
           <EchoInsightCollapsible
             title={p.insightTitle}
             showLabel={p.insightShow}
@@ -879,7 +721,19 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
             retryLabel={p.insightRetry}
             userPrompt={insightUserPrompt}
           />
-        </div>
+        )}
+      </div>
+
+      {segment === 'imprint' && (
+        <DailyEchoReportDrawer
+          isOpen={isDailyEchoOpen}
+          report={dailyEchoReport}
+          isGenerating={isDailyEchoGenerating}
+          onClose={() => setIsDailyEchoOpen(false)}
+          onRegenerate={handleDailyEchoRegenerate}
+          onContinueAgent={handleDailyEchoContinueAgent}
+          locale={{ t: p }}
+        />
       )}
     </ContentPageShell>
   );

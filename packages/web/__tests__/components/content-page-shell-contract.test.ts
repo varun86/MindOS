@@ -13,10 +13,19 @@ describe('Content page shell contract', () => {
     expect(source).toContain("import { ContentPageShell } from '@/components/shared/ContentPageShell'");
     expect(source).toContain('<ContentPageShell');
     expect(source).toContain('as="article"');
+    expect(source).toContain('data-content-page-shell="echo"');
     expect(source).toContain('const echoPageClass =');
     expect(source).toContain("'echo-content-page");
     expect(source).toContain('className={echoPageClass}');
+    expect(source).toContain('const echoBodyClass =');
+    expect(source).toContain('max-w-5xl');
+    expect(source).toContain('<EchoSegmentNav activeSegment={segment} />');
     expect(source).not.toContain('mx-auto max-w-3xl px-4 py-6');
+    expect(source).not.toContain('bg-[radial-gradient');
+    expect(source).not.toContain('color-mix');
+    expect(source).not.toContain('function PrimaryButton');
+    expect(source).not.toContain('function EchoIconButton');
+    expect(source).not.toContain('text-3xl font-medium');
   });
 
   it('keeps Echo hero as a plain workbench header instead of a nested card', () => {
