@@ -332,6 +332,7 @@ function BuiltInMindSpacesSection({
                 <span className="mb-3 flex items-start gap-3">
                   <span
                     data-mind-system-icon={pillar.slot.key}
+                    title={pillar.slot.path}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/35 bg-[var(--amber-subtle)] text-base font-semibold text-[var(--amber)] transition-colors group-hover:border-[var(--amber)]/50 group-hover:bg-[var(--amber-dim)]"
                     aria-hidden="true"
                   >
@@ -348,17 +349,11 @@ function BuiltInMindSpacesSection({
                 >
                   {desc}
                 </span>
-              </Link>
-              <span className="mt-3 flex items-center justify-between border-t border-border/40 pt-2">
-                <Link
-                  href={`/view/${encodePath(pillar.slot.path)}`}
-                  className="inline-flex min-w-0 items-center gap-1 rounded-sm font-mono text-[10px] text-muted-foreground/45 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="truncate">{pillar.slot.path}</span>
+                <span className="mt-3 flex items-center justify-end border-t border-border/40 pt-2">
                   <span className="sr-only">{t.home.mindAssistant.openSpace}</span>
-                </Link>
-                <ArrowRight size={12} className="shrink-0 text-[var(--amber)]/45 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-[var(--amber)]" aria-hidden="true" />
-              </span>
+                  <ArrowRight size={12} className="shrink-0 text-[var(--amber)]/45 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-[var(--amber)]" aria-hidden="true" />
+                </span>
+              </Link>
             </article>
           );
         })}

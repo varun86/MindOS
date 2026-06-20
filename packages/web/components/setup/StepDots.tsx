@@ -21,7 +21,7 @@ export default function StepDots({ step, setStep, stepTitles, disabled, numbered
   const isConfirmStep = step >= count;
 
   return (
-    <div className="mb-7 flex items-center gap-1" role="navigation" aria-label="Setup steps">
+    <div className="flex items-center gap-1" role="navigation" aria-label="Setup steps">
       {dotsToShow.map((title: string, i: number) => (
         <div key={i} className="flex items-center gap-1.5">
           {i > 0 && (
