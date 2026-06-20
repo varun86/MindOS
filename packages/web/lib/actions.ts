@@ -117,7 +117,7 @@ export async function undoDeleteAction(trashId: string): Promise<{ success: bool
 }
 
 /**
- * Create a new Mind Space (top-level directory) with README.md + auto-scaffolded INSTRUCTION.md.
+ * Create a new Mind Space with README.md and INSTRUCTION.md.
  * The description is written into README.md so it appears on the homepage Space card
  * and is loaded by Agent bootstrap as directory context.
  */

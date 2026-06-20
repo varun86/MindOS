@@ -15,34 +15,26 @@ import type { BuiltInMindSystemSpaceRecord } from '@/lib/space-records';
 const mindSystemSlots: MindSystemSlot[] = [
   {
     key: 'dao',
-    systemId: 'MIND_DAO',
     label: '道',
     path: 'MIND_DAO',
-    role: 'world-model',
     order: 10,
   },
   {
     key: 'fa',
-    systemId: 'MIND_FA',
     label: '法',
     path: 'MIND_FA',
-    role: 'principles',
     order: 20,
   },
   {
     key: 'shu',
-    systemId: 'MIND_SHU',
     label: '术',
     path: 'MIND_SHU',
-    role: 'methods',
     order: 30,
   },
   {
     key: 'qi',
-    systemId: 'MIND_QI',
     label: '器',
     path: 'MIND_QI',
-    role: 'tools-assets',
     order: 40,
   },
 ];

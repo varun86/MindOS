@@ -20,7 +20,7 @@ export function generateReadmeTemplate(fullPath: string, name: string, descripti
 }
 
 /**
- * Create a Mind Space on disk: `{fullPath}/README.md` plus scaffold from {@link createFile} / scaffoldIfNewSpace.
+ * Create a Mind Space on disk with `{fullPath}/README.md` and `{fullPath}/INSTRUCTION.md`.
  * Caller must invalidate app file-tree cache (e.g. `invalidateCache()` in `lib/fs.ts`).
  */
 export function createSpaceFilesystem(
@@ -48,8 +48,7 @@ export function createSpaceFilesystem(
 
   createFile(mindRoot, `${fullPath}/README.md`, readmeContent);
 
-  // Explicitly create INSTRUCTION.md for ALL spaces (including nested ones).
-  // scaffoldIfNewSpace only handles top-level dirs; nested spaces need this.
+  // Explicitly create INSTRUCTION.md for ALL spaces, including nested ones.
   const absDir = resolveExistingSafe(mindRoot, fullPath);
   const instructionPath = path.join(absDir, 'INSTRUCTION.md');
   if (!fs.existsSync(instructionPath)) {

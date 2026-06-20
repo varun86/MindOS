@@ -16,7 +16,7 @@ describe('mind-system metadata', () => {
       const slots = defaultMindSystemSlots();
 
       expect(slots.map(slot => slot.key)).toEqual(['dao', 'fa', 'shu', 'qi']);
-      expect(slots[0]).toMatchObject({ key: 'dao', systemId: 'MIND_DAO', path: 'MIND_DAO' });
+      expect(slots[0]).toMatchObject({ key: 'dao', path: 'MIND_DAO' });
       expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO'))).toBe(false);
       expect(fs.existsSync(path.join(mindRoot, '99 验'))).toBe(false);
       expect(listMindSystemSlots(mindRoot)).toEqual([]);
@@ -47,7 +47,6 @@ mindSpace:
       expect(slots).toHaveLength(1);
       expect(slots[0]).toMatchObject({
         key: 'dao',
-        systemId: 'MIND_DAO',
         label: '道',
         path: 'CustomDao',
         order: 7,

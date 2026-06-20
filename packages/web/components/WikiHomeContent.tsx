@@ -317,7 +317,7 @@ function BuiltInMindSpacesSection({
       ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
-          const desc = pillar.data?.desc ?? pillar.slot.role;
+          const desc = pillar.data?.desc ?? pillar.description;
           return (
             <article
               key={pillar.slot.key}
@@ -339,7 +339,6 @@ function BuiltInMindSpacesSection({
                   </span>
                   <span className="min-w-0 flex-1 pt-0.5">
                     <span className="block text-sm font-semibold leading-5 text-foreground">{pillar.data?.title ?? pillar.slot.label}</span>
-                    <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/45">{pillar.slot.systemId}</span>
                   </span>
                 </span>
                 <span

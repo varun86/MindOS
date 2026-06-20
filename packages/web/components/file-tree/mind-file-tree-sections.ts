@@ -51,10 +51,8 @@ export function splitMindFileTreeSections(
 function buildMindSystemSlotMap(slots: MindSystemSlot[]): Map<string, MindSystemSlot> {
   const map = new Map<string, MindSystemSlot>();
   for (const slot of slots) {
-    for (const candidate of [slot.path, slot.systemId]) {
-      const normalized = normalizeTopLevelPath(candidate);
-      if (normalized) map.set(normalized, slot);
-    }
+    const normalized = normalizeTopLevelPath(slot.path);
+    if (normalized) map.set(normalized, slot);
   }
   return map;
 }

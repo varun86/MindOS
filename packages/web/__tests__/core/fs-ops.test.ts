@@ -106,6 +106,14 @@ describe('fs-ops', () => {
       expect(readSeeded(mindRoot, 'a/b/c.md')).toBe('deep');
     });
 
+    it('does not implicitly turn a new top-level folder into a Space', () => {
+      createFile(mindRoot, 'Plain/note.md', 'ordinary');
+
+      expect(readSeeded(mindRoot, 'Plain/note.md')).toBe('ordinary');
+      expect(fs.existsSync(path.join(mindRoot, 'Plain', 'INSTRUCTION.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, 'Plain', 'README.md'))).toBe(false);
+    });
+
     it('throws if file already exists', () => {
       seedFile(mindRoot, 'exists.md', 'content');
       expect(() => createFile(mindRoot, 'exists.md', 'new')).toThrow('already exists');
