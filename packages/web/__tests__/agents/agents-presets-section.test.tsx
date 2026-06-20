@@ -223,24 +223,27 @@ describe('AgentsPresetsSection', () => {
     expect(host.textContent).toContain('Inbox notes');
     expect(host.textContent).toContain('Local decisions');
     expect(host.textContent).not.toContain('Skill Librarian');
-    expect(host.textContent).not.toContain('All assistants');
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it('places assistant search between filters and New Assistant', async () => {
+  it('places assistant filters, search, and creation inside the library toolbar', async () => {
     mockAssistantsFetch();
     const { host, root } = await renderSection();
 
     const commandCenter = host.querySelector('[data-assistant-command-center]');
     expect(commandCenter).not.toBeNull();
-    const labels = Array.from(commandCenter!.children).map((child) => child.textContent ?? '');
-    expect(labels[0]).toContain('Custom');
-    expect(labels[1]).not.toContain('Custom');
-    expect((commandCenter!.children[1] as HTMLElement).querySelector('input')).not.toBeNull();
-    expect(labels[2]).toContain('New Assistant');
+    expect(commandCenter!.closest('[data-assistant-command-column="library"]')).not.toBeNull();
+    expect(commandCenter!.textContent).toContain('All assistants');
+    expect(commandCenter!.textContent).toContain('Built-in');
+    expect(commandCenter!.textContent).toContain('Custom');
+    expect(commandCenter!.textContent).toContain('New Assistant');
+    expect(commandCenter!.querySelector('input[aria-label="Search assistants..."]')).not.toBeNull();
+
+    expect(host.querySelector('[data-assistant-command-column="workspace"] button[data-assistant-run="inbox-organizer"]')).not.toBeNull();
+    expect(Array.from(host.querySelectorAll('button[data-assistant-run="inbox-organizer"]'))).toHaveLength(1);
 
     await act(async () => {
       root.unmount();

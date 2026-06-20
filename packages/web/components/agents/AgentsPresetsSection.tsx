@@ -15,7 +15,6 @@ import {
   Save,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   UserRound,
@@ -162,6 +161,7 @@ type PresetsCopy = {
   noMatchesHint?: string;
   inspectorTitle?: string;
   recentRunLabel?: string;
+  runOutputLabel?: string;
   promptPlaceholder?: (name: string) => string;
 };
 
@@ -513,20 +513,6 @@ export default function AgentsPresetsSection({
 
   return (
     <div className="space-y-4">
-      <AssistantCommandBar
-        copy={copy}
-        counts={counts}
-        query={query}
-        filter={filter}
-        creating={creating}
-        selected={selected}
-        running={Boolean(selected && runningAssistantId === selected.id)}
-        onQueryChange={setQuery}
-        onFilterChange={setFilter}
-        onToggleCreate={() => setCreating(current => !current)}
-        onRunSelected={() => selected ? void runAssistant(selected) : undefined}
-      />
-
       {creating ? (
         <CreateAssistantComposer
           draft={createDraft}
@@ -541,7 +527,7 @@ export default function AgentsPresetsSection({
         />
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm xl:grid xl:min-h-[680px] xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/30 shadow-sm xl:grid xl:min-h-[690px] xl:grid-cols-[360px_minmax(0,1fr)]">
         <AssistantDirectory
           copy={copy}
           loading={loading}
@@ -551,13 +537,16 @@ export default function AgentsPresetsSection({
           groupedAssistants={groupedAssistants}
           selectedId={selected?.id}
           query={query}
+          filter={filter}
+          creating={creating}
           onRetry={loadAssistants}
+          onQueryChange={setQuery}
+          onFilterChange={setFilter}
+          onToggleCreate={() => setCreating(current => !current)}
           onSelect={(assistantId) => {
             setSelectedId(assistantId);
             setSection('overview');
           }}
-          onRun={(assistant) => void runAssistant(assistant)}
-          onDelete={(assistant) => void deleteAssistant(assistant)}
           runningAssistantId={runningAssistantId}
           deletingAssistantId={deletingAssistantId}
         />
@@ -618,105 +607,6 @@ export default function AgentsPresetsSection({
   );
 }
 
-function AssistantCommandBar({
-  copy,
-  counts,
-  query,
-  filter,
-  creating,
-  selected,
-  running,
-  onQueryChange,
-  onFilterChange,
-  onToggleCreate,
-  onRunSelected,
-}: {
-  copy: PresetsCopy;
-  counts: AssistantCounts;
-  query: string;
-  filter: AssistantFilter;
-  creating: boolean;
-  selected?: AssistantView;
-  running: boolean;
-  onQueryChange: (value: string) => void;
-  onFilterChange: (value: AssistantFilter) => void;
-  onToggleCreate: () => void;
-  onRunSelected: () => void;
-}) {
-  const filterOptions: Array<{ value: AssistantFilter; label: string; count: number }> = [
-    { value: 'builtin', label: copy.filterBuiltin ?? copy.builtinLabel ?? 'Built-in', count: counts.builtin },
-    { value: 'custom', label: copy.filterCustom ?? copy.customLabel ?? 'Custom', count: counts.custom },
-  ];
-
-  return (
-    <div
-      data-assistant-command-center
-      className="grid gap-3 rounded-xl border border-border/60 bg-card/35 p-3 shadow-sm xl:grid-cols-[auto_minmax(260px,1fr)_auto]"
-    >
-      <div
-        role="group"
-        aria-label="Filter assistants"
-        className="flex min-h-10 min-w-0 items-center gap-1 overflow-x-auto rounded-lg border border-border/60 bg-background/70 p-1"
-      >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60" aria-hidden="true">
-          <SlidersHorizontal size={13} />
-        </span>
-        {filterOptions.map(option => (
-          <AssistantFilterPill
-            key={option.value}
-            active={filter === option.value}
-            label={option.label}
-            count={option.count}
-            onClick={() => onFilterChange(option.value)}
-          />
-        ))}
-      </div>
-
-      <label className="relative min-w-0">
-        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          aria-label={copy.searchPlaceholder ?? 'Search assistants'}
-          placeholder={copy.searchPlaceholder ?? 'Search assistants...'}
-          className="h-10 w-full rounded-lg border border-border bg-background/80 pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/45 focus-visible:border-[var(--amber)]/45 focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        {query ? (
-          <button
-            type="button"
-            onClick={() => onQueryChange('')}
-            aria-label="Clear search"
-            className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X size={13} />
-          </button>
-        ) : null}
-      </label>
-
-      <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-        <button
-          type="button"
-          onClick={onToggleCreate}
-          aria-expanded={creating}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-[var(--amber)]/45 bg-background px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {creating ? <X size={14} /> : <Plus size={14} />}
-          {copy.newAssistant ?? 'New Assistant'}
-        </button>
-        <button
-          type="button"
-          onClick={onRunSelected}
-          disabled={!selected?.promptReady || running}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--amber)] px-3 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-          {running ? copy.runningLabel ?? 'Running' : copy.launchTitle}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AssistantFilterPill({
   active,
   label,
@@ -733,15 +623,15 @@ function AssistantFilterPill({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`inline-flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active
-          ? 'bg-[var(--amber-dim)] text-[var(--amber-text)] shadow-sm'
+          ? 'bg-background text-[var(--amber-text)] shadow-sm'
           : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
       }`}
     >
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
       <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${
-        active ? 'bg-background/75 text-[var(--amber-text)]' : 'bg-muted/55 text-muted-foreground/75'
+        active ? 'bg-[var(--amber-subtle)] text-[var(--amber-text)]' : 'bg-muted/55 text-muted-foreground/75'
       }`}>
         {count}
       </span>
@@ -766,7 +656,7 @@ function CreateAssistantComposer({
 }) {
   const effectiveId = slugifyAssistantId(draft.id || draft.name);
   return (
-    <section className="rounded-xl border border-[var(--amber)]/25 bg-[var(--amber)]/[0.04] p-3 shadow-sm">
+    <section className="rounded-xl border border-[var(--amber)]/25 bg-[var(--amber)]/[0.04] p-4">
       <div className="grid gap-3 lg:grid-cols-[minmax(180px,0.75fr)_minmax(220px,1fr)_minmax(260px,1.3fr)_auto] lg:items-end">
         <label className="grid gap-1.5">
           <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">{copy.assistantIdLabel ?? 'Assistant ID'}</span>
@@ -836,10 +726,13 @@ function AssistantDirectory({
   groupedAssistants,
   selectedId,
   query,
+  filter,
+  creating,
   onRetry,
+  onQueryChange,
+  onFilterChange,
+  onToggleCreate,
   onSelect,
-  onRun,
-  onDelete,
   runningAssistantId,
   deletingAssistantId,
 }: {
@@ -851,32 +744,93 @@ function AssistantDirectory({
   groupedAssistants: AssistantGroups;
   selectedId?: string;
   query: string;
+  filter: AssistantFilter;
+  creating: boolean;
   onRetry: () => void;
+  onQueryChange: (value: string) => void;
+  onFilterChange: (value: AssistantFilter) => void;
+  onToggleCreate: () => void;
   onSelect: (assistantId: string) => void;
-  onRun: (assistant: AssistantView) => void;
-  onDelete: (assistant: AssistantView) => void;
   runningAssistantId: string | null;
   deletingAssistantId: string | null;
 }) {
+  const filterOptions: Array<{ value: AssistantFilter; label: string; count: number }> = [
+    { value: 'all', label: copy.filterAll ?? 'All assistants', count: counts.total },
+    { value: 'builtin', label: copy.filterBuiltin ?? copy.builtinLabel ?? 'Built-in', count: counts.builtin },
+    { value: 'custom', label: copy.filterCustom ?? copy.customLabel ?? 'Custom', count: counts.custom },
+  ];
+
   return (
-    <aside data-assistant-command-column="library" className="min-w-0 bg-card/30">
-      <div className="border-b border-border/55 p-3">
-        <div className="flex items-start gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
+    <aside data-assistant-command-column="library" className="min-w-0 bg-card/25">
+      <div className="space-y-3 border-b border-border/55 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
             <FolderLock size={15} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-foreground">{copy.presetRail}</p>
-            <p className="mt-0.5 truncate text-2xs text-muted-foreground/60">{copy.localRoot ?? 'Local Assistant Library'}</p>
+            <p className="text-sm font-semibold text-foreground">{copy.presetRail}</p>
+            <p className="mt-0.5 truncate text-[11px] font-medium text-[var(--amber-text)]">{copy.localRoot ?? 'Local Assistant Library'}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground/65">{copy.localRootHint ?? 'Local Assistant profiles are ready to inspect and edit.'}</p>
           </div>
-          <span className="rounded-md bg-background/80 px-2 py-1 font-mono text-2xs text-muted-foreground tabular-nums">
+          <span className="rounded-md bg-background/70 px-2 py-1 font-mono text-[10px] text-muted-foreground tabular-nums">
             {filteredCount}/{counts.total}
           </span>
         </div>
-        <p className="mt-2 text-2xs leading-relaxed text-muted-foreground/60">
-          {copy.localRootHint ?? 'Local Assistant profiles are ready to inspect and edit.'}
-        </p>
         <p className="sr-only">{copy.libraryHint}</p>
+
+        <div
+          data-assistant-command-center
+          className="space-y-2"
+        >
+          <div
+            role="group"
+            aria-label="Filter assistants"
+            className="grid grid-cols-3 gap-1 rounded-lg border border-border/55 bg-background/55 p-1"
+          >
+            {filterOptions.map(option => (
+              <AssistantFilterPill
+                key={option.value}
+                active={filter === option.value}
+                label={option.label}
+                count={option.count}
+                onClick={() => onFilterChange(option.value)}
+              />
+            ))}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_auto]">
+            <label className="relative min-w-0">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
+              <input
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                aria-label={copy.searchPlaceholder ?? 'Search assistants'}
+                placeholder={copy.searchPlaceholder ?? 'Search assistants...'}
+                className="h-9 w-full rounded-lg border border-border bg-background/75 pl-8 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/45 focus-visible:border-[var(--amber)]/45 focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => onQueryChange('')}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
+            </label>
+
+            <button
+              type="button"
+              onClick={onToggleCreate}
+              aria-expanded={creating}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--amber)]/40 bg-background/75 px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {creating ? <X size={13} /> : <Plus size={13} />}
+              {copy.newAssistant ?? 'New Assistant'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="max-h-[calc(100vh-260px)] min-h-[420px] overflow-y-auto">
@@ -908,8 +862,6 @@ function AssistantDirectory({
               copy={copy}
               selectedId={selectedId}
               onSelect={onSelect}
-              onRun={onRun}
-              onDelete={onDelete}
               runningAssistantId={runningAssistantId}
               deletingAssistantId={deletingAssistantId}
             />
@@ -920,8 +872,6 @@ function AssistantDirectory({
               copy={copy}
               selectedId={selectedId}
               onSelect={onSelect}
-              onRun={onRun}
-              onDelete={onDelete}
               runningAssistantId={runningAssistantId}
               deletingAssistantId={deletingAssistantId}
             />
@@ -939,8 +889,6 @@ function AssistantDirectoryGroup({
   copy,
   selectedId,
   onSelect,
-  onRun,
-  onDelete,
   runningAssistantId,
   deletingAssistantId,
 }: {
@@ -950,8 +898,6 @@ function AssistantDirectoryGroup({
   copy: PresetsCopy;
   selectedId?: string;
   onSelect: (assistantId: string) => void;
-  onRun: (assistant: AssistantView) => void;
-  onDelete: (assistant: AssistantView) => void;
   runningAssistantId: string | null;
   deletingAssistantId: string | null;
 }) {
@@ -971,14 +917,11 @@ function AssistantDirectoryGroup({
             readyLabel={copy.readyLabel ?? 'Ready'}
             needsPromptLabel={copy.needsPromptLabel ?? 'Needs prompt'}
             sourceLabel={assistant.source === 'builtin' ? copy.protectedLabel ?? 'Protected' : copy.customLabel ?? 'Custom'}
-            deleteAssistantLabel={copy.deleteAssistant ?? 'Delete'}
             protectedLabel={copy.protectedLabel ?? 'Protected'}
-            runLabel={copy.launchTitle}
+            runningLabel={copy.runningLabel ?? 'Running'}
             deleting={deletingAssistantId === assistant.id}
             running={runningAssistantId === assistant.id}
             onClick={() => onSelect(assistant.id)}
-            onRun={() => onRun(assistant)}
-            onDelete={() => onDelete(assistant)}
           />
         ))}
       </div>
@@ -1039,16 +982,17 @@ function AssistantUnifiedDetail({
   ];
   const resources = `${assistant.skills.length} ${copy.skillsTitle} · ${assistant.mcp.length} ${copy.mcpTitle ?? 'MCP'}`;
   const description = assistant.sections.role || assistant.description || assistant.promptPreview || (copy.promptMissingHint ?? 'Create a prompt to describe how this assistant should work.');
+  const permissionLabel = formatAssistantPermission(assistant.permission, copy);
 
   return (
-    <article data-assistant-command-column="workspace" className="min-h-full bg-card/40">
-      <div className="border-b border-border/55 px-5 py-5">
+    <article data-assistant-command-column="workspace" className="min-h-full bg-background/30">
+      <div className="border-b border-border/55 px-5 py-5 lg:px-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 items-start gap-3.5">
             <AssistantAvatar assistant={assistant} size="lg" />
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-2xl font-semibold leading-tight text-foreground">{assistant.name}</h2>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="text-2xl font-semibold leading-tight tracking-normal text-foreground">{assistant.name}</h2>
                 <ReadinessPill
                   ready={assistant.promptReady}
                   readyLabel={copy.readyLabel ?? 'Ready'}
@@ -1063,7 +1007,7 @@ function AssistantUnifiedDetail({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 {description}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
@@ -1080,13 +1024,13 @@ function AssistantUnifiedDetail({
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[280px] xl:grid-cols-1">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <button
               type="button"
               onClick={onRun}
               disabled={!assistant.promptReady || running}
               data-assistant-run={assistant.id}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-9 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               {running ? copy.runningLabel ?? 'Running' : copy.launchTitle}
@@ -1096,15 +1040,15 @@ function AssistantUnifiedDetail({
               onClick={onDelete}
               disabled={!assistant.deletable || deleting}
               data-assistant-delete={assistant.id}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background/80 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {deleting ? <Loader2 size={14} className="animate-spin" /> : assistant.deletable ? <Trash2 size={14} /> : <ShieldCheck size={14} />}
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : assistant.deletable ? <Trash2 size={13} /> : <ShieldCheck size={13} />}
               {assistant.deletable ? copy.deleteAssistant ?? 'Delete' : copy.protectedLabel ?? 'Protected'}
             </button>
           </div>
         </div>
 
-        <div className="mt-5 grid overflow-hidden rounded-lg border border-border/45 bg-border/35 sm:grid-cols-2">
+        <div className="mt-5 grid gap-2 border-t border-border/45 pt-4 sm:grid-cols-2 2xl:grid-cols-4">
           <DetailMetaItem
             icon={<Route size={13} />}
             label={copy.preferredAgentLabel ?? 'Preferred agent'}
@@ -1115,11 +1059,22 @@ function AssistantUnifiedDetail({
             label={copy.resourcesSection}
             value={resources}
           />
+          <DetailMetaItem
+            icon={<ShieldCheck size={13} />}
+            label={copy.contractTitle}
+            value={permissionLabel}
+            tone={assistant.promptReady ? 'ready' : 'warn'}
+          />
+          <DetailMetaItem
+            icon={<Database size={13} />}
+            label={copy.outputTitle ?? 'Output'}
+            value={copy.runOutputLabel ?? 'Chat / local run history'}
+          />
         </div>
       </div>
 
-      <nav className="border-b border-border/55 px-5 py-3">
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/25 p-1 sm:grid-cols-4 lg:inline-grid">
+      <nav className="border-b border-border/55 px-5 lg:px-6">
+        <div className="flex min-w-0 gap-5 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -1127,20 +1082,26 @@ function AssistantUnifiedDetail({
               aria-pressed={section === tab.id}
               data-assistant-section-tab={tab.id}
               onClick={() => onSectionChange(tab.id)}
-              className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`relative inline-flex h-12 shrink-0 items-center justify-center gap-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 section === tab.id
-                  ? 'bg-background text-[var(--amber-text)] shadow-sm'
-                  : 'text-muted-foreground hover:bg-background/55 hover:text-foreground'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab.icon}
               <span className="truncate">{tab.label}</span>
+              <span
+                className={`absolute inset-x-0 bottom-0 h-0.5 rounded-full ${
+                  section === tab.id ? 'bg-[var(--amber)]' : 'bg-transparent'
+                }`}
+                aria-hidden="true"
+              />
             </button>
           ))}
         </div>
       </nav>
 
-      <div className="min-h-[500px] p-5">
+      <div className="min-h-[500px] p-5 lg:p-6">
         {section === 'overview' ? (
           <UnifiedOverviewPane assistant={assistant} runResult={runResult} copy={copy} />
         ) : null}
@@ -1193,12 +1154,12 @@ function DetailMetaItem({
       ? 'text-[var(--amber)]'
       : 'text-muted-foreground/70';
   return (
-    <div className="min-w-0 border-b border-border/45 bg-background/55 px-3 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">
+    <div className="min-w-0 rounded-lg border border-border/45 bg-background/45 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/58">
         <span className={iconClass}>{icon}</span>
         {label}
       </div>
-      <p className="mt-1 truncate text-xs font-medium text-foreground/82">{value}</p>
+      <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-foreground/85">{value}</p>
     </div>
   );
 }
@@ -1322,84 +1283,63 @@ function AssistantRow({
   readyLabel,
   needsPromptLabel,
   sourceLabel,
-  deleteAssistantLabel,
   protectedLabel,
-  runLabel,
+  runningLabel,
   deleting,
   running,
   onClick,
-  onRun,
-  onDelete,
 }: {
   assistant: AssistantView;
   active: boolean;
   readyLabel: string;
   needsPromptLabel: string;
   sourceLabel: string;
-  deleteAssistantLabel: string;
   protectedLabel: string;
-  runLabel: string;
+  runningLabel: string;
   deleting: boolean;
   running: boolean;
   onClick: () => void;
-  onRun: () => void;
-  onDelete: () => void;
 }) {
   const summary = assistant.sections.role || assistant.description || assistant.promptPreview;
   return (
-    <div
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-border/45 px-3 py-2 last:border-b-0 ${
-        active ? 'bg-[var(--amber-subtle)]/75' : 'hover:bg-muted/35'
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-assistant-library-row={assistant.id}
+      className={`group relative flex min-w-0 items-start gap-3 border-b border-border/45 px-4 py-3 text-left outline-none transition-colors last:border-b-0 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring ${
+        active ? 'bg-[var(--amber-subtle)]/80' : ''
       }`}
     >
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={active}
-        data-assistant-library-row={assistant.id}
-        className="flex min-w-0 items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <AssistantAvatar assistant={assistant} />
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">{assistant.name}</span>
-            <ReadinessPill ready={assistant.promptReady} readyLabel={readyLabel} needsPromptLabel={needsPromptLabel} compact />
-          </span>
-          <span className="mt-1 line-clamp-1 text-2xs leading-relaxed text-muted-foreground/65">
-            {summary}
-          </span>
-          <span className="mt-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/45">
+      <span
+        className={`absolute bottom-2 left-0 top-2 w-0.5 rounded-r-full transition-colors ${
+          active ? 'bg-[var(--amber)]' : 'bg-transparent'
+        }`}
+        aria-hidden="true"
+      />
+      <AssistantAvatar assistant={assistant} />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-foreground">{assistant.name}</span>
+          <ReadinessPill ready={assistant.promptReady} readyLabel={readyLabel} needsPromptLabel={needsPromptLabel} compact />
+        </span>
+        <span className="mt-1 line-clamp-1 text-xs leading-relaxed text-muted-foreground/68">
+          {summary}
+        </span>
+        <span className="mt-2 flex min-w-0 items-center gap-2 text-[10px] font-medium text-muted-foreground/50">
+          <span className="inline-flex items-center gap-1">
             <ShieldCheck size={10} />
             {sourceLabel}
           </span>
+          {(running || deleting) ? (
+            <span className="inline-flex items-center gap-1 text-[var(--amber-text)]">
+              <Loader2 size={10} className="animate-spin" />
+              {running ? runningLabel : protectedLabel}
+            </span>
+          ) : null}
         </span>
-      </button>
-
-      <div className="flex shrink-0 items-start gap-1">
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={!assistant.promptReady || running}
-          data-assistant-run={assistant.id}
-          className="inline-flex h-7 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={runLabel}
-        >
-          {running ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-          <span className="sr-only">{running ? 'Running' : runLabel}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={!assistant.deletable || deleting}
-          data-assistant-delete={assistant.id}
-          className="inline-flex h-7 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={assistant.deletable ? deleteAssistantLabel : protectedLabel}
-        >
-          {deleting ? <Loader2 size={11} className="animate-spin" /> : assistant.deletable ? <Trash2 size={11} /> : <ShieldCheck size={11} />}
-          <span className="sr-only">{assistant.deletable ? deleteAssistantLabel : protectedLabel}</span>
-        </button>
-      </div>
-    </div>
+      </span>
+    </button>
   );
 }
 
@@ -1757,35 +1697,10 @@ function AssistantStateCard({
   );
 }
 
-function RunResultCard({
-  result,
-  copy,
-}: {
-  result: { output?: string; error?: string };
-  copy: PresetsCopy;
-}) {
-  const failed = Boolean(result.error);
-  return (
-    <section className={`rounded-xl border p-4 shadow-sm ${
-      failed ? 'border-destructive/25 bg-destructive/[0.04]' : 'border-success/25 bg-success/[0.04]'
-    }`}>
-      <PanelLabel
-        icon={failed ? <AlertCircle size={13} /> : <Play size={13} />}
-        label={failed ? copy.runFailed ?? 'Run failed' : copy.runCompleted ?? 'Run completed'}
-      />
-      <p className={`mt-3 whitespace-pre-wrap text-sm leading-relaxed ${
-        failed ? 'text-destructive' : 'text-foreground/80'
-      }`}>
-        {result.error || result.output || (copy.runCompleted ?? 'Assistant run completed')}
-      </p>
-    </section>
-  );
-}
-
 function AssistantDetailSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse" aria-busy="true">
-      <div className="rounded-xl border border-border/60 bg-card/45 p-5">
+    <div className="space-y-4 p-5 animate-pulse" aria-busy="true">
+      <div className="border-b border-border/55 pb-5">
         <div className="flex items-start gap-3">
           <div className="h-11 w-11 rounded-xl bg-muted" />
           <div className="flex-1 space-y-2">
@@ -1794,9 +1709,11 @@ function AssistantDetailSkeleton() {
           </div>
         </div>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="h-40 rounded-xl border border-border/60 bg-card/45" />
-        <div className="h-40 rounded-xl border border-border/60 bg-card/45" />
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="h-14 rounded-lg border border-border/45 bg-background/45" />
+        <div className="h-14 rounded-lg border border-border/45 bg-background/45" />
+        <div className="h-14 rounded-lg border border-border/45 bg-background/45" />
+        <div className="h-14 rounded-lg border border-border/45 bg-background/45" />
       </div>
     </div>
   );
@@ -2013,6 +1930,21 @@ function splitListText(value: string): string[] {
     .map(item => item.trim())
     .filter(Boolean)))
     .slice(0, 12);
+}
+
+function formatAssistantPermission(value: string | undefined, copy: PresetsCopy): string {
+  const protectedLabel = copy.protectedLabel ?? 'Protected';
+  switch (value) {
+    case 'read':
+      return `${protectedLabel} · readonly`;
+    case 'auto':
+      return `${copy.readyLabel ?? 'Ready'} · auto`;
+    case 'full':
+      return `${copy.readyLabel ?? 'Ready'} · full`;
+    case 'ask':
+    default:
+      return `${protectedLabel} · ask`;
+  }
 }
 
 function slugifyAssistantId(value: string): string {

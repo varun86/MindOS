@@ -768,7 +768,7 @@ export const panelsZh = {
       runningLabel: '运行中',
       runFailed: '运行失败',
       runCompleted: '运行完成',
-      preferredAgentLabel: '默认 Agent',
+      preferredAgentLabel: '默认执行 Agent',
       mcpTitle: 'MCP',
       searchPlaceholder: '搜索助理...',
       filterAll: '全部助理',
@@ -783,6 +783,7 @@ export const panelsZh = {
       noMatchesHint: '换一个名称、ID、技能或 MCP 条件试试。',
       inspectorTitle: '检查器',
       recentRunLabel: '最近运行',
+      runOutputLabel: 'Chat / 本地运行记录',
       promptPlaceholder: (name: string) => `# ${name}\n\n## 角色\n\n描述这个助理应该如何帮助你。`,
     },
     overview: {

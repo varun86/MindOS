@@ -768,7 +768,7 @@ export const panelsEn = {
       runningLabel: 'Running',
       runFailed: 'Run failed',
       runCompleted: 'Run completed',
-      preferredAgentLabel: 'Preferred agent',
+      preferredAgentLabel: 'Default execution Agent',
       mcpTitle: 'MCP',
       searchPlaceholder: 'Search assistants...',
       filterAll: 'All assistants',
@@ -783,6 +783,7 @@ export const panelsEn = {
       noMatchesHint: 'Try another name, ID, skill, or MCP filter.',
       inspectorTitle: 'Inspector',
       recentRunLabel: 'Recent run',
+      runOutputLabel: 'Chat / local run history',
       promptPlaceholder: (name: string) => `# ${name}\n\n## Role\n\nDescribe how this assistant should help.`,
     },
     overview: {
