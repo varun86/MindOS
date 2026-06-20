@@ -5,7 +5,7 @@
 // Hosts keep a real extension entry file (the pi DefaultResourceLoader loads
 // it by file path) that wires their toolkit into createMindosKbExtension().
 //
-// Permission-based filtering (readonly/organize/agent) is controlled by
+// Permission-based filtering (readonly/kb-write/agent) is controlled by
 // runWithKbPermissionPolicy() (request-scoped) or setKbMode()/
 // setKbPermissionPolicy() (process fallback), evaluated at reload() time.
 //

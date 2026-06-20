@@ -91,7 +91,7 @@ describe('pi-subagents built-in extension', () => {
       expect(subagentsIndex).toBeGreaterThan(scanIndex);
     });
 
-    it('derives extension exposure from PermissionPolicy tool scope and bounded MCP allowlist for every ask mode', async () => {
+    it('derives extension exposure from PermissionPolicy tool scope and bounded MCP allowlist', async () => {
       const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-pi-subagents-home-'));
       tempHomeToClean = tempHome;
       const previousHome = process.env.HOME;
@@ -120,14 +120,18 @@ describe('pi-subagents built-in extension', () => {
         expect(readonlyExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
         expect(readonlyExtensionList).not.toContain('schedule-prompt');
 
-        const organizePaths = getMindosWebPiRuntimePaths({ ...base, mode: 'organize' });
-        const organizeExtensionList = organizePaths.additionalExtensionPaths.join('\n');
-        expect(organizeExtensionList).toContain('kb-extension');
-        expect(organizeExtensionList).toContain('pi-web-access');
-        expect(organizeExtensionList).not.toContain('pi-mcp-adapter');
-        expect(organizeExtensionList).not.toContain('subagent-ledger-extension');
-        expect(organizeExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
-        expect(organizeExtensionList).not.toContain('schedule-prompt');
+        const kbWritePaths = getMindosWebPiRuntimePaths({
+          ...base,
+          mode: 'agent',
+          permissionPolicy: createMindosAgentPermissionPolicy('kb-write'),
+        });
+        const kbWriteExtensionList = kbWritePaths.additionalExtensionPaths.join('\n');
+        expect(kbWriteExtensionList).toContain('kb-extension');
+        expect(kbWriteExtensionList).toContain('pi-web-access');
+        expect(kbWriteExtensionList).not.toContain('pi-mcp-adapter');
+        expect(kbWriteExtensionList).not.toContain('subagent-ledger-extension');
+        expect(kbWriteExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
+        expect(kbWriteExtensionList).not.toContain('schedule-prompt');
 
         const agentPaths = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
         const agentExtensionList = agentPaths.additionalExtensionPaths.join('\n');

@@ -87,7 +87,7 @@ export type AgentRunStatus =
   | 'canceled'
   | 'timed_out';
 
-export type AgentRunPermissionMode = 'readonly' | 'organize' | 'agent';
+export type AgentRunPermissionMode = 'readonly' | 'kb-write' | 'agent';
 
 export interface AgentRunTimelineRecord {
   id: string;

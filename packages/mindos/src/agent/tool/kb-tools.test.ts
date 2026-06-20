@@ -156,9 +156,9 @@ describe('createMindosKbToolkit', () => {
     expect(agentNames.has('call_a2a_agent')).toBe(true);
     expect(agentNames.has('call_acp_agent')).toBe(true);
 
-    const organizeNames = new Set(toolkit.getOrganizeTools().map((tool) => tool.name));
-    expect(organizeNames.has('create_file')).toBe(true);
-    expect(organizeNames.has('call_acp_agent')).toBe(false);
+    const kbWriteNames = new Set(toolkit.getKbWriteTools().map((tool) => tool.name));
+    expect(kbWriteNames.has('create_file')).toBe(true);
+    expect(kbWriteNames.has('call_acp_agent')).toBe(false);
   });
 
   it('reads files through the host and reports missing files as tool errors, never throws', async () => {

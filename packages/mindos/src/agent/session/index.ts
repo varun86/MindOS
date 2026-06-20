@@ -414,7 +414,7 @@ export function parseMindosSseLine(line: string): MindOSSSEvent | null {
   }
 }
 
-export type MindosAskMode = 'agent' | 'organize';
+export type MindosAskMode = 'agent';
 
 export type MindosAskFileValidationResult = {
   valid: boolean;
@@ -433,11 +433,6 @@ export type MindosAskFileContext = {
   contextParts: string[];
   failedFiles: string[];
 };
-
-export function normalizeMindosAskMode(mode: unknown): MindosAskMode {
-  if (mode === 'organize') return 'organize';
-  return 'agent';
-}
 
 export function normalizeMindosAskStepLimit(options: {
   mode: MindosAskMode;

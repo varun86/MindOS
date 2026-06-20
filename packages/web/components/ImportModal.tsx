@@ -9,6 +9,7 @@ import { useLocale } from '@/lib/stores/locale-store';
 import { useFileImport, type ImportIntent, type ConflictMode } from '@/hooks/useFileImport';
 import type { useAiOrganize } from '@/hooks/useAiOrganize';
 import { ALLOWED_IMPORT_EXTENSIONS } from '@/lib/core/file-convert';
+import { INBOX_ORGANIZER_ASSISTANT_ID } from '@/lib/inbox-assistant';
 import type { LocalAttachment } from '@/lib/types';
 import { ConfirmDialog } from '@/components/agents/AgentsPrimitives';
 import { notifyFilesChanged } from '@/lib/files-changed';
@@ -118,7 +119,9 @@ export default function ImportModal({ open, onClose, defaultSpace, initialFiles,
       const prompt = attachments.length === 1
         ? (t.fileImport.digestPromptSingle as (name: string, space?: string) => string)(attachments[0].name, space)
         : (t.fileImport.digestPromptMulti as (n: number, space?: string) => string)(attachments.length, space);
-      aiOrganize.start(attachments, prompt, 'import-modal');
+      aiOrganize.start(attachments, prompt, 'import-modal', {
+        assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
+      });
       onClose();
       im.reset();
     }

@@ -5,7 +5,7 @@ import type { LocalAttachment } from '@/lib/types';
 import type { useAiOrganize } from '@/hooks/useAiOrganize';
 import { checkAiAvailable } from '@/lib/space-ai-init';
 import { isAiReadableCaptureName } from '@/lib/capture-formats';
-import { buildInboxOrganizerRunPrompt, loadInboxOrganizerPrompt } from '@/lib/inbox-assistant';
+import { buildInboxOrganizerRunPrompt, INBOX_ORGANIZER_ASSISTANT_ID, loadInboxOrganizerPrompt } from '@/lib/inbox-assistant';
 import { toast } from '@/lib/toast';
 import { archiveInboxFiles } from '@/lib/inbox-client';
 
@@ -112,7 +112,10 @@ export function useInboxOrganizeController({
     }
 
     organizedReadableFileNamesRef.current = attachments.map(attachment => attachment.name);
-    aiOrganize.start(attachments, prompt, 'inbox-organize', options);
+    aiOrganize.start(attachments, prompt, 'inbox-organize', {
+      ...options,
+      assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
+    });
     return { started: true };
   }, [aiOrganize, labels]);
 
@@ -120,7 +123,9 @@ export function useInboxOrganizeController({
     if (!detail.content || aiOrganize.phase === 'organizing') return;
     const attachment = { name: detail.name, content: detail.content };
     const prompt = 'Organize this conversation into well-structured notes in my knowledge base. Extract key insights, decisions, action items, and important details. Create appropriate files with clear titles. Write in the same language as the content.';
-    aiOrganize.start([attachment], prompt, 'conversation');
+    aiOrganize.start([attachment], prompt, 'conversation', {
+      assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
+    });
   }, [aiOrganize]);
 
   useEffect(() => {

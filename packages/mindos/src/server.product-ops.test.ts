@@ -100,8 +100,8 @@ describe('MindOS server contract: product operations', () => {
     });
   });
 
-  it('aggregates agent capabilities with mode filtering, source isolation, and safe metadata', async () => {
-    const readonly = await handleAgentCapabilitiesGet(new URLSearchParams('mode=organize'), {
+  it('aggregates agent capabilities with source isolation and safe metadata', async () => {
+    const response = await handleAgentCapabilitiesGet(new URLSearchParams('mode=agent'), {
       kb: () => [
         {
           id: 'kb:read',
@@ -111,7 +111,7 @@ describe('MindOS server contract: product operations', () => {
           source: 'mindos',
           status: 'available',
           permissionRequired: 'readonly',
-          availableInModes: ['organize', 'agent'],
+          availableInModes: ['agent'],
           metadata: {
             toolName: 'read_file',
             execute: () => 'must not leak',
@@ -134,22 +134,31 @@ describe('MindOS server contract: product operations', () => {
       },
     });
 
-    expect(readonly.status).toBe(200);
-    expect(readonly.body.capabilities).toHaveLength(1);
-    expect(readonly.body.capabilities[0]).toMatchObject({
-      id: 'kb:read',
-      kind: 'kb-tool',
-      source: 'mindos',
-      permissionRequired: 'readonly',
-      availableInModes: ['organize', 'agent'],
-      metadata: {
-        toolName: 'read_file',
-        apiKey: '[redacted]',
-      },
-    });
-    expect(JSON.stringify(readonly.body)).not.toContain('must not leak');
-    expect(JSON.stringify(readonly.body)).not.toContain('sk-capability-secret');
-    expect(readonly.body.sources).toContainEqual({
+    expect(response.status).toBe(200);
+    expect(response.body.capabilities).toHaveLength(2);
+    expect(response.body.capabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'kb:read',
+        kind: 'kb-tool',
+        source: 'mindos',
+        permissionRequired: 'readonly',
+        availableInModes: ['agent'],
+        metadata: {
+          toolName: 'read_file',
+          apiKey: '[redacted]',
+        },
+      }),
+      expect.objectContaining({
+        id: 'kb:delete',
+        kind: 'kb-tool',
+        source: 'mindos',
+        permissionRequired: 'agent',
+        availableInModes: ['agent'],
+      }),
+    ]));
+    expect(JSON.stringify(response.body)).not.toContain('must not leak');
+    expect(JSON.stringify(response.body)).not.toContain('sk-capability-secret');
+    expect(response.body.sources).toContainEqual({
       id: 'subagents',
       status: 'error',
       count: 0,

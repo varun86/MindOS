@@ -20,7 +20,7 @@ function OrganizeHarness() {
       [{ name: 'capture.md', content: 'source text' }],
       'Organize this',
       'inbox-organize',
-      { providerOverride: 'p_capture', modelOverride: 'capture-model' },
+      { providerOverride: 'p_capture', modelOverride: 'capture-model', assistantId: 'inbox-organizer' },
     );
   }, [start]);
   return null;
@@ -37,7 +37,7 @@ describe('useAiOrganize start request', () => {
     }));
   });
 
-  it('passes Capture-specific provider and model overrides to /api/ask organize mode', async () => {
+  it('passes Capture-specific provider, model, and assistant workflow to /api/ask', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -53,7 +53,8 @@ describe('useAiOrganize start request', () => {
     }));
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(request).toMatchObject({
-      mode: 'organize',
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
       providerOverride: 'p_capture',
       modelOverride: 'capture-model',
     });

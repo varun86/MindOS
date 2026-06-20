@@ -192,6 +192,24 @@ describe('/api/ask native runtime routing', () => {
     }
   });
 
+  it('rejects removed organize ask mode before runtime routing', async () => {
+    const { POST } = await import('../../app/api/ask/route');
+    const res = await POST(askRequest({
+      messages: [{ role: 'user', content: 'Organize these captures' }],
+      mode: 'organize',
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.objectContaining({
+        message: 'mode must be agent',
+      }),
+    });
+    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
+    expect(mockRunMindosAcpAskSession).not.toHaveBeenCalled();
+    expect(mockCreateMindosAgentRuntime).not.toHaveBeenCalled();
+  });
+
   it('applies per-request MindOS agent options when creating the default PI runtime', async () => {
     mockCreateMindosAgentRuntime.mockImplementation(async (options: Record<string, any>) => {
       capturedMindosRuntimeOptions = options;
@@ -524,7 +542,7 @@ describe('/api/ask native runtime routing', () => {
     });
   });
 
-  it('maps organize mode native runtime requests to readonly permission mode', async () => {
+  it('maps Inbox Organizer assistant native runtime requests to readonly permission mode', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -533,7 +551,8 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Organize without granting full harness writes' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'organize',
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
     }));
 
     expect(res.status).toBe(200);
@@ -543,7 +562,7 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedNativeOptions?.permissionMode).toBe('readonly');
   });
 
-  it('forces organize mode to readonly even when native runtime options request agent permissions', async () => {
+  it('forces Inbox Organizer assistant runs to readonly even when native runtime options request agent permissions', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -553,7 +572,8 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Organize safely' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       runtimeOptions: { permissionMode: 'agent', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
-      mode: 'organize',
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
     }));
 
     expect(res.status).toBe(200);
@@ -1001,11 +1021,11 @@ describe('/api/ask native runtime routing', () => {
     ]);
   });
 
-  it('maps selected ACP runtime in organize mode to readonly session permission', async () => {
+  it('maps selected ACP runtime in Inbox Organizer assistant runs to readonly session permission', async () => {
     mockRunMindosAcpAskSession.mockImplementationOnce(async (options: Record<string, any>) => {
       capturedAcpOptions = options;
       await options.createSession(options.agentId, { cwd: '/tmp/mindos-test' });
-      options.send({ type: 'text_delta', delta: 'acp organize ok' });
+      options.send({ type: 'text_delta', delta: 'acp assistant ok' });
       options.send({ type: 'done' });
       return {};
     });
@@ -1016,13 +1036,14 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Organize through ACP safely' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
       workDir: { source: 'manual', path: workDir, label: 'repo' },
-      mode: 'organize',
+      mode: 'agent',
+      assistantId: 'inbox-organizer',
       chatSessionId: 'chat-acp-1',
     }));
     const text = await res.text();
 
     expect(res.status).toBe(200);
-    expect(text).toContain('acp organize ok');
+    expect(text).toContain('acp assistant ok');
     expect(capturedAcpOptions?.agentId).toBe('gemini');
     expect(capturedAcpOptions?.cwd).toBe(realpathSync(workDir));
     expect(mockCreateAcpSession).toHaveBeenCalledWith('gemini', expect.objectContaining({
@@ -1039,7 +1060,7 @@ describe('/api/ask native runtime routing', () => {
         chatSessionId: 'chat-acp-1',
         cwd: realpathSync(workDir),
         permissionMode: 'readonly',
-        outputSummary: 'acp organize ok',
+        outputSummary: 'acp assistant ok',
       }),
     ]);
     expect(acpRuns[0]?.rootRunId).toBe(acpRuns[0]?.id);

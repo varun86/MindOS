@@ -73,7 +73,8 @@ export type MindosAskStreamRequest = {
   attachedFiles?: string[];
   uploadedFiles?: MindosUploadedFile[];
   maxSteps?: number;
-  mode?: 'agent' | 'organize';
+  mode?: 'agent';
+  assistantId?: string;
   selectedRuntime?: MindosSelectedRuntime | null;
   runtimeBinding?: MindosRuntimeSessionBinding | null;
   selectedAcpAgent?: { id: string; name: string } | null;
@@ -121,8 +122,8 @@ function parseAskStreamRequest(body: unknown):
   }
 
   const mode = record.mode;
-  if (mode !== undefined && mode !== 'agent' && mode !== 'organize') {
-    return { ok: false, status: 400, body: { error: 'mode must be agent or organize' } };
+  if (mode !== undefined && mode !== 'agent') {
+    return { ok: false, status: 400, body: { error: 'mode must be agent' } };
   }
 
   const selectedRuntime = normalizeSelectedRuntime(record);
@@ -140,6 +141,7 @@ function parseAskStreamRequest(body: unknown):
       ...(Array.isArray(record.uploadedFiles) ? { uploadedFiles: normalizeUploadedFiles(record.uploadedFiles) } : {}),
       ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
       ...(mode ? { mode } : {}),
+      ...(typeof record.assistantId === 'string' && record.assistantId.trim() ? { assistantId: record.assistantId.trim() } : {}),
       ...(selectedRuntime !== undefined ? { selectedRuntime } : {}),
       ...(runtimeBinding !== undefined ? { runtimeBinding } : {}),
       ...(isSelectedAcpAgent(record.selectedAcpAgent) ? { selectedAcpAgent: record.selectedAcpAgent } : {}),

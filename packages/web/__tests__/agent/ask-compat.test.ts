@@ -2,25 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { resolveAskCompatMode } from '@/lib/agent/ask-compat';
 
 describe('resolveAskCompatMode', () => {
-  it('uses non-streaming tools for organize runs against OpenAI-compatible custom base URLs', () => {
+  it('does not force non-streaming for agent runs on custom base URLs', () => {
     expect(resolveAskCompatMode({
-      askMode: 'organize',
-      provider: 'openai',
-      baseUrl: 'https://lumina.tripo3d.com/v1',
-    })).toBe('non-streaming');
-  });
-
-  it('does not force non-streaming for normal agent runs on the same base URL', () => {
-    expect(resolveAskCompatMode({
-      askMode: 'agent',
       provider: 'openai',
       baseUrl: 'https://lumina.tripo3d.com/v1',
     })).toBeUndefined();
   });
 
-  it('keeps an existing cached compatibility mode for all ask modes', () => {
+  it('keeps an existing cached compatibility mode for agent requests', () => {
     expect(resolveAskCompatMode({
-      askMode: 'agent',
       provider: 'openai',
       baseUrl: 'https://proxy.example/v1',
       cachedMode: 'non-streaming',

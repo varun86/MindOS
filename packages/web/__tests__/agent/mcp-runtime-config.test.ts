@@ -188,9 +188,13 @@ describe('MindOS Agent bounded MCP runtime config', () => {
       mode: 'agent',
       permissionPolicy: createMindosAgentPermissionPolicy('readonly'),
     });
-    const organizePaths = getMindosWebPiRuntimePaths({ ...base, mode: 'organize' });
+    const kbWritePaths = getMindosWebPiRuntimePaths({
+      ...base,
+      mode: 'agent',
+      permissionPolicy: createMindosAgentPermissionPolicy('kb-write'),
+    });
     expect(readonlyPaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
-    expect(organizePaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
+    expect(kbWritePaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
   });
 
   it('wraps the upstream proxy tool so tool-level MCP allowlists cannot be bypassed', async () => {

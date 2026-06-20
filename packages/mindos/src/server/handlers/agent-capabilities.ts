@@ -1,7 +1,7 @@
 import { json, type MindosServerResponse } from '../response.js';
 import { redactSensitiveObject, redactSensitiveText } from '../../session/redaction.js';
 
-export type AgentCapabilityMode = 'organize' | 'agent';
+export type AgentCapabilityMode = 'agent';
 
 export type AgentCapabilityKind =
   | 'kb-tool'
@@ -21,7 +21,7 @@ export type AgentCapabilitySource =
   | 'a2a';
 
 export type AgentCapabilityStatus = 'available' | 'missing' | 'disabled' | 'cached' | 'error';
-export type AgentCapabilityPermissionRequired = 'readonly' | 'organize' | 'agent';
+export type AgentCapabilityPermissionRequired = 'readonly' | 'kb-write' | 'agent';
 
 export type AgentCapabilityInput = {
   id?: unknown;
@@ -85,7 +85,7 @@ export type AgentCapabilitiesServices = Partial<Record<
 >>;
 
 const SOURCE_ORDER = ['kb', 'subagents', 'acp', 'native', 'mcp', 'a2a'] as const satisfies readonly AgentCapabilitySourceKey[];
-const MODE_ORDER = ['organize', 'agent'] as const satisfies readonly AgentCapabilityMode[];
+const MODE_ORDER = ['agent'] as const satisfies readonly AgentCapabilityMode[];
 const KIND_SET = new Set<AgentCapabilityKind>([
   'kb-tool',
   'pi-subagent',
@@ -97,13 +97,16 @@ const KIND_SET = new Set<AgentCapabilityKind>([
 ]);
 const SOURCE_SET = new Set<AgentCapabilitySource>(['mindos', 'pi-subagents', 'acp', 'native', 'mcp', 'a2a']);
 const STATUS_SET = new Set<AgentCapabilityStatus>(['available', 'missing', 'disabled', 'cached', 'error']);
-const PERMISSION_SET = new Set<AgentCapabilityPermissionRequired>(['readonly', 'organize', 'agent']);
+const PERMISSION_SET = new Set<AgentCapabilityPermissionRequired>(['readonly', 'kb-write', 'agent']);
 
 export async function handleAgentCapabilitiesGet(
   searchParams: URLSearchParams,
   services: AgentCapabilitiesServices = {},
-): Promise<MindosServerResponse<AgentCapabilitiesPayload>> {
+): Promise<MindosServerResponse<AgentCapabilitiesPayload | { error: string }>> {
   const mode = normalizeMode(searchParams.get('mode'));
+  if (!mode) {
+    return json({ error: 'mode must be agent' }, { status: 400 });
+  }
   const include = normalizeInclude(searchParams.get('include'));
   const sources: AgentCapabilitySourceStatus[] = [];
   const capabilities: AgentCapability[] = [];
@@ -142,8 +145,9 @@ export async function handleAgentCapabilitiesGet(
   });
 }
 
-function normalizeMode(value: string | null): AgentCapabilityMode {
-  return value === 'organize' || value === 'agent' ? value : 'agent';
+function normalizeMode(value: string | null): AgentCapabilityMode | null {
+  if (value === null || value === '' || value === 'agent') return 'agent';
+  return null;
 }
 
 function normalizeInclude(value: string | null): AgentCapabilitySourceKey[] {
@@ -172,7 +176,7 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
   const permissionRequired = typeof input.permissionRequired === 'string' && PERMISSION_SET.has(input.permissionRequired as AgentCapabilityPermissionRequired)
     ? input.permissionRequired as AgentCapabilityPermissionRequired
     : 'agent';
-  const availableInModes = normalizeModes(input.availableInModes, permissionRequired);
+  const availableInModes = normalizeModes(input.availableInModes);
   if (availableInModes.length === 0) return null;
 
   const status = typeof input.status === 'string' && STATUS_SET.has(input.status as AgentCapabilityStatus)
@@ -208,15 +212,8 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
   };
 }
 
-function normalizeModes(
-  value: unknown,
-  permissionRequired: AgentCapabilityPermissionRequired,
-): AgentCapabilityMode[] {
-  const fallback: AgentCapabilityMode[] = permissionRequired === 'readonly'
-    ? ['organize', 'agent']
-    : permissionRequired === 'organize'
-      ? ['organize', 'agent']
-      : ['agent'];
+function normalizeModes(value: unknown): AgentCapabilityMode[] {
+  const fallback: AgentCapabilityMode[] = ['agent'];
   if (!Array.isArray(value)) return fallback;
   const requested = new Set(value.filter((item): item is AgentCapabilityMode => MODE_ORDER.includes(item as AgentCapabilityMode)));
   return MODE_ORDER.filter((mode) => requested.has(mode));

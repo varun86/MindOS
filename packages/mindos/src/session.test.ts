@@ -19,7 +19,6 @@ import {
   isMindosRetryableError,
   isMindosTransientError,
   loadMindosAskFileContext,
-  normalizeMindosAskMode,
   normalizeMindosAskStepLimit,
   parseMindosSseLine,
   resolveMindosAgentTimeoutMs,
@@ -297,10 +296,7 @@ describe('MindOS session event contract', () => {
       .toBe('token=[redacted]\n[redacted]');
   });
 
-  it('normalizes ask mode and step limits without Web dependencies', () => {
-    expect(normalizeMindosAskMode('organize')).toBe('organize');
-    expect(normalizeMindosAskMode('invalid')).toBe('agent');
-
+  it('normalizes ask step limits without Web dependencies', () => {
     expect(normalizeMindosAskStepLimit({ mode: 'agent' })).toBe(20);
     expect(normalizeMindosAskStepLimit({ mode: 'agent', agentMaxSteps: 50 })).toBe(50);
     expect(normalizeMindosAskStepLimit({ mode: 'agent', requestedMaxSteps: -1 })).toBe(1);
@@ -1495,7 +1491,7 @@ describe('MindOS session event contract', () => {
     const reportedErrors: unknown[] = [];
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'organize',
+      mode: 'agent',
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -1529,7 +1525,7 @@ describe('MindOS session event contract', () => {
     });
 
     expect(runtime.extensionLoadErrors).toEqual([extensionError]);
-    expect(reportedErrors).toEqual([[extensionError]]);
+    expect(reportedErrors).toEqual([[extensionError], [extensionError]]);
   });
 
   it('reports when pi-web-access loads without the expected web tools', async () => {
@@ -1542,7 +1538,7 @@ describe('MindOS session event contract', () => {
     const webAccessPath = '/repo/packages/web/node_modules/pi-web-access/index.ts';
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'organize',
+      mode: 'agent',
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -1595,7 +1591,7 @@ describe('MindOS session event contract', () => {
     }]);
   });
 
-  it('keeps builtins off and registers no SDK custom tools in organize mode (kb extension owns KB tools)', async () => {
+  it('keeps builtins off and registers no SDK custom tools when project bash is disabled', async () => {
     let captured: Record<string, unknown> | null = null;
     const session = {
       subscribe: () => {},
@@ -1605,7 +1601,8 @@ describe('MindOS session event contract', () => {
     };
 
     await createMindosPiAgentRuntime({
-      mode: 'organize',
+      mode: 'agent',
+      allowProjectBash: false,
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',

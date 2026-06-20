@@ -18,6 +18,7 @@ import type {
   SessionWorkDir,
 } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
+import { INBOX_ORGANIZER_ASSISTANT_ID } from '@/lib/inbox-assistant';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath, resolveCommandPathCandidates } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
 import { en as i18nEn, zh as i18nZh } from '@/lib/i18n';
@@ -248,25 +249,29 @@ function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean
 }
 
 function effectiveNativePermissionMode(
-  askMode: AskModeApi,
+  permissionPolicyMode: 'readonly' | 'kb-write' | 'agent',
   fallback: NativeRuntimePermissionMode,
   runtimeOptions: NativeRuntimeOptions,
 ): NativeRuntimePermissionMode {
-  if (askMode === 'organize') return 'readonly';
+  if (permissionPolicyMode === 'kb-write') return fallback;
   return runtimeOptions.permissionMode ?? fallback;
 }
 
 function normalizeAskModeApiInput(value: unknown): AskModeApi | null {
   if (value === undefined || value === null) return 'agent';
-  return value === 'agent' || value === 'organize' ? value : null;
+  return value === 'agent' ? value : null;
 }
 
 function permissionPolicyModeForRequest(
-  askMode: AskModeApi,
+  assistantId: string | undefined,
   runtimeOptions: NativeRuntimeOptions,
-): 'readonly' | 'organize' | 'agent' {
-  if (askMode === 'organize') return 'organize';
+): 'readonly' | 'kb-write' | 'agent' {
+  if (assistantId === INBOX_ORGANIZER_ASSISTANT_ID) return 'kb-write';
   return runtimeOptions.permissionMode === 'readonly' ? 'readonly' : 'agent';
+}
+
+function normalizeAssistantId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function getLastUserContent(messages: FrontendMessage[]): string {
@@ -510,6 +515,8 @@ export async function POST(req: NextRequest) {
     maxSteps?: number;
     /** Ask prompt mode. Tool permissions are controlled by runtimeOptions.permissionMode. */
     mode?: AskModeApi;
+    /** Assistant workflow binding. This is not an ask mode. */
+    assistantId?: string;
     /** ACP agent selection: if present, route to ACP instead of MindOS */
     selectedAcpAgent?: { id: string; name: string } | null;
     /** Unified runtime selection. ACP values mirror selectedAcpAgent for compatibility. */
@@ -547,15 +554,16 @@ export async function POST(req: NextRequest) {
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
   const askMode = normalizeAskModeApiInput(body.mode);
   if (!askMode) {
-    return apiError(ErrorCodes.INVALID_REQUEST, 'mode must be agent or organize', 400);
+    return apiError(ErrorCodes.INVALID_REQUEST, 'mode must be agent', 400);
   }
+  const assistantId = normalizeAssistantId(body.assistantId);
   const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions);
   const mindosAgentOptions = normalizeMindosAgentOptions(body.agentOptions);
   const permissionPolicy = createMindosAgentPermissionPolicy(
-    permissionPolicyModeForRequest(askMode, nativeRuntimeOptions),
+    permissionPolicyModeForRequest(assistantId, nativeRuntimeOptions),
   );
   const nativePermissionMode = effectiveNativePermissionMode(
-    askMode,
+    permissionPolicy.mode,
     permissionPolicy.runtimePermissionMode,
     nativeRuntimeOptions,
   );
@@ -700,6 +708,7 @@ export async function POST(req: NextRequest) {
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
+            ...(assistantId ? { assistantId } : {}),
           },
         });
         const sendWithLedger = (event: MindOSSSEvent) => {
@@ -805,6 +814,7 @@ export async function POST(req: NextRequest) {
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
+            ...(assistantId ? { assistantId } : {}),
           },
         });
         sendAgentRunContext(send, acpRun);
@@ -1077,6 +1087,7 @@ export async function POST(req: NextRequest) {
           sessionWorkDir: sessionContext.resolvedWorkDir.path,
           sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
           sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
+          ...(assistantId ? { assistantId } : {}),
         },
       });
       sendAgentRunContext(send, mainRun);
@@ -1108,7 +1119,6 @@ export async function POST(req: NextRequest) {
             const compatCache = readBaseUrlCompat();
             const effectiveBaseUrlKey = baseUrl || 'default';
             const compatMode = resolveAskCompatMode({
-              askMode,
               provider,
               baseUrl,
               cachedMode: compatCache[effectiveBaseUrlKey],

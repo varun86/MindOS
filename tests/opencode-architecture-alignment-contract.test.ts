@@ -233,7 +233,7 @@ describe('OpenCode architecture alignment', () => {
     expect(readText('packages/mindos/src/tool/index.ts')).toContain('createMindosToolRegistry');
     expect(sessionIndex).toContain('MINDOS_SESSION_STREAM_SCHEMA');
     expect(sessionIndex).toContain('encodeMindosSseEvent');
-    expect(sessionIndex).toContain('normalizeMindosAskMode');
+    expect(sessionIndex).not.toContain('normalizeMindosAskMode');
     expect(sessionIndex).toContain('detectMindosAgentLoop');
     expect(sessionIndex).toContain('toMindosAgentMessages');
     expect(sessionIndex).toContain('runMindosAskWithRetry');

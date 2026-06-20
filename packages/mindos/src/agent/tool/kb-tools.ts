@@ -11,7 +11,7 @@ import {
   createMindosAgentPermissionPolicy,
   getMindosKbToolNameSet,
   MINDOS_READONLY_KB_TOOL_NAMES,
-  MINDOS_ORGANIZE_KB_TOOL_NAMES,
+  MINDOS_KB_WRITE_TOOL_NAMES,
   MINDOS_WRITE_TOOL_NAMES,
   type MindosAgentPermissionPolicy,
 } from './permission-policy.js';
@@ -302,8 +302,8 @@ const LoadSkillParams = Type.Object({
 // Write-operation tool names — used by beforeToolCall for write-protection
 export const WRITE_TOOLS = new Set<string>(MINDOS_WRITE_TOOL_NAMES);
 
-/** Tool names sufficient for the "organize uploaded files" task. */
-export const ORGANIZE_TOOL_NAMES = new Set<string>(MINDOS_ORGANIZE_KB_TOOL_NAMES);
+/** Tool names allowed by the bounded KB write permission policy. */
+export const KB_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KB_WRITE_TOOL_NAMES);
 
 /** Knowledge-base tool names allowed by the read-only permission policy. */
 export const READONLY_TOOL_NAMES = new Set<string>(MINDOS_READONLY_KB_TOOL_NAMES);
@@ -314,8 +314,8 @@ export interface MindosKbToolkit {
   /** The full knowledge-base tool array (no policy filtering, no delegation tools). */
   knowledgeBaseTools: MindosAgentTool[];
   getToolsForPolicy(policy: MindosAgentPermissionPolicy): MindosAgentTool[];
-  /** Lean tool set for organize mode — skips MCP discovery, history, backlinks, etc. */
-  getOrganizeTools(): MindosAgentTool[];
+  /** Bounded KB write tool set — skips destructive moves/deletes and delegation tools. */
+  getKbWriteTools(): MindosAgentTool[];
   getReadonlyTools(): MindosAgentTool[];
   getRequestScopedTools(): MindosAgentTool[];
 }
@@ -345,7 +345,7 @@ export function createMindosKbToolkit(host: MindosKbToolsHost): MindosKbToolkit 
   return {
     knowledgeBaseTools,
     getToolsForPolicy,
-    getOrganizeTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('organize')),
+    getKbWriteTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('kb-write')),
     getReadonlyTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('readonly')),
     getRequestScopedTools: () => getToolsForPolicy(createMindosAgentPermissionPolicy('agent')),
   };

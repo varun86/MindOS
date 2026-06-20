@@ -20,7 +20,7 @@ import type {
 } from '../../server/handlers/agent-capabilities.js';
 import {
   MINDOS_READONLY_KB_TOOL_NAMES,
-  MINDOS_ORGANIZE_KB_TOOL_NAMES,
+  MINDOS_KB_WRITE_TOOL_NAMES,
 } from './permission-policy.js';
 import type { MindosAgentTool } from './kb-tools.js';
 
@@ -111,7 +111,7 @@ export interface MindosAgentCapabilityRegistryServices {
 }
 
 const READONLY_KB_TOOL_NAMES = new Set<string>(MINDOS_READONLY_KB_TOOL_NAMES);
-const ORGANIZE_KB_TOOL_NAMES = new Set<string>(MINDOS_ORGANIZE_KB_TOOL_NAMES);
+const KB_WRITE_TOOL_NAMES = new Set<string>(MINDOS_KB_WRITE_TOOL_NAMES);
 
 export function createAgentCapabilitiesServices(
   services: MindosAgentCapabilityRegistryServices,
@@ -369,15 +369,14 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
   };
 }
 
-function permissionForKbTool(toolName: string): 'readonly' | 'organize' | 'agent' {
+function permissionForKbTool(toolName: string): 'readonly' | 'kb-write' | 'agent' {
   if (READONLY_KB_TOOL_NAMES.has(toolName)) return 'readonly';
-  if (ORGANIZE_KB_TOOL_NAMES.has(toolName)) return 'organize';
+  if (KB_WRITE_TOOL_NAMES.has(toolName)) return 'kb-write';
   return 'agent';
 }
 
-function modesForPermission(permission: 'readonly' | 'organize' | 'agent'): Array<'organize' | 'agent'> {
-  if (permission === 'readonly') return ['organize', 'agent'];
-  if (permission === 'organize') return ['organize', 'agent'];
+function modesForPermission(permission: 'readonly' | 'kb-write' | 'agent'): Array<'agent'> {
+  if (permission === 'readonly' || permission === 'kb-write') return ['agent'];
   return ['agent'];
 }
 

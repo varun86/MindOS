@@ -22,7 +22,7 @@ function registeredToolNames(run: (register: (def: { name: string }) => void) =>
   return names.sort();
 }
 
-function expectedToolNames(mode: 'readonly' | 'agent' | 'organize'): string[] {
+function expectedToolNames(mode: 'readonly' | 'agent' | 'kb-write'): string[] {
   return getToolsForMindosAgentPolicy(createMindosAgentPermissionPolicy(mode))
     .map((tool) => tool.name)
     .sort();
@@ -61,11 +61,11 @@ describe('kbExtension permission policy scoping', () => {
   });
 
   it('falls back to the module-level policy outside a scoped run', () => {
-    setKbPermissionPolicy(createMindosAgentPermissionPolicy('organize'));
+    setKbPermissionPolicy(createMindosAgentPermissionPolicy('kb-write'));
     const names = registeredToolNames((register) => {
       kbExtension({ registerTool: register } as never);
     });
-    expect(names).toEqual(expectedToolNames('organize'));
+    expect(names).toEqual(expectedToolNames('kb-write'));
     // Restore the default so other suites see the historical baseline.
     setKbPermissionPolicy(createMindosAgentPermissionPolicy('agent'));
   });

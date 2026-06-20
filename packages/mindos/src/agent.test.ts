@@ -6,7 +6,6 @@ import {
   MINDOS_AGENT_PROMPT_ASSET_URL,
   MINDOS_AGENT_MANIFEST,
   MINDOS_SYSTEM_PROMPT,
-  ORGANIZE_SYSTEM_PROMPT,
   buildMindosTurnContext,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
@@ -46,7 +45,6 @@ describe('MindOS agent product contract', () => {
     expect(MINDOS_SYSTEM_PROMPT).not.toContain('Mode: Chat');
     expect(MINDOS_SYSTEM_PROMPT).not.toContain('Agent mode');
     expect(MINDOS_SYSTEM_PROMPT).not.toContain('Working Context');
-    expect(ORGANIZE_SYSTEM_PROMPT).toContain('organizing information');
   });
 
   it('resolves Next dev server/app static media prompt asset paths', () => {

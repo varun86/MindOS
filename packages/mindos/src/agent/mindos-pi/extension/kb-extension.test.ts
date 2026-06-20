@@ -66,13 +66,13 @@ describe('KB permission policy resolution', () => {
   });
 
   it('returns sync and async results from runWithKbPermissionPolicy', async () => {
-    const policy = createMindosAgentPermissionPolicy('organize');
+    const policy = createMindosAgentPermissionPolicy('kb-write');
     expect(runWithKbPermissionPolicy(policy, () => 42)).toBe(42);
     await expect(runWithKbPermissionPolicy(policy, async () => 'done')).resolves.toBe('done');
   });
 
   it('uses the fallback policy set via setKbPermissionPolicy outside any scope', () => {
-    const custom = createMindosAgentPermissionPolicy('organize');
+    const custom = createMindosAgentPermissionPolicy('kb-write');
     setKbPermissionPolicy(custom);
     expect(getEffectiveKbPermissionPolicy()).toBe(custom);
   });

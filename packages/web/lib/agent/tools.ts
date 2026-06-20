@@ -25,7 +25,7 @@ import {
 import type { MindosAgentPermissionPolicy } from '@geminilight/mindos/agent/tool/permission-policy';
 
 export {
-  ORGANIZE_TOOL_NAMES,
+  KB_WRITE_TOOL_NAMES,
   READONLY_TOOL_NAMES,
   WRITE_TOOLS,
   truncate,
@@ -99,9 +99,9 @@ export function getToolsForMindosAgentPolicy(policy: MindosAgentPermissionPolicy
   return toolkit.getToolsForPolicy(policy);
 }
 
-/** Lean tool set for organize mode - skips MCP discovery, history, backlinks, etc. */
-export function getOrganizeTools(): MindosAgentTool[] {
-  return toolkit.getOrganizeTools();
+/** Bounded KB write tool set - skips destructive moves/deletes and delegation tools. */
+export function getKbWriteTools(): MindosAgentTool[] {
+  return toolkit.getKbWriteTools();
 }
 
 /** Read-only knowledge-base tool set. */

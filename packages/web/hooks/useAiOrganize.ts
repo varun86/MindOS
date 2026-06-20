@@ -241,6 +241,7 @@ export async function consumeOrganizeStream(
 export interface AiOrganizeRunOptions {
   providerOverride?: string | null;
   modelOverride?: string | null;
+  assistantId?: string | null;
 }
 
 function describeAskRequestError(status: number, message: string): string {
@@ -318,10 +319,11 @@ export function useAiOrganize() {
         messages,
         uploadedFiles: truncatedFiles,
         maxSteps: 15,
-        mode: 'organize',
+        mode: 'agent',
       };
       if (options.providerOverride) requestBody.providerOverride = options.providerOverride;
       if (options.modelOverride) requestBody.modelOverride = options.modelOverride;
+      if (options.assistantId) requestBody.assistantId = options.assistantId;
 
       const res = await fetch('/api/ask', {
         method: 'POST',

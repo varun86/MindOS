@@ -59,14 +59,14 @@ describe('kb-tool capabilities', () => {
       kind: 'kb-tool',
       name: 'Read file',
       permissionRequired: 'readonly',
-      availableInModes: ['organize', 'agent'],
+      availableInModes: ['agent'],
       supportsApprovals: false,
     });
 
     const writeFile = byId.get('kb-tool:write_file');
     expect(writeFile).toMatchObject({
-      permissionRequired: 'organize',
-      availableInModes: ['organize', 'agent'],
+      permissionRequired: 'kb-write',
+      availableInModes: ['agent'],
       supportsApprovals: false,
     });
 

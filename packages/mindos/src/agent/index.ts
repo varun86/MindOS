@@ -14,7 +14,6 @@ export function defineMindosAgent(descriptor: MindosAgentDescriptor): MindosAgen
 
 export {
   MINDOS_SYSTEM_PROMPT,
-  ORGANIZE_SYSTEM_PROMPT,
   MINDOS_AGENT_PROMPT_ASSET_PATH,
   MINDOS_AGENT_PROMPT_ASSET_URL,
   loadMindosAgentPrompt,

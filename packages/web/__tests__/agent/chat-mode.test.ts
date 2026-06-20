@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getReadonlyTools, getOrganizeTools, knowledgeBaseTools, WRITE_TOOLS } from '@/lib/agent/tools';
+import { getReadonlyTools, getKbWriteTools, knowledgeBaseTools, WRITE_TOOLS } from '@/lib/agent/tools';
 import { MINDOS_SYSTEM_PROMPT } from '@/lib/agent/prompt';
 
 // ---------------------------------------------------------------------------
@@ -57,15 +57,15 @@ describe('getReadonlyTools', () => {
   });
 });
 
-describe('getOrganizeTools', () => {
+describe('getKbWriteTools', () => {
   it('keeps skill loading available for selected skill workflows', () => {
-    expect(getOrganizeTools().map(t => t.name)).toContain('load_skill');
+    expect(getKbWriteTools().map(t => t.name)).toContain('load_skill');
   });
 
-  it('allows only bounded KB organization writes', () => {
-    const organizeToolNames = getOrganizeTools().map(t => t.name);
+  it('allows only bounded KB writes', () => {
+    const kbWriteToolNames = getKbWriteTools().map(t => t.name);
 
-    expect(organizeToolNames).toEqual(expect.arrayContaining([
+    expect(kbWriteToolNames).toEqual(expect.arrayContaining([
       'list_files',
       'read_file',
       'search',
@@ -77,14 +77,14 @@ describe('getOrganizeTools', () => {
       'insert_after_heading',
       'update_section',
     ]));
-    expect(organizeToolNames).not.toContain('delete_file');
-    expect(organizeToolNames).not.toContain('rename_file');
-    expect(organizeToolNames).not.toContain('move_file');
-    expect(organizeToolNames).not.toContain('edit_lines');
-    expect(organizeToolNames).not.toContain('list_acp_agents');
-    expect(organizeToolNames).not.toContain('call_acp_agent');
-    expect(organizeToolNames).not.toContain('delegate_to_agent');
-    expect(organizeToolNames).not.toContain('orchestrate');
+    expect(kbWriteToolNames).not.toContain('delete_file');
+    expect(kbWriteToolNames).not.toContain('rename_file');
+    expect(kbWriteToolNames).not.toContain('move_file');
+    expect(kbWriteToolNames).not.toContain('edit_lines');
+    expect(kbWriteToolNames).not.toContain('list_acp_agents');
+    expect(kbWriteToolNames).not.toContain('call_acp_agent');
+    expect(kbWriteToolNames).not.toContain('delegate_to_agent');
+    expect(kbWriteToolNames).not.toContain('orchestrate');
   });
 });
 
@@ -129,8 +129,8 @@ describe('AskMode type', () => {
     expect(validModes).toHaveLength(1);
   });
 
-  it('AskModeApi includes organize', async () => {
-    const validModes: Array<import('@/lib/types').AskModeApi> = ['agent', 'organize'];
-    expect(validModes).toHaveLength(2);
+  it('AskModeApi only accepts agent', async () => {
+    const validModes: Array<import('@/lib/types').AskModeApi> = ['agent'];
+    expect(validModes).toHaveLength(1);
   });
 });

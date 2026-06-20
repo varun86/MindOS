@@ -979,6 +979,18 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       body: { error: 'messages must be an array' },
     });
 
+    const removedMode = handleAskStream({
+      messages: [{ role: 'user', content: 'hello' }],
+      mode: 'organize',
+    }, {
+      askStream: () => throwingAsyncIterable(new Error('should not stream removed ask modes')),
+    });
+    expect(removedMode).toMatchObject({
+      ok: false,
+      status: 400,
+      body: { error: 'mode must be agent' },
+    });
+
     const valid = handleAskStream({
       messages: [{ role: 'user', content: 'hello' }],
       mode: 'agent',

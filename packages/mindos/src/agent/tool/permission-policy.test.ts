@@ -41,17 +41,17 @@ describe('MindOS agent permission policy', () => {
     expect(hasMindosExtensionScope(policy, 'subagents')).toBe(false);
   });
 
-  it('maps organize mode to bounded KB writes without delegation', () => {
-    const policy = createMindosAgentPermissionPolicy('organize');
+  it('maps kb-write policy to bounded KB writes without delegation', () => {
+    const policy = createMindosAgentPermissionPolicy('kb-write');
 
     expect(policy).toMatchObject({
-      mode: 'organize',
-      permissionMode: 'organize',
+      mode: 'kb-write',
+      permissionMode: 'kb-write',
       runtimePermissionMode: 'readonly',
       acpPermissionMode: 'readonly',
       toolScope: {
         kbRead: true,
-        kbWrite: 'organize',
+        kbWrite: 'bounded',
         web: true,
         askUserQuestion: true,
         terminal: false,
@@ -111,18 +111,19 @@ describe('MindOS agent permission policy', () => {
 
   it('derives external harness permission from the explicit permission policy', () => {
     expect(createMindosAgentPermissionPolicy('readonly').runtimePermissionMode).toBe('readonly');
-    expect(createMindosAgentPermissionPolicy('organize').runtimePermissionMode).toBe('readonly');
+    expect(createMindosAgentPermissionPolicy('kb-write').runtimePermissionMode).toBe('readonly');
     expect(createMindosAgentPermissionPolicy('agent').runtimePermissionMode).toBe('agent');
 
     expect(createMindosAgentPermissionPolicy('readonly').acpPermissionMode).toBe('readonly');
-    expect(createMindosAgentPermissionPolicy('organize').acpPermissionMode).toBe('readonly');
+    expect(createMindosAgentPermissionPolicy('kb-write').acpPermissionMode).toBe('readonly');
     expect(createMindosAgentPermissionPolicy('agent').acpPermissionMode).toBe('agent');
   });
 
   it('maps runtime contexts into the same policy contract', () => {
     expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'readonly' }).mode).toBe('readonly');
-    expect(createMindosAgentPermissionPolicyFromContext({ askMode: 'organize' }).acpPermissionMode).toBe('readonly');
+    expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'kb-write' }).acpPermissionMode).toBe('readonly');
     expect(createMindosAgentPermissionPolicyFromContext({ mode: 'agent' }).toolScope.subagents).toBe(true);
+    expect(createMindosAgentPermissionPolicyFromContext({ askMode: 'readonly' }).mode).toBe('agent');
     expect(createMindosAgentPermissionPolicyFromContext(undefined).mode).toBe('agent');
   });
 });

@@ -32,7 +32,7 @@ function classifyAgentArgs(
 
 function buildAskBody(
   content: string | string[],
-  mode: 'agent' | 'organize',
+  mode: 'agent',
   opts: { file?: string; maxSteps?: number } = {},
 ) {
   const messages = Array.isArray(content)
@@ -114,11 +114,6 @@ describe('Ask API body construction', () => {
     expect(msg.role).toBe('user');
     expect(msg.content).toBe('do something');
     expect(msg.timestamp).toBeTypeOf('number');
-  });
-
-  it('builds organize mode body', () => {
-    const body = buildAskBody('organize inbox', 'organize');
-    expect(body.mode).toBe('organize');
   });
 
   it('builds multi-turn conversation body', () => {

@@ -22,7 +22,7 @@ describe('GET /api/agent-capabilities', () => {
         source: 'mindos',
         status: 'available',
         permissionRequired: 'readonly',
-        availableInModes: ['organize', 'agent'],
+        availableInModes: ['agent'],
       }],
       mcp: () => [{
         id: 'mcp:github:search_code',
@@ -37,24 +37,36 @@ describe('GET /api/agent-capabilities', () => {
     });
   });
 
-  it('returns mode-filtered capabilities from the product handler', async () => {
+  it('returns agent-mode capabilities from the product handler', async () => {
     const { GET } = await importRoute();
-    const res = await GET(new Request('http://localhost/api/agent-capabilities?mode=organize&include=kb,mcp'));
+    const res = await GET(new Request('http://localhost/api/agent-capabilities?include=kb,mcp'));
 
     expect(res.status).toBe(200);
     expect(createAgentCapabilitiesServices).toHaveBeenCalledTimes(1);
     await expect(res.json()).resolves.toMatchObject({
-      mode: 'organize',
+      mode: 'agent',
       include: ['kb', 'mcp'],
       capabilities: [{
         id: 'kb:read',
         kind: 'kb-tool',
         source: 'mindos',
+      }, {
+        id: 'mcp:github:search_code',
+        kind: 'mcp-tool',
+        source: 'mcp',
       }],
       sources: [
         { id: 'kb', status: 'ok', count: 1 },
-        { id: 'mcp', status: 'ok', count: 0 },
+        { id: 'mcp', status: 'ok', count: 1 },
       ],
     });
+  });
+
+  it('rejects removed organize mode filter', async () => {
+    const { GET } = await importRoute();
+    const res = await GET(new Request('http://localhost/api/agent-capabilities?mode=organize'));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'mode must be agent' });
   });
 });

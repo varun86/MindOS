@@ -236,8 +236,8 @@ export interface LocalAttachment {
 /** User-facing Ask mode. Tool permissions are controlled separately. */
 export type AskMode = 'agent';
 
-/** All Ask modes including internal ones sent to the API */
-export type AskModeApi = AskMode | 'organize';
+/** Ask API mode. Assistant workflows must use assistantId/context, not extra modes. */
+export type AskModeApi = AskMode;
 
 /** Chat Panel permission preset shown in the composer controls. */
 export type AskPermissionLevel = 'read' | 'ask' | 'auto' | 'full';

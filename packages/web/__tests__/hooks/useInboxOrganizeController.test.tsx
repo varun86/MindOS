@@ -109,7 +109,7 @@ describe('useInboxOrganizeController', () => {
       [{ name: 'capture.md', content: 'Inbox capture content' }],
       expect.stringContaining('Use the user\'s inbox taxonomy.'),
       'inbox-organize',
-      {},
+      { assistantId: 'inbox-organizer' },
     );
     expect(startMock.mock.calls[0]?.[1]).toContain('Inbox/capture.md');
     expect(resultMock).toHaveBeenCalledWith({ started: true });
@@ -164,7 +164,7 @@ describe('useInboxOrganizeController', () => {
       [{ name: 'capture.md', content: 'Inbox capture content' }],
       expect.stringContaining('version: 1'),
       'inbox-organize',
-      options,
+      { ...options, assistantId: 'inbox-organizer' },
     );
     expect(startMock.mock.calls[0]?.[1]).toContain('mode: subagent');
     expect(startMock.mock.calls[0]?.[1]).toContain('Inbox/capture.md');
@@ -230,7 +230,7 @@ describe('useInboxOrganizeController', () => {
       [{ name: 'notes.md', content: 'Readable notes' }],
       expect.stringContaining('notes.md'),
       'inbox-organize',
-      {},
+      { assistantId: 'inbox-organizer' },
     );
 
     const doneAi = {

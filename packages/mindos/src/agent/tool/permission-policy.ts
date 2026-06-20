@@ -1,9 +1,8 @@
-import type { MindosAskMode } from '../../session/index.js';
 import type { AgentRunPermissionMode } from '../run-ledger-types.js';
 
-export type MindosAgentPermissionPolicyMode = MindosAskMode | 'readonly';
+export type MindosAgentPermissionPolicyMode = 'readonly' | 'kb-write' | 'agent';
 export type MindosHarnessPermissionMode = 'readonly' | 'agent';
-export type MindosKbWriteScope = 'none' | 'organize' | 'all';
+export type MindosKbWriteScope = 'none' | 'bounded' | 'all';
 
 export type MindosExtensionScope =
   | 'kb'
@@ -66,7 +65,7 @@ export const MINDOS_READONLY_KB_TOOL_NAMES = [
   'get_backlinks',
 ] as const;
 
-export const MINDOS_ORGANIZE_KB_TOOL_NAMES = [
+export const MINDOS_KB_WRITE_TOOL_NAMES = [
   'list_files',
   'read_file',
   'search',
@@ -96,7 +95,7 @@ const AGENT_EXTENSION_SCOPES = [
 
 function normalizePolicyMode(mode: unknown): MindosAgentPermissionPolicyMode {
   if (mode === 'readonly') return 'readonly';
-  if (mode === 'organize' || mode === 'agent') return mode;
+  if (mode === 'kb-write' || mode === 'agent') return mode;
   return 'agent';
 }
 
@@ -146,17 +145,17 @@ export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPer
     };
   }
 
-  if (normalized === 'organize') {
+  if (normalized === 'kb-write') {
     return {
-      mode: 'organize',
-      permissionMode: 'organize',
-      // External harnesses currently support only readonly/agent. Keep organize
-      // bounded to MindOS-owned KB tools until a runtime-specific allowlist exists.
+      mode: 'kb-write',
+      permissionMode: 'kb-write',
+      // External harnesses currently support only readonly/agent. Keep bounded
+      // KB writes inside MindOS-owned tools until a runtime-specific allowlist exists.
       runtimePermissionMode: 'readonly',
       acpPermissionMode: 'readonly',
       toolScope: {
         kbRead: true,
-        kbWrite: 'organize',
+        kbWrite: 'bounded',
         web: true,
         askUserQuestion: true,
         terminal: false,
@@ -168,7 +167,7 @@ export function createMindosAgentPermissionPolicy(mode: unknown): MindosAgentPer
         schedule: false,
         userExtensions: false,
       },
-      kbToolNames: [...MINDOS_ORGANIZE_KB_TOOL_NAMES],
+      kbToolNames: [...MINDOS_KB_WRITE_TOOL_NAMES],
       writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
       extensionScopes: [...SAFE_EXTENSION_SCOPES],
     };
@@ -195,7 +194,7 @@ export function createMindosAgentPermissionPolicyFromContext(
   }
   const record = context as Record<string, unknown>;
   return createMindosAgentPermissionPolicy(
-    record.permissionMode ?? record.mode ?? record.askMode ?? fallbackMode,
+    record.permissionMode ?? record.mode ?? fallbackMode,
   );
 }
 
