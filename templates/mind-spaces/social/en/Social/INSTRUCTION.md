@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: social
-  templateVersion: 1
+  id: social
+  type: space
+  source: builtin
+  version: 1
   locale: en
+  order: 110
 ---
 
 # Social instructions

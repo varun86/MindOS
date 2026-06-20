@@ -20,7 +20,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_DAO',
     role: 'world-model',
     order: 10,
-    enabled: true,
   },
   {
     key: 'fa',
@@ -29,7 +28,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_FA',
     role: 'principles',
     order: 20,
-    enabled: true,
   },
   {
     key: 'shu',
@@ -38,7 +36,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_SHU',
     role: 'methods',
     order: 30,
-    enabled: true,
   },
   {
     key: 'qi',
@@ -47,7 +44,6 @@ const mindSystemSlots: MindSystemSlot[] = [
     path: 'MIND_QI',
     role: 'tools-assets',
     order: 40,
-    enabled: true,
   },
 ];
 

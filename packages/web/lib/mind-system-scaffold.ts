@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { defaultMindSystemConfig, type MindSystemSlot } from './mind-system';
+import { defaultMindSystemSlots, type MindSystemSlot } from './mind-system';
 
 export const README_BY_MIND_SYSTEM_SLOT: Record<MindSystemSlot['key'], string> = {
   dao: '# 道\n\n价值、方向、长期判断。\n',
@@ -10,7 +10,17 @@ export const README_BY_MIND_SYSTEM_SLOT: Record<MindSystemSlot['key'], string> =
 };
 
 export const INSTRUCTION_BY_MIND_SYSTEM_SLOT: Record<MindSystemSlot['key'], string> = {
-  dao: `# 道 / Dao Instructions
+  dao: `---
+mindSpace:
+  id: dao
+  type: system
+  source: builtin
+  version: 1
+  locale: zh
+  order: 10
+---
+
+# 道 / Dao Instructions
 
 Use this space for values, direction, and long-term judgment.
 
@@ -21,7 +31,17 @@ Agent rules:
 - Do not put tools, SOPs, or raw assets here unless they directly support a long-term judgment.
 - When adding a note, make the underlying belief or decision explicit.
 `,
-  fa: `# 法 / Fa Instructions
+  fa: `---
+mindSpace:
+  id: fa
+  type: system
+  source: builtin
+  version: 1
+  locale: zh
+  order: 20
+---
+
+# 法 / Fa Instructions
 
 Use this space for rules, boundaries, protocols, and commitments.
 
@@ -32,7 +52,17 @@ Agent rules:
 - Link to supporting examples when useful, but keep the rule itself concise.
 - Do not put one-off tactics or tool inventories here.
 `,
-  shu: `# 术 / Shu Instructions
+  shu: `---
+mindSpace:
+  id: shu
+  type: system
+  source: builtin
+  version: 1
+  locale: zh
+  order: 30
+---
+
+# 术 / Shu Instructions
 
 Use this space for methods, workflows, SOPs, and reusable tactics.
 
@@ -43,7 +73,17 @@ Agent rules:
 - Include preconditions, failure modes, and verification checks when relevant.
 - Do not put strategic principles or tool inventories here unless they are part of a workflow.
 `,
-  qi: `# 器 / Qi Instructions
+  qi: `---
+mindSpace:
+  id: qi
+  type: system
+  source: builtin
+  version: 1
+  locale: zh
+  order: 40
+---
+
+# 器 / Qi Instructions
 
 Use this space for tools, assets, templates, references, and resource inventories.
 
@@ -62,7 +102,7 @@ function normalizeRelativePath(relativePath: string): string {
 
 export function getDefaultMindSystemScaffoldContent(relativePath: string): string | null {
   const normalized = normalizeRelativePath(relativePath);
-  for (const slot of Object.values(defaultMindSystemConfig().slots)) {
+  for (const slot of defaultMindSystemSlots()) {
     if (normalized === `${slot.path}/README.md`) return README_BY_MIND_SYSTEM_SLOT[slot.key];
     if (normalized === `${slot.path}/INSTRUCTION.md`) return INSTRUCTION_BY_MIND_SYSTEM_SLOT[slot.key];
   }

@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: research
-  templateVersion: 1
+  id: research
+  type: space
+  source: builtin
+  version: 1
   locale: zh
+  order: 150
 ---
 
 # 科研说明

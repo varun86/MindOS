@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: product
-  templateVersion: 1
+  id: product
+  type: space
+  source: builtin
+  version: 1
   locale: zh
+  order: 140
 ---
 
 # 产品说明

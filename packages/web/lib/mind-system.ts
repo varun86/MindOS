@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
-
-export const MIND_SYSTEM_CONFIG_RELATIVE_PATH = '.mindos/modules/mind-system.json';
+import { splitMarkdownFrontmatter, type FrontmatterValue } from './parsing/frontmatter';
 
 export type MindSystemSlotKey = 'dao' | 'fa' | 'shu' | 'qi';
 
@@ -13,63 +12,36 @@ export interface MindSystemSlot {
   path: string;
   role: string;
   order: number;
-  enabled: boolean;
-}
-
-export interface MindSystemConfig {
-  version: 1;
-  enabled: boolean;
-  slots: Record<MindSystemSlotKey, MindSystemSlot>;
 }
 
 const DEFAULT_MIND_SYSTEM_SLOTS: readonly MindSystemSlot[] = [
-  { key: 'dao', systemId: 'MIND_DAO', label: '道', path: 'MIND_DAO', role: 'world-model', order: 10, enabled: true },
-  { key: 'fa', systemId: 'MIND_FA', label: '法', path: 'MIND_FA', role: 'principles', order: 20, enabled: true },
-  { key: 'shu', systemId: 'MIND_SHU', label: '术', path: 'MIND_SHU', role: 'methods', order: 30, enabled: true },
-  { key: 'qi', systemId: 'MIND_QI', label: '器', path: 'MIND_QI', role: 'tools-assets', order: 40, enabled: true },
+  { key: 'dao', systemId: 'MIND_DAO', label: '道', path: 'MIND_DAO', role: 'world-model', order: 10 },
+  { key: 'fa', systemId: 'MIND_FA', label: '法', path: 'MIND_FA', role: 'principles', order: 20 },
+  { key: 'shu', systemId: 'MIND_SHU', label: '术', path: 'MIND_SHU', role: 'methods', order: 30 },
+  { key: 'qi', systemId: 'MIND_QI', label: '器', path: 'MIND_QI', role: 'tools-assets', order: 40 },
 ] as const;
 
 const SLOT_KEYS = new Set<MindSystemSlotKey>(DEFAULT_MIND_SYSTEM_SLOTS.map(slot => slot.key));
+const DEFAULT_SLOT_BY_KEY = new Map<MindSystemSlotKey, MindSystemSlot>(
+  DEFAULT_MIND_SYSTEM_SLOTS.map(slot => [slot.key, slot]),
+);
 
-export function defaultMindSystemConfig(): MindSystemConfig {
-  return {
-    version: 1,
-    enabled: true,
-    slots: Object.fromEntries(
-      DEFAULT_MIND_SYSTEM_SLOTS.map(slot => [slot.key, { ...slot }]),
-    ) as Record<MindSystemSlotKey, MindSystemSlot>,
-  };
-}
-
-export function getMindSystemConfigPath(mindRoot: string): string {
-  return path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH);
-}
-
-export function ensureMindSystemConfig(mindRoot: string): MindSystemConfig {
-  const configPath = getMindSystemConfigPath(mindRoot);
-  const raw = readMindSystemConfigFile(configPath);
-  const existing = parseMindSystemConfig(raw);
-  const merged = mergeMindSystemConfig(raw);
-
-  if (!existing || JSON.stringify(raw) !== JSON.stringify(merged)) {
-    const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
-  }
-
-  return merged;
-}
-
-export function readMindSystemConfig(mindRoot: string): MindSystemConfig {
-  return ensureMindSystemConfig(mindRoot);
+export function defaultMindSystemSlots(): MindSystemSlot[] {
+  return DEFAULT_MIND_SYSTEM_SLOTS.map(slot => ({ ...slot }));
 }
 
 export function listMindSystemSlots(mindRoot: string): MindSystemSlot[] {
-  const config = readMindSystemConfig(mindRoot);
-  if (!config.enabled) return [];
-  return Object.values(config.slots)
-    .filter(slot => slot.enabled && mindSystemPathExists(mindRoot, slot))
-    .map(slot => ({ ...slot }))
+  const slotsByKey = new Map<MindSystemSlotKey, MindSystemSlot>();
+  for (const slot of listFrontmatterMindSystemSlots(mindRoot)) {
+    slotsByKey.set(slot.key, slot);
+  }
+
+  for (const slot of DEFAULT_MIND_SYSTEM_SLOTS) {
+    if (slotsByKey.has(slot.key) || !mindSystemPathExists(mindRoot, slot)) continue;
+    slotsByKey.set(slot.key, { ...slot });
+  }
+
+  return [...slotsByKey.values()]
     .sort((a, b) => a.order - b.order);
 }
 
@@ -83,43 +55,71 @@ export function mindSystemPathExists(mindRoot: string, slot: Pick<MindSystemSlot
   }
 }
 
-function readMindSystemConfigFile(configPath: string): unknown {
+function listFrontmatterMindSystemSlots(mindRoot: string): MindSystemSlot[] {
+  let entries: fs.Dirent[];
   try {
-    const raw = fs.readFileSync(configPath, 'utf-8');
-    return JSON.parse(raw) as unknown;
+    entries = fs.readdirSync(mindRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const slots: MindSystemSlot[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const spaceId = readMindSystemSpaceId(mindRoot, entry.name);
+    if (!spaceId || !SLOT_KEYS.has(spaceId)) continue;
+    const defaults = DEFAULT_SLOT_BY_KEY.get(spaceId);
+    if (!defaults) continue;
+    slots.push({
+      ...defaults,
+      path: entry.name,
+      order: readMindSpaceOrder(mindRoot, entry.name) ?? defaults.order,
+    });
+  }
+  return slots;
+}
+
+function readMindSystemSpaceId(mindRoot: string, spacePath: string): MindSystemSlotKey | null {
+  let instructionPath: string;
+  try {
+    instructionPath = resolveExistingSafe(mindRoot, path.join(spacePath, 'INSTRUCTION.md'));
+  } catch {
+    return null;
+  }
+
+  try {
+    const parsed = splitMarkdownFrontmatter(fs.readFileSync(instructionPath, 'utf-8'));
+    const mindSpace = parsed.frontmatter?.entries.find(entry => entry.key === 'mindSpace')?.value;
+    if (!isFrontmatterObject(mindSpace)) return null;
+    if (mindSpace.source !== 'builtin' || mindSpace.type !== 'system') return null;
+    return typeof mindSpace.id === 'string' && SLOT_KEYS.has(mindSpace.id as MindSystemSlotKey)
+      ? mindSpace.id as MindSystemSlotKey
+      : null;
   } catch {
     return null;
   }
 }
 
-function parseMindSystemConfig(raw: unknown): MindSystemConfig | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const source = raw as Record<string, unknown>;
-  if (source.version !== 1 || !source.slots || typeof source.slots !== 'object') return null;
-  return mergeMindSystemConfig(source);
-}
-
-function mergeMindSystemConfig(raw: unknown): MindSystemConfig {
-  const defaults = defaultMindSystemConfig();
-  const enabled = raw && typeof raw === 'object' && 'enabled' in raw && typeof (raw as { enabled?: unknown }).enabled === 'boolean'
-    ? (raw as { enabled: boolean }).enabled
-    : defaults.enabled;
-  const rawSlots = raw && typeof raw === 'object' && 'slots' in raw
-    ? (raw as { slots?: unknown }).slots
-    : undefined;
-
-  if (!rawSlots || typeof rawSlots !== 'object') return { ...defaults, enabled };
-
-  const slots = { ...defaults.slots };
-  for (const [key, value] of Object.entries(rawSlots as Record<string, unknown>)) {
-    if (!SLOT_KEYS.has(key as MindSystemSlotKey) || !value || typeof value !== 'object') continue;
-    const current = slots[key as MindSystemSlotKey];
-    const override = value as Record<string, unknown>;
-    slots[key as MindSystemSlotKey] = {
-      ...current,
-      enabled: typeof override.enabled === 'boolean' ? override.enabled : current.enabled,
-    };
+function readMindSpaceOrder(mindRoot: string, spacePath: string): number | null {
+  let instructionPath: string;
+  try {
+    instructionPath = resolveExistingSafe(mindRoot, path.join(spacePath, 'INSTRUCTION.md'));
+  } catch {
+    return null;
   }
 
-  return { version: 1, enabled, slots };
+  try {
+    const parsed = splitMarkdownFrontmatter(fs.readFileSync(instructionPath, 'utf-8'));
+    const mindSpace = parsed.frontmatter?.entries.find(entry => entry.key === 'mindSpace')?.value;
+    if (!isFrontmatterObject(mindSpace)) return null;
+    return typeof mindSpace.order === 'number' && Number.isFinite(mindSpace.order)
+      ? mindSpace.order
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isFrontmatterObject(value: FrontmatterValue | undefined): value is Record<string, FrontmatterValue> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date);
 }

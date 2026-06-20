@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: learning
-  templateVersion: 1
+  id: learning
+  type: space
+  source: builtin
+  version: 1
   locale: en
+  order: 120
 ---
 
 # Learning instructions

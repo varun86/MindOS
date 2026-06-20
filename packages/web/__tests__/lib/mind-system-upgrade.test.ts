@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { cleanupMindRoot, mkTempMindRoot } from '../core/helpers';
-import { MIND_SYSTEM_CONFIG_RELATIVE_PATH, listMindSystemSlots } from '@/lib/mind-system';
+import { listMindSystemSlots } from '@/lib/mind-system';
 import { ensureDefaultMindSystemUpgrade } from '@/lib/mind-system-upgrade';
 
 const DEFAULT_DIRS = ['MIND_DAO', 'MIND_FA', 'MIND_SHU', 'MIND_QI'] as const;
@@ -24,7 +24,7 @@ const DEFAULT_ASSISTANT_PROFILES = [
 ] as const;
 
 describe('default mind-system upgrade', () => {
-  it('creates default Mind System folders, scaffolds, and normalized config', () => {
+  it('creates default Mind System folders and unified Space front matter without writing a registry', () => {
     const mindRoot = mkTempMindRoot();
     try {
       const result = ensureDefaultMindSystemUpgrade(mindRoot);
@@ -53,10 +53,14 @@ describe('default mind-system upgrade', () => {
         mcp: [],
       });
 
-      const config = JSON.parse(fs.readFileSync(path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH), 'utf-8'));
-      expect(config.enabled).toBe(true);
-      expect(Object.keys(config.slots)).toEqual(['dao', 'fa', 'shu', 'qi']);
-      expect(config.slots.dao).toMatchObject({ systemId: 'MIND_DAO', path: 'MIND_DAO', label: '道' });
+      const daoInstruction = fs.readFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), 'utf-8');
+      expect(daoInstruction).toContain('mindSpace:');
+      expect(daoInstruction).toContain('id: dao');
+      expect(daoInstruction).toContain('type: system');
+      expect(daoInstruction).toContain('source: builtin');
+      expect(daoInstruction).toContain('version: 1');
+      expect(daoInstruction).toContain('locale: zh');
+      expect(daoInstruction).toContain('order: 10');
       expect(listMindSystemSlots(mindRoot).map(slot => slot.key)).toEqual(['dao', 'fa', 'shu', 'qi']);
     } finally {
       cleanupMindRoot(mindRoot);
@@ -187,48 +191,6 @@ describe('default mind-system upgrade', () => {
     } finally {
       cleanupMindRoot(mindRoot);
       fs.rmSync(outside, { recursive: true, force: true });
-    }
-  });
-
-  it('does not create folders when the mind system is hidden', () => {
-    const mindRoot = mkTempMindRoot();
-    try {
-      const configPath = path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH);
-      fs.mkdirSync(path.dirname(configPath), { recursive: true });
-      fs.writeFileSync(configPath, JSON.stringify({
-        version: 1,
-        enabled: false,
-        slots: {},
-      }, null, 2), 'utf-8');
-
-      const result = ensureDefaultMindSystemUpgrade(mindRoot);
-
-      expect(result).toEqual({
-        state: 'hidden',
-        createdPaths: [],
-        existingPaths: [],
-        skippedPaths: [],
-      });
-      for (const dir of DEFAULT_DIRS) {
-        expect(fs.existsSync(path.join(mindRoot, dir))).toBe(false);
-      }
-      const inboxPrompt = path.join(mindRoot, '.mindos', 'assistants', 'inbox-organizer', 'prompt.md');
-      expect(fs.existsSync(inboxPrompt)).toBe(true);
-      expect(fs.readFileSync(inboxPrompt, 'utf-8')).toContain('assistantId: inbox-organizer');
-      const dreamingPrompt = path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'prompt.md');
-      const dreamingProfile = path.join(mindRoot, '.mindos', 'assistants', 'dreaming', 'profile.json');
-      expect(fs.existsSync(dreamingPrompt)).toBe(true);
-      expect(fs.readFileSync(dreamingPrompt, 'utf-8')).toContain('assistantId: dreaming');
-      expect(JSON.parse(fs.readFileSync(dreamingProfile, 'utf-8'))).toMatchObject({
-        name: 'Dreaming',
-        schemaVersion: 1,
-      });
-      const dailySignalPrompt = path.join(mindRoot, '.mindos', 'assistants', 'daily-signal', 'prompt.md');
-      expect(fs.existsSync(dailySignalPrompt)).toBe(true);
-      expect(fs.readFileSync(dailySignalPrompt, 'utf-8')).toContain('assistantId: daily-signal');
-      expect(listMindSystemSlots(mindRoot)).toEqual([]);
-    } finally {
-      cleanupMindRoot(mindRoot);
     }
   });
 

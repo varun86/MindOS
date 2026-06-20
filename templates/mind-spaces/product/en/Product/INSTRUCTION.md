@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: product
-  templateVersion: 1
+  id: product
+  type: space
+  source: builtin
+  version: 1
   locale: en
+  order: 140
 ---
 
 # Product instructions

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
-import { ensureMindSystemConfig, type MindSystemSlot } from './mind-system';
+import { defaultMindSystemSlots, type MindSystemSlot } from './mind-system';
 import {
   getDefaultAssistantPrompt,
   getMindosContextAssistants,
@@ -27,7 +27,7 @@ export interface MindSystemUpgradeSkippedPath {
 }
 
 export interface MindSystemUpgradeResult {
-  state: 'ready' | 'partial' | 'hidden';
+  state: 'ready' | 'partial';
   createdPaths: string[];
   existingPaths: string[];
   skippedPaths: MindSystemUpgradeSkippedPath[];
@@ -47,7 +47,6 @@ const CORE_BUILTIN_ASSISTANTS = [
 ] as const;
 
 export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgradeResult {
-  const config = ensureMindSystemConfig(mindRoot);
   const createdPaths: string[] = [];
   const existingPaths: string[] = [];
   const skippedPaths: MindSystemUpgradeSkippedPath[] = [];
@@ -71,17 +70,7 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
     }
   }
 
-  if (!config.enabled) {
-    return {
-      state: skippedPaths.length > 0 ? 'partial' : 'hidden',
-      createdPaths,
-      existingPaths,
-      skippedPaths,
-    };
-  }
-
-  for (const slot of Object.values(config.slots).sort((a, b) => a.order - b.order)) {
-    if (!slot.enabled) continue;
+  for (const slot of defaultMindSystemSlots().sort((a, b) => a.order - b.order)) {
     const result = ensureSlotDirectory(mindRoot, slot);
     if (result === 'created') createdPaths.push(slot.path);
     else if (result === 'existing') existingPaths.push(slot.path);

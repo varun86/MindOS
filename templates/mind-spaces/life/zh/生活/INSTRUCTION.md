@@ -1,9 +1,11 @@
 ---
 mindSpace:
-  source: builtin-space
-  templateId: life
-  templateVersion: 1
+  id: life
+  type: space
+  source: builtin
+  version: 1
   locale: zh
+  order: 100
 ---
 
 # 生活说明
