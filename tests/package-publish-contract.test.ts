@@ -186,9 +186,14 @@ describe('product npm publish contract', () => {
       'kb-tools',
       'line-diff',
       'paragraph-extract',
-      'permission-policy',
     ]) {
       expect(existsSync(resolve(root, `packages/mindos/src/agent/tool/${module}.ts`))).toBe(true);
+    }
+    for (const module of [
+      'index',
+      'types',
+    ]) {
+      expect(existsSync(resolve(root, `packages/mindos/src/agent/permission/${module}.ts`))).toBe(true);
     }
     expect(readText('packages/mindos/src/agent/tool/index.ts')).not.toContain('kb-extension');
     expect(readText('packages/mindos/src/agent/tool/kb-extension.ts')).toContain("from '../mindos-pi/extension/kb-extension.js'");
@@ -205,6 +210,12 @@ describe('product npm publish contract', () => {
       'kb-extension',
     ]) {
       expect(existsSync(resolve(root, `packages/mindos/src/agent/mindos-pi/extension/${module}.ts`))).toBe(true);
+    }
+    for (const module of [
+      'index',
+      'policy',
+    ]) {
+      expect(existsSync(resolve(root, `packages/mindos/src/agent/mindos-pi/permission/${module}.ts`))).toBe(true);
     }
 
     // kb-tools value-imports TypeBox schemas at runtime — it must be a real
