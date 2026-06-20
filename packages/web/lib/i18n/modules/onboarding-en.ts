@@ -30,6 +30,7 @@ export const onboardingEn = {
     templateSkip: 'Skip (directory already has files)',
     initialSpaceTitle: 'Choose Mind Spaces',
     initialSpaceDesc: 'Start with the Spaces you are most likely to use. You can add or remove them later.',
+    builtinMindSystemHint: 'Built-in Mind System: Dao · Fa · Shu · Qi will be prepared automatically. Existing files will not be moved.',
     initialSpaceCount: (n: number) => n > 0 ? `${n} selected` : 'Optional',
     initialSpaceLabels: {
       life: 'Life',

@@ -111,53 +111,6 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3.5" aria-labelledby="initial-spaces-title">
-        <div className="flex items-start justify-between gap-3">
-          <SectionHeading
-            id="initial-spaces-title"
-            icon={<LayoutGrid size={13} />}
-            title={s.initialSpaceTitle}
-            desc={s.initialSpaceDesc}
-          />
-          <span className="shrink-0 rounded-md border border-border/70 bg-card/70 px-2 py-1 text-xs text-muted-foreground">
-            {s.initialSpaceCount(state.initialSpaces.length)}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {INITIAL_SPACES.map((space) => {
-            const isSelected = selected.has(space.id);
-            const label = s.initialSpaceLabels[space.id];
-            const desc = s.initialSpaceDescriptions[space.id];
-            return (
-              <button
-                key={space.id}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => toggleSpace(space.id)}
-                className={setupChoiceCardClass(isSelected, 'group relative grid min-h-[5rem] grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 py-2.5 text-left duration-150 hover:border-[var(--amber)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem]')}
-              >
-                <span
-                  className={cn(
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors duration-150',
-                    isSelected ? 'bg-[var(--amber-subtle)] text-[var(--amber)]' : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {space.icon}
-                </span>
-                <span className="min-w-0 pr-5 sm:pr-4">
-                  <span className="block truncate text-sm font-semibold leading-5 text-foreground">{label}</span>
-                  <span className="mt-0.5 block truncate whitespace-nowrap text-xs leading-4 text-muted-foreground" title={desc}>{desc}</span>
-                </span>
-                <span className="absolute right-2.5 top-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-background/75 transition-opacity duration-150">
-                  <CheckCircle2 size={14} className={cn('text-[var(--amber)]', isSelected ? 'opacity-100' : 'opacity-0')} />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       <section className="space-y-3" aria-labelledby="mind-location-title">
         <SectionHeading
           id="mind-location-title"
@@ -199,45 +152,95 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
               </div>
             </div>
           )}
-
-          <div className="border-t border-border/70 pt-3">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen(open => !open)}
-              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {advancedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              {s.advancedMindSettings}
-            </button>
-            {advancedOpen && (
-              <div className="mt-3 space-y-4">
-                <PortField
-                  label={<InlineIconLabel icon={<Monitor size={13} />}>{s.webPort}</InlineIconLabel>}
-                  hint={s.portHint}
-                  value={state.webPort}
-                  onChange={v => {
-                    update('webPort', v);
-                    setWebPortStatus({ checking: false, available: null, isSelf: false, suggestion: null });
-                  }}
-                  status={webPortStatus}
-                  onCheckPort={port => checkPort(port, 'web')}
-                  s={s}
-                />
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">
-                    <InlineIconLabel icon={<Shield size={13} />}>{s.webPassword}</InlineIconLabel>
-                  </label>
-                  <p className="text-xs text-muted-foreground">{s.webPasswordHint}</p>
-                  <PasswordInput
-                    value={state.webPassword}
-                    onChange={v => update('webPassword', v)}
-                    placeholder={isZh ? '留空则不设置' : 'Leave blank to skip'}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
         </div>
+      </section>
+
+      <section className="space-y-3.5" aria-labelledby="initial-spaces-title">
+        <div className="flex items-start justify-between gap-3">
+          <SectionHeading
+            id="initial-spaces-title"
+            icon={<LayoutGrid size={13} />}
+            title={s.initialSpaceTitle}
+            desc={s.initialSpaceDesc}
+          />
+          <span className="shrink-0 rounded-md border border-border/70 bg-card/70 px-2 py-1 text-xs text-muted-foreground">
+            {s.initialSpaceCount(state.initialSpaces.length)}
+          </span>
+        </div>
+        <p className="rounded-md border border-border/60 bg-muted/35 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          {s.builtinMindSystemHint}
+        </p>
+
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {INITIAL_SPACES.map((space) => {
+            const isSelected = selected.has(space.id);
+            const label = s.initialSpaceLabels[space.id];
+            const desc = s.initialSpaceDescriptions[space.id];
+            return (
+              <button
+                key={space.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => toggleSpace(space.id)}
+                className={setupChoiceCardClass(isSelected, 'group relative grid min-h-[5rem] grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 py-2.5 text-left duration-150 hover:border-[var(--amber)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem]')}
+              >
+                <span
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors duration-150',
+                    isSelected ? 'bg-[var(--amber-subtle)] text-[var(--amber)]' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {space.icon}
+                </span>
+                <span className="min-w-0 pr-5 sm:pr-4">
+                  <span className="block truncate text-sm font-semibold leading-5 text-foreground">{label}</span>
+                  <span className="mt-0.5 block truncate whitespace-nowrap text-xs leading-4 text-muted-foreground" title={desc}>{desc}</span>
+                </span>
+                <span className="absolute right-2.5 top-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-background/75 transition-opacity duration-150">
+                  <CheckCircle2 size={14} className={cn('text-[var(--amber)]', isSelected ? 'opacity-100' : 'opacity-0')} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="border-t border-border/70 pt-3" aria-label={s.advancedMindSettings}>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(open => !open)}
+          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {advancedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {s.advancedMindSettings}
+        </button>
+        {advancedOpen && (
+          <div className="mt-3 space-y-4">
+            <PortField
+              label={<InlineIconLabel icon={<Monitor size={13} />}>{s.webPort}</InlineIconLabel>}
+              hint={s.portHint}
+              value={state.webPort}
+              onChange={v => {
+                update('webPort', v);
+                setWebPortStatus({ checking: false, available: null, isSelf: false, suggestion: null });
+              }}
+              status={webPortStatus}
+              onCheckPort={port => checkPort(port, 'web')}
+              s={s}
+            />
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                <InlineIconLabel icon={<Shield size={13} />}>{s.webPassword}</InlineIconLabel>
+              </label>
+              <p className="text-xs text-muted-foreground">{s.webPasswordHint}</p>
+              <PasswordInput
+                value={state.webPassword}
+                onChange={v => update('webPassword', v)}
+                placeholder={isZh ? '留空则不设置' : 'Leave blank to skip'}
+              />
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

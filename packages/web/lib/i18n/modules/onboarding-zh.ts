@@ -30,6 +30,7 @@ export const onboardingZh = {
     templateSkip: '跳过（目录已有文件）',
     initialSpaceTitle: '选择心智空间',
     initialSpaceDesc: '先选择最可能用到的空间，之后可以随时添加或删除。',
+    builtinMindSystemHint: '内置心智系统：道 · 法 · 术 · 器 会自动准备，已有文件不会被移动。',
     initialSpaceCount: (n: number) => n > 0 ? `已选 ${n}` : '可跳过',
     initialSpaceLabels: {
       life: '生活',
