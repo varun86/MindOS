@@ -375,6 +375,7 @@ MindOS/
 <a href="https://github.com/one2piece2hello"><img src="https://github.com/one2piece2hello.png" width="60" style="border-radius:50%" alt="one2piece2hello" /></a>
 <a href="https://github.com/zz-haooo"><img src="https://github.com/zz-haooo.png" width="60" style="border-radius:50%" alt="zz-haooo" /></a>
 <a href="https://github.com/zjpyb"><img src="https://github.com/zjpyb.png" width="60" style="border-radius:50%" alt="zjpyb" /></a>
+<a href="https://github.com/huzhangyi"><img src="https://github.com/huzhangyi.png" width="60" style="border-radius:50%" alt="huzhangyi" /></a>
 
 ### 🙏 致谢
 
