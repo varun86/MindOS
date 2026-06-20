@@ -4,10 +4,6 @@ import { getFileTree, getMindRoot } from '@/lib/fs';
 import { resolveExistingSafe } from '@/lib/core/security';
 import type { FileNode } from '@/lib/core/types';
 import { listMindSystemSlots, type MindSystemSlot } from './mind-system';
-import {
-  getMindSystemAssistantSummary,
-  type MindSystemAssistantSummary,
-} from './mind-system-assistants';
 
 export interface SpaceInfo {
   name: string;
@@ -21,7 +17,6 @@ export interface BuiltInMindSystemSpaceRecord {
   slot: MindSystemSlot;
   fileCount: number;
   description: string;
-  assistantSummary: MindSystemAssistantSummary;
 }
 
 export interface SpaceOverview {
@@ -66,7 +61,6 @@ export function listBuiltInMindSystemSpaces(
       slot,
       fileCount: topLevelSpace?.fileCount ?? 0,
       description: topLevelSpace?.description ?? extractDescription(mindRoot, slot.path),
-      assistantSummary: getMindSystemAssistantSummary(mindRoot, slot),
     };
   });
 }
@@ -88,7 +82,7 @@ export function listTopLevelSpaces(
   tree: FileNode[] = getFileTree(),
 ): SpaceInfo[] {
   return tree
-    .filter(node => node.type === 'directory' && !node.name.startsWith('.'))
+    .filter(node => node.type === 'directory' && !node.name.startsWith('.') && hasInstructionFile(node))
     .map(node => ({
       name: node.name,
       path: `${node.path.replace(/\/+$/, '')}/`,
@@ -119,4 +113,9 @@ function extractDescription(mindRoot: string, spacePath: string): string {
 
 function normalizeSpacePath(spacePath: string): string {
   return spacePath.replace(/\/+$/, '');
+}
+
+function hasInstructionFile(node: FileNode): boolean {
+  return node.isSpace === true
+    || (node.children ?? []).some(child => child.type === 'file' && child.name === 'INSTRUCTION.md');
 }

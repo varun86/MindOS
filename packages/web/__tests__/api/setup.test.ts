@@ -46,10 +46,9 @@ vi.mock('@/lib/template', () => ({
     fs.mkdirSync(root, { recursive: true });
     fs.writeFileSync(path.join(root, 'README.md'), '# Hello', 'utf-8');
   }),
-  applySpaceKits: vi.fn((kits: string[], _root: string, locale: 'en' | 'zh') => ({
-    installed: kits.map((id) => ({
+  applyInitialSpaces: vi.fn((spaces: string[], _root: string, locale: 'en' | 'zh') => ({
+    installed: spaces.map((id) => ({
       id,
-      version: 1,
       locale,
       copied: [`${id}/README.md`],
       skipped: [],
@@ -335,16 +334,42 @@ describe('POST /api/setup — config writing', () => {
     expect((writtenConfig as Record<string, unknown>).guideState).toEqual(existingGuideState);
   });
 
-  it('applies selected Space Kits with explicit locale', async () => {
+  it('applies selected initial Mind Spaces with explicit locale', async () => {
     const templateModule = await import('@/lib/template');
     const { POST } = await importSetupRoute();
-    const mindRoot = path.join(tempDir, 'space-kits');
+    const mindRoot = path.join(tempDir, 'initial-spaces');
     const req = new NextRequest('http://localhost/api/setup', {
       method: 'POST',
       body: JSON.stringify({
         mindRoot,
         template: 'empty',
-        spaceKits: ['product', 'social', 'product'],
+        initialSpaces: ['product', 'social', 'product'],
+        initialSpaceLocale: 'zh',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(templateModule.applyInitialSpaces).toHaveBeenCalledWith(['product', 'social'], mindRoot, 'zh');
+    expect(body.installedInitialSpaces).toEqual([
+      { id: 'product', locale: 'zh', copied: ['product/README.md'], skipped: [] },
+      { id: 'social', locale: 'zh', copied: ['social/README.md'], skipped: [] },
+    ]);
+  });
+
+  it('accepts legacy Space Kit payload fields during transition', async () => {
+    const templateModule = await import('@/lib/template');
+    const { POST } = await importSetupRoute();
+    const mindRoot = path.join(tempDir, 'legacy-space-kits');
+    const req = new NextRequest('http://localhost/api/setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        mindRoot,
+        template: 'empty',
+        spaceKits: ['life', 'learning', 'life'],
         spaceKitLocale: 'zh',
       }),
       headers: { 'content-type': 'application/json' },
@@ -354,22 +379,22 @@ describe('POST /api/setup — config writing', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(templateModule.applySpaceKits).toHaveBeenCalledWith(['product', 'social'], mindRoot, 'zh');
-    expect(body.installedSpaceKits).toEqual([
-      { id: 'product', version: 1, locale: 'zh', copied: ['product/README.md'], skipped: [] },
-      { id: 'social', version: 1, locale: 'zh', copied: ['social/README.md'], skipped: [] },
+    expect(templateModule.applyInitialSpaces).toHaveBeenCalledWith(['life', 'learning'], mindRoot, 'zh');
+    expect(body.installedInitialSpaces).toEqual([
+      { id: 'life', locale: 'zh', copied: ['life/README.md'], skipped: [] },
+      { id: 'learning', locale: 'zh', copied: ['learning/README.md'], skipped: [] },
     ]);
   });
 
-  it('rejects invalid Space Kits before copying templates or kits', async () => {
+  it('rejects invalid initial Mind Spaces before copying templates or spaces', async () => {
     const templateModule = await import('@/lib/template');
     const { POST } = await importSetupRoute();
     const req = new NextRequest('http://localhost/api/setup', {
       method: 'POST',
       body: JSON.stringify({
-        mindRoot: path.join(tempDir, 'invalid-space-kit'),
+        mindRoot: path.join(tempDir, 'invalid-initial-space'),
         template: 'en',
-        spaceKits: ['product', '../bad'],
+        initialSpaces: ['product', '../bad'],
       }),
       headers: { 'content-type': 'application/json' },
     });
@@ -378,9 +403,9 @@ describe('POST /api/setup — config writing', () => {
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body.error).toBe('Invalid space kit: ../bad');
+    expect(body.error).toBe('Invalid initial space: ../bad');
     expect(templateModule.applyTemplate).not.toHaveBeenCalled();
-    expect(templateModule.applySpaceKits).not.toHaveBeenCalled();
+    expect(templateModule.applyInitialSpaces).not.toHaveBeenCalled();
     expect(writtenConfig).toBeNull();
   });
 });

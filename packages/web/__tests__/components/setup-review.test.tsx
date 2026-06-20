@@ -15,8 +15,8 @@ vi.mock('@/lib/stores/locale-store', () => ({
 const state: SetupState = {
   mindRoot: '/Users/alice/Documents/MindOS/mind',
   template: '',
-  spaceKits: ['life', 'product'],
-  spaceKitLocale: 'en',
+  initialSpaces: ['life', 'product'],
+  initialSpaceLocale: 'en',
   activeProvider: 'skip',
   providers: [],
   webPort: 4567,

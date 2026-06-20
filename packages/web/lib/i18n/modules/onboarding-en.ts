@@ -2,7 +2,7 @@
 
 export const onboardingEn = {
   onboarding: {
-    subtitle: 'Your knowledge base is empty. Pick a starter template to get going.',
+    subtitle: 'Your knowledge base is empty. Choose how to begin.',
     templates: {
       en: { title: 'English', desc: 'Pre-built structure with Profile, Notes, Projects, and more.' },
       zh: { title: '中文', desc: '预置画像、笔记、项目等中文目录结构。' },
@@ -26,12 +26,12 @@ export const onboardingEn = {
     kbPathHasFiles: (n: number) => `This directory already contains ${n} file${n > 1 ? 's' : ''}. You can skip the template or merge.`,
     kbTemplateSkip: 'Skip template',
     kbTemplateMerge: 'Choose a template to merge',
-    template: 'Starter template',
+    template: 'Template',
     templateSkip: 'Skip (directory already has files)',
-    spaceKitTitle: 'Choose Mind Spaces',
-    spaceKitDesc: 'Start with the Spaces you are most likely to use. You can add or remove them later.',
-    spaceKitCount: (n: number) => n > 0 ? `${n} selected` : 'Optional',
-    spaceKitLabels: {
+    initialSpaceTitle: 'Choose Mind Spaces',
+    initialSpaceDesc: 'Start with the Spaces you are most likely to use. You can add or remove them later.',
+    initialSpaceCount: (n: number) => n > 0 ? `${n} selected` : 'Optional',
+    initialSpaceLabels: {
       life: 'Life',
       social: 'Social',
       learning: 'Learning',
@@ -39,7 +39,7 @@ export const onboardingEn = {
       product: 'Product',
       research: 'Research',
     },
-    spaceKitDescriptions: {
+    initialSpaceDescriptions: {
       life: 'Daily ops',
       social: 'People',
       learning: 'Study',
@@ -146,8 +146,8 @@ export const onboardingEn = {
     reviewReadyTitle: 'Ready to create your Mind',
     reviewHint: 'Verify your settings, then press Complete Setup.',
     reviewSafety: '',
-    reviewSpaceKits: 'Mind Spaces',
-    reviewSpaceKitsSkipped: 'Skipped',
+    reviewInitialSpaces: 'Mind Spaces',
+    reviewInitialSpacesSkipped: 'Skipped',
     reviewLocalService: 'Local service',
     reviewInstallResults: 'Agent configuration results:',
     phaseSaving: 'Saving configuration…',

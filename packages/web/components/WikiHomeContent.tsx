@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Bot, Brain, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
+import { Brain, ChevronDown, FolderOpen, Plus, Sparkles, Search, FilePlus, ArrowRight, Clock, FileText, Table, Star, X, History } from 'lucide-react';
 import { usePinnedFiles } from '@/lib/hooks/usePinnedFiles';
 import { useLocale } from '@/lib/stores/locale-store';
 import { encodePath, relativeTime, extractEmoji, stripEmoji } from '@/lib/utils';
@@ -318,7 +318,6 @@ function BuiltInMindSpacesSection({
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {pillars.map((pillar) => {
           const desc = pillar.data?.desc ?? pillar.slot.role;
-          const assistantCount = pillar.assistantSummary?.assistants.length ?? 0;
           return (
             <article
               key={pillar.slot.key}
@@ -351,15 +350,6 @@ function BuiltInMindSpacesSection({
                   {desc}
                 </span>
               </Link>
-              <span className="mt-3 flex items-center gap-2 border-t border-border/40 pt-2.5" data-mind-system-card-assistant-summary={pillar.slot.key}>
-                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-[var(--amber)]/10 px-2 py-1 text-[10px] font-medium text-[var(--amber)]/80">
-                  <Bot size={11} className="shrink-0" aria-hidden="true" />
-                  <span className="truncate">{t.home.mindAssistant.spaceTitle}</span>
-                </span>
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
-                  {assistantCount}
-                </span>
-              </span>
               <span className="mt-3 flex items-center justify-between border-t border-border/40 pt-2">
                 <Link
                   href={`/view/${encodePath(pillar.slot.path)}`}

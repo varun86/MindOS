@@ -145,8 +145,8 @@ describe('MindOS setup domain operations', () => {
     });
   });
 
-  it('validates and applies selected Space Kits after the base template', () => {
-    const { services, templates, spaceKits } = makeMutableServices({
+  it('validates and applies selected initial Mind Spaces after the base template', () => {
+    const { services, templates, initialSpaces } = makeMutableServices({
       ai: { activeProvider: '', providers: [] },
       mindRoot: '',
       setupPending: true,
@@ -155,7 +155,35 @@ describe('MindOS setup domain operations', () => {
     const response = applyMindosSetupConfig({
       mindRoot: '~/mind',
       template: 'zh',
-      spaceKits: ['product', 'social', 'product'],
+      initialSpaces: ['product', 'social', 'product'],
+      initialSpaceLocale: 'zh',
+    }, services);
+
+    expect(response).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        installedInitialSpaces: [
+          { id: 'product', locale: 'zh', copied: ['产品/README.md'], skipped: [] },
+          { id: 'social', locale: 'zh', copied: ['社交/README.md'], skipped: [] },
+        ],
+      },
+    });
+    expect(templates).toEqual([{ template: 'zh', root: '/home/tester/mind' }]);
+    expect(initialSpaces).toEqual([{ ids: ['product', 'social'], root: '/home/tester/mind', locale: 'zh' }]);
+  });
+
+  it('accepts legacy Space Kit fields during transition', () => {
+    const { services, templates, initialSpaces } = makeMutableServices({
+      ai: { activeProvider: '', providers: [] },
+      mindRoot: '',
+      setupPending: true,
+    });
+
+    const response = applyMindosSetupConfig({
+      mindRoot: '~/mind',
+      template: 'en',
+      spaceKits: ['life', 'learning', 'life'],
       spaceKitLocale: 'zh',
     }, services);
 
@@ -163,18 +191,18 @@ describe('MindOS setup domain operations', () => {
       status: 200,
       body: {
         ok: true,
-        installedSpaceKits: [
-          { id: 'product', locale: 'zh', copied: ['产品/README.md'], skipped: [] },
-          { id: 'social', locale: 'zh', copied: ['社交/README.md'], skipped: [] },
+        installedInitialSpaces: [
+          { id: 'life', locale: 'zh', copied: ['life/README.md'], skipped: [] },
+          { id: 'learning', locale: 'zh', copied: ['learning/README.md'], skipped: [] },
         ],
       },
     });
-    expect(templates).toEqual([{ template: 'zh', root: '/home/tester/mind' }]);
-    expect(spaceKits).toEqual([{ ids: ['product', 'social'], root: '/home/tester/mind', locale: 'zh' }]);
+    expect(templates).toEqual([{ template: 'en', root: '/home/tester/mind' }]);
+    expect(initialSpaces).toEqual([{ ids: ['life', 'learning'], root: '/home/tester/mind', locale: 'zh' }]);
   });
 
-  it('rejects invalid Space Kits before copying templates or kits', () => {
-    const { services, templates, spaceKits } = makeMutableServices({
+  it('rejects invalid initial Mind Spaces before copying templates or spaces', () => {
+    const { services, templates, initialSpaces } = makeMutableServices({
       ai: { activeProvider: '', providers: [] },
       mindRoot: '',
       setupPending: true,
@@ -183,13 +211,13 @@ describe('MindOS setup domain operations', () => {
     expect(applyMindosSetupConfig({
       mindRoot: '~/mind',
       template: 'en',
-      spaceKits: ['product', '../bad'],
+      initialSpaces: ['product', '../bad'],
     }, services)).toMatchObject({
       status: 400,
-      body: { error: 'Invalid space kit: ../bad' },
+      body: { error: 'Invalid initial space: ../bad' },
     });
     expect(templates).toEqual([]);
-    expect(spaceKits).toEqual([]);
+    expect(initialSpaces).toEqual([]);
   });
 
   it('keeps Web sessions stable when setup writes the Web UI password', () => {
@@ -310,7 +338,7 @@ function makeMutableServices(initial: MindosSetupSettings) {
   const state = { settings: initial };
   const createdDirs: string[] = [];
   const templates: Array<{ template: string; root: string }> = [];
-  const spaceKits: Array<{ ids: string[]; root: string; locale: string }> = [];
+  const initialSpaces: Array<{ ids: string[]; root: string; locale: string }> = [];
   const services: MindosSetupServices = {
     ...makeServices(state.settings),
     readSettings: () => state.settings,
@@ -322,8 +350,8 @@ function makeMutableServices(initial: MindosSetupSettings) {
       createdDirs.push(root);
       return { ok: true };
     },
-    applySpaceKits: (ids, root, locale) => {
-      spaceKits.push({ ids, root, locale });
+    applyInitialSpaces: (ids, root, locale) => {
+      initialSpaces.push({ ids, root, locale });
       return {
         ok: true,
         installed: ids.map(id => ({
@@ -335,5 +363,5 @@ function makeMutableServices(initial: MindosSetupSettings) {
       };
     },
   };
-  return { services, state, createdDirs, templates, spaceKits };
+  return { services, state, createdDirs, templates, initialSpaces };
 }

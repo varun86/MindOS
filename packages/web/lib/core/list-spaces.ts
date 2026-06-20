@@ -45,7 +45,7 @@ function extractDescription(mindRoot: string, dirRelPosix: string): string {
  */
 export function summarizeTopLevelSpaces(mindRoot: string, tree: FileNode[]): MindSpaceSummary[] {
   return tree
-    .filter((n) => n.type === 'directory' && !n.name.startsWith('.'))
+    .filter((n) => n.type === 'directory' && !n.name.startsWith('.') && hasInstructionFile(n))
     .map((n) => {
       const posix = toPosixRel(n.path);
       return {
@@ -55,4 +55,9 @@ export function summarizeTopLevelSpaces(mindRoot: string, tree: FileNode[]): Min
         description: extractDescription(mindRoot, posix),
       };
     });
+}
+
+function hasInstructionFile(node: FileNode): boolean {
+  return node.isSpace === true
+    || (node.children ?? []).some(child => child.type === 'file' && child.name === 'INSTRUCTION.md');
 }

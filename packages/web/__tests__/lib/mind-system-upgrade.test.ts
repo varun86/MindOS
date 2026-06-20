@@ -132,8 +132,8 @@ describe('default mind-system upgrade', () => {
       expect(listMindSystemSlots(mindRoot).map(slot => slot.key)).toEqual(['fa', 'shu', 'qi']);
       expect(fs.readFileSync(path.join(mindRoot, 'MIND_DAO'), 'utf-8')).toBe('not a directory');
       expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/inbox-organizer/prompt.md'))).toBe(true);
-      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(false);
-      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(true);
       expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/rule-keeper/prompt.md'))).toBe(true);
     } finally {
       cleanupMindRoot(mindRoot);
@@ -182,8 +182,8 @@ describe('default mind-system upgrade', () => {
       expect(fs.existsSync(path.join(outside, 'INSTRUCTION.md'))).toBe(false);
       expect(fs.existsSync(path.join(outside, 'Drafts'))).toBe(false);
       expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/inbox-organizer/prompt.md'))).toBe(true);
-      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(false);
-      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/daily-signal/prompt.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos/assistants/decision-synthesizer/prompt.md'))).toBe(true);
     } finally {
       cleanupMindRoot(mindRoot);
       fs.rmSync(outside, { recursive: true, force: true });
@@ -223,6 +223,9 @@ describe('default mind-system upgrade', () => {
         name: 'Dreaming',
         schemaVersion: 1,
       });
+      const dailySignalPrompt = path.join(mindRoot, '.mindos', 'assistants', 'daily-signal', 'prompt.md');
+      expect(fs.existsSync(dailySignalPrompt)).toBe(true);
+      expect(fs.readFileSync(dailySignalPrompt, 'utf-8')).toContain('assistantId: daily-signal');
       expect(listMindSystemSlots(mindRoot)).toEqual([]);
     } finally {
       cleanupMindRoot(mindRoot);

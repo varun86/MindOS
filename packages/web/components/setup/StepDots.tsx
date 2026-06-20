@@ -32,7 +32,7 @@ export default function StepDots({ step, setStep, stepTitles, disabled, numbered
               )}
             />
           )}
-          <button onClick={() => setStep(i)}
+          <button type="button" onClick={() => setStep(i)}
             aria-current={i === step ? 'step' : undefined}
             aria-label={title}
             className="group -m-1 flex flex-col items-center gap-1 p-1 transition-opacity disabled:cursor-not-allowed disabled:opacity-60"

@@ -9,7 +9,7 @@ import {
   listMindSystemSlots,
   mindSystemPathExists,
 } from '@/lib/mind-system';
-import { applySpaceKits, applyTemplate } from '@/lib/template';
+import { applyInitialSpaces, applyTemplate } from '@/lib/template';
 
 describe('mind-system registry', () => {
   it('creates the hidden mind-system registry without creating visible content folders', () => {
@@ -90,6 +90,9 @@ describe('mind-system registry', () => {
       for (const dir of ['MIND_DAO', 'MIND_FA', 'MIND_SHU', 'MIND_QI', '05 势', '99 验']) {
         fs.mkdirSync(path.join(mindRoot, dir), { recursive: true });
       }
+      for (const dir of ['MIND_DAO', 'MIND_FA', 'MIND_SHU', 'MIND_QI']) {
+        fs.writeFileSync(path.join(mindRoot, dir, 'INSTRUCTION.md'), `# ${dir} instructions\n`, 'utf-8');
+      }
       const slots = listMindSystemSlots(mindRoot);
 
       expect(slots.map(slot => slot.key)).toEqual(['dao', 'fa', 'shu', 'qi']);
@@ -104,6 +107,7 @@ describe('mind-system registry', () => {
     const mindRoot = mkTempMindRoot();
     try {
       fs.mkdirSync(path.join(mindRoot, 'MIND_DAO'), { recursive: true });
+      fs.writeFileSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'), '# Dao instructions\n', 'utf-8');
       fs.writeFileSync(path.join(mindRoot, 'MIND_FA'), '# Not a folder', 'utf-8');
       const slots = listMindSystemSlots(mindRoot);
 
@@ -150,42 +154,64 @@ describe('mind-system registry', () => {
     }
   });
 
-  it('applies Space Kits with skip-existing and relative receipt paths', () => {
+  it('applies initial Mind Spaces with skip-existing and provenance front matter', () => {
     const mindRoot = mkTempMindRoot();
     try {
       const existingReadme = path.join(mindRoot, '产品', 'README.md');
       fs.mkdirSync(path.dirname(existingReadme), { recursive: true });
       fs.writeFileSync(existingReadme, '# Custom product space', 'utf-8');
 
-      const result = applySpaceKits(['product', 'social'], mindRoot, 'zh');
+      const result = applyInitialSpaces(['product', 'social'], mindRoot, 'zh');
 
-      expect(result.installed).toMatchObject([
-        { id: 'product', locale: 'zh', copied: ['产品/INSTRUCTION.md'], skipped: ['产品/README.md'] },
-        { id: 'social', locale: 'zh', copied: ['社交/README.md', '社交/INSTRUCTION.md'], skipped: [] },
-      ]);
+      expect(result.installed[0]).toMatchObject({ id: 'product', locale: 'zh', skipped: ['产品/README.md'] });
+      expect(result.installed[0]?.copied).toEqual(expect.arrayContaining(['产品/INSTRUCTION.md']));
+      expect(result.installed[1]).toMatchObject({ id: 'social', locale: 'zh', skipped: [] });
+      expect(result.installed[1]?.copied).toEqual(expect.arrayContaining(['社交/README.md', '社交/INSTRUCTION.md']));
       expect(fs.readFileSync(existingReadme, 'utf-8')).toBe('# Custom product space');
       expect(fs.existsSync(path.join(mindRoot, '社交', 'README.md'))).toBe(true);
 
+      const productInstruction = fs.readFileSync(path.join(mindRoot, '产品', 'INSTRUCTION.md'), 'utf-8');
+      expect(productInstruction).toContain('mindSpace:');
+      expect(productInstruction).toContain('source: builtin-space');
+      expect(productInstruction).toContain('templateId: product');
+      expect(productInstruction).toContain('templateVersion: 1');
+      expect(productInstruction).toContain('locale: zh');
+      expect(fs.existsSync(path.join(mindRoot, MIND_SYSTEM_CONFIG_RELATIVE_PATH))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'daily-signal', 'prompt.md'))).toBe(true);
       const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
-      const receiptText = fs.readFileSync(receiptPath, 'utf-8');
-      expect(receiptText).not.toContain(mindRoot);
-      const receipt = JSON.parse(receiptText) as { installed: Array<{ id: string; copied: string[]; skipped: string[] }> };
-      expect(receipt.installed.map(item => item.id)).toEqual(['product', 'social']);
-      expect(receipt.installed[0].skipped).toEqual(['产品/README.md']);
+      expect(fs.existsSync(receiptPath)).toBe(false);
     } finally {
       cleanupMindRoot(mindRoot);
     }
   });
 
-  it('replaces the receipt entry when the same Space Kit locale is installed again', () => {
+  it('reinstalling initial Mind Spaces only skips existing files and writes no receipt', () => {
     const mindRoot = mkTempMindRoot();
     try {
-      applySpaceKits(['product'], mindRoot, 'en');
-      applySpaceKits(['product'], mindRoot, 'en');
+      applyInitialSpaces(['product'], mindRoot, 'en');
+      const second = applyInitialSpaces(['product'], mindRoot, 'en');
 
       const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
-      const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf-8')) as { installed: Array<{ id: string; locale: string }> };
-      expect(receipt.installed.filter(item => item.id === 'product' && item.locale === 'en')).toHaveLength(1);
+      expect(fs.existsSync(receiptPath)).toBe(false);
+      expect(second.installed).toEqual([
+        {
+          id: 'product',
+          locale: 'en',
+          copied: [],
+          skipped: expect.arrayContaining(['Product/INSTRUCTION.md', 'Product/README.md']),
+        },
+      ]);
+    } finally {
+      cleanupMindRoot(mindRoot);
+    }
+  });
+
+  it('rejects invalid initial Mind Space ids before copying any selected space', () => {
+    const mindRoot = mkTempMindRoot();
+    try {
+      expect(() => applyInitialSpaces(['product', '../bad' as never], mindRoot, 'en')).toThrow('Invalid initial space: ../bad');
+      expect(fs.existsSync(path.join(mindRoot, 'Product'))).toBe(false);
     } finally {
       cleanupMindRoot(mindRoot);
     }

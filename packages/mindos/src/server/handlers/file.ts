@@ -188,7 +188,7 @@ function listDetailedSpaces(mindRoot: string): Array<{ name: string; path: strin
   const root = resolve(mindRoot);
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && isMindSpaceDirectory(root, entry.name))
     .map((entry) => {
       const spacePath = entry.name;
       return {
@@ -200,6 +200,11 @@ function listDetailedSpaces(mindRoot: string): Array<{ name: string; path: strin
     })
     .filter((space) => space.fileCount > 0 || space.description)
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function isMindSpaceDirectory(root: string, name: string): boolean {
+  const instructionPath = join(root, name, 'INSTRUCTION.md');
+  return existsSync(instructionPath) && statSync(instructionPath).isFile();
 }
 
 function listDirectories(mindRoot: string): string[] {

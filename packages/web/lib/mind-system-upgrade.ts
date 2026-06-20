@@ -4,7 +4,7 @@ import { resolveExistingSafe } from '@/lib/core/security';
 import { ensureMindSystemConfig, type MindSystemSlot } from './mind-system';
 import {
   getDefaultAssistantPrompt,
-  getMindSystemAssistants,
+  getMindosContextAssistants,
 } from './mind-system-assistants';
 import {
   INBOX_ORGANIZER_ASSISTANT_ID,
@@ -52,7 +52,7 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
   const existingPaths: string[] = [];
   const skippedPaths: MindSystemUpgradeSkippedPath[] = [];
 
-  for (const assistant of CORE_BUILTIN_ASSISTANTS) {
+  for (const assistant of [...CORE_BUILTIN_ASSISTANTS, ...getMindosContextAssistants()]) {
     const promptResult = ensureAssistantPromptFile(mindRoot, assistant.assistantId, assistant.promptPath);
     if (promptResult !== 'ready') {
       skippedPaths.push({
@@ -86,18 +86,6 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
     if (result === 'created') createdPaths.push(slot.path);
     else if (result === 'existing') existingPaths.push(slot.path);
     else skippedPaths.push({ path: slot.path, reason: result });
-
-    if (result !== 'created' && result !== 'existing') continue;
-
-    for (const assistant of getMindSystemAssistants(slot)) {
-      const promptResult = ensureAssistantPromptFile(mindRoot, assistant.id, assistant.promptPath);
-      if (promptResult !== 'ready') {
-        skippedPaths.push({
-          path: assistant.promptPath ?? `.mindos/assistants/${assistant.id}/prompt.md`,
-          reason: promptResult,
-        });
-      }
-    }
   }
 
   return {

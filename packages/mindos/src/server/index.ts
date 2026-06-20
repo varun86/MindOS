@@ -431,16 +431,16 @@ export {
   type MindosSetupApplyPayload,
   type MindosSetupAiConfig,
   type MindosSetupGuideState,
+  type MindosSetupInitialSpaceId,
+  type MindosSetupInitialSpaceInstallResult,
+  type MindosSetupInitialSpaceLocale,
   type MindosSetupProvider,
   type MindosSetupProviderPreset,
-  type MindosSetupSpaceKitId,
-  type MindosSetupSpaceKitInstallResult,
-  type MindosSetupSpaceKitLocale,
   type MindosSetupServices,
   type MindosSetupSettings,
   type MindosSetupStatePayload,
   type SetupWizardServices,
-  SPACE_KIT_IDS,
+  INITIAL_SPACE_IDS,
 } from './handlers/setup.js';
 
 export {

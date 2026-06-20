@@ -161,9 +161,14 @@ export function listMindSpacesFromMindRoot(mindRoot: string): string[] {
   if (!existsSync(root)) return [];
   const isIgnored = createMindosSearchIgnoreMatcher(root, MINDOS_IGNORED_DIRS);
   return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !isIgnored(entry.name))
+    .filter((entry) => entry.isDirectory() && !isIgnored(entry.name) && isMindSpaceDirectory(root, entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b));
+}
+
+function isMindSpaceDirectory(root: string, name: string): boolean {
+  const instructionPath = join(root, name, 'INSTRUCTION.md');
+  return existsSync(instructionPath) && statSync(instructionPath).isFile();
 }
 
 export function listDirectoriesFromMindRoot(mindRoot: string): string[] {

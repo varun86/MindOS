@@ -22,6 +22,7 @@ describe('GET /api/file', () => {
 
   it('list_spaces returns top-level spaces without path param', async () => {
     seedFile('LSpace/note.md', 'x');
+    seedFile('LSpace/INSTRUCTION.md', 'Use this as a test Space.');
     seedFile('LSpace/README.md', '# L\n\nhello space');
     invalidateCache();
     const req = new NextRequest('http://localhost/api/file?op=list_spaces');

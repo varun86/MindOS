@@ -7,8 +7,8 @@ import { PasswordInput } from '@/components/settings/Primitives';
 import PathAutocompleteField from '@/components/shared/PathAutocompleteField';
 import type { Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { PortStatus, SetupState, SpaceKitId } from './types';
-import { SPACE_KITS } from './constants';
+import type { PortStatus, SetupState, InitialSpaceId } from './types';
+import { INITIAL_SPACES } from './constants';
 import { PortField } from './StepPorts';
 import { cn } from '@/lib/utils';
 import { setupChoiceCardClass, setupNoticeClass, setupOutlineButtonClass } from './setupStyles';
@@ -101,40 +101,40 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
     };
   }, [currentMindRoot]);
 
-  const selected = new Set(state.spaceKits);
-  const toggleKit = (id: SpaceKitId) => {
+  const selected = new Set(state.initialSpaces);
+  const toggleSpace = (id: InitialSpaceId) => {
     const next = selected.has(id)
-      ? state.spaceKits.filter(item => item !== id)
-      : [...state.spaceKits, id];
-    update('spaceKits', next);
+      ? state.initialSpaces.filter(item => item !== id)
+      : [...state.initialSpaces, id];
+    update('initialSpaces', next);
   };
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3.5" aria-labelledby="space-kit-title">
+      <section className="space-y-3.5" aria-labelledby="initial-spaces-title">
         <div className="flex items-start justify-between gap-3">
           <SectionHeading
-            id="space-kit-title"
+            id="initial-spaces-title"
             icon={<LayoutGrid size={13} />}
-            title={s.spaceKitTitle}
-            desc={s.spaceKitDesc}
+            title={s.initialSpaceTitle}
+            desc={s.initialSpaceDesc}
           />
           <span className="shrink-0 rounded-md border border-border/70 bg-card/70 px-2 py-1 text-xs text-muted-foreground">
-            {s.spaceKitCount(state.spaceKits.length)}
+            {s.initialSpaceCount(state.initialSpaces.length)}
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {SPACE_KITS.map((kit) => {
-            const isSelected = selected.has(kit.id);
-            const label = s.spaceKitLabels[kit.id];
-            const desc = s.spaceKitDescriptions[kit.id];
+          {INITIAL_SPACES.map((space) => {
+            const isSelected = selected.has(space.id);
+            const label = s.initialSpaceLabels[space.id];
+            const desc = s.initialSpaceDescriptions[space.id];
             return (
               <button
-                key={kit.id}
+                key={space.id}
                 type="button"
                 aria-pressed={isSelected}
-                onClick={() => toggleKit(kit.id)}
+                onClick={() => toggleSpace(space.id)}
                 className={setupChoiceCardClass(isSelected, 'group relative grid min-h-[5rem] grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 py-2.5 text-left duration-150 hover:border-[var(--amber)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[4.5rem]')}
               >
                 <span
@@ -143,7 +143,7 @@ export default function StepMindSpace({ state, update, t, homeDir, platformName,
                     isSelected ? 'bg-[var(--amber-subtle)] text-[var(--amber)]' : 'bg-muted text-muted-foreground',
                   )}
                 >
-                  {kit.icon}
+                  {space.icon}
                 </span>
                 <span className="min-w-0 pr-5 sm:pr-4">
                   <span className="block truncate text-sm font-semibold leading-5 text-foreground">{label}</span>

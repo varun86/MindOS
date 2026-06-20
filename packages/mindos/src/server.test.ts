@@ -899,6 +899,7 @@ Write a concise signal brief.
   it('handles recent files and file read operations from product handlers', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-file-handler-'));
     mkdirSync(join(root, 'Space'), { recursive: true });
+    writeFileSync(join(root, 'Space', 'INSTRUCTION.md'), '# Space instructions\n');
     writeFileSync(join(root, 'Space', 'note.md'), 'one\ntwo');
 
     const services = createDefaultMindosHttpServices({
@@ -907,7 +908,7 @@ Write a concise signal brief.
 
     expect(handleRecentFiles(new URLSearchParams('limit=3'), services).status).toBe(200);
     expect(handleFileGet(new URLSearchParams('op=list_spaces'), services).body).toEqual({
-      spaces: [expect.objectContaining({ name: 'Space', path: 'Space', fileCount: 1 })],
+      spaces: [expect.objectContaining({ name: 'Space', path: 'Space', fileCount: 2 })],
     });
     expect(handleFileGet(new URLSearchParams('op=read_file&path=Space/note.md'), services).body).toMatchObject({
       content: 'one\ntwo',
@@ -923,6 +924,7 @@ Write a concise signal brief.
   it('serves detailed spaces from the Product Server file handler when mindRoot is available', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-spaces-detail-'));
     mkdirSync(join(root, 'SpaceA'), { recursive: true });
+    writeFileSync(join(root, 'SpaceA', 'INSTRUCTION.md'), '# Space A instructions\n', 'utf-8');
     writeFileSync(join(root, 'SpaceA', 'README.md'), '# Space A\n\nReadable description.\n', 'utf-8');
     writeFileSync(join(root, 'SpaceA', 'note.md'), 'hello', 'utf-8');
 
@@ -939,16 +941,34 @@ Write a concise signal brief.
       spaces: [expect.objectContaining({
         name: 'SpaceA',
         path: 'SpaceA',
-        fileCount: 2,
+        fileCount: 3,
         description: 'Readable description.',
       })],
     });
+  });
+
+  it('does not list Product Server folders without INSTRUCTION.md as spaces', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-spaces-require-instruction-'));
+    mkdirSync(join(root, 'FolderOnly'), { recursive: true });
+    writeFileSync(join(root, 'FolderOnly', 'README.md'), '# Folder\n\nNot a Space.\n', 'utf-8');
+
+    const res = handleFileGet(new URLSearchParams('op=list_spaces'), {
+      mindRoot: root,
+      readTextFile: () => '',
+      readLines: () => [],
+      listSpaces: () => [],
+      listDirectories: () => [],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ spaces: [] });
   });
 
   it('does not read Product Server space descriptions through symlinked README files', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-spaces-readme-symlink-'));
     const outside = mkdtempSync(join(tmpdir(), 'mindos-spaces-readme-outside-'));
     mkdirSync(join(root, 'SpaceA'), { recursive: true });
+    writeFileSync(join(root, 'SpaceA', 'INSTRUCTION.md'), '# Space A instructions\n', 'utf-8');
     writeFileSync(join(root, 'SpaceA', 'note.md'), 'hello', 'utf-8');
     writeFileSync(join(outside, 'README.md'), '# Outside\n\nLeaked description.\n', 'utf-8');
     symlinkSync(join(outside, 'README.md'), join(root, 'SpaceA', 'README.md'), 'file');
@@ -966,7 +986,7 @@ Write a concise signal brief.
       spaces: [expect.objectContaining({
         name: 'SpaceA',
         path: 'SpaceA',
-        fileCount: 1,
+        fileCount: 2,
         description: '',
       })],
     });

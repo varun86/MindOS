@@ -28,10 +28,10 @@ export const onboardingZh = {
     kbTemplateMerge: '选择模板合并',
     template: '初始模板',
     templateSkip: '跳过（目录已有文件）',
-    spaceKitTitle: '选择心智空间',
-    spaceKitDesc: '先选择最可能用到的空间，之后可以随时添加或删除。',
-    spaceKitCount: (n: number) => n > 0 ? `已选 ${n}` : '可跳过',
-    spaceKitLabels: {
+    initialSpaceTitle: '选择心智空间',
+    initialSpaceDesc: '先选择最可能用到的空间，之后可以随时添加或删除。',
+    initialSpaceCount: (n: number) => n > 0 ? `已选 ${n}` : '可跳过',
+    initialSpaceLabels: {
       life: '生活',
       social: '社交',
       learning: '学习',
@@ -39,7 +39,7 @@ export const onboardingZh = {
       product: '产品',
       research: '科研',
     },
-    spaceKitDescriptions: {
+    initialSpaceDescriptions: {
       life: '日常',
       social: '人物',
       learning: '学习',
@@ -146,8 +146,8 @@ export const onboardingZh = {
     reviewReadyTitle: '准备创建你的心智',
     reviewHint: '确认设置无误后，点击完成。',
     reviewSafety: '',
-    reviewSpaceKits: '心智空间',
-    reviewSpaceKitsSkipped: '跳过',
+    reviewInitialSpaces: '心智空间',
+    reviewInitialSpacesSkipped: '跳过',
     reviewLocalService: '本地服务',
     reviewInstallResults: 'Agent 配置结果：',
     phaseSaving: '正在保存配置…',

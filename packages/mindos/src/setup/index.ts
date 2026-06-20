@@ -32,15 +32,14 @@ export type MindosSetupGuideState = {
   walkthroughDismissed?: boolean;
 };
 
-export const SPACE_KIT_IDS = ['life', 'social', 'learning', 'content', 'product', 'research'] as const;
+export const INITIAL_SPACE_IDS = ['life', 'social', 'learning', 'content', 'product', 'research'] as const;
 
-export type MindosSetupSpaceKitId = typeof SPACE_KIT_IDS[number];
-export type MindosSetupSpaceKitLocale = 'en' | 'zh';
+export type MindosSetupInitialSpaceId = typeof INITIAL_SPACE_IDS[number];
+export type MindosSetupInitialSpaceLocale = 'en' | 'zh';
 
-export type MindosSetupSpaceKitInstallResult = {
-  id: MindosSetupSpaceKitId;
-  version?: number;
-  locale: MindosSetupSpaceKitLocale;
+export type MindosSetupInitialSpaceInstallResult = {
+  id: MindosSetupInitialSpaceId;
+  locale: MindosSetupInitialSpaceLocale;
   copied: string[];
   skipped: string[];
 };
@@ -77,11 +76,11 @@ export type MindosSetupServices = {
   existsSync?: (target: string) => boolean;
   mkdirSync?: (target: string) => void;
   applyTemplate?: (template: string, mindRoot: string) => { ok: true } | { error: string; status?: number };
-  applySpaceKits?: (
-    spaceKits: MindosSetupSpaceKitId[],
+  applyInitialSpaces?: (
+    initialSpaces: MindosSetupInitialSpaceId[],
     mindRoot: string,
-    locale: MindosSetupSpaceKitLocale,
-  ) => { ok: true; installed: MindosSetupSpaceKitInstallResult[] } | { error: string; status?: number };
+    locale: MindosSetupInitialSpaceLocale,
+  ) => { ok: true; installed: MindosSetupInitialSpaceInstallResult[] } | { error: string; status?: number };
   expandPathHome?: (input: string) => string;
   validateMindRootPath?: (absPath: string) => PathValidationResult;
   isProviderId?: (value: string) => boolean;
@@ -107,7 +106,7 @@ export type MindosSetupApplyPayload = {
   portChanged: boolean;
   needsRestart: boolean;
   newPort: number;
-  installedSpaceKits?: MindosSetupSpaceKitInstallResult[];
+  installedInitialSpaces?: MindosSetupInitialSpaceInstallResult[];
 };
 
 const DEFAULT_PROVIDER_PRESETS: Record<string, MindosSetupProviderPreset> = {
@@ -197,11 +196,11 @@ export function applyMindosSetupConfig(
   }
 
   const template = typeof payload.template === 'string' ? payload.template : undefined;
-  const selectedSpaceKits = normalizeSpaceKitSelection(payload.spaceKits);
-  if ('error' in selectedSpaceKits) {
-    return json({ error: selectedSpaceKits.error }, { status: 400 });
+  const selectedInitialSpaces = normalizeInitialSpaceSelection(payload.initialSpaces, payload.spaceKits);
+  if ('error' in selectedInitialSpaces) {
+    return json({ error: selectedInitialSpaces.error }, { status: 400 });
   }
-  const spaceKitLocale = normalizeSpaceKitLocale(payload.spaceKitLocale, template);
+  const initialSpaceLocale = normalizeInitialSpaceLocale(payload.initialSpaceLocale ?? payload.spaceKitLocale, template);
   const exists = (services.existsSync ?? existsSync)(resolvedRoot);
   if (template) {
     const result = applyTemplate(template, resolvedRoot, services);
@@ -212,13 +211,13 @@ export function applyMindosSetupConfig(
     (services.mkdirSync ?? ((target: string) => mkdirSync(target, { recursive: true })))(resolvedRoot);
   }
 
-  let installedSpaceKits: MindosSetupSpaceKitInstallResult[] | undefined;
-  if (selectedSpaceKits.ids.length > 0) {
-    const result = applySpaceKits(selectedSpaceKits.ids, resolvedRoot, spaceKitLocale, services);
+  let installedInitialSpaces: MindosSetupInitialSpaceInstallResult[] | undefined;
+  if (selectedInitialSpaces.ids.length > 0) {
+    const result = applyInitialSpaces(selectedInitialSpaces.ids, resolvedRoot, initialSpaceLocale, services);
     if ('error' in result) {
       return json({ error: result.error }, { status: result.status ?? 500 });
     }
-    installedSpaceKits = result.installed;
+    installedInitialSpaces = result.installed;
   }
 
   const current = normalizeSetupSettings(services.readSettings());
@@ -259,7 +258,7 @@ export function applyMindosSetupConfig(
     portChanged: webPort !== currentPort,
     needsRestart,
     newPort: webPort,
-    installedSpaceKits,
+    installedInitialSpaces,
   });
 }
 
@@ -401,16 +400,16 @@ function applyTemplate(template: string, mindRoot: string, services: MindosSetup
   return { ok: true };
 }
 
-function applySpaceKits(
-  spaceKits: MindosSetupSpaceKitId[],
+function applyInitialSpaces(
+  initialSpaces: MindosSetupInitialSpaceId[],
   mindRoot: string,
-  locale: MindosSetupSpaceKitLocale,
+  locale: MindosSetupInitialSpaceLocale,
   services: MindosSetupServices,
-): { ok: true; installed: MindosSetupSpaceKitInstallResult[] } | { error: string; status?: number } {
-  if (!services.applySpaceKits) {
-    return { error: 'Space kit installer is not available in this runtime', status: 501 };
+): { ok: true; installed: MindosSetupInitialSpaceInstallResult[] } | { error: string; status?: number } {
+  if (!services.applyInitialSpaces) {
+    return { error: 'Initial Space installer is not available in this runtime', status: 501 };
   }
-  return services.applySpaceKits(spaceKits, mindRoot, locale);
+  return services.applyInitialSpaces(initialSpaces, mindRoot, locale);
 }
 
 function createGuideState(template: string | undefined): MindosSetupGuideState {
@@ -436,24 +435,29 @@ function resolveConnectionMode(current: MindosSetupSettings['connectionMode'], i
   return fallback;
 }
 
-function normalizeSpaceKitSelection(input: unknown): { ids: MindosSetupSpaceKitId[] } | { error: string } {
-  if (input === undefined) return { ids: [] };
-  if (!Array.isArray(input)) return { error: 'spaceKits must be an array' };
-  const seen = new Set<MindosSetupSpaceKitId>();
-  for (const item of input) {
-    if (!isSpaceKitId(item)) return { error: `Invalid space kit: ${String(item)}` };
+function normalizeInitialSpaceSelection(
+  input: unknown,
+  legacyInput: unknown,
+): { ids: MindosSetupInitialSpaceId[] } | { error: string } {
+  const source = input === undefined ? legacyInput : input;
+  const fieldName = input === undefined && legacyInput !== undefined ? 'spaceKits' : 'initialSpaces';
+  if (source === undefined) return { ids: [] };
+  if (!Array.isArray(source)) return { error: `${fieldName} must be an array` };
+  const seen = new Set<MindosSetupInitialSpaceId>();
+  for (const item of source) {
+    if (!isInitialSpaceId(item)) return { error: `Invalid initial space: ${String(item)}` };
     seen.add(item);
   }
   return { ids: [...seen] };
 }
 
-function normalizeSpaceKitLocale(input: unknown, template: string | undefined): MindosSetupSpaceKitLocale {
+function normalizeInitialSpaceLocale(input: unknown, template: string | undefined): MindosSetupInitialSpaceLocale {
   if (input === 'zh' || input === 'en') return input;
   return template === 'zh' ? 'zh' : 'en';
 }
 
-function isSpaceKitId(value: unknown): value is MindosSetupSpaceKitId {
-  return typeof value === 'string' && (SPACE_KIT_IDS as readonly string[]).includes(value);
+function isInitialSpaceId(value: unknown): value is MindosSetupInitialSpaceId {
+  return typeof value === 'string' && (INITIAL_SPACE_IDS as readonly string[]).includes(value);
 }
 
 function mergeSetupAiConfig(

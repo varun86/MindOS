@@ -33,15 +33,15 @@ export type {
   MindosSetupApplyPayload,
   MindosSetupAiConfig,
   MindosSetupGuideState,
+  MindosSetupInitialSpaceId,
+  MindosSetupInitialSpaceInstallResult,
+  MindosSetupInitialSpaceLocale,
   MindosSetupProvider,
   MindosSetupProviderPreset,
-  MindosSetupSpaceKitId,
-  MindosSetupSpaceKitInstallResult,
-  MindosSetupSpaceKitLocale,
   MindosSetupServices,
   MindosSetupSettings,
   MindosSetupStatePayload,
 } from '../../setup/index.js';
 export {
-  SPACE_KIT_IDS,
+  INITIAL_SPACE_IDS,
 } from '../../setup/index.js';

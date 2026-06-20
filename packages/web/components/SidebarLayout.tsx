@@ -123,7 +123,7 @@ const RIGHT_AGENT_DETAIL_MIN_WIDTH = RIGHT_AGENT_DETAIL_PANEL.MIN;
 const RIGHT_AGENT_DETAIL_MAX_WIDTH = RIGHT_AGENT_DETAIL_PANEL.MAX_ABS;
 
 function useViewportWidth(): number {
-  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth));
+  const [viewportWidth, setViewportWidth] = useState(0);
 
   useEffect(() => {
     const update = () => setViewportWidth(window.innerWidth);
@@ -184,17 +184,18 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
 
   // ── Agent MCP detail (right dock, does not replace left Agents list) ──
   const [agentDetailKey, setAgentDetailKey] = useState<string | null>(null);
-  const [agentDetailWidth, setAgentDetailWidth] = useState(() => {
-    if (typeof window === 'undefined') return RIGHT_AGENT_DETAIL_DEFAULT_WIDTH;
+  const [agentDetailWidth, setAgentDetailWidth] = useState(RIGHT_AGENT_DETAIL_DEFAULT_WIDTH);
+  useEffect(() => {
     try {
       const stored = localStorage.getItem('right-agent-detail-panel-width');
       if (stored) {
         const w = parseInt(stored, 10);
-        if (w >= RIGHT_AGENT_DETAIL_MIN_WIDTH && w <= RIGHT_AGENT_DETAIL_MAX_WIDTH) return w;
+        if (w >= RIGHT_AGENT_DETAIL_MIN_WIDTH && w <= RIGHT_AGENT_DETAIL_MAX_WIDTH) {
+          setAgentDetailWidth(w);
+        }
       }
     } catch { /* ignore */ }
-    return RIGHT_AGENT_DETAIL_DEFAULT_WIDTH;
-  });
+  }, []);
 
   // ── AI Organize (lifted from ImportModal so toast shares state) ──
   const aiOrganize = useAiOrganize();
@@ -298,7 +299,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
   // navigation transition animate through 2-4 widths — the flicker.
   const effectivePanelWidth = getLeftPanelWidth(activeLeftPanel, lp.panelWidth);
   const viewportWidth = useViewportWidth();
-  const [contentWidthRatio, setContentWidthRatio] = useState(readStoredContentWidthRatio);
+  const [contentWidthRatio, setContentWidthRatio] = useState(() => parseContentWidthRatio(undefined));
   useEffect(() => {
     const updateFromValue = (value: string | null | undefined) => {
       setContentWidthRatio(parseContentWidthRatio(value));
@@ -319,6 +320,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       if (event.key === 'content-width') updateFromValue(event.newValue);
     };
 
+    setContentWidthRatio(readStoredContentWidthRatio());
     window.addEventListener(MAIN_BODY_CONTENT_WIDTH_EVENT, handleContentWidthChange);
     window.addEventListener('storage', handleStorage);
     return () => {

@@ -215,6 +215,9 @@ export class SpaceManager {
     const spaces: SpaceMetadata[] = [];
     for (const entry of listResult.value) {
       if (entry.isDirectory) {
+        const instructionExists = await this.fs.exists(path.join(entry.path, 'INSTRUCTION.md'));
+        if (!instructionExists.ok) return err(instructionExists.error);
+        if (!instructionExists.value) continue;
         const statResult = await this.fs.stat(entry.path);
         if (statResult.ok) {
           spaces.push({

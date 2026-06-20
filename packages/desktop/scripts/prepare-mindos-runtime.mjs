@@ -153,7 +153,7 @@ const templatesFrom = path.join(source, 'templates');
 if (existsSync(templatesFrom) && statSync(templatesFrom).isDirectory()) {
   cpSync(templatesFrom, path.join(dest, 'templates'), { recursive: true });
 } else {
-  console.warn('[prepare-mindos-runtime] No templates/ in source — setup init will not find starter templates');
+  console.warn('[prepare-mindos-runtime] No templates/ in source — setup init will not find built-in templates');
 }
 
 const binFrom = path.join(source, 'packages', 'mindos', 'bin');

@@ -199,7 +199,7 @@ export default function StepReview({
 }: StepReviewProps) {
   const { locale } = useLocale();
 
-  const selectedKitNames = state.spaceKits.map(id => s.spaceKitLabels[id]).join(locale === 'zh' ? '、' : ', ');
+  const selectedSpaceNames = state.initialSpaces.map(id => s.initialSpaceLabels[id]).join(locale === 'zh' ? '、' : ', ');
   const activeProvider = state.providers.find(p => p.id === state.activeProvider);
   const providerLabel = activeProvider
     ? `${locale === 'zh' ? PROVIDER_PRESETS[activeProvider.protocol].nameZh : PROVIDER_PRESETS[activeProvider.protocol].name} · ${activeProvider.model || PROVIDER_PRESETS[activeProvider.protocol].defaultModel}`
@@ -210,11 +210,11 @@ export default function StepReview({
   const showMcpAgentWork = mcpEnabled && selectedAgents.size > 0;
   const reviewRows: ReviewStatusRow[] = [
     {
-      title: s.reviewSpaceKits,
-      value: selectedKitNames || s.reviewSpaceKitsSkipped,
+      title: s.reviewInitialSpaces,
+      value: selectedSpaceNames || s.reviewInitialSpacesSkipped,
       icon: <Sparkles size={14} />,
-      tone: state.spaceKits.length > 0 ? 'success' : 'default',
-      badge: s.spaceKitCount(state.spaceKits.length),
+      tone: state.initialSpaces.length > 0 ? 'success' : 'default',
+      badge: s.initialSpaceCount(state.initialSpaces.length),
     },
     {
       title: s.kbPath,
@@ -397,7 +397,7 @@ function HealthCheckView({
 
   // Derive health check statuses
   const kbOk = !!state.mindRoot;
-  const hasSpaceKits = state.spaceKits.length > 0;
+  const hasInitialSpaces = state.initialSpaces.length > 0;
   const aiOk = state.activeProvider !== 'skip' && state.providers.length > 0;
   const hasToken = !!state.authToken;
   const selectedMcpAgentCount = mcpEnabled ? selectedAgents.size : 0;
@@ -442,12 +442,12 @@ function HealthCheckView({
     },
     {
       icon: <Sparkles size={14} />,
-      title: s.reviewSpaceKits,
-      value: hasSpaceKits
-        ? state.spaceKits.map(id => s.spaceKitLabels[id]).join(locale === 'zh' ? '、' : ', ')
-        : s.reviewSpaceKitsSkipped,
-      tone: hasSpaceKits ? 'success' : 'default',
-      badge: s.spaceKitCount(state.spaceKits.length),
+      title: s.reviewInitialSpaces,
+      value: hasInitialSpaces
+        ? state.initialSpaces.map(id => s.initialSpaceLabels[id]).join(locale === 'zh' ? '、' : ', ')
+        : s.reviewInitialSpacesSkipped,
+      tone: hasInitialSpaces ? 'success' : 'default',
+      badge: s.initialSpaceCount(state.initialSpaces.length),
     },
     {
       icon: <Brain size={14} />,

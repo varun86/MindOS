@@ -8,12 +8,13 @@ import { cleanupMindRoot, mkTempMindRoot, seedFile } from '../core/helpers';
 
 describe('space records', () => {
   it('separates built-in Mind System spaces from ordinary workspace spaces', () => {
-    const mindRoot = mkTempMindRoot();
-    try {
-      ensureDefaultMindSystemUpgrade(mindRoot);
-      seedFile(mindRoot, 'Projects/README.md', '# Projects\n\nActive project notes.\n');
-      seedFile(mindRoot, 'Projects/roadmap.md', '# Roadmap\n');
-      seedFile(mindRoot, 'MIND_DAO/Drafts/today.md', '# Today\n');
+      const mindRoot = mkTempMindRoot();
+      try {
+        ensureDefaultMindSystemUpgrade(mindRoot);
+        seedFile(mindRoot, 'Projects/INSTRUCTION.md', '# Project instructions\n');
+        seedFile(mindRoot, 'Projects/README.md', '# Projects\n\nActive project notes.\n');
+        seedFile(mindRoot, 'Projects/roadmap.md', '# Roadmap\n');
+        seedFile(mindRoot, 'MIND_DAO/Drafts/today.md', '# Today\n');
 
       const tree = buildFileTreeForTest(mindRoot);
       const overview = getSpaceOverview(mindRoot, tree);
@@ -22,19 +23,11 @@ describe('space records', () => {
       expect(overview.builtInMindSystemSpaces[0]).toMatchObject({
         kind: 'builtin-mind-system',
         slot: { path: 'MIND_DAO', label: '道' },
-        assistantSummary: {
-          assistants: [
-            { id: 'daily-signal' },
-            { id: 'decision-synthesizer' },
-          ],
-          draftCount: 1,
-          instructionReady: true,
-        },
       });
       expect(overview.workspaceSpaces.map(space => space.name)).toEqual(['Projects']);
       expect(overview.workspaceSpaces[0]).toMatchObject({
         path: 'Projects/',
-        fileCount: 2,
+        fileCount: 3,
         description: 'Active project notes.',
       });
     } finally {
@@ -48,12 +41,28 @@ describe('space records', () => {
       ensureDefaultMindSystemUpgrade(mindRoot);
       for (const dir of ['01 道', '02 法', '05 势', '99 验']) {
         fs.mkdirSync(path.join(mindRoot, dir), { recursive: true });
+        seedFile(mindRoot, `${dir}/INSTRUCTION.md`, `# ${dir} instructions\n`);
         seedFile(mindRoot, `${dir}/README.md`, `# ${dir}\n\nCustom space.\n`);
       }
 
       const workspaceSpaces = listWorkspaceSpaces(mindRoot, buildFileTreeForTest(mindRoot));
 
       expect(workspaceSpaces.map(space => space.name)).toEqual(['01 道', '02 法', '05 势', '99 验']);
+    } finally {
+      cleanupMindRoot(mindRoot);
+    }
+  });
+
+  it('does not list top-level folders without INSTRUCTION.md as Spaces', () => {
+    const mindRoot = mkTempMindRoot();
+    try {
+      seedFile(mindRoot, 'Projects/README.md', '# Projects\n\nOnly a folder.\n');
+      seedFile(mindRoot, 'Research/INSTRUCTION.md', '# Research instructions\n');
+      seedFile(mindRoot, 'Research/README.md', '# Research\n\nReal space.\n');
+
+      const workspaceSpaces = listWorkspaceSpaces(mindRoot, buildFileTreeForTest(mindRoot), []);
+
+      expect(workspaceSpaces.map(space => space.name)).toEqual(['Research']);
     } finally {
       cleanupMindRoot(mindRoot);
     }

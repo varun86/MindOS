@@ -343,6 +343,7 @@ describe('SpaceManager', () => {
       await manager.createSpace('space1');
       await manager.createSpace('space2');
       await manager.createSpace('space3');
+      await fs.mkdir('/spaces/folder-only');
 
       const result = await manager.listSpaces();
       expect(result.ok).toBe(true);
@@ -352,6 +353,7 @@ describe('SpaceManager', () => {
         expect(names).toContain('space1');
         expect(names).toContain('space2');
         expect(names).toContain('space3');
+        expect(names).not.toContain('folder-only');
       }
     });
 

@@ -54,8 +54,8 @@ async function saveConfig(state: SetupState, connectionMode?: { cli: boolean; mc
   const payload = {
     mindRoot: state.mindRoot,
     template: state.template || undefined,
-    spaceKits: state.spaceKits,
-    spaceKitLocale: state.spaceKitLocale,
+    initialSpaces: state.initialSpaces,
+    initialSpaceLocale: state.initialSpaceLocale,
     port: state.webPort,
     mcpPort: state.mcpPort,
     authToken: state.authToken,
@@ -150,8 +150,8 @@ export default function SetupWizard() {
   const [state, setState] = useState<SetupState>({
     mindRoot: '~/Documents/MindOS/mind',
     template: '',
-    spaceKits: ['life', 'social', 'learning'],
-    spaceKitLocale: locale === 'zh' ? 'zh' : 'en',
+    initialSpaces: ['life', 'social', 'learning'],
+    initialSpaceLocale: locale === 'zh' ? 'zh' : 'en',
     activeProvider: 'skip',
     providers: [],
     webPort: 3456,
@@ -392,7 +392,7 @@ export default function SetupWizard() {
     if (agentKeys.length > 0) {
       setSetupPhase('skills');
       setSkillInstallStatus('installing');
-      const skillName = finalState.spaceKitLocale === 'zh' ? 'mindos-zh' : 'mindos';
+      const skillName = finalState.initialSpaceLocale === 'zh' ? 'mindos-zh' : 'mindos';
       try {
         const skillOk = await installSkills(skillName, agentKeys);
         setSkillInstallStatus(skillOk ? 'ok' : 'error');
@@ -507,6 +507,7 @@ export default function SetupWizard() {
         {/* Navigation */}
         <div className="mt-8 flex items-center justify-between border-t border-border pt-6">
           <button
+            type="button"
             onClick={() => setStep(step - 1)}
             disabled={step === 0 || submitting || completed}
             className="flex items-center gap-1 rounded-lg border border-border px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -515,6 +516,7 @@ export default function SetupWizard() {
 
           {step < TOTAL_STEPS - 1 ? (
             <button
+              type="button"
               onClick={() => setStep(step + 1)}
               disabled={!canNext()}
               className="flex items-center gap-1 rounded-lg bg-[var(--amber)] px-4 py-2 text-sm text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -532,6 +534,7 @@ export default function SetupWizard() {
             )
           ) : (
             <button
+              type="button"
               onClick={handleComplete}
               disabled={submitting}
               className="flex items-center gap-1 rounded-lg bg-[var(--amber)] px-5 py-2 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

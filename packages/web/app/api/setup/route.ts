@@ -9,7 +9,7 @@ import {
   type MindosSetupServices,
 } from '@geminilight/mindos/server';
 import { readSettings, writeSettings } from '@/lib/settings';
-import { applySpaceKits, applyTemplate, type SpaceKitId, type SpaceKitLocale } from '@/lib/template';
+import { applyInitialSpaces, applyTemplate, type InitialSpaceId, type InitialSpaceLocale } from '@/lib/template';
 import { generateProviderId } from '@/lib/custom-endpoints';
 import { isProviderId, PROVIDER_PRESETS } from '@/lib/agent/providers';
 import { toNextResponse } from '../_mindos-adapter';
@@ -21,8 +21,8 @@ const setupServices: MindosSetupServices = {
     applyTemplate(template, mindRoot);
     return { ok: true };
   },
-  applySpaceKits: (spaceKits, mindRoot, locale) => {
-    const result = applySpaceKits(spaceKits as SpaceKitId[], mindRoot, locale as SpaceKitLocale);
+  applyInitialSpaces: (initialSpaces, mindRoot, locale) => {
+    const result = applyInitialSpaces(initialSpaces as InitialSpaceId[], mindRoot, locale as InitialSpaceLocale);
     return { ok: true, installed: result.installed };
   },
   expandPathHome: expandSetupPathHome,

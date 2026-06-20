@@ -1,13 +1,7 @@
-import { Globe, BookOpen, FileText, Home, Users, PenLine, Briefcase, FlaskConical } from 'lucide-react';
-import type { SpaceKitId, Template } from './types';
+import { BookOpen, Home, Users, PenLine, Briefcase, FlaskConical } from 'lucide-react';
+import type { InitialSpaceId } from './types';
 
-export const TEMPLATES: Array<{ id: Template; icon: React.ReactNode; dirs: string[] }> = [
-  { id: 'en', icon: <Globe size={18} />, dirs: ['Profile/', 'Connections/', 'Notes/', 'Workflows/', 'Resources/', 'Projects/'] },
-  { id: 'zh', icon: <BookOpen size={18} />, dirs: ['画像/', '关系/', '笔记/', '流程/', '资源/', '项目/'] },
-  { id: 'empty', icon: <FileText size={18} />, dirs: ['README.md', 'CONFIG.json', 'INSTRUCTION.md'] },
-];
-
-export const SPACE_KITS: Array<{ id: SpaceKitId; icon: React.ReactNode }> = [
+export const INITIAL_SPACES: Array<{ id: InitialSpaceId; icon: React.ReactNode }> = [
   { id: 'life', icon: <Home size={16} /> },
   { id: 'social', icon: <Users size={16} /> },
   { id: 'learning', icon: <BookOpen size={16} /> },

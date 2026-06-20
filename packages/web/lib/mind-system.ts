@@ -76,7 +76,8 @@ export function listMindSystemSlots(mindRoot: string): MindSystemSlot[] {
 export function mindSystemPathExists(mindRoot: string, slot: Pick<MindSystemSlot, 'path'>): boolean {
   try {
     const resolved = resolveExistingSafe(mindRoot, slot.path);
-    return fs.statSync(resolved).isDirectory();
+    const instructionPath = resolveExistingSafe(mindRoot, path.join(slot.path, 'INSTRUCTION.md'));
+    return fs.statSync(resolved).isDirectory() && fs.statSync(instructionPath).isFile();
   } catch {
     return false;
   }

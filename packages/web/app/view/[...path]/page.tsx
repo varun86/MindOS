@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import fs from 'fs';
 import { getFileContent, saveFileContent, isDirectory, getDirEntries, createFile, getFileTree, getSpacePreview, getMindRoot } from '@/lib/fs';
 import { resolveExistingSafe } from '@/lib/core/security';
-import { getBuiltInMindSystemSpace } from '@/lib/space-records';
 import type { FileNode } from '@/lib/types';
 import ViewPageClient from './ViewPageClient';
 import DirView from '@/components/DirView';
@@ -43,8 +42,7 @@ export default async function ViewPage({ params }: PageProps) {
     }
     const entries = getDirEntries(filePath);
     const spacePreview = getSpacePreview(filePath);
-    const mindSystemSpace = getBuiltInMindSystemSpace(filePath);
-    return <DirView dirPath={filePath} entries={entries} spacePreview={spacePreview} mindSystemSpace={mindSystemSpace} />;
+    return <DirView dirPath={filePath} entries={entries} spacePreview={spacePreview} />;
   }
 
   const extension = filePath.split('.').pop()?.toLowerCase() || '';
