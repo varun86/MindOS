@@ -52,9 +52,12 @@ export async function expandInboxDocumentCaptures(
 
   for (const file of files) {
     expanded.push(file);
+    if (typeof file?.name !== 'string' || typeof file.content !== 'string') continue;
     if (file.encoding !== 'base64' || !isExtractableDocumentName(file.name)) continue;
 
-    const buffer = Buffer.from(file.content, 'base64');
+    const buffer = decodeBase64Buffer(file.content);
+    if (!buffer) continue;
+
     const ext = path.extname(file.name).toLowerCase();
     const companionName = companionMarkdownName(file.name);
 
@@ -84,6 +87,18 @@ export async function expandInboxDocumentCaptures(
   }
 
   return { files: expanded };
+}
+
+function decodeBase64Buffer(content: string): Buffer | null {
+  const normalized = content.replace(/\s/g, '');
+  if (
+    normalized.length % 4 === 1 ||
+    /[^A-Za-z0-9+/=]/.test(normalized) ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalized)
+  ) {
+    return null;
+  }
+  return Buffer.from(normalized, 'base64');
 }
 
 export function buildExtractionMarkdown({

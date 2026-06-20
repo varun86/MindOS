@@ -82,6 +82,33 @@ describe('inbox document capture expansion', () => {
 
     expect(result.files).toEqual([{ name: 'note.txt', content: 'hello', encoding: 'text' }]);
   });
+
+  it('does not generate a markdown companion for invalid base64 documents', async () => {
+    const extractPdf = vi.fn();
+    const result = await expandInboxDocumentCaptures([
+      { name: 'broken.pdf', content: 'not base64!!!', encoding: 'base64' },
+    ], {
+      extractPdf,
+      extractWord: vi.fn(),
+    });
+
+    expect(result.files).toEqual([
+      { name: 'broken.pdf', content: 'not base64!!!', encoding: 'base64' },
+    ]);
+    expect(extractPdf).not.toHaveBeenCalled();
+  });
+
+  it('leaves malformed document captures for the Inbox handler to reject safely', async () => {
+    const extractPdf = vi.fn();
+    const malformed = { name: 'bad.pdf', content: null, encoding: 'base64' } as unknown as Parameters<typeof expandInboxDocumentCaptures>[0][number];
+    const result = await expandInboxDocumentCaptures([malformed], {
+      extractPdf,
+      extractWord: vi.fn(),
+    });
+
+    expect(result.files).toEqual([malformed]);
+    expect(extractPdf).not.toHaveBeenCalled();
+  });
 });
 
 describe('buildExtractionMarkdown', () => {

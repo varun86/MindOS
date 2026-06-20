@@ -15,7 +15,8 @@ import {
 import {
   describe,
   expect,
-  it
+  it,
+  vi
 } from 'vitest';
 import {
   handleAgentCapabilitiesGet,
@@ -410,6 +411,27 @@ describe('MindOS server contract: product operations', () => {
     });
     expect(existsSync(join(root, 'Inbox', 'todo.md'))).toBe(true);
     expect(existsSync(join(outside, 'todo.md'))).toBe(false);
+  });
+
+  it('keeps both archived Inbox copies when the same name is archived in the same second', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mindos-inbox-archive-collision-'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-21T10:20:30.000Z'));
+    try {
+      mkdirSync(join(root, 'Inbox'), { recursive: true });
+      writeFileSync(join(root, 'Inbox', 'todo.md'), 'first', 'utf-8');
+      const first = handleInboxDelete({ names: ['todo.md'] }, { mindRoot: root });
+
+      writeFileSync(join(root, 'Inbox', 'todo.md'), 'second', 'utf-8');
+      const second = handleInboxDelete({ names: ['todo.md'] }, { mindRoot: root });
+
+      expect(first.body.archived[0].archivedPath).toBe('Inbox/.processed/20260621-102030_todo.md');
+      expect(second.body.archived[0].archivedPath).toBe('Inbox/.processed/20260621-102030_todo-1.md');
+      expect(readFileSync(join(root, first.body.archived[0].archivedPath), 'utf-8')).toBe('first');
+      expect(readFileSync(join(root, second.body.archived[0].archivedPath), 'utf-8')).toBe('second');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('handles setup path checks and directory listing without Web dependencies', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { mkTempMindRoot, cleanupMindRoot, seedFile, readSeeded } from './helpers';
@@ -361,6 +361,26 @@ describe('archiveFromInbox', () => {
 
     const content = fs.readFileSync(path.join(processedDir, processedFiles[0]), 'utf-8');
     expect(content).toBe('# Notes');
+  });
+
+  it('keeps both archived copies when the same name is archived in the same second', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-21T10:20:30.000Z'));
+    try {
+      ensureInboxSpace(mindRoot);
+      seedFile(mindRoot, `${INBOX_DIR}/notes.md`, 'first');
+      const first = archiveFromInbox(mindRoot, ['notes.md']);
+
+      seedFile(mindRoot, `${INBOX_DIR}/notes.md`, 'second');
+      const second = archiveFromInbox(mindRoot, ['notes.md']);
+
+      expect(first.archived[0].archivedPath).toBe('Inbox/.processed/20260621-102030_notes.md');
+      expect(second.archived[0].archivedPath).toBe('Inbox/.processed/20260621-102030_notes-1.md');
+      expect(fs.readFileSync(path.join(mindRoot, first.archived[0].archivedPath), 'utf-8')).toBe('first');
+      expect(fs.readFileSync(path.join(mindRoot, second.archived[0].archivedPath), 'utf-8')).toBe('second');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports not-found for missing files', () => {

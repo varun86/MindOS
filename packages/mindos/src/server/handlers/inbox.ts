@@ -286,7 +286,7 @@ export function archiveFromInbox(mindRoot: string, names: string[]): InboxArchiv
         notFound.push(name);
         continue;
       }
-      const archivedName = `${ts}_${baseName}`;
+      const archivedName = resolveUniqueName(processedDir, `${ts}_${baseName}`);
       const archivedPath = `${INBOX_DIR}/${PROCESSED_DIR}/${archivedName}`;
       renameSync(srcPath, resolveExistingSafe(mindRoot, archivedPath));
       archived.push({

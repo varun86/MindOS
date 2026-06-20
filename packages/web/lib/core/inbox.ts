@@ -226,7 +226,7 @@ export function archiveFromInbox(mindRoot: string, names: string[]): InboxArchiv
         continue;
       }
 
-      const archivedName = `${ts}_${baseName}`;
+      const archivedName = resolveUniqueName(processedDir, `${ts}_${baseName}`);
       const archivedPath = `${INBOX_DIR}/${PROCESSED_DIR}/${archivedName}`;
       const destPath = resolveExistingSafe(mindRoot, archivedPath);
       fs.renameSync(srcPath, destPath);
