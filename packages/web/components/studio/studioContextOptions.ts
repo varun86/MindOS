@@ -40,7 +40,7 @@ export const BUILT_IN_ASSISTANTS: ContextSelectableItem[] = [
   { id: 'launch-writing-kit', label: 'Launch Writing Kit', icon: 'L' },
   { id: 'capture-organize-kit', label: 'Capture Organize Kit', icon: 'C' },
   { id: 'inbox-organizer', label: 'Inbox Organizer', icon: 'I' },
-  { id: 'decision-synthesizer', label: 'Decision Synthesizer', icon: 'D' },
+  { id: 'dreaming', label: 'Dreaming', icon: 'D' },
 ];
 
 export const DEFAULT_SPACES: ContextSpaceRef[] = [

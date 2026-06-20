@@ -1,23 +1,20 @@
-import { getAssistantProfilePath, getAssistantPromptPath } from './mind-system-assistant-paths';
+import { getAssistantMarkdownPath } from './mind-system-assistant-paths';
 
 export const DREAMING_ASSISTANT_ID = 'dreaming';
 export const DREAMING_ASSISTANT_NAME = 'Dreaming';
-export const DREAMING_ASSISTANT_PROMPT_PATH = getAssistantPromptPath(DREAMING_ASSISTANT_ID);
-export const DREAMING_ASSISTANT_PROFILE_PATH = getAssistantProfilePath(DREAMING_ASSISTANT_ID);
-
-export const DREAMING_ASSISTANT_DEFAULT_PROFILE = {
-  name: DREAMING_ASSISTANT_NAME,
-  description: 'Reviews knowledge-base health and writes review-first Dreaming artifacts.',
-  schemaVersion: 1,
-  preferredAgent: 'mindos-agent',
-  skills: ['mindos'],
-  mcp: [],
-} as const;
+export const DREAMING_ASSISTANT_PROMPT_PATH = getAssistantMarkdownPath(DREAMING_ASSISTANT_ID);
 
 export const DREAMING_ASSISTANT_DEFAULT_PROMPT = `---
-assistantId: dreaming
+name: Dreaming
+description: Review knowledge-base health and write review-first Dreaming artifacts.
 version: 1
-surface: agents
+mode: subagent
+runtime: mindos
+model: default
+permission: ask
+hidden: true
+color: teal
+steps: 16
 ---
 
 # Dreaming
@@ -41,5 +38,5 @@ Write Dreaming run artifacts under .mindos/dreaming: a run JSON file, latest.jso
 - Do not mutate user-authored notes directly.
 - Treat every proposal as requiring user review.
 - Keep the run deterministic unless a future runtime context explicitly enables model analysis.
-- Store execution details in the AssistantRun ledger instead of profile.json.
+- Store execution details in the AssistantRun ledger instead of the Assistant profile.
 `;

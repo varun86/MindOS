@@ -90,22 +90,10 @@ Assistant purpose: ${assistantDesc}
 Read the assistant prompt at ${promptPath} first, then read this space's INSTRUCTION.md and inspect relevant notes in the same space. Produce one concise Markdown draft for the user to review. Do not overwrite existing canonical notes directly. If you write a file, write it under ${spaceDraftsPath(spacePath)} with a dated filename. Keep the draft focused, source-aware, and easy to accept or discard.`,
     },
     mindAssistants: {
-      dao: [
-        { id: 'daily-signal', name: 'Daily signal curator', desc: 'Turns direction, opportunity, and risk signals into a draft.' },
-        { id: 'decision-synthesizer', name: 'Decision synthesizer', desc: 'Distills recurring choices into durable judgments.' },
-      ],
-      fa: [
-        { id: 'rule-keeper', name: 'Rule keeper', desc: 'Collects confirmed rules, boundaries, and protocols.' },
-        { id: 'boundary-reviewer', name: 'Boundary reviewer', desc: 'Checks new notes against existing commitments and limits.' },
-      ],
-      shu: [
-        { id: 'method-organizer', name: 'Method organizer', desc: 'Turns repeated work into SOPs and checklists.' },
-        { id: 'checklist-builder', name: 'Checklist builder', desc: 'Converts loose methods into repeatable execution steps.' },
-      ],
-      qi: [
-        { id: 'tool-inventory', name: 'Tool inventory curator', desc: 'Keeps tools, templates, assets, and sources tidy.' },
-        { id: 'resource-auditor', name: 'Resource auditor', desc: 'Finds stale, duplicate, or under-described resources.' },
-      ],
+      dao: [],
+      fa: [],
+      shu: [],
+      qi: [],
     },
     mindPillars: {
       dao: { title: 'Dao', desc: 'Values, direction, long-term judgment' },

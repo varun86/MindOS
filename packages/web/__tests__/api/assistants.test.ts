@@ -20,13 +20,17 @@ describe('GET /api/assistants', () => {
   });
 
   it('loads local Assistant profiles from the hidden assistant registry', async () => {
-    seedFile('.mindos/assistants/custom-research/prompt.md', `---
-owner: Research
-tools: read_notes, web-search
-skills: paper-radar
-context: Papers, Notes
-triggers: Manual review
-guardrails: Cite sources
+    seedFile('.mindos/assistants/custom-research.md', `---
+name: Research Queue
+description: Turns local research notes into a ranked queue.
+version: 2
+mode: subagent
+runtime: codex
+model: gpt-5
+permission: ask
+hidden: false
+color: amber
+steps: 8
 ---
 
 # Custom Research
@@ -48,23 +52,7 @@ Write a ranked reading queue.
 
 - Do not cite papers that are not in the source notes.
 `);
-    seedFile('.mindos/assistants/custom-research/profile.json', JSON.stringify({
-      name: 'Research Queue',
-      description: 'Turns local research notes into a ranked queue.',
-      schemaVersion: 1,
-      preferredAgent: 'mindos-agent',
-      skills: ['paper-radar'],
-      mcp: ['arxiv'],
-      schedule: { mode: 'weekly' },
-      surface: 'Research',
-      owner: 'Local Research',
-      modelPolicy: 'Use system model',
-      tools: ['read_notes'],
-      context: ['Papers'],
-      triggers: ['Weekly review'],
-      guardrails: ['Cite sources'],
-    }));
-    seedFile('.mindos/assistants/Bad Name/prompt.md', '# Unsafe directory should be ignored');
+    seedFile('.mindos/assistants/Bad Name.md', '# Unsafe file should be ignored');
 
     const { GET } = await import('../../app/api/assistants/route');
     const res = await GET();
@@ -77,15 +65,21 @@ Write a ranked reading queue.
       id: 'custom-research',
       name: 'Research Queue',
       description: 'Turns local research notes into a ranked queue.',
+      version: 2,
+      mode: 'subagent',
+      runtime: 'codex',
+      model: 'gpt-5',
+      permission: 'ask',
       source: 'custom',
       deletable: true,
-      preferredAgent: 'mindos-agent',
-      skills: ['paper-radar'],
-      mcp: ['arxiv'],
+      preferredAgent: 'codex',
+      skills: [],
+      mcp: [],
       paths: {
-        root: '.mindos/assistants/custom-research',
-        profile: '.mindos/assistants/custom-research/profile.json',
-        prompt: '.mindos/assistants/custom-research/prompt.md',
+        root: '.mindos/assistants',
+        profile: '.mindos/assistants/custom-research.md',
+        prompt: '.mindos/assistants/custom-research.md',
+        file: '.mindos/assistants/custom-research.md',
       },
       prompt: {
         exists: true,
@@ -94,18 +88,19 @@ Write a ranked reading queue.
         state: 'ready',
         issues: [],
       },
-      promptPath: '.mindos/assistants/custom-research/prompt.md',
-      profilePath: '.mindos/assistants/custom-research/profile.json',
+      promptPath: '.mindos/assistants/custom-research.md',
+      profilePath: '.mindos/assistants/custom-research.md',
       promptReady: true,
       profileReady: true,
     });
     expect(assistant.prompt.content).toContain('# Custom Research');
+    expect(assistant.prompt.content).not.toContain('version: 2');
     expect(assistant).not.toHaveProperty('sections');
     expect(assistant).not.toHaveProperty('metadata');
     expect(body.assistants.some((item: { id: string }) => item.id === 'Bad Name')).toBe(false);
   }, ROUTE_TEST_TIMEOUT_MS);
 
-  it('creates custom Assistants with profile.json and prompt.md only', async () => {
+  it('creates custom Assistants as single Markdown files with version', async () => {
     const { POST, GET } = await import('../../app/api/assistants/route');
     const res = await POST(new Request('http://localhost/api/assistants', {
       method: 'POST',
@@ -113,9 +108,9 @@ Write a ranked reading queue.
         id: 'research-scout',
         name: 'Research Scout',
         description: 'Finds useful local research follow-ups.',
-        preferredAgent: 'mindos-agent',
-        skills: ['mindos'],
-        mcp: ['arxiv'],
+        runtime: 'codex',
+        model: 'gpt-5',
+        permission: 'ask',
         permissionMode: 'agent',
         schedule: { mode: 'daily' },
         surface: ['agents'],
@@ -126,21 +121,21 @@ Write a ranked reading queue.
     const created = await res.json();
 
     expect(res.status, JSON.stringify(created)).toBe(201);
-    expect(created.paths.profile).toBe('.mindos/assistants/research-scout/profile.json');
-    const savedProfile = JSON.parse(readFileSync(join(getTestMindRoot(), created.paths.profile), 'utf-8'));
-    expect(savedProfile).toMatchObject({
-      name: 'Research Scout',
-      description: 'Finds useful local research follow-ups.',
-      schemaVersion: 1,
-      preferredAgent: 'mindos-agent',
-      skills: ['mindos'],
-      mcp: ['arxiv'],
-    });
-    expect(savedProfile).not.toHaveProperty('permissionMode');
-    expect(savedProfile).not.toHaveProperty('schedule');
-    expect(savedProfile).not.toHaveProperty('surface');
-    expect(savedProfile).not.toHaveProperty('outputPolicy');
-    expect(savedProfile).not.toHaveProperty('tools');
+    expect(created.paths.profile).toBe('.mindos/assistants/research-scout.md');
+    const savedMarkdown = readFileSync(join(getTestMindRoot(), created.paths.file), 'utf-8');
+    expect(savedMarkdown).toContain('name: Research Scout');
+    expect(savedMarkdown).toContain('description: Finds useful local research follow-ups.');
+    expect(savedMarkdown).toContain('version: 1');
+    expect(savedMarkdown).toContain('mode: subagent');
+    expect(savedMarkdown).toContain('runtime: codex');
+    expect(savedMarkdown).toContain('model: gpt-5');
+    expect(savedMarkdown).toContain('permission: ask');
+    expect(savedMarkdown).not.toContain('schemaVersion');
+    expect(savedMarkdown).not.toContain('permissionMode');
+    expect(savedMarkdown).not.toContain('schedule:');
+    expect(savedMarkdown).not.toContain('surface:');
+    expect(savedMarkdown).not.toContain('outputPolicy');
+    expect(savedMarkdown).not.toContain('tools:');
 
     const list = await GET();
     const body = await list.json();
@@ -149,26 +144,28 @@ Write a ranked reading queue.
       id: 'research-scout',
       source: 'custom',
       deletable: true,
-      preferredAgent: 'mindos-agent',
-      skills: ['mindos'],
-      mcp: ['arxiv'],
+      version: 1,
+      runtime: 'codex',
+      preferredAgent: 'codex',
+      skills: [],
+      mcp: [],
     });
     expect(assistant.prompt.content).toContain('# Research Scout');
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it('rejects creating built-in Assistants through the custom Assistant API', async () => {
     const { POST } = await import('../../app/api/assistants/route');
-    const dailySignal = await POST(new Request('http://localhost/api/assistants', {
+    const inboxOrganizer = await POST(new Request('http://localhost/api/assistants', {
       method: 'POST',
       body: JSON.stringify({
-        id: 'daily-signal',
-        name: 'Daily Signal Override',
+        id: 'inbox-organizer',
+        name: 'Inbox Organizer Override',
       }),
     }));
-    const dailyBody = await dailySignal.json();
+    const inboxBody = await inboxOrganizer.json();
 
-    expect(dailySignal.status, JSON.stringify(dailyBody)).toBe(409);
-    expect(dailyBody.error).toContain('Built-in assistants');
+    expect(inboxOrganizer.status, JSON.stringify(inboxBody)).toBe(409);
+    expect(inboxBody.error).toContain('Built-in assistants');
 
     const dreaming = await POST(new Request('http://localhost/api/assistants', {
       method: 'POST',
@@ -184,27 +181,37 @@ Write a ranked reading queue.
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it('rejects deletion for built-in Assistants and deletes custom Assistants', async () => {
-    seedFile('.mindos/assistants/daily-signal/profile.json', JSON.stringify({
-      name: 'Daily Signal',
-      schemaVersion: 1,
-      preferredAgent: 'mindos-agent',
-      skills: [],
-      mcp: [],
-    }));
-    seedFile('.mindos/assistants/daily-signal/prompt.md', '# Daily Signal\n');
-    seedFile('.mindos/assistants/custom-research/profile.json', JSON.stringify({
-      name: 'Custom Research',
-      schemaVersion: 1,
-      preferredAgent: 'mindos-agent',
-      skills: [],
-      mcp: [],
-    }));
-    seedFile('.mindos/assistants/custom-research/prompt.md', '# Custom Research\n');
+    seedFile('.mindos/assistants/dreaming.md', `---
+name: Dreaming
+description: Review knowledge-base health.
+version: 1
+mode: subagent
+runtime: mindos
+model: default
+permission: ask
+hidden: true
+---
+
+# Dreaming
+`);
+    seedFile('.mindos/assistants/custom-research.md', `---
+name: Custom Research
+description: Custom assistant.
+version: 1
+mode: subagent
+runtime: mindos
+model: default
+permission: ask
+hidden: false
+---
+
+# Custom Research
+`);
 
     const { DELETE, GET } = await import('../../app/api/assistants/route');
     const builtin = await DELETE(new Request('http://localhost/api/assistants', {
       method: 'DELETE',
-      body: JSON.stringify({ id: 'daily-signal' }),
+      body: JSON.stringify({ id: 'dreaming' }),
     }));
     expect(builtin.status).toBe(403);
     const dreaming = await DELETE(new Request('http://localhost/api/assistants', {
@@ -221,7 +228,7 @@ Write a ranked reading queue.
 
     const list = await GET();
     const body = await list.json();
-    expect(body.assistants.some((item: { id: string }) => item.id === 'daily-signal')).toBe(true);
+    expect(body.assistants.some((item: { id: string }) => item.id === 'dreaming')).toBe(true);
     expect(body.assistants.some((item: { id: string }) => item.id === 'custom-research')).toBe(false);
   }, ROUTE_TEST_TIMEOUT_MS);
 });

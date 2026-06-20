@@ -1,13 +1,20 @@
-import { getAssistantPromptPath } from './mind-system-assistant-paths';
+import { getAssistantMarkdownPath } from './mind-system-assistant-paths';
 
 export const INBOX_ORGANIZER_ASSISTANT_ID = 'inbox-organizer';
 export const INBOX_ORGANIZER_ASSISTANT_NAME = 'Inbox Organizer';
-export const INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH = getAssistantPromptPath(INBOX_ORGANIZER_ASSISTANT_ID);
+export const INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH = getAssistantMarkdownPath(INBOX_ORGANIZER_ASSISTANT_ID);
 
 export const INBOX_ORGANIZER_DEFAULT_PROMPT = `---
-assistantId: inbox-organizer
+name: Inbox Organizer
+description: Review staged Inbox material and turn it into safe, source-preserving Mind updates.
 version: 1
-surface: inbox
+mode: subagent
+runtime: mindos
+model: default
+permission: ask
+hidden: true
+color: amber
+steps: 12
 ---
 
 # Inbox Organizer

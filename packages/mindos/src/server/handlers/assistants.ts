@@ -16,18 +16,20 @@ export const MINDOS_ASSISTANTS_ROOT = '.mindos/assistants';
 
 const SAFE_ASSISTANT_ID = /^[a-z0-9][a-z0-9-]*$/;
 const MAX_PROMPT_BYTES = 256 * 1024;
+const ASSISTANT_PROFILE_VERSION = 1;
 const BUILTIN_ASSISTANT_IDS = new Set([
   'inbox-organizer',
   'dreaming',
-  'daily-signal',
-  'decision-synthesizer',
-  'rule-keeper',
-  'boundary-reviewer',
-  'method-organizer',
-  'checklist-builder',
-  'tool-inventory',
-  'resource-auditor',
 ]);
+
+const DEFAULT_ASSISTANT_PROFILE = {
+  version: ASSISTANT_PROFILE_VERSION,
+  mode: 'subagent',
+  runtime: 'mindos',
+  model: 'default',
+  permission: 'ask',
+  hidden: false,
+} as const;
 
 export type MindosAssistantProfileMetadata = {
   skills: string[];
@@ -36,11 +38,13 @@ export type MindosAssistantProfileMetadata = {
 };
 
 export type MindosAssistantOrigin = 'builtin' | 'custom';
+export type MindosAssistantFormat = 'markdown' | 'legacy-directory';
 
 export type MindosAssistantPaths = {
   root: string;
   profile: string;
   prompt: string;
+  file?: string;
 };
 
 export type MindosAssistantPromptPayload = {
@@ -51,7 +55,11 @@ export type MindosAssistantPromptPayload = {
 export type MindosAssistantHealthIssue =
   | { code: 'missing_prompt' }
   | { code: 'missing_profile' }
+  | { code: 'missing_frontmatter' }
+  | { code: 'invalid_frontmatter' }
   | { code: 'invalid_profile' }
+  | { code: 'invalid_version' }
+  | { code: 'missing_description' }
   | { code: 'unreadable_profile' }
   | { code: 'unsupported_schema'; schemaVersion: number }
   | { code: 'prompt_too_large'; sizeBytes: number; maxBytes: number };
@@ -65,11 +73,19 @@ export type MindosAssistantLibraryItem = {
   id: string;
   name: string;
   description: string;
-  schemaVersion: 1;
+  version: number;
+  mode: string;
+  runtime: string;
+  model: string;
+  permission: string;
+  hidden: boolean;
+  color?: string;
+  steps?: number;
   preferredAgent?: string;
   skills: string[];
   mcp: string[];
   source: MindosAssistantOrigin;
+  format: MindosAssistantFormat;
   deletable: boolean;
   paths: MindosAssistantPaths;
   prompt: MindosAssistantPromptPayload;
@@ -83,7 +99,7 @@ export type MindosAssistantLibraryItem = {
   profileReady: boolean;
   promptTitle?: string;
   promptPreview: string;
-  profileError?: 'invalid_json' | 'unreadable';
+  profileError?: 'invalid_json' | 'unreadable' | 'invalid_frontmatter';
 };
 
 export type MindosAssistantsPayload = {
@@ -138,37 +154,37 @@ export function handleAssistantsPost(
       return json({ error: 'Built-in assistants are managed by MindOS' }, { status: 409 });
     }
 
-    const rootRelPath = posix.join(MINDOS_ASSISTANTS_ROOT, assistantId);
     ensureAssistantsRoot(services.mindRoot);
-    const rootPath = resolveSafe(services.mindRoot, rootRelPath);
-    if (existsSync(rootPath)) {
+
+    const fileRelPath = assistantMarkdownPath(assistantId);
+    const legacyRootRelPath = assistantLegacyRootPath(assistantId);
+    const filePath = resolveSafe(services.mindRoot, fileRelPath);
+    const legacyRootPath = resolveSafe(services.mindRoot, legacyRootRelPath);
+    if (existsSync(filePath) || existsSync(legacyRootPath)) {
       return json({ error: 'Assistant already exists' }, { status: 409 });
     }
-
-    mkdirSync(rootPath, { recursive: false });
-    resolveExistingSafe(services.mindRoot, rootRelPath);
+    resolveExistingSafe(services.mindRoot, fileRelPath);
 
     const name = sanitizeString(record.name, 80) ?? titleizeAssistantId(assistantId);
     const description = sanitizeString(record.description, 280) ?? '';
-    const preferredAgent = sanitizeString(record.preferredAgent, 120) ?? 'mindos-agent';
-    const profile = {
-      name,
-      description,
-      schemaVersion: 1,
-      preferredAgent,
-      skills: sanitizeStringArray(record.skills) ?? [],
-      mcp: sanitizeStringArray(record.mcp) ?? [],
-    };
     const prompt = sanitizeMultiline(record.prompt) ?? defaultAssistantPrompt(name, description);
+    const runtime = sanitizeRuntime(record.runtime) ?? 'mindos';
+    const profile: AssistantMarkdownProfile = {
+      name,
+      description: description || 'Describe what this assistant should help with.',
+      version: sanitizeAssistantVersion(record.version).version,
+      mode: 'subagent',
+      runtime,
+      model: sanitizeString(record.model, 120) ?? 'default',
+      permission: sanitizePermission(record.permission),
+      hidden: readBoolean(record.hidden, false),
+      color: sanitizeString(record.color, 48) ?? 'amber',
+      steps: sanitizePositiveInteger(record.steps) ?? 12,
+    };
 
     writeFileSync(
-      resolveSafe(services.mindRoot, posix.join(rootRelPath, 'profile.json')),
-      `${JSON.stringify(profile, null, 2)}\n`,
-      'utf-8',
-    );
-    writeFileSync(
-      resolveSafe(services.mindRoot, posix.join(rootRelPath, 'prompt.md')),
-      prompt.endsWith('\n') ? prompt : `${prompt}\n`,
+      filePath,
+      serializeAssistantMarkdown(profile, prompt),
       'utf-8',
     );
 
@@ -176,9 +192,10 @@ export function handleAssistantsPost(
       ok: true,
       id: assistantId,
       paths: {
-        root: rootRelPath,
-        profile: posix.join(rootRelPath, 'profile.json'),
-        prompt: posix.join(rootRelPath, 'prompt.md'),
+        root: MINDOS_ASSISTANTS_ROOT,
+        profile: fileRelPath,
+        prompt: fileRelPath,
+        file: fileRelPath,
       },
     }, { status: 201 });
   } catch (error) {
@@ -201,7 +218,17 @@ export function handleAssistantsDelete(
       return json({ error: 'Built-in assistants cannot be deleted' }, { status: 403 });
     }
 
-    const rootRelPath = posix.join(MINDOS_ASSISTANTS_ROOT, assistantId);
+    const fileRelPath = assistantMarkdownPath(assistantId);
+    const filePath = resolveExistingSafe(services.mindRoot, fileRelPath);
+    if (existsSync(filePath)) {
+      if (!lstatSync(filePath).isFile()) {
+        return json({ error: 'Assistant path is not a file' }, { status: 409 });
+      }
+      rmSync(filePath, { force: false });
+      return json({ ok: true, id: assistantId });
+    }
+
+    const rootRelPath = assistantLegacyRootPath(assistantId);
     const rootPath = resolveExistingSafe(services.mindRoot, rootRelPath);
     if (!existsSync(rootPath)) {
       return json({ error: 'Assistant not found' }, { status: 404 });
@@ -222,18 +249,89 @@ export function listLocalAssistants(mindRoot: string): MindosAssistantLibraryIte
   if (!existsSync(rootPath)) return [];
   if (!statSync(rootPath).isDirectory()) return [];
 
-  return readdirSync(rootPath, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && SAFE_ASSISTANT_ID.test(entry.name))
-    .map((entry) => readAssistantDirectory(mindRoot, entry.name))
-    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const entries = readdirSync(rootPath, { withFileTypes: true });
+  const markdownIds = new Set<string>();
+  const assistants: MindosAssistantLibraryItem[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    const assistantId = entry.name.slice(0, -3);
+    if (!SAFE_ASSISTANT_ID.test(assistantId)) continue;
+    markdownIds.add(assistantId);
+    assistants.push(readAssistantMarkdownFile(mindRoot, assistantId));
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !SAFE_ASSISTANT_ID.test(entry.name) || markdownIds.has(entry.name)) continue;
+    assistants.push(readAssistantDirectory(mindRoot, entry.name));
+  }
+
+  return assistants.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 export function isMindosBuiltinAssistantId(assistantId: string): boolean {
   return BUILTIN_ASSISTANT_IDS.has(assistantId);
 }
 
+function readAssistantMarkdownFile(mindRoot: string, assistantId: string): MindosAssistantLibraryItem {
+  const filePath = assistantMarkdownPath(assistantId);
+  const file = readAssistantPrompt(mindRoot, filePath);
+  const parsed = parseAssistantMarkdown(file.content);
+  const promptBody = file.tooLarge ? '' : parsed.body;
+  const promptTitle = extractPromptTitle(promptBody);
+  const fallbackName = promptTitle ?? titleizeAssistantId(assistantId);
+  const source: MindosAssistantOrigin = isMindosBuiltinAssistantId(assistantId) ? 'builtin' : 'custom';
+  const healthIssues = assistantMarkdownHealthIssues(parsed, file);
+  const description = firstNonEmptyString(
+    parsed.profile.description,
+    makePreview(promptBody),
+    'Local assistant profile.',
+  );
+
+  return {
+    id: assistantId,
+    name: firstNonEmptyString(parsed.profile.name, fallbackName),
+    description,
+    version: parsed.profile.version,
+    mode: parsed.profile.mode,
+    runtime: parsed.profile.runtime,
+    model: parsed.profile.model,
+    permission: parsed.profile.permission,
+    hidden: parsed.profile.hidden,
+    ...(parsed.profile.color ? { color: parsed.profile.color } : {}),
+    ...(parsed.profile.steps ? { steps: parsed.profile.steps } : {}),
+    preferredAgent: runtimeToPreferredAgent(parsed.profile.runtime),
+    skills: [],
+    mcp: [],
+    source,
+    format: 'markdown',
+    deletable: source === 'custom',
+    paths: {
+      root: MINDOS_ASSISTANTS_ROOT,
+      profile: filePath,
+      prompt: filePath,
+      file: filePath,
+    },
+    prompt: {
+      exists: file.exists,
+      ...(promptBody ? { content: promptBody } : {}),
+    },
+    health: {
+      state: healthIssues.length > 0 ? 'warning' : 'ready',
+      issues: healthIssues,
+    },
+    promptPath: filePath,
+    profilePath: filePath,
+    promptReady: file.exists && !file.tooLarge && promptBody.trim().length > 0,
+    profileReady: parsed.ready,
+    ...(promptTitle ? { promptTitle } : {}),
+    promptPreview: makePreview(promptBody),
+    ...(parsed.error ? { profileError: parsed.error } : {}),
+  };
+}
+
 function readAssistantDirectory(mindRoot: string, assistantId: string): MindosAssistantLibraryItem {
-  const rootRelPath = posix.join(MINDOS_ASSISTANTS_ROOT, assistantId);
+  const rootRelPath = assistantLegacyRootPath(assistantId);
   const promptPath = posix.join(MINDOS_ASSISTANTS_ROOT, assistantId, 'prompt.md');
   const profilePath = posix.join(MINDOS_ASSISTANTS_ROOT, assistantId, 'profile.json');
   const profile = readAssistantProfile(mindRoot, profilePath);
@@ -242,22 +340,29 @@ function readAssistantDirectory(mindRoot: string, assistantId: string): MindosAs
   const promptTitle = extractPromptTitle(promptBody);
   const fallbackName = promptTitle ?? titleizeAssistantId(assistantId);
   const source: MindosAssistantOrigin = isMindosBuiltinAssistantId(assistantId) ? 'builtin' : 'custom';
-  const healthIssues = assistantHealthIssues(profile, prompt);
+  const healthIssues = legacyAssistantHealthIssues(profile, prompt);
   const description = firstNonEmptyString(
     profile.description,
     prompt.promptPreview,
     'Local assistant profile.',
   );
+  const runtime = normalizeLegacyPreferredAgent(profile.preferredAgent);
 
   return {
     id: assistantId,
     name: firstNonEmptyString(profile.name, fallbackName),
     description,
-    schemaVersion: 1,
+    version: ASSISTANT_PROFILE_VERSION,
+    mode: DEFAULT_ASSISTANT_PROFILE.mode,
+    runtime,
+    model: DEFAULT_ASSISTANT_PROFILE.model,
+    permission: DEFAULT_ASSISTANT_PROFILE.permission,
+    hidden: false,
     ...(profile.preferredAgent ? { preferredAgent: profile.preferredAgent } : {}),
     skills: profile.skills,
     mcp: profile.mcp,
     source,
+    format: 'legacy-directory',
     deletable: source === 'custom',
     paths: {
       root: rootRelPath,
@@ -292,6 +397,29 @@ type AssistantProfileReadResult = {
   skills: string[];
   mcp: string[];
   error?: 'invalid_json' | 'unreadable';
+};
+
+type AssistantMarkdownProfile = {
+  name?: string;
+  description?: string;
+  version: number;
+  mode: string;
+  runtime: string;
+  model: string;
+  permission: string;
+  hidden: boolean;
+  color?: string;
+  steps?: number;
+};
+
+type AssistantMarkdownReadResult = {
+  ready: boolean;
+  profile: AssistantMarkdownProfile;
+  body: string;
+  missingFrontmatter: boolean;
+  invalidVersion: boolean;
+  missingDescription: boolean;
+  error?: 'invalid_frontmatter';
 };
 
 function readAssistantProfile(mindRoot: string, profilePath: string): AssistantProfileReadResult {
@@ -373,6 +501,99 @@ function readAssistantPrompt(
   }
 }
 
+function parseAssistantMarkdown(content: string): AssistantMarkdownReadResult {
+  const split = splitMarkdownFrontmatter(content);
+  const rawVersion = split.fields.version;
+  const version = sanitizeAssistantVersion(rawVersion);
+  const name = sanitizeString(split.fields.name, 80);
+  const description = sanitizeString(split.fields.description, 280);
+  const color = sanitizeString(split.fields.color, 48);
+  const steps = sanitizePositiveInteger(split.fields.steps);
+  const profile: AssistantMarkdownProfile = {
+    ...(name ? { name } : {}),
+    ...(description ? { description } : {}),
+    version: version.version,
+    mode: sanitizeMode(split.fields.mode),
+    runtime: sanitizeRuntime(split.fields.runtime) ?? DEFAULT_ASSISTANT_PROFILE.runtime,
+    model: sanitizeString(split.fields.model, 120) ?? DEFAULT_ASSISTANT_PROFILE.model,
+    permission: sanitizePermission(split.fields.permission),
+    hidden: readBoolean(split.fields.hidden, DEFAULT_ASSISTANT_PROFILE.hidden),
+    ...(color ? { color } : {}),
+    ...(steps ? { steps } : {}),
+  };
+  const hasInvalidVersion = rawVersion !== undefined && version.invalid;
+  const ready = !split.invalid && !hasInvalidVersion && !split.missing;
+  return {
+    ready,
+    profile,
+    body: split.body,
+    missingFrontmatter: split.missing,
+    invalidVersion: hasInvalidVersion,
+    missingDescription: !description,
+    ...(split.invalid ? { error: 'invalid_frontmatter' as const } : {}),
+  };
+}
+
+function splitMarkdownFrontmatter(content: string): {
+  fields: Record<string, unknown>;
+  body: string;
+  missing: boolean;
+  invalid: boolean;
+} {
+  const normalized = content.replace(/\r\n/g, '\n');
+  if (!normalized.startsWith('---\n')) {
+    return { fields: {}, body: content.trim(), missing: true, invalid: false };
+  }
+  const match = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  if (!match) {
+    return { fields: {}, body: content.trim(), missing: false, invalid: true };
+  }
+
+  const parsed = parseFrontmatterFields(match[1] ?? '');
+  return {
+    fields: parsed.fields,
+    body: normalized.slice(match[0].length).replace(/^\n+/, '').trim(),
+    missing: false,
+    invalid: parsed.invalid,
+  };
+}
+
+function parseFrontmatterFields(raw: string): { fields: Record<string, unknown>; invalid: boolean } {
+  const fields: Record<string, unknown> = {};
+  let invalid = false;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separator = trimmed.indexOf(':');
+    if (separator <= 0) {
+      invalid = true;
+      continue;
+    }
+    const key = trimmed.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) {
+      invalid = true;
+      continue;
+    }
+    fields[key] = parseFrontmatterScalar(trimmed.slice(separator + 1).trim());
+  }
+  return { fields, invalid };
+}
+
+function parseFrontmatterScalar(value: string): unknown {
+  if (!value) return '';
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^-?\d+$/.test(value)) return Number(value);
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    try {
+      return value.startsWith('"') ? JSON.parse(value) : value.slice(1, -1).replace(/''/g, "'");
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}
+
 function sanitizeString(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim().replace(/\s+/g, ' ');
@@ -408,13 +629,53 @@ function sanitizeSchemaVersion(value: unknown): number {
   return value;
 }
 
+function sanitizeAssistantVersion(value: unknown): { version: number; invalid: boolean } {
+  if (value === undefined) return { version: ASSISTANT_PROFILE_VERSION, invalid: false };
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    return { version: ASSISTANT_PROFILE_VERSION, invalid: true };
+  }
+  return { version: value, invalid: false };
+}
+
+function sanitizeMode(value: unknown): string {
+  return value === 'subagent' ? 'subagent' : DEFAULT_ASSISTANT_PROFILE.mode;
+}
+
+function sanitizeRuntime(value: unknown): string | undefined {
+  const runtime = sanitizeString(value, 80);
+  if (!runtime) return undefined;
+  if (runtime === 'mindos-agent') return 'mindos';
+  if (runtime === 'claude') return 'claude-code';
+  return runtime;
+}
+
+function normalizeLegacyPreferredAgent(value: string | undefined): string {
+  return sanitizeRuntime(value) ?? DEFAULT_ASSISTANT_PROFILE.runtime;
+}
+
+function runtimeToPreferredAgent(runtime: string): string {
+  return runtime === 'mindos' ? 'mindos-agent' : runtime;
+}
+
+function sanitizePermission(value: unknown): string {
+  if (value === 'read' || value === 'ask' || value === 'auto' || value === 'full') return value;
+  return DEFAULT_ASSISTANT_PROFILE.permission;
+}
+
+function sanitizePositiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function stripLeadingFrontmatter(content: string): string {
   const normalized = content.replace(/\r\n/g, '\n');
   if (!normalized.startsWith('---\n')) return content.trim();
-  const end = normalized.indexOf('\n---', 4);
-  if (end === -1) return content.trim();
-  const afterFence = normalized.slice(end + 4).replace(/^\n+/, '');
-  return afterFence.trim();
+  const match = normalized.match(/^---\n[\s\S]*?\n---(?:\n|$)/);
+  if (!match) return content.trim();
+  return normalized.slice(match[0].length).replace(/^\n+/, '').trim();
 }
 
 function extractPromptTitle(content: string): string | undefined {
@@ -428,7 +689,7 @@ function makePreview(content: string, maxLength = 180): string {
     .replace(/\s+/g, ' ')
     .trim();
   if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
 }
 
 function titleizeAssistantId(assistantId: string): string {
@@ -456,6 +717,14 @@ function ensureAssistantsRoot(mindRoot: string): void {
   resolveExistingSafe(mindRoot, MINDOS_ASSISTANTS_ROOT);
 }
 
+function assistantMarkdownPath(assistantId: string): string {
+  return posix.join(MINDOS_ASSISTANTS_ROOT, `${assistantId}.md`);
+}
+
+function assistantLegacyRootPath(assistantId: string): string {
+  return posix.join(MINDOS_ASSISTANTS_ROOT, assistantId);
+}
+
 function defaultAssistantPrompt(name: string, description: string): string {
   return `# ${name}
 
@@ -478,6 +747,34 @@ Return a concise, reviewable result.
 `;
 }
 
+function serializeAssistantMarkdown(profile: AssistantMarkdownProfile, body: string): string {
+  const frontmatter: Array<[string, string | number | boolean | undefined]> = [
+    ['name', profile.name],
+    ['description', profile.description],
+    ['version', profile.version],
+    ['mode', profile.mode],
+    ['runtime', profile.runtime],
+    ['model', profile.model],
+    ['permission', profile.permission],
+    ['hidden', profile.hidden],
+    ['color', profile.color],
+    ['steps', profile.steps],
+  ];
+  const lines = frontmatter
+    .filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined && entry[1] !== '')
+    .map(([key, value]) => `${key}: ${formatFrontmatterScalar(value)}`);
+  const normalizedBody = body.replace(/\r\n/g, '\n').trim();
+  return `---\n${lines.join('\n')}\n---\n\n${normalizedBody}\n`;
+}
+
+function formatFrontmatterScalar(value: string | number | boolean): string {
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (/^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/.test(value) && !/^(true|false|null)$/i.test(value)) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
 function assistantErrorResponse(error: unknown): MindosServerResponse<{ error: string }> {
   const message = error instanceof Error ? error.message : String(error);
   if (/access denied|outside root|absolute paths|symlink/i.test(message)) {
@@ -486,7 +783,27 @@ function assistantErrorResponse(error: unknown): MindosServerResponse<{ error: s
   return json({ error: message }, { status: 500 });
 }
 
-function assistantHealthIssues(
+function assistantMarkdownHealthIssues(
+  parsed: AssistantMarkdownReadResult,
+  prompt: ReturnType<typeof readAssistantPrompt>,
+): MindosAssistantHealthIssue[] {
+  const issues: MindosAssistantHealthIssue[] = [];
+  if (!prompt.exists) issues.push({ code: 'missing_prompt' });
+  if (parsed.missingFrontmatter) issues.push({ code: 'missing_frontmatter' });
+  if (parsed.error === 'invalid_frontmatter') issues.push({ code: 'invalid_frontmatter' });
+  if (parsed.invalidVersion) issues.push({ code: 'invalid_version' });
+  if (parsed.missingDescription) issues.push({ code: 'missing_description' });
+  if (prompt.tooLarge) {
+    issues.push({
+      code: 'prompt_too_large',
+      sizeBytes: prompt.tooLarge.sizeBytes,
+      maxBytes: prompt.tooLarge.maxBytes,
+    });
+  }
+  return issues;
+}
+
+function legacyAssistantHealthIssues(
   profile: AssistantProfileReadResult,
   prompt: ReturnType<typeof readAssistantPrompt>,
 ): MindosAssistantHealthIssue[] {

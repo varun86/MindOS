@@ -137,7 +137,8 @@ mindSpace:
       expect(productInstruction).toContain('locale: zh');
       expect(productInstruction).toContain('order: 140');
       expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'))).toBe(true);
-      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'daily-signal', 'prompt.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'inbox-organizer.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'dreaming.md'))).toBe(true);
       const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
       expect(fs.existsSync(receiptPath)).toBe(false);
     } finally {

@@ -90,22 +90,10 @@ export const knowledgeZh = {
 请先读取助理 Prompt：${promptPath}，再读取这个空间的 INSTRUCTION.md，并查看同一空间内相关笔记。请产出一份简洁的 Markdown 草稿供用户确认，不要直接覆盖正式笔记。如果需要写入文件，请写到 ${spaceDraftsPath(spacePath)} 下，并使用带日期的文件名。草稿要聚焦、可追溯，并方便用户确认或丢弃。`,
     },
     mindAssistants: {
-      dao: [
-        { id: 'daily-signal', name: '每日信号整理', desc: '把方向、机会、风险信号整理成草稿。' },
-        { id: 'decision-synthesizer', name: '决策沉淀', desc: '把反复出现的选择沉淀成长期判断。' },
-      ],
-      fa: [
-        { id: 'rule-keeper', name: '规则整理', desc: '沉淀已确认的原则、边界和协议。' },
-        { id: 'boundary-reviewer', name: '边界复核', desc: '检查新内容是否触碰既有承诺和限制。' },
-      ],
-      shu: [
-        { id: 'method-organizer', name: '方法整理', desc: '把重复做法整理成 SOP 和 checklist。' },
-        { id: 'checklist-builder', name: '清单生成', desc: '把松散方法转成可复用执行步骤。' },
-      ],
-      qi: [
-        { id: 'tool-inventory', name: '工具整理', desc: '维护工具、模板、资产和资料源。' },
-        { id: 'resource-auditor', name: '资源巡检', desc: '发现过期、重复或说明不足的资源。' },
-      ],
+      dao: [],
+      fa: [],
+      shu: [],
+      qi: [],
     },
     mindPillars: {
       dao: { title: '道', desc: '价值、方向、长期判断' },

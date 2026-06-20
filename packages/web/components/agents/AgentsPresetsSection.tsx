@@ -42,7 +42,15 @@ type MindosAssistantLibraryItem = {
   id: string;
   name: string;
   description: string;
-  schemaVersion?: number;
+  version?: number;
+  mode?: string;
+  runtime?: string;
+  model?: string;
+  permission?: string;
+  hidden?: boolean;
+  color?: string;
+  steps?: number;
+  format?: 'markdown' | 'legacy-directory';
   preferredAgent?: string;
   skills?: string[];
   mcp?: string[];
@@ -300,7 +308,7 @@ export default function AgentsPresetsSection({
     ? profileEdits[selected.id] ?? {
       name: selected.name,
       description: selected.description,
-      preferredAgent: selected.preferredAgent ?? 'mindos-agent',
+      preferredAgent: selected.runtime ?? selected.preferredAgent ?? 'mindos-agent',
       skillsText: selected.skills.join('\n'),
       mcpText: selected.mcp.join('\n'),
     }
@@ -310,9 +318,9 @@ export default function AgentsPresetsSection({
   const hasProfileChanges = Boolean(selected && profileEdit && (
     profileEdit.name !== selected.name
     || profileEdit.description !== selected.description
-    || profileEdit.preferredAgent !== (selected.preferredAgent ?? 'mindos-agent')
-    || profileEdit.skillsText !== selected.skills.join('\n')
-    || profileEdit.mcpText !== selected.mcp.join('\n')
+    || profileEdit.preferredAgent !== (selected.runtime ?? selected.preferredAgent ?? 'mindos-agent')
+    || (!isMarkdownAssistant(selected) && profileEdit.skillsText !== selected.skills.join('\n'))
+    || (!isMarkdownAssistant(selected) && profileEdit.mcpText !== selected.mcp.join('\n'))
   ));
 
   const updateSelectedAssistant = useCallback((assistantId: string, patch: Partial<AssistantView>) => {
@@ -331,7 +339,9 @@ export default function AgentsPresetsSection({
         body: JSON.stringify({
           op: 'save_file',
           path: selected.promptPath,
-          content: promptValue,
+          content: isMarkdownAssistant(selected)
+            ? serializeAssistantMarkdownForSave(selected, profileEdit, promptValue)
+            : promptValue,
           source: 'user',
         }),
       });
@@ -360,7 +370,7 @@ export default function AgentsPresetsSection({
     } finally {
       setSavingPrompt(false);
     }
-  }, [copy.saveFailed, copy.saved, promptValue, selected, updateSelectedAssistant]);
+  }, [copy.saveFailed, copy.saved, profileEdit, promptValue, selected, updateSelectedAssistant]);
 
   const discardPromptChanges = useCallback(() => {
     if (!selected) return;
@@ -379,18 +389,20 @@ export default function AgentsPresetsSection({
       const payload = {
         name: profileEdit.name.trim() || selected.name,
         description: profileEdit.description.trim(),
-        schemaVersion: 1,
-        preferredAgent: profileEdit.preferredAgent.trim() || 'mindos-agent',
+        preferredAgent: profileEdit.preferredAgent.trim() || (isMarkdownAssistant(selected) ? 'mindos' : 'mindos-agent'),
         skills: splitListText(profileEdit.skillsText),
         mcp: splitListText(profileEdit.mcpText),
       };
+      const content = isMarkdownAssistant(selected)
+        ? serializeAssistantMarkdownForSave(selected, profileEdit, promptValue)
+        : `${JSON.stringify({ ...payload, schemaVersion: 1 }, null, 2)}\n`;
       const res = await fetch('/api/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           op: 'save_file',
           path: selected.profilePath,
-          content: `${JSON.stringify(payload, null, 2)}\n`,
+          content,
           source: 'user',
         }),
       });
@@ -398,9 +410,10 @@ export default function AgentsPresetsSection({
       updateSelectedAssistant(selected.id, {
         name: payload.name,
         description: payload.description || selected.sections.role || selected.promptPreview || selected.description,
-        preferredAgent: payload.preferredAgent,
-        skills: payload.skills,
-        mcp: payload.mcp,
+        preferredAgent: isMarkdownAssistant(selected) ? runtimeToPreferredAgent(payload.preferredAgent) : payload.preferredAgent,
+        runtime: isMarkdownAssistant(selected) ? normalizeRuntimeForSave(payload.preferredAgent) : selected.runtime,
+        skills: isMarkdownAssistant(selected) ? selected.skills : payload.skills,
+        mcp: isMarkdownAssistant(selected) ? selected.mcp : payload.mcp,
         profileReady: true,
         profileError: undefined,
       });
@@ -415,7 +428,7 @@ export default function AgentsPresetsSection({
     } finally {
       setSavingProfile(false);
     }
-  }, [copy.profileSaved, copy.saveFailed, copy.saved, profileEdit, selected, updateSelectedAssistant]);
+  }, [copy.profileSaved, copy.saveFailed, copy.saved, profileEdit, promptValue, selected, updateSelectedAssistant]);
 
   const deleteAssistant = useCallback(async (assistant: AssistantView) => {
     if (!assistant.deletable || deletingAssistantId) return;
@@ -479,9 +492,9 @@ export default function AgentsPresetsSection({
           id: assistantId,
           name: createDraft.name.trim() || titleizeAssistantId(assistantId),
           description: createDraft.description.trim(),
-          preferredAgent: 'mindos-agent',
-          skills: [],
-          mcp: [],
+          runtime: 'mindos',
+          model: 'default',
+          permission: 'ask',
         }),
       });
       if (!res.ok) throw new Error(`Assistant create failed (${res.status})`);
@@ -1820,7 +1833,9 @@ function toAssistantView(assistant: MindosAssistantLibraryItem): AssistantView {
     source,
     deletable: assistant.deletable ?? source === 'custom',
     paths: assistant.paths ?? {
-      root: assistant.profilePath.replace(/\/profile\.json$/, ''),
+      root: assistant.profilePath.endsWith('.md')
+        ? assistant.profilePath.replace(/\/[^/]+\.md$/, '')
+        : assistant.profilePath.replace(/\/profile\.json$/, ''),
       profile: assistant.profilePath,
       prompt: assistant.promptPath,
     },
@@ -1839,15 +1854,67 @@ function isBuiltinAssistantId(assistantId: string): boolean {
   return new Set([
     'inbox-organizer',
     'dreaming',
-    'daily-signal',
-    'decision-synthesizer',
-    'rule-keeper',
-    'boundary-reviewer',
-    'method-organizer',
-    'checklist-builder',
-    'tool-inventory',
-    'resource-auditor',
   ]).has(assistantId);
+}
+
+function isMarkdownAssistant(assistant: AssistantView): boolean {
+  return assistant.format === 'markdown'
+    || (assistant.promptPath === assistant.profilePath && assistant.promptPath.endsWith('.md'));
+}
+
+function serializeAssistantMarkdownForSave(
+  assistant: AssistantView,
+  edit: ProfileEdit | null,
+  promptBody: string,
+): string {
+  const profile = {
+    name: edit?.name.trim() || assistant.name,
+    description: edit?.description.trim() || assistant.description || assistant.promptPreview,
+    version: assistant.version && Number.isInteger(assistant.version) && assistant.version > 0 ? assistant.version : 1,
+    mode: assistant.mode === 'subagent' ? 'subagent' : 'subagent',
+    runtime: normalizeRuntimeForSave(edit?.preferredAgent || assistant.runtime || assistant.preferredAgent || 'mindos'),
+    model: assistant.model || 'default',
+    permission: normalizePermissionForSave(assistant.permission),
+    hidden: Boolean(assistant.hidden),
+    color: assistant.color || 'amber',
+    steps: assistant.steps && Number.isInteger(assistant.steps) && assistant.steps > 0 ? assistant.steps : 12,
+  };
+  const lines = [
+    ['name', profile.name],
+    ['description', profile.description],
+    ['version', profile.version],
+    ['mode', profile.mode],
+    ['runtime', profile.runtime],
+    ['model', profile.model],
+    ['permission', profile.permission],
+    ['hidden', profile.hidden],
+    ['color', profile.color],
+    ['steps', profile.steps],
+  ] as const;
+  return `---\n${lines.map(([key, value]) => `${key}: ${formatFrontmatterScalar(value)}`).join('\n')}\n---\n\n${promptBody.trim()}\n`;
+}
+
+function normalizeRuntimeForSave(value: string): string {
+  const normalized = value.trim() || 'mindos';
+  if (normalized === 'mindos-agent') return 'mindos';
+  if (normalized === 'claude') return 'claude-code';
+  return normalized;
+}
+
+function runtimeToPreferredAgent(runtime: string): string {
+  return normalizeRuntimeForSave(runtime) === 'mindos' ? 'mindos-agent' : normalizeRuntimeForSave(runtime);
+}
+
+function normalizePermissionForSave(value: string | undefined): string {
+  return value === 'read' || value === 'ask' || value === 'auto' || value === 'full' ? value : 'ask';
+}
+
+function formatFrontmatterScalar(value: string | number | boolean): string {
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (/^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/.test(value) && !/^(true|false|null)$/i.test(value)) {
+    return value;
+  }
+  return JSON.stringify(value);
 }
 
 function deriveAssistantDescription(assistant: AssistantView, promptDetails: PromptDetails): string {

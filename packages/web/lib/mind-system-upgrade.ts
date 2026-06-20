@@ -3,19 +3,10 @@ import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
 import { defaultMindSystemSlots, type MindSystemSlot } from './mind-system';
 import {
+  getBuiltinAssistantMarkdownFiles,
   getDefaultAssistantPrompt,
-  getMindosContextAssistants,
+  getLegacyAssistantPromptPath,
 } from './mind-system-assistants';
-import {
-  INBOX_ORGANIZER_ASSISTANT_ID,
-  INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH,
-} from './inbox-assistant';
-import {
-  DREAMING_ASSISTANT_DEFAULT_PROFILE,
-  DREAMING_ASSISTANT_ID,
-  DREAMING_ASSISTANT_PROFILE_PATH,
-  DREAMING_ASSISTANT_PROMPT_PATH,
-} from './dreaming-assistant';
 import {
   INSTRUCTION_BY_MIND_SYSTEM_SLOT,
   README_BY_MIND_SYSTEM_SLOT,
@@ -33,40 +24,18 @@ export interface MindSystemUpgradeResult {
   skippedPaths: MindSystemUpgradeSkippedPath[];
 }
 
-const CORE_BUILTIN_ASSISTANTS = [
-  {
-    assistantId: INBOX_ORGANIZER_ASSISTANT_ID,
-    promptPath: INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH,
-  },
-  {
-    assistantId: DREAMING_ASSISTANT_ID,
-    promptPath: DREAMING_ASSISTANT_PROMPT_PATH,
-    profilePath: DREAMING_ASSISTANT_PROFILE_PATH,
-    profile: DREAMING_ASSISTANT_DEFAULT_PROFILE,
-  },
-] as const;
-
 export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgradeResult {
   const createdPaths: string[] = [];
   const existingPaths: string[] = [];
   const skippedPaths: MindSystemUpgradeSkippedPath[] = [];
 
-  for (const assistant of [...CORE_BUILTIN_ASSISTANTS, ...getMindosContextAssistants()]) {
-    const promptResult = ensureAssistantPromptFile(mindRoot, assistant.assistantId, assistant.promptPath);
+  for (const assistant of getBuiltinAssistantMarkdownFiles()) {
+    const promptResult = ensureAssistantMarkdownFile(mindRoot, assistant.assistantId, assistant.path);
     if (promptResult !== 'ready') {
       skippedPaths.push({
-        path: assistant.promptPath,
+        path: assistant.path,
         reason: promptResult,
       });
-    }
-    if ('profilePath' in assistant) {
-      const profileResult = ensureAssistantProfileFile(mindRoot, assistant.profilePath, assistant.profile);
-      if (profileResult !== 'ready') {
-        skippedPaths.push({
-          path: assistant.profilePath,
-          reason: profileResult,
-        });
-      }
     }
   }
 
@@ -85,33 +54,7 @@ export function ensureDefaultMindSystemUpgrade(mindRoot: string): MindSystemUpgr
   };
 }
 
-function ensureAssistantProfileFile(
-  mindRoot: string,
-  profilePath: string | undefined,
-  profile: Record<string, unknown> | undefined,
-): 'ready' | MindSystemUpgradeSkippedPath['reason'] {
-  if (!profilePath || !profile) return 'unsafe_path';
-
-  let resolvedProfilePath: string;
-  try {
-    resolvedProfilePath = resolveExistingSafe(mindRoot, profilePath);
-  } catch {
-    return 'unsafe_path';
-  }
-
-  try {
-    if (fs.existsSync(resolvedProfilePath)) {
-      return fs.statSync(resolvedProfilePath).isFile() ? 'ready' : 'file_conflict';
-    }
-    fs.mkdirSync(path.dirname(resolvedProfilePath), { recursive: true });
-    fs.writeFileSync(resolvedProfilePath, `${JSON.stringify(profile, null, 2)}\n`, 'utf-8');
-    return 'ready';
-  } catch {
-    return 'write_failed';
-  }
-}
-
-function ensureAssistantPromptFile(
+function ensureAssistantMarkdownFile(
   mindRoot: string,
   assistantId: string,
   promptPath: string | undefined,
@@ -130,11 +73,51 @@ function ensureAssistantPromptFile(
       return fs.statSync(resolvedPromptPath).isFile() ? 'ready' : 'file_conflict';
     }
     fs.mkdirSync(path.dirname(resolvedPromptPath), { recursive: true });
-    fs.writeFileSync(resolvedPromptPath, getDefaultAssistantPrompt(assistantId), 'utf-8');
+    fs.writeFileSync(resolvedPromptPath, getAssistantMarkdownContent(mindRoot, assistantId), 'utf-8');
     return 'ready';
   } catch {
     return 'write_failed';
   }
+}
+
+function getAssistantMarkdownContent(mindRoot: string, assistantId: string): string {
+  const defaultMarkdown = getDefaultAssistantPrompt(assistantId);
+  const legacyPrompt = readLegacyAssistantPrompt(mindRoot, assistantId);
+  if (!legacyPrompt) return defaultMarkdown;
+  return replaceAssistantMarkdownBody(defaultMarkdown, stripLeadingFrontmatter(legacyPrompt));
+}
+
+function readLegacyAssistantPrompt(mindRoot: string, assistantId: string): string | null {
+  const legacyPath = getLegacyAssistantPromptPath(assistantId);
+  let resolvedLegacyPath: string;
+  try {
+    resolvedLegacyPath = resolveExistingSafe(mindRoot, legacyPath);
+  } catch {
+    return null;
+  }
+  try {
+    if (!fs.existsSync(resolvedLegacyPath) || !fs.statSync(resolvedLegacyPath).isFile()) return null;
+    return fs.readFileSync(resolvedLegacyPath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function replaceAssistantMarkdownBody(defaultMarkdown: string, body: string): string {
+  const normalizedBody = body.trim();
+  if (!normalizedBody) return defaultMarkdown;
+  const normalized = defaultMarkdown.replace(/\r\n/g, '\n');
+  const match = normalized.match(/^---\n[\s\S]*?\n---(?:\n|$)/);
+  if (!match) return normalizedBody.endsWith('\n') ? normalizedBody : `${normalizedBody}\n`;
+  return `${match[0].replace(/\n*$/, '\n\n')}${normalizedBody}\n`;
+}
+
+function stripLeadingFrontmatter(content: string): string {
+  const normalized = content.replace(/\r\n/g, '\n');
+  if (!normalized.startsWith('---\n')) return content.trim();
+  const match = normalized.match(/^---\n[\s\S]*?\n---(?:\n|$)/);
+  if (!match) return content.trim();
+  return normalized.slice(match[0].length).replace(/^\n+/, '').trim();
 }
 
 function ensureSlotDirectory(

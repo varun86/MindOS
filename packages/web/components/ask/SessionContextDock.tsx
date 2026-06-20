@@ -116,11 +116,6 @@ const BASE_SPACE_CANDIDATES: ContextSelectableItem[] = [
 const BASE_ASSISTANT_CANDIDATES: ContextSelectableItem[] = [
   { id: 'inbox-organizer', label: 'Inbox Organizer', icon: 'I' },
   { id: 'dreaming', label: 'Dreaming', icon: 'D' },
-  { id: 'daily-signal', label: 'Daily Signal', icon: 'D' },
-  { id: 'decision-synthesizer', label: 'Decision Synthesizer', icon: 'D' },
-  { id: 'rule-keeper', label: 'Rule Keeper', icon: 'R' },
-  { id: 'method-organizer', label: 'Method Organizer', icon: 'M' },
-  { id: 'tool-inventory', label: 'Tool Inventory', icon: 'T' },
 ];
 
 function shortPath(value: string | undefined, fallback: string): string {

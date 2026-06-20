@@ -271,10 +271,11 @@ function existingKnowledgePath(mindRoot: string, filePath: string): string {
 function isBuiltinAssistantPath(filePath: string): boolean {
   const normalized = filePath.split('\\').join('/').replace(/^\/+/, '').replace(/\/+$/, '');
   const parts = normalized.split('/');
-  return parts[0] === '.mindos'
-    && parts[1] === 'assistants'
-    && typeof parts[2] === 'string'
-    && isMindosBuiltinAssistantId(parts[2]);
+  if (parts[0] !== '.mindos' || parts[1] !== 'assistants' || typeof parts[2] !== 'string') return false;
+  if (parts.length === 3 && parts[2].endsWith('.md')) {
+    return isMindosBuiltinAssistantId(parts[2].slice(0, -3));
+  }
+  return isMindosBuiltinAssistantId(parts[2]);
 }
 
 function assertNotBuiltinAssistantDestructivePath(filePath: string, operation: string): void {

@@ -17,47 +17,53 @@ const localAssistantsPayload = {
   root: '.mindos/assistants',
   assistants: [
     {
-      id: 'daily-signal',
-      name: 'Daily Signal',
-      description: 'Track product signals from local notes.',
-      schemaVersion: 1,
+      id: 'inbox-organizer',
+      name: 'Inbox Organizer',
+      description: 'Review staged Inbox material.',
+      version: 1,
+      mode: 'subagent',
+      runtime: 'mindos',
+      model: 'default',
+      permission: 'ask',
+      hidden: true,
       preferredAgent: 'mindos-agent',
-      skills: ['signal-curation'],
-      mcp: ['arxiv'],
+      skills: [],
+      mcp: [],
       source: 'builtin',
       deletable: false,
+      format: 'markdown',
       paths: {
-        root: '.mindos/assistants/daily-signal',
-        prompt: '.mindos/assistants/daily-signal/prompt.md',
-        profile: '.mindos/assistants/daily-signal/profile.json',
+        root: '.mindos/assistants',
+        prompt: '.mindos/assistants/inbox-organizer.md',
+        profile: '.mindos/assistants/inbox-organizer.md',
+        file: '.mindos/assistants/inbox-organizer.md',
       },
-      promptPath: '.mindos/assistants/daily-signal/prompt.md',
-      profilePath: '.mindos/assistants/daily-signal/profile.json',
+      promptPath: '.mindos/assistants/inbox-organizer.md',
+      profilePath: '.mindos/assistants/inbox-organizer.md',
       promptReady: true,
       profileReady: true,
-      profileError: 'invalid_json',
-      promptTitle: 'Daily Signal',
-      promptPreview: 'Collect weak signals and summarize them.',
+      promptTitle: 'Inbox Organizer',
+      promptPreview: 'Review staged Inbox material and preserve sources.',
       prompt: {
         exists: true,
-        content: `# Daily Signal
+        content: `# Inbox Organizer
 
 ## Role
 
-Collect weak signals and summarize them.
+Review staged Inbox material and preserve sources.
 
 ## Inputs
 
-- Recent notes
-- Decision logs
+- Inbox notes
+- Local decisions
 
 ## Output
 
-Write a concise signal brief.
+Write an organization proposal.
 
 ## Boundaries
 
-- Do not overwrite source notes.
+- Keep source notes unchanged.
 `,
       },
       health: {
@@ -69,19 +75,25 @@ Write a concise signal brief.
       id: 'research-scout',
       name: 'Research Scout',
       description: 'Prepare a reading queue.',
-      schemaVersion: 1,
+      version: 1,
+      mode: 'subagent',
+      runtime: 'codex',
+      model: 'default',
+      permission: 'ask',
       preferredAgent: 'codex',
-      skills: ['mindos'],
-      mcp: ['semantic-scholar'],
+      skills: [],
+      mcp: [],
       source: 'custom',
       deletable: true,
+      format: 'markdown',
       paths: {
-        root: '.mindos/assistants/research-scout',
-        prompt: '.mindos/assistants/research-scout/prompt.md',
-        profile: '.mindos/assistants/research-scout/profile.json',
+        root: '.mindos/assistants',
+        prompt: '.mindos/assistants/research-scout.md',
+        profile: '.mindos/assistants/research-scout.md',
+        file: '.mindos/assistants/research-scout.md',
       },
-      promptPath: '.mindos/assistants/research-scout/prompt.md',
-      profilePath: '.mindos/assistants/research-scout/profile.json',
+      promptPath: '.mindos/assistants/research-scout.md',
+      profilePath: '.mindos/assistants/research-scout.md',
       promptReady: true,
       profileReady: true,
       promptPreview: 'Prepare a reading queue from local research notes.',
@@ -205,11 +217,11 @@ describe('AgentsPresetsSection', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/assistants', { cache: 'no-store' });
     expect(onLibraryCountChange).toHaveBeenCalledWith(2);
-    expect(host.textContent).toContain('Daily Signal');
+    expect(host.textContent).toContain('Inbox Organizer');
     expect(host.textContent).toContain('Research Scout');
-    expect(host.textContent).toContain('Collect weak signals and summarize them.');
-    expect(host.textContent).toContain('Recent notes');
-    expect(host.textContent).toContain('Decision logs');
+    expect(host.textContent).toContain('Review staged Inbox material and preserve sources.');
+    expect(host.textContent).toContain('Inbox notes');
+    expect(host.textContent).toContain('Local decisions');
     expect(host.textContent).not.toContain('Skill Librarian');
     expect(host.textContent).not.toContain('All assistants');
 
@@ -235,7 +247,7 @@ describe('AgentsPresetsSection', () => {
     });
   });
 
-  it('shows profile resources in the Resources section', async () => {
+  it('renders markdown Assistant resources without leaking local files', async () => {
     mockAssistantsFetch();
     const { host, root } = await renderSection();
 
@@ -244,9 +256,8 @@ describe('AgentsPresetsSection', () => {
       await flushEffects();
     });
 
-    expect(host.textContent).toContain('mindos-agent');
-    expect(host.textContent).toContain('arxiv');
-    expect(host.textContent).toContain('signal-curation');
+    expect(host.textContent).toContain('Not defined yet');
+    expect(host.textContent).not.toContain('.mindos/assistants/inbox-organizer.md');
 
     await act(async () => {
       root.unmount();
@@ -257,9 +268,7 @@ describe('AgentsPresetsSection', () => {
     mockAssistantsFetch();
     const { host, root } = await renderSection();
 
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/profile.json');
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal');
+    expect(host.textContent).not.toContain('.mindos/assistants/inbox-organizer.md');
     expect(host.textContent).not.toContain('.mindos/assistants');
     expect(host.textContent).not.toContain('Local files');
 
@@ -269,17 +278,15 @@ describe('AgentsPresetsSection', () => {
     });
 
     expect(host.textContent).not.toContain('Prompt ready');
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
+    expect(host.textContent).not.toContain('.mindos/assistants/inbox-organizer.md');
 
     await act(async () => {
       clickButton(host, 'Resources');
       await flushEffects();
     });
 
-    expect(host.textContent).toContain('signal-curation');
-    expect(host.textContent).toContain('arxiv');
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/prompt.md');
-    expect(host.textContent).not.toContain('.mindos/assistants/daily-signal/profile.json');
+    expect(host.textContent).toContain('Not defined yet');
+    expect(host.textContent).not.toContain('.mindos/assistants/inbox-organizer.md');
 
     await act(async () => {
       root.unmount();
@@ -295,10 +302,10 @@ describe('AgentsPresetsSection', () => {
       await flushEffects();
     });
 
-    const textarea = host.querySelector('textarea[data-assistant-prompt-editor="daily-signal"]') as HTMLTextAreaElement;
-    expect(textarea.value).toContain('# Daily Signal');
+    const textarea = host.querySelector('textarea[data-assistant-prompt-editor="inbox-organizer"]') as HTMLTextAreaElement;
+    expect(textarea.value).toContain('# Inbox Organizer');
 
-    const editedPrompt = `# Daily Signal
+    const editedPrompt = `# Inbox Organizer
 
 ## Role
 
@@ -333,13 +340,15 @@ Write an updated morning brief.
     expect(fetchMock).toHaveBeenCalledWith('/api/file', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        op: 'save_file',
-        path: '.mindos/assistants/daily-signal/prompt.md',
-        content: editedPrompt,
-        source: 'user',
-      }),
+      body: expect.any(String),
     }));
+    const saveCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/file' && init?.method === 'POST');
+    const saveRequest = JSON.parse(saveCall![1]!.body as string);
+    expect(saveRequest.path).toBe('.mindos/assistants/inbox-organizer.md');
+    expect(saveRequest.content).toContain('version: 1');
+    expect(saveRequest.content).toContain('mode: subagent');
+    expect(saveRequest.content).toContain('runtime: mindos');
+    expect(saveRequest.content).toContain(editedPrompt);
     expect(host.textContent).not.toContain('Unsaved changes');
 
     await act(async () => {
@@ -352,14 +361,14 @@ Write an updated morning brief.
     expect(host.textContent).toContain('Local decisions');
     expect(host.textContent).toContain('Write an updated morning brief.');
     expect(host.textContent).toContain('Keep source notes unchanged.');
-    expect(host.textContent).not.toContain('Recent notes');
+    expect(host.textContent).not.toContain('Review staged Inbox material and preserve sources.');
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it('saves profile edits to minimal profile.json without runtime fields', async () => {
+  it('saves profile edits back to the Assistant Markdown frontmatter', async () => {
     const fetchMock = mockAssistantsFetch();
     const { host, root } = await renderSection();
 
@@ -368,18 +377,16 @@ Write an updated morning brief.
       await flushEffects();
     });
 
-    const nameInput = host.querySelector('input[data-assistant-profile-name="daily-signal"]') as HTMLInputElement;
-    const agentInput = host.querySelector('input[data-assistant-profile-agent="daily-signal"]') as HTMLInputElement;
-    const skillsInput = host.querySelector('textarea[data-assistant-profile-skills="daily-signal"]') as HTMLTextAreaElement;
+    const nameInput = host.querySelector('input[data-assistant-profile-name="inbox-organizer"]') as HTMLInputElement;
+    const agentInput = host.querySelector('input[data-assistant-profile-agent="inbox-organizer"]') as HTMLInputElement;
     await act(async () => {
-      setInputValue(nameInput, 'Morning Signal Editor');
+      setInputValue(nameInput, 'Inbox Curator');
       setInputValue(agentInput, 'claude-code');
-      setTextareaValue(skillsInput, 'signal-curation\nmindos');
       await flushEffects();
     });
 
     await act(async () => {
-      host.querySelector('button[data-assistant-profile-save="daily-signal"]')!
+      host.querySelector('button[data-assistant-profile-save="inbox-organizer"]')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await flushEffects();
     });
@@ -387,22 +394,17 @@ Write an updated morning brief.
     const postCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/file' && init?.method === 'POST');
     expect(postCall).toBeTruthy();
     const request = JSON.parse(postCall![1]!.body as string);
-    expect(request.path).toBe('.mindos/assistants/daily-signal/profile.json');
-    const savedProfile = JSON.parse(request.content);
-    expect(savedProfile).toMatchObject({
-      name: 'Morning Signal Editor',
-      description: 'Track product signals from local notes.',
-      schemaVersion: 1,
-      preferredAgent: 'claude-code',
-      skills: ['signal-curation', 'mindos'],
-      mcp: ['arxiv'],
-    });
-    expect(savedProfile).not.toHaveProperty('permissionMode');
-    expect(savedProfile).not.toHaveProperty('schedule');
-    expect(savedProfile).not.toHaveProperty('surface');
-    expect(savedProfile).not.toHaveProperty('tools');
+    expect(request.path).toBe('.mindos/assistants/inbox-organizer.md');
+    expect(request.content).toContain('name: Inbox Curator');
+    expect(request.content).toContain('description: Review staged Inbox material.');
+    expect(request.content).toContain('version: 1');
+    expect(request.content).toContain('mode: subagent');
+    expect(request.content).toContain('runtime: claude-code');
+    expect(request.content).not.toContain('schemaVersion');
+    expect(request.content).not.toContain('skills:');
+    expect(request.content).not.toContain('mcp:');
     expect(host.textContent).not.toContain('Profile JSON needs repair');
-    expect(host.textContent).toContain('Morning Signal Editor');
+    expect(host.textContent).toContain('Inbox Curator');
 
     await act(async () => {
       root.unmount();
@@ -413,7 +415,7 @@ Write an updated morning brief.
     mockAssistantsFetch();
     const { host, root } = await renderSection();
 
-    const deleteButton = host.querySelector('button[data-assistant-delete="daily-signal"]') as HTMLButtonElement;
+    const deleteButton = host.querySelector('button[data-assistant-delete="inbox-organizer"]') as HTMLButtonElement;
     expect(deleteButton).toBeTruthy();
     expect(deleteButton.disabled).toBe(true);
     expect(deleteButton.textContent).toContain('Protected');
@@ -476,19 +478,26 @@ Write an updated morning brief.
           id: 'dreaming',
           name: 'Dreaming',
           description: 'Review knowledge-base health.',
-          schemaVersion: 1,
+          version: 1,
+          mode: 'subagent',
+          runtime: 'mindos',
+          model: 'default',
+          permission: 'ask',
+          hidden: true,
           preferredAgent: 'mindos-agent',
-          skills: ['mindos'],
+          skills: [],
           mcp: [],
           source: 'builtin',
           deletable: false,
+          format: 'markdown',
           paths: {
-            root: '.mindos/assistants/dreaming',
-            prompt: '.mindos/assistants/dreaming/prompt.md',
-            profile: '.mindos/assistants/dreaming/profile.json',
+            root: '.mindos/assistants',
+            prompt: '.mindos/assistants/dreaming.md',
+            profile: '.mindos/assistants/dreaming.md',
+            file: '.mindos/assistants/dreaming.md',
           },
-          promptPath: '.mindos/assistants/dreaming/prompt.md',
-          profilePath: '.mindos/assistants/dreaming/profile.json',
+          promptPath: '.mindos/assistants/dreaming.md',
+          profilePath: '.mindos/assistants/dreaming.md',
           promptReady: true,
           profileReady: true,
           promptTitle: 'Dreaming',

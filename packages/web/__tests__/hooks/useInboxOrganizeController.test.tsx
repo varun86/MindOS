@@ -162,10 +162,11 @@ describe('useInboxOrganizeController', () => {
     expect(toastError).not.toHaveBeenCalledWith(labels.organizeNoAi, expect.anything());
     expect(startMock).toHaveBeenCalledWith(
       [{ name: 'capture.md', content: 'Inbox capture content' }],
-      expect.stringContaining('assistantId: inbox-organizer'),
+      expect.stringContaining('version: 1'),
       'inbox-organize',
       options,
     );
+    expect(startMock.mock.calls[0]?.[1]).toContain('mode: subagent');
     expect(startMock.mock.calls[0]?.[1]).toContain('Inbox/capture.md');
     expect(resultMock).toHaveBeenCalledWith({ started: true });
 

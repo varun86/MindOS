@@ -15,8 +15,10 @@ describe('Inbox Organizer assistant', () => {
 
     expect(INBOX_ORGANIZER_ASSISTANT_ID).toBe('inbox-organizer');
     expect(INBOX_ORGANIZER_ASSISTANT_NAME).toBe('Inbox Organizer');
-    expect(INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH).toBe('.mindos/assistants/inbox-organizer/prompt.md');
-    expect(prompt).toContain('assistantId: inbox-organizer');
+    expect(INBOX_ORGANIZER_ASSISTANT_PROMPT_PATH).toBe('.mindos/assistants/inbox-organizer.md');
+    expect(prompt).toContain('version: 1');
+    expect(prompt).toContain('mode: subagent');
+    expect(prompt).not.toContain('assistantId: inbox-organizer');
     expect(prompt).toContain('# Inbox Organizer');
     expect(prompt).toContain('source-preserving Mind updates');
     expect(prompt).toContain('Do not delete, rename, or overwrite Inbox source files directly');
@@ -38,7 +40,9 @@ describe('Inbox Organizer assistant', () => {
       json: async () => ({ error: 'missing' }),
     } as Response));
 
-    expect(prompt).toContain('assistantId: inbox-organizer');
+    expect(prompt).toContain('version: 1');
+    expect(prompt).toContain('mode: subagent');
+    expect(prompt).not.toContain('assistantId: inbox-organizer');
     expect(prompt).toContain('# Inbox Organizer');
   });
 });
