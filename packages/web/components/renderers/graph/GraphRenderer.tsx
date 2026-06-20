@@ -18,6 +18,7 @@ import { WikiGraphNode } from './GraphNode';
 import { GraphToolbar } from './GraphToolbar';
 import { buildStableLayout, CENTER } from './graph-layout';
 import type { Depth, WikiNodeData } from './graph-types';
+import { RendererPageShell, RendererStatus } from '../renderer-primitives';
 
 export function GraphRenderer({ filePath }: RendererContext) {
   const smoothPush = useSmoothRouterPush();
@@ -183,7 +184,7 @@ export function GraphRenderer({ filePath }: RendererContext) {
   }
 
   return (
-    <div style={{ width: '100%', position: 'relative', zIndex: 0 }}>
+    <RendererPageShell wide className="relative z-0 py-0">
       <GraphToolbar
         scope={scope}
         depth={depth}
@@ -198,8 +199,8 @@ export function GraphRenderer({ filePath }: RendererContext) {
         onSearchTermChange={setSearchTerm}
       />
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(210px,260px)]" style={{ alignItems: 'stretch' }}>
-        <div style={{ width: '100%', height: 'calc(100vh - 178px)', minHeight: 440 }}>
+      <div className="mt-3 grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(210px,260px)]">
+        <div className="h-[calc(100vh_-_178px)] min-h-[440px] w-full">
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}
@@ -215,11 +216,7 @@ export function GraphRenderer({ filePath }: RendererContext) {
             onPaneClick={() => setSelectedNodeId(filePath)}
             onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
             onNodeMouseLeave={() => setHoveredNodeId(null)}
-            style={{
-              background: 'var(--background)',
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-            }}
+            className="rounded-lg border border-border bg-background"
           >
             <Background color="var(--border)" gap={24} size={1} variant={BackgroundVariant.Dots} />
             <Controls showInteractive={false} />
@@ -242,28 +239,14 @@ export function GraphRenderer({ filePath }: RendererContext) {
 
         <GraphDetails node={focusedNode} data={graphData} onOpenNode={openNode} />
       </div>
-    </div>
+    </RendererPageShell>
   );
 }
 
 function GraphStatus({ message }: { message: string }) {
   return (
-    <div
-      style={{
-        width: '100%',
-        height: 'calc(100vh - 160px)',
-        minHeight: 400,
-        borderRadius: 12,
-        background: 'var(--muted)',
-        border: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <span className="font-display" style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
-        {message}
-      </span>
-    </div>
+    <RendererStatus framed className="h-[calc(100vh_-_160px)] w-full">
+      {message}
+    </RendererStatus>
   );
 }

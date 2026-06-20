@@ -37,6 +37,17 @@ describe('generated renderer HTML safety', () => {
     expect(html).toContain('&lt;img');
   });
 
+  it('closes timeline ordered and unordered lists with matching tags', () => {
+    const html = renderBody('- first\n- second\n1. third\n2. fourth');
+
+    expect(html).toContain('<ul');
+    expect(html).toContain('</ul>');
+    expect(html).toContain('<ol');
+    expect(html).toContain('</ol>');
+    expect(html.indexOf('</ul>')).toBeLessThan(html.indexOf('<ol'));
+    expect(html.indexOf('</ol>')).toBeGreaterThan(html.indexOf('<ol'));
+  });
+
   it('escapes HTML in skill detail markdown', () => {
     const html = renderSkillMarkdown('# Skill\n<script>alert(1)</script>\n`<img src=x>`');
 

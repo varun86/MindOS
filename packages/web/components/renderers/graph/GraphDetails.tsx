@@ -3,6 +3,12 @@
 import { ExternalLink } from 'lucide-react';
 import { useMemo } from 'react';
 import type { GraphData, GraphNode } from '@/app/api/graph/route';
+import {
+  RendererBadge,
+  RendererIconButton,
+  RendererMetric,
+  RendererPanel,
+} from '../renderer-primitives';
 
 interface GraphDetailsProps {
   node: GraphNode | null;
@@ -17,72 +23,41 @@ export function GraphDetails({ node, data, onOpenNode }: GraphDetailsProps) {
   }, [data.edges, node]);
 
   return (
-    <aside
-      style={{
-        border: '1px solid var(--border)',
-        borderRadius: 12,
-        background: 'var(--card)',
-        padding: 14,
-        minHeight: 180,
-        color: 'var(--foreground)',
-        overflow: 'hidden',
-      }}
-    >
+    <RendererPanel className="min-h-[180px] p-3.5" as="aside">
       {node ? (
         <>
           <div className="flex items-start justify-between gap-2">
-            <div style={{ minWidth: 0 }}>
-              <div className="font-display" style={{ fontSize: 14, lineHeight: 1.25, marginBottom: 5 }}>
+            <div className="min-w-0">
+              <div className="font-display mb-1 text-sm leading-tight">
                 {node.label}
               </div>
               <div
-                className="font-mono"
-                style={{
-                  fontSize: 10,
-                  color: 'var(--muted-foreground)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+                className="truncate font-mono text-[10px] text-muted-foreground"
                 title={node.path}
               >
                 {node.path}
               </div>
             </div>
             {!node.isMissing ? (
-              <button
-                type="button"
+              <RendererIconButton
                 onClick={() => onOpenNode(node)}
-                aria-label="Open note"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 28,
-                  height: 28,
-                  flex: '0 0 auto',
-                  borderRadius: 999,
-                  border: '1px solid var(--border)',
-                  background: 'var(--background)',
-                  color: 'var(--muted-foreground)',
-                  cursor: 'pointer',
-                }}
+                label="Open note"
               >
                 <ExternalLink size={14} aria-hidden="true" />
-              </button>
+              </RendererIconButton>
             ) : null}
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2">
-            <Metric label="In" value={node.inDegree} />
-            <Metric label="Out" value={node.outDegree} />
-            <Metric label="Words" value={node.wordCount} />
+            <RendererMetric label="In" value={node.inDegree} />
+            <RendererMetric label="Out" value={node.outDegree} />
+            <RendererMetric label="Words" value={node.wordCount} />
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {node.isMissing ? <Badge label="Missing" /> : null}
-            {node.isAmbiguous ? <Badge label="Ambiguous" /> : null}
-            {node.tags.slice(0, 4).map((tag) => <Badge key={tag} label={`#${tag}`} />)}
+            {node.isMissing ? <RendererBadge>Missing</RendererBadge> : null}
+            {node.isAmbiguous ? <RendererBadge tone="amber">Ambiguous</RendererBadge> : null}
+            {node.tags.slice(0, 4).map((tag) => <RendererBadge key={tag}>#{tag}</RendererBadge>)}
           </div>
 
           {relatedEdges.length ? (
@@ -98,22 +73,15 @@ export function GraphDetails({ node, data, onOpenNode }: GraphDetailsProps) {
                 return (
                   <div
                     key={edge.id}
-                    className="font-display"
-                    style={{
-                      borderTop: '1px solid var(--border)',
-                      paddingTop: 8,
-                      fontSize: 10.5,
-                      color: 'var(--muted-foreground)',
-                      lineHeight: 1.35,
-                    }}
+                    className="font-display border-t border-border pt-2 text-[10.5px] leading-snug text-muted-foreground"
                   >
-                    <div style={{ color: 'var(--foreground)' }} title={peer}>
+                    <div className="text-foreground" title={peer}>
                       {edge.source === node.id ? 'to' : 'from'} {formatPathLabel(peer)}
                       {edge.count > 1 ? ` (${edge.count})` : ''}
                     </div>
-                    {subpath ? <div style={{ marginTop: 3 }}>{subpath}</div> : null}
-                    {candidates ? <div style={{ marginTop: 3 }}>candidates: {candidates}</div> : null}
-                    {edge.snippets[0] ? <div style={{ marginTop: 4 }}>{edge.snippets[0]}</div> : null}
+                    {subpath ? <div className="mt-1">{subpath}</div> : null}
+                    {candidates ? <div className="mt-1">candidates: {candidates}</div> : null}
+                    {edge.snippets[0] ? <div className="mt-1">{edge.snippets[0]}</div> : null}
                   </div>
                 );
               })}
@@ -121,50 +89,15 @@ export function GraphDetails({ node, data, onOpenNode }: GraphDetailsProps) {
           ) : null}
         </>
       ) : (
-        <span className="font-display" style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
+        <span className="font-display text-xs text-muted-foreground">
           Select a point to inspect links.
         </span>
       )}
-    </aside>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div
-      className="font-display"
-      style={{
-        borderRadius: 8,
-        border: '1px solid var(--border)',
-        background: 'var(--background)',
-        padding: '7px 8px',
-      }}
-    >
-      <div style={{ color: 'var(--muted-foreground)', fontSize: 9, marginBottom: 2 }}>{label}</div>
-      <div style={{ color: 'var(--foreground)', fontSize: 13 }}>{value}</div>
-    </div>
+    </RendererPanel>
   );
 }
 
 function formatPathLabel(path: string): string {
   const fileName = path.split('/').pop() || path;
   return fileName.endsWith('.md') ? fileName.slice(0, -3) : fileName;
-}
-
-function Badge({ label }: { label: string }) {
-  return (
-    <span
-      className="font-display"
-      style={{
-        borderRadius: 999,
-        border: '1px solid var(--border)',
-        background: 'var(--background)',
-        color: 'var(--muted-foreground)',
-        padding: '3px 7px',
-        fontSize: 10,
-      }}
-    >
-      {label}
-    </span>
-  );
 }

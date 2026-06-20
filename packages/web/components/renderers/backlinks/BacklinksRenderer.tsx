@@ -7,6 +7,13 @@ import type { RendererContext } from '@/lib/renderers/registry';
 import { fetchBacklinks } from '@/lib/backlinks-client';
 import type { BacklinkItem } from '@/lib/types';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
+import {
+  RendererEmptyState,
+  RendererMetaRow,
+  RendererPageShell,
+  RendererPanel,
+  RendererStatus,
+} from '../renderer-primitives';
 
 function basename(p: string) {
   return p.split('/').pop()?.replace(/\.md$/, '') ?? p;
@@ -25,7 +32,7 @@ function SnippetLine({ text }: { text: string }) {
     <span>
       {parts.map((part, i) => {
         if (/^\[\[/.test(part) || /^\[/.test(part)) {
-          return <span key={i} style={{ color: 'var(--amber)', fontWeight: 500 }}>{part}</span>;
+          return <span key={i} className="font-medium text-[var(--amber)]">{part}</span>;
         }
         return <span key={i}>{part}</span>;
       })}
@@ -47,97 +54,66 @@ export function BacklinksRenderer({ filePath }: RendererContext) {
 
   if (loading) {
     return (
-      <div className="font-display" style={{ padding: '3rem 1rem', textAlign: 'center', fontSize: 12, color: 'var(--muted-foreground)' }}>
+      <RendererStatus>
         Scanning backlinks…
-      </div>
+      </RendererStatus>
     );
   }
 
   const items = backlinks ?? [];
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '1.5rem 0' }}>
-      {/* header */}
-      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className="font-display" style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
-          {items.length === 0 ? 'No backlinks found' : `${items.length} file${items.length === 1 ? '' : 's'} link here`}
-        </span>
-      </div>
+    <RendererPageShell>
+      <RendererMetaRow>
+        {items.length === 0 ? 'No backlinks found' : `${items.length} file${items.length === 1 ? '' : 's'} link here`}
+      </RendererMetaRow>
 
       {items.length === 0 ? (
-        <div style={{
-          border: '1px dashed var(--border)',
-          borderRadius: 10,
-          padding: '2.5rem 1.5rem',
-          textAlign: 'center',
-          color: 'var(--muted-foreground)',
-          fontSize: 13,
-        }}>
-          <FileText size={28} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
-          <p className="font-display" style={{ fontSize: 12 }}>
-            No other files link to <strong style={{ color: 'var(--foreground)' }}>{basename(filePath)}</strong> yet.
-          </p>
-        </div>
+        <RendererEmptyState icon={<FileText size={28} />}>
+          No other files link to <strong className="text-foreground">{basename(filePath)}</strong> yet.
+        </RendererEmptyState>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="grid gap-2.5">
           {items.map(({ filePath: src, snippets }) => {
             const name = basename(src);
             const dir = dirname(src);
             return (
-              <div
+              <RendererPanel
                 key={src}
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 10,
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  transition: 'border-color .15s',
-                }}
+                interactive
+                className="group"
                 onClick={() => smoothPush('/view/' + encodePath(src))}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(200,135,58,0.4)')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
               >
-                {/* file header */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 14px',
-                  borderBottom: snippets.length > 0 ? '1px solid var(--border)' : 'none',
-                  background: 'var(--muted)',
-                }}>
-                  <FileText size={13} style={{ color: 'var(--muted-foreground)', flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--foreground)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div className={`flex items-center gap-2 bg-muted px-3.5 py-2.5 ${snippets.length > 0 ? 'border-b border-border' : ''}`}>
+                  <FileText size={13} className="shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-[0.85rem] font-semibold text-foreground">
                     {name}
                   </span>
                   {dir && (
-                    <span className="font-display" style={{ fontSize: '0.68rem', color: 'var(--muted-foreground)', opacity: 0.6, flexShrink: 0 }}>
+                    <span className="font-display shrink-0 text-[0.68rem] text-muted-foreground/60">
                       {dir}
                     </span>
                   )}
-                  <ExternalLink size={11} style={{ color: 'var(--muted-foreground)', opacity: 0.5, flexShrink: 0 }} />
+                  <ExternalLink size={11} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground/70" />
                 </div>
 
-                {/* snippets */}
                 {snippets.map((snippet: string, i: number) => (
-                  <div key={i} style={{
-                    padding: '8px 14px',
-                    borderBottom: i < snippets.length - 1 ? '1px solid var(--border)' : 'none',
-                    background: 'var(--background)',
-                  }}>
+                  <div
+                    key={i}
+                    className={`bg-background px-3.5 py-2 ${i < snippets.length - 1 ? 'border-b border-border' : ''}`}
+                  >
                     {snippet.split('\n').map((line: string, j: number) => (
-                      <div key={j} className="font-display" style={{ fontSize: '0.72rem', color: 'var(--muted-foreground)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      <div key={j} className="font-display whitespace-pre-wrap break-words text-[0.72rem] leading-relaxed text-muted-foreground">
                         <SnippetLine text={line} />
                       </div>
                     ))}
                   </div>
                 ))}
-              </div>
+              </RendererPanel>
             );
           })}
         </div>
       )}
-    </div>
+    </RendererPageShell>
   );
 }

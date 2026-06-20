@@ -3,6 +3,14 @@
 import { useMemo } from 'react';
 import type { RendererContext } from '@/lib/renderers/registry';
 import { escapeAttribute, escapeHtml, safeHref } from '../safe-html';
+import {
+  RendererBadge,
+  RendererMetaRow,
+  RendererPageShell,
+  RendererPanel,
+  RendererStatus,
+  rendererTagTone,
+} from '../renderer-primitives';
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
@@ -72,54 +80,44 @@ function renderInline(text: string): string {
   return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code class="font-display" style="font-size:0.85em;padding:1px 5px;border-radius:4px;background:var(--muted)">$1</code>')
+    .replace(/`(.+?)`/g, '<code class="font-display rounded bg-muted px-1.5 py-px text-[0.85em]">$1</code>')
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) =>
-      `<span style="color:var(--amber);cursor:pointer" title="${escapeAttribute(target)}">${alias ?? target}</span>`)
+      `<span class="cursor-pointer text-[var(--amber)]" title="${escapeAttribute(target)}">${alias ?? target}</span>`)
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) =>
-      `<a href="${safeHref(href)}" style="color:var(--amber)">${label}</a>`);
+      `<a href="${safeHref(href)}" class="text-[var(--amber)]">${label}</a>`);
 }
 
 export function renderBody(body: string): string {
   const lines = body.split('\n');
   const out: string[] = [];
-  let inList = false;
+  let listTag: 'ul' | 'ol' | null = null;
 
-  const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
+  const closeList = () => {
+    if (!listTag) return;
+    out.push(`</${listTag}>`);
+    listTag = null;
+  };
 
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (!line) { closeList(); out.push('<br/>'); continue; }
 
-    if (/^### /.test(line)) { closeList(); out.push(`<h3 style="font-size:0.8rem;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.06em;margin:.9em 0 .3em">${renderInline(line.slice(4))}</h3>`); continue; }
+    if (/^### /.test(line)) { closeList(); out.push(`<h3 class="my-2 text-[0.8rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">${renderInline(line.slice(4))}</h3>`); continue; }
     if (/^- /.test(line) || /^\* /.test(line)) {
-      if (!inList) { out.push('<ul style="margin:.3em 0;padding-left:1.2em;list-style:disc">'); inList = true; }
-      out.push(`<li style="margin:.15em 0;font-size:.82rem;color:var(--foreground)">${renderInline(line.slice(2))}</li>`);
+      if (listTag !== 'ul') { closeList(); out.push('<ul class="my-1 list-disc pl-5">'); listTag = 'ul'; }
+      out.push(`<li class="my-0.5 text-[0.82rem] text-foreground">${renderInline(line.slice(2))}</li>`);
       continue;
     }
     if (/^\d+\. /.test(line)) {
-      if (!inList) { out.push('<ol style="margin:.3em 0;padding-left:1.2em">'); inList = true; }
-      out.push(`<li style="margin:.15em 0;font-size:.82rem;color:var(--foreground)">${renderInline(line.replace(/^\d+\. /, ''))}</li>`);
+      if (listTag !== 'ol') { closeList(); out.push('<ol class="my-1 list-decimal pl-5">'); listTag = 'ol'; }
+      out.push(`<li class="my-0.5 text-[0.82rem] text-foreground">${renderInline(line.replace(/^\d+\. /, ''))}</li>`);
       continue;
     }
     closeList();
-    out.push(`<p style="margin:.25em 0;font-size:.82rem;line-height:1.6;color:var(--foreground)">${renderInline(line)}</p>`);
+    out.push(`<p class="my-1 text-[0.82rem] leading-relaxed text-foreground">${renderInline(line)}</p>`);
   }
   closeList();
   return out.join('');
-}
-
-// ─── Tag color ────────────────────────────────────────────────────────────────
-
-const TAG_PALETTE = [
-  { bg: 'rgba(200,135,58,0.12)', text: 'var(--amber)' },
-  { bg: 'rgba(122,173,128,0.12)', text: 'var(--success)' },
-  { bg: 'rgba(138,180,216,0.12)', text: 'var(--tool-read)' },
-  { bg: 'rgba(200,160,216,0.12)', text: 'var(--tool-search)' },
-];
-function tagColor(tag: string) {
-  let h = 0;
-  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) & 0xffff;
-  return TAG_PALETTE[h % TAG_PALETTE.length];
 }
 
 function formatDate(d: Date): string {
@@ -133,83 +131,58 @@ export function TimelineRenderer({ content }: RendererContext) {
 
   if (entries.length === 0) {
     return (
-      <div className="font-display" style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--muted-foreground)', fontSize: 13 }}>
-        No timeline entries found. Add <code style={{ background: 'var(--muted)', padding: '1px 6px', borderRadius: 4 }}>## 2025-01-15</code> headings to create entries.
-      </div>
+      <RendererStatus>
+        No timeline entries found. Add <code className="rounded bg-muted px-1.5 py-px">## 2025-01-15</code> headings to create entries.
+      </RendererStatus>
     );
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '1.5rem 0' }}>
-      {/* count pill */}
-      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className="font-display" style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-        </span>
-      </div>
+    <RendererPageShell>
+      <RendererMetaRow>
+        {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+      </RendererMetaRow>
 
-      {/* timeline */}
-      <div style={{ position: 'relative', paddingLeft: 28 }}>
-        {/* vertical line */}
-        <div style={{ position: 'absolute', left: 6, top: 8, bottom: 8, width: 1, background: 'var(--border)' }} />
+      <div className="relative pl-7">
+        <div className="absolute bottom-2 left-1.5 top-2 w-px bg-border" />
 
         {entries.map((entry, idx) => (
-          <div key={idx} style={{ position: 'relative', marginBottom: '1.5rem' }}>
-            {/* dot */}
-            <div style={{
-              position: 'absolute',
-              left: -22,
-              top: 10,
-              width: 9,
-              height: 9,
-              borderRadius: '50%',
-              background: entry.date ? 'var(--amber)' : 'var(--border)',
-              outline: entry.date ? '2px solid var(--amber-dim)' : 'none',
-              zIndex: 1,
-            }} />
+          <div key={idx} className="relative mb-6">
+            <div
+              className={`absolute -left-[22px] top-2.5 z-10 size-[9px] rounded-full ${
+                entry.date ? 'bg-[var(--amber)] outline outline-2 outline-[var(--amber-dim)]' : 'bg-border'
+              }`}
+            />
 
-            {/* card */}
-            <div style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-              padding: '14px 18px',
-              transition: 'border-color .15s',
-            }}>
-              {/* header */}
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--foreground)' }}>
+            <RendererPanel className="px-[18px] py-3.5 transition-colors">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+                <span className="text-[0.9rem] font-semibold text-foreground">
                   {entry.heading}
                 </span>
                 {entry.date && (
-                  <span className="font-display" style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', opacity: 0.7, flexShrink: 0 }}>
+                  <span className="font-display shrink-0 text-[0.7rem] text-muted-foreground/70">
                     {formatDate(entry.date)}
                   </span>
                 )}
               </div>
 
-              {/* body */}
               {entry.body && (
                 <div dangerouslySetInnerHTML={{ __html: renderBody(entry.body) }} />
               )}
 
-              {/* tags */}
               {entry.tags.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
-                  {entry.tags.map(tag => {
-                    const c = tagColor(tag);
-                    return (
-                      <span key={tag} className="font-display" style={{ fontSize: '0.68rem', padding: '1px 8px', borderRadius: 999, background: c.bg, color: c.text }}>
-                        #{tag}
-                      </span>
-                    );
-                  })}
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {entry.tags.map(tag => (
+                    <RendererBadge key={tag} tone={rendererTagTone(tag)} className="text-[0.68rem]">
+                      #{tag}
+                    </RendererBadge>
+                  ))}
                 </div>
               )}
-            </div>
+            </RendererPanel>
           </div>
         ))}
       </div>
-    </div>
+    </RendererPageShell>
   );
 }
