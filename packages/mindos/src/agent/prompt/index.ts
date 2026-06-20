@@ -28,6 +28,7 @@ export {
   type MindosAskActiveRecallConfig,
   type MindosAskInitializationContext,
   type MindosAskPromptMessage,
+  type MindosAskRecalledKnowledgeItem,
   type MindosContextPromptSection,
   type MindosTurnContext,
 } from './context-prompt.js';

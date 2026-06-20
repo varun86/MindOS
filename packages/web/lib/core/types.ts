@@ -31,6 +31,8 @@ export interface SearchResult {
   snippet: string;
   score: number;
   occurrences: number;
+  /** Score scale used by the search result. Omitted for legacy BM25-only results. */
+  scoreKind?: 'bm25' | 'rank_fusion';
   /** True if this result came from semantic/embedding search but not keyword match. */
   semanticMatch?: boolean;
   /** Cosine similarity score (0-1) from embedding search. */

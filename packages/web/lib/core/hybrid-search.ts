@@ -174,6 +174,7 @@ function rrfMerge(
       path: filePath,
       snippet: snippets.get(filePath) ?? '',
       score: rrfScore,
+      scoreKind: 'rank_fusion' as const,
       occurrences: bm25Scores.has(filePath) ? 1 : 0, // mark whether BM25 contributed
       // Add semantic match indicator for UI
       semanticMatch: semanticSimilarity.has(filePath) && !bm25Scores.has(filePath),

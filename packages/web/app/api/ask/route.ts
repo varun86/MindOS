@@ -640,7 +640,7 @@ export async function POST(req: NextRequest) {
       ...(currentFile ? [currentFile] : []),
       ...(Array.isArray(attachedFiles) ? attachedFiles : []),
     ];
-    let recalledKnowledge: Array<{ path: string; content: string }> = [];
+    let recalledKnowledge: Awaited<ReturnType<typeof performActiveRecall>> = [];
     const activeRecall = agentConfig.activeRecall ?? {};
     if (activeRecall.enabled !== false && lastUserContent.trim().length > 1) {
       recalledKnowledge = await performActiveRecall(mindRoot, lastUserContent, {
@@ -648,6 +648,7 @@ export async function POST(req: NextRequest) {
         maxFiles: activeRecall.maxFiles,
         minScore: activeRecall.minScore,
         excludePaths,
+        preferredPaths: sessionContext.resolvedSelection.spaces.map((space) => space.path),
       });
     }
     const externalPrompt = await buildMindosContextPrompt({

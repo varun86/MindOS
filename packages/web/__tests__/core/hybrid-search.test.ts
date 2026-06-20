@@ -1,7 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── Test the cosine similarity math ──
 import { cosineSimilarity } from '@/lib/core/embedding-index';
+
+afterEach(() => {
+  vi.doUnmock('@/lib/settings');
+  vi.doUnmock('@/lib/core/search');
+  vi.doUnmock('@/lib/core/embedding-index');
+  vi.doUnmock('@/lib/core/fs-ops');
+});
 
 describe('cosineSimilarity', () => {
   it('returns 1 for identical vectors', () => {
@@ -81,6 +88,98 @@ describe('hybridSearch', () => {
     const results = await hybridSearch('/tmp/test-mind', 'test query');
     expect(results).toHaveLength(1);
     expect(results[0].path).toBe('test.md');
+  });
+
+  it('returns BM25 immediately when local embedding runtime is unavailable', async () => {
+    vi.doMock('@/lib/settings', () => ({
+      readSettings: () => ({
+        ai: { activeProvider: '', providers: [] },
+        embedding: { enabled: true, provider: 'local', model: 'test-model' },
+        mindRoot: '/tmp/test-mind',
+      }),
+      effectiveSopRoot: () => '/tmp/test-mind',
+    }));
+
+    vi.doMock('@/lib/core/search', () => ({
+      ensureCoreSearchIndexReady: vi.fn().mockResolvedValue({ cacheState: 'hit', fileCount: 1 }),
+      searchFiles: () => [
+        { path: 'bm25.md', snippet: 'lexical result', score: 10, occurrences: 1 },
+      ],
+    }));
+
+    const rebuild = vi.fn().mockRejectedValue(new Error('Local embedding runtime is not installed'));
+    vi.doMock('@/lib/core/embedding-index', () => ({
+      EmbeddingIndex: vi.fn().mockImplementation(() => ({
+        isBuiltFor: () => false,
+        load: () => false,
+        isBuilding: () => false,
+        rebuild,
+        isReady: () => false,
+        invalidate: vi.fn(),
+        updateFile: vi.fn(),
+        removeFile: vi.fn(),
+        getDocCount: () => 0,
+        getDimensions: () => 0,
+      })),
+    }));
+
+    const { hybridSearch } = await import('@/lib/core/hybrid-search');
+    const results = await hybridSearch('/tmp/test-mind', 'test query');
+
+    expect(results).toEqual([
+      { path: 'bm25.md', snippet: 'lexical result', score: 10, occurrences: 1 },
+    ]);
+    expect(rebuild).toHaveBeenCalledOnce();
+  });
+
+  it('marks reciprocal-rank-fusion results with their score kind', async () => {
+    vi.doMock('@/lib/settings', () => ({
+      readSettings: () => ({
+        ai: { activeProvider: '', providers: [] },
+        embedding: { enabled: true, provider: 'local', model: 'test-model' },
+        mindRoot: '/tmp/test-mind',
+      }),
+      effectiveSopRoot: () => '/tmp/test-mind',
+    }));
+
+    vi.doMock('@/lib/core/search', () => ({
+      ensureCoreSearchIndexReady: vi.fn().mockResolvedValue({ cacheState: 'hit', fileCount: 1 }),
+      searchFiles: () => [
+        { path: 'keyword.md', snippet: 'keyword match', score: 10, occurrences: 1 },
+      ],
+    }));
+
+    vi.doMock('@/lib/core/fs-ops', () => ({
+      readFile: (_root: string, filePath: string) => filePath === 'semantic.md'
+        ? '# Semantic\n\nRelated content from embeddings.'
+        : '',
+    }));
+
+    vi.doMock('@/lib/core/embedding-index', () => ({
+      EmbeddingIndex: vi.fn().mockImplementation(() => ({
+        isBuiltFor: () => true,
+        load: () => true,
+        isBuilding: () => false,
+        rebuild: vi.fn(),
+        isReady: () => true,
+        search: vi.fn().mockResolvedValue([
+          { path: 'semantic.md', similarity: 0.9 },
+          { path: 'keyword.md', similarity: 0.8 },
+        ]),
+        invalidate: vi.fn(),
+        updateFile: vi.fn(),
+        removeFile: vi.fn(),
+        getDocCount: () => 2,
+        getDimensions: () => 384,
+      })),
+    }));
+
+    const { hybridSearch } = await import('@/lib/core/hybrid-search');
+    const results = await hybridSearch('/tmp/test-mind', 'test query');
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((result) => result.scoreKind === 'rank_fusion')).toBe(true);
+    expect(results.some((result) => result.semanticMatch)).toBe(true);
   });
 });
 

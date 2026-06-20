@@ -3,14 +3,18 @@
  * content to inject into the agent's system prompt before it replies.
  *
  * Design decisions:
- * - Uses hybridSearch (BM25 + embedding) instead of a sub-agent: zero API cost, <100ms.
- * - Expands search snippets (~400 chars) to ~800 chars by re-reading the file.
+ * - Uses hybridSearch only to find candidate files. hybridSearch already falls
+ *   back to BM25 when embedding is unavailable, so recall does not depend on an
+ *   embedding extension.
+ * - Re-ranks heading-aware Markdown chunks inside candidate files instead of
+ *   injecting whole long files or a keyword-first character window.
  * - Excludes meta-files (README.md, INSTRUCTION.md, CONFIG.json) already in bootstrap.
  * - Token budget is greedy-fill: highest score first, truncate last entry if needed.
  */
 
 import path from 'path';
 import { hybridSearch } from '@/lib/core/hybrid-search';
+import type { SearchResult } from '@/lib/core/types';
 import { estimateStringTokens } from './context';
 import { getFileContent } from '@/lib/fs';
 
@@ -19,10 +23,15 @@ import { getFileContent } from '@/lib/fs';
 export interface RecallResult {
   /** Relative file path within the knowledge base. */
   path: string;
-  /** Expanded content paragraph (~800 chars). */
+  /** Recalled Markdown excerpt. Long files contribute chunks, not whole files. */
   content: string;
   /** Search relevance score. */
   score: number;
+  /** 1-based source line range when the excerpt came from a readable file. */
+  startLine?: number;
+  endLine?: number;
+  /** Markdown heading ancestry for the excerpt. */
+  headingPath?: string[];
 }
 
 export interface RecallOptions {
@@ -33,6 +42,8 @@ export interface RecallOptions {
   timeoutMs: number;
   /** File paths already in context (attached + currentFile) — skip these. */
   excludePaths: string[];
+  /** Preferred directory prefixes, usually selected Spaces for the session. */
+  preferredPaths: string[];
 }
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
@@ -43,6 +54,7 @@ const DEFAULTS: RecallOptions = {
   minScore: 1.0,
   timeoutMs: 2000,
   excludePaths: [],
+  preferredPaths: [],
 };
 
 /** Meta-file basenames that are already loaded in bootstrap context. */
@@ -51,6 +63,29 @@ const META_BASENAMES = new Set([
   'instruction.md',
   'config.json',
 ]);
+
+const SEARCH_CANDIDATE_MULTIPLIER = 4;
+const MAX_CHUNKS_PER_FILE = 2;
+const TARGET_CHUNK_CHARS = 1200;
+const MAX_CHUNK_CHARS = 1800;
+const MIN_CHUNK_CHARS = 20;
+const MAX_QUERY_CHARS = 500;
+const MAX_QUERY_TOKENS = 50;
+
+type RecallChunk = {
+  path: string;
+  content: string;
+  headingPath: string[];
+  startLine: number;
+  endLine: number;
+  index: number;
+};
+
+type RecallCandidate = {
+  result: RecallResult;
+  score: number;
+  sourceHitScore: number;
+};
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -64,18 +99,19 @@ export async function performActiveRecall(
   userQuery: string,
   options?: Partial<RecallOptions>,
 ): Promise<RecallResult[]> {
-  const opts: RecallOptions = { ...DEFAULTS, ...options };
+  const opts = resolveRecallOptions(options);
   const excludeSet = new Set(opts.excludePaths);
+  const preferredPaths = normalizePathPrefixes(opts.preferredPaths);
 
   // Skip queries that are too short to be meaningful
-  const query = userQuery.length > 500 ? userQuery.slice(0, 500) : userQuery;
+  const query = userQuery.length > MAX_QUERY_CHARS ? userQuery.slice(0, MAX_QUERY_CHARS) : userQuery;
   if (query.trim().length < 2) return [];
 
   // Search with timeout
-  let searchResults;
+  let searchResults: SearchResult[];
   try {
     searchResults = await Promise.race([
-      hybridSearch(mindRoot, query, { limit: opts.maxFiles * 3 }),
+      hybridSearch(mindRoot, query, { limit: opts.maxFiles * SEARCH_CANDIDATE_MULTIPLIER }),
       rejectAfter(opts.timeoutMs),
     ]);
   } catch {
@@ -84,7 +120,7 @@ export async function performActiveRecall(
 
   // Filter: score threshold + exclude attached files + exclude meta-files
   const filtered = searchResults.filter(r => {
-    if (r.score < opts.minScore) return false;
+    if (!passesRecallSourceScore(r, opts.minScore)) return false;
     if (excludeSet.has(r.path)) return false;
     if (isMetaFile(r.path)) return false;
     return true;
@@ -92,37 +128,36 @@ export async function performActiveRecall(
 
   if (filtered.length === 0) return [];
 
-  // Expand snippets and fit within token budget
-  const results: RecallResult[] = [];
-  let usedTokens = 0;
+  const queryTokens = tokenizeRecallText(query);
+  const candidates = filtered.flatMap((hit) => buildChunkCandidates(hit, query, queryTokens, preferredPaths));
+  if (candidates.length === 0) return [];
 
-  for (const hit of filtered) {
-    if (results.length >= opts.maxFiles) break;
-
-    const content = expandSnippet(hit.path, hit.snippet, query);
-    const tokens = estimateStringTokens(content);
-
-    if (usedTokens + tokens > opts.maxTokens) {
-      // Try to fit a truncated version
-      const remaining = opts.maxTokens - usedTokens;
-      if (remaining > 100) {
-        results.push({
-          path: hit.path,
-          content: truncateToTokenBudget(content, remaining),
-          score: hit.score,
-        });
-      }
-      break;
-    }
-
-    results.push({ path: hit.path, content, score: hit.score });
-    usedTokens += tokens;
-  }
-
-  return results;
+  candidates.sort((a, b) => (b.score - a.score) || (b.sourceHitScore - a.sourceHitScore));
+  const diversified = diversifyCandidates(candidates, opts.maxFiles);
+  return fitTokenBudget(diversified, opts.maxTokens);
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+function resolveRecallOptions(options: Partial<RecallOptions> | undefined): RecallOptions {
+  return {
+    maxTokens: options?.maxTokens ?? DEFAULTS.maxTokens,
+    maxFiles: options?.maxFiles ?? DEFAULTS.maxFiles,
+    minScore: options?.minScore ?? DEFAULTS.minScore,
+    timeoutMs: options?.timeoutMs ?? DEFAULTS.timeoutMs,
+    excludePaths: [...(options?.excludePaths ?? DEFAULTS.excludePaths)],
+    preferredPaths: [...(options?.preferredPaths ?? DEFAULTS.preferredPaths)],
+  };
+}
+
+function passesRecallSourceScore(result: SearchResult, minScore: number): boolean {
+  if (result.score >= minScore) return true;
+  // Rank-fusion scores are intentionally small (roughly 0.01-0.04). They are
+  // already top-K search candidates, so let the chunk-level lexical scorer make
+  // the final recall decision instead of applying the BM25 minScore scale.
+  if (result.scoreKind === 'rank_fusion') return result.score > 0;
+  return false;
+}
 
 /** Check if a path is a meta-file (README/INSTRUCTION/CONFIG at any depth). */
 function isMetaFile(filePath: string): boolean {
@@ -130,46 +165,277 @@ function isMetaFile(filePath: string): boolean {
   return META_BASENAMES.has(basename);
 }
 
-/**
- * Expand a search snippet (~400 chars) to ~800 chars by re-reading the file
- * and extracting a larger window around the match location.
- */
-function expandSnippet(filePath: string, fallbackSnippet: string, query: string): string {
-  const MAX_CHARS = 800;
-  let fullContent: string;
+function buildChunkCandidates(
+  hit: SearchResult,
+  query: string,
+  queryTokens: string[],
+  preferredPaths: string[],
+): RecallCandidate[] {
+  let content: string;
   try {
-    fullContent = getFileContent(filePath);
+    content = getFileContent(hit.path);
   } catch {
-    return fallbackSnippet;
+    return [{
+      result: {
+        path: hit.path,
+        content: hit.snippet,
+        score: hit.score,
+      },
+      score: hit.score,
+      sourceHitScore: hit.score,
+    }];
   }
 
-  if (fullContent.length <= MAX_CHARS) return fullContent;
+  const chunks = buildMarkdownRecallChunks(hit.path, content);
+  if (chunks.length === 0) return [];
 
-  // Find keyword anchor in full content
-  const lower = fullContent.toLowerCase();
-  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-  let anchor = -1;
-  for (const kw of keywords) {
-    const idx = lower.indexOf(kw);
-    if (idx !== -1) { anchor = idx; break; }
+  return chunks
+    .map((chunk) => {
+      const chunkScore = scoreChunk(chunk, hit, query, queryTokens, preferredPaths);
+      return {
+        result: {
+          path: chunk.path,
+          content: chunk.content,
+          score: hit.score + chunkScore,
+          startLine: chunk.startLine,
+          endLine: chunk.endLine,
+          ...(chunk.headingPath.length > 0 ? { headingPath: chunk.headingPath } : {}),
+        },
+        score: hit.score + chunkScore,
+        sourceHitScore: hit.score,
+      };
+    })
+    .filter((candidate) => candidate.result.content.trim().length > 0);
+}
+
+function buildMarkdownRecallChunks(filePath: string, content: string): RecallChunk[] {
+  const lines = content.split(/\r?\n/);
+  if (content.trim().length === 0) return [];
+  if (content.length <= MAX_CHUNK_CHARS) {
+    return [{
+      path: filePath,
+      content: content.trim(),
+      headingPath: collectLeadingHeadingPath(lines),
+      startLine: 1,
+      endLine: Math.max(1, lines.length),
+      index: 0,
+    }];
   }
-  if (anchor === -1) anchor = 0;
 
-  // Expand to paragraph boundaries
-  const half = Math.floor(MAX_CHARS / 2);
+  const chunks: RecallChunk[] = [];
+  const headingStack: Array<{ level: number; title: string }> = [];
+  let currentLines: string[] = [];
+  let currentStartLine = 1;
+  let currentHeadingPath: string[] = [];
+  let inFence = false;
 
-  let start = fullContent.lastIndexOf('\n\n', Math.max(0, anchor - half));
-  if (start === -1 || anchor - start > half) start = Math.max(0, anchor - half);
-  else start += 2; // skip the \n\n
+  const flush = () => {
+    const raw = currentLines.join('\n');
+    const trimmed = raw.trim();
+    if (trimmed.length >= MIN_CHUNK_CHARS) {
+      chunks.push({
+        path: filePath,
+        content: trimmed,
+        headingPath: currentHeadingPath,
+        startLine: currentStartLine,
+        endLine: Math.max(currentStartLine, currentStartLine + currentLines.length - 1),
+        index: chunks.length,
+      });
+    }
+    currentLines = [];
+  };
 
-  let end = fullContent.indexOf('\n\n', Math.min(fullContent.length, anchor + half));
-  if (end === -1 || end - anchor > half) end = Math.min(fullContent.length, anchor + half);
+  const startChunk = (lineNumber: number) => {
+    currentStartLine = lineNumber;
+    currentHeadingPath = headingStack.map((heading) => heading.title);
+  };
 
-  let section = fullContent.slice(start, end).trim();
-  if (start > 0) section = '...' + section;
-  if (end < fullContent.length) section += '...';
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const lineNumber = index + 1;
+    const fenceMatch = /^\s*```/.test(line);
+    const heading = !inFence ? parseMarkdownHeading(line) : null;
 
-  return section;
+    if (heading) {
+      flush();
+      while (headingStack.length > 0 && headingStack[headingStack.length - 1]!.level >= heading.level) {
+        headingStack.pop();
+      }
+      headingStack.push({ level: heading.level, title: heading.title });
+      startChunk(lineNumber);
+      currentLines.push(line);
+      continue;
+    }
+
+    if (currentLines.length === 0) startChunk(lineNumber);
+    currentLines.push(line);
+
+    if (fenceMatch) inFence = !inFence;
+
+    const currentLength = currentLines.join('\n').length;
+    const shouldFlushAtParagraph = !inFence && line.trim() === '' && currentLength >= TARGET_CHUNK_CHARS;
+    const shouldForceFlush = !inFence && currentLength >= MAX_CHUNK_CHARS;
+    if (shouldFlushAtParagraph || shouldForceFlush) flush();
+  }
+
+  flush();
+  return chunks;
+}
+
+function collectLeadingHeadingPath(lines: string[]): string[] {
+  for (const line of lines) {
+    const heading = parseMarkdownHeading(line);
+    if (heading) return [heading.title];
+    if (line.trim()) return [];
+  }
+  return [];
+}
+
+function parseMarkdownHeading(line: string): { level: number; title: string } | null {
+  const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+  if (!match) return null;
+  return {
+    level: match[1]!.length,
+    title: match[2]!.trim(),
+  };
+}
+
+function scoreChunk(
+  chunk: RecallChunk,
+  hit: SearchResult,
+  query: string,
+  queryTokens: string[],
+  preferredPaths: string[],
+): number {
+  const headingText = chunk.headingPath.join(' ');
+  const searchable = normalizeSearchText(`${chunk.path}\n${headingText}\n${chunk.content}`);
+  const headingSearchable = normalizeSearchText(headingText);
+  const pathSearchable = normalizeSearchText(chunk.path);
+  const contentSearchable = normalizeSearchText(chunk.content);
+  const exactQuery = normalizeSearchText(query).trim();
+  const snippetTokens = tokenizeRecallText(hit.snippet);
+
+  let score = 0;
+  for (const token of queryTokens) {
+    const occurrences = countOccurrences(searchable, token);
+    if (occurrences === 0) continue;
+    const tokenWeight = Math.min(3, Math.max(1, token.length / 3));
+    score += tokenWeight * (1 + Math.log2(occurrences + 1));
+    if (countOccurrences(headingSearchable, token) > 0) score += 3;
+    if (countOccurrences(pathSearchable, token) > 0) score += 2;
+  }
+
+  if (exactQuery.length > 2 && contentSearchable.includes(exactQuery)) score += 4;
+  if (isPreferredPath(chunk.path, preferredPaths)) score += 2;
+
+  let snippetOverlap = 0;
+  for (const token of snippetTokens) {
+    if (countOccurrences(contentSearchable, token) > 0) snippetOverlap += 1;
+  }
+  score += Math.min(4, snippetOverlap * 0.75);
+
+  // Small source-score carry keeps semantic-only hits usable while chunk
+  // lexical signals decide which section of the file should be recalled.
+  score += Math.min(1, hit.score * 0.05);
+
+  // If a semantic-only hit has no lexical overlap, prefer the first chunk over
+  // a random later section. This preserves graceful degradation without
+  // pretending semantic recall is required.
+  if (score <= 1 && chunk.index === 0) score += 0.5;
+  return score;
+}
+
+function normalizePathPrefixes(paths: string[]): string[] {
+  return paths
+    .map((item) => item.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter(Boolean);
+}
+
+function isPreferredPath(filePath: string, preferredPaths: string[]): boolean {
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return preferredPaths.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+}
+
+function diversifyCandidates(candidates: RecallCandidate[], maxResults: number): RecallCandidate[] {
+  const selected: RecallCandidate[] = [];
+  const perFile = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    if (selected.length >= maxResults) break;
+    const count = perFile.get(candidate.result.path) ?? 0;
+    if (count >= MAX_CHUNKS_PER_FILE) continue;
+    selected.push(candidate);
+    perFile.set(candidate.result.path, count + 1);
+  }
+
+  return selected;
+}
+
+function fitTokenBudget(candidates: RecallCandidate[], maxTokens: number): RecallResult[] {
+  const results: RecallResult[] = [];
+  let usedTokens = 0;
+
+  for (const candidate of candidates) {
+    const tokens = estimateStringTokens(candidate.result.content);
+    if (usedTokens + tokens > maxTokens) {
+      const remaining = maxTokens - usedTokens;
+      if (remaining > 100) {
+        results.push({
+          ...candidate.result,
+          content: truncateToTokenBudget(candidate.result.content, remaining),
+        });
+      }
+      break;
+    }
+    results.push(candidate.result);
+    usedTokens += tokens;
+  }
+
+  return results;
+}
+
+function normalizeSearchText(text: string): string {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function tokenizeRecallText(text: string): string[] {
+  const normalized = normalizeSearchText(text);
+  const tokens = new Set<string>();
+
+  for (const match of normalized.match(/[a-z0-9][a-z0-9./:-]*/g) ?? []) {
+    if (match.length > 1) tokens.add(match);
+    for (const part of match.split(/[./:-]+/)) {
+      if (part.length > 1) tokens.add(part);
+    }
+  }
+
+  for (const match of normalized.match(/[\u3400-\u9fff]+/g) ?? []) {
+    if (match.length <= 8) tokens.add(match);
+    if (match.length === 1) {
+      tokens.add(match);
+      continue;
+    }
+    for (let index = 0; index < match.length - 1; index += 1) {
+      tokens.add(match.slice(index, index + 2));
+    }
+  }
+
+  return [...tokens].slice(0, MAX_QUERY_TOKENS);
+}
+
+function countOccurrences(text: string, token: string): number {
+  if (!token) return 0;
+  let count = 0;
+  let index = text.indexOf(token);
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf(token, index + Math.max(1, token.length));
+  }
+  return count;
 }
 
 /** Truncate text to fit within a token budget. ~3 chars per token (CJK/ASCII mix). */

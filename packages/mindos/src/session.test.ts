@@ -365,7 +365,13 @@ describe('MindOS session event contract', () => {
         failedFiles: ['Missing.md'],
       },
       uploadedParts: ['### upload.txt\n\nuploaded content'],
-      recalledKnowledge: [{ path: 'Recall.md', content: 'recalled content' }],
+      recalledKnowledge: [{
+        path: 'Recall.md',
+        content: 'recalled content',
+        startLine: 3,
+        endLine: 9,
+        headingPath: ['Research', 'Recall'],
+      }],
     });
 
     expect(prompt).toContain('Summarize the attached plan.');
@@ -379,7 +385,8 @@ describe('MindOS session event contract', () => {
     expect(prompt).toContain('## Files uploaded by the user for this request');
     expect(prompt).toContain('### upload.txt');
     expect(prompt).toContain('## Auto-Recalled MindOS Knowledge');
-    expect(prompt).toContain('### Recall.md');
+    expect(prompt).toContain('### Recall.md:3-9');
+    expect(prompt).toContain('Heading: Research > Recall');
     expect(prompt).toContain('These attached files could not be loaded: Missing.md');
   });
 

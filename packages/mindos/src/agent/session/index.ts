@@ -546,7 +546,13 @@ export type MindosExternalRuntimePromptInput = {
   mode?: MindosAskMode;
   fileContext?: MindosAskFileContext;
   uploadedParts?: string[];
-  recalledKnowledge?: Array<{ path: string; content: string }>;
+  recalledKnowledge?: Array<{
+    path: string;
+    content: string;
+    startLine?: number;
+    endLine?: number;
+    headingPath?: string[];
+  }>;
 };
 
 export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePromptInput): string {
@@ -575,12 +581,21 @@ export function buildMindosExternalRuntimePrompt(input: MindosExternalRuntimePro
 
   if (input.recalledKnowledge?.length) {
     const block = input.recalledKnowledge
-      .map((item) => `### ${item.path}\n\n${item.content}`)
+      .map((item) => {
+        const hasLineRange = Number.isFinite(item.startLine) && Number.isFinite(item.endLine);
+        const location = hasLineRange ? `${item.path}:${item.startLine}-${item.endLine}` : item.path;
+        const heading = item.headingPath?.filter(Boolean).join(' > ');
+        return [
+          `### ${location}`,
+          heading ? `Heading: ${heading}` : '',
+          item.content,
+        ].filter(Boolean).join('\n\n');
+      })
       .join('\n\n---\n\n');
     sections.push({
       title: 'Auto-Recalled MindOS Knowledge',
       content: [
-        'MindOS found these related notes for the user request. Cite file paths when relying on them.',
+        'MindOS found these related note excerpts for the user request. They may be partial. Cite file paths and line ranges when relying on them.',
         block,
       ],
     });

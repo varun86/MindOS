@@ -146,7 +146,13 @@ describe('MindOS agent product contract', () => {
         contextParts: ['### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha'],
         failedFiles: ['missing.md'],
       }),
-      recallKnowledge: async () => [{ path: 'Recall.md', content: 'recalled content' }],
+      recallKnowledge: async () => [{
+        path: 'Recall.md',
+        content: 'recalled content',
+        startLine: 10,
+        endLine: 18,
+        headingPath: ['Research', 'Recall'],
+      }],
     });
 
     expect(prompt).toContain('find project alpha');
@@ -173,7 +179,8 @@ describe('MindOS agent product contract', () => {
     expect(prompt).toContain('## Files uploaded by the user for this request');
     expect(prompt).toContain('### upload.txt');
     expect(prompt).toContain('## Auto-Recalled MindOS Knowledge');
-    expect(prompt).toContain('### Recall.md');
+    expect(prompt).toContain('### Recall.md:10-18');
+    expect(prompt).toContain('Heading: Research > Recall');
     expect(prompt).toContain('These attached files could not be loaded: missing.md');
     expect(prompt).not.toContain(MINDOS_SYSTEM_PROMPT);
   });

@@ -41,7 +41,7 @@ describe('performActiveRecall', () => {
 
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].path).toBe('notes/arch.md');
-    expect(results[0].score).toBe(5.0);
+    expect(results[0].score).toBeGreaterThan(5.0);
     expect(mockSearch).toHaveBeenCalledOnce();
   });
 
@@ -78,6 +78,24 @@ describe('performActiveRecall', () => {
 
     expect(results.length).toBe(1);
     expect(results[0].path).toBe('notes/high.md');
+  });
+
+  it('does not apply BM25 minScore scale to rank-fusion search candidates', async () => {
+    mockSearch.mockResolvedValue([
+      {
+        path: 'notes/rank-fusion.md',
+        snippet: 'rank fusion recall',
+        score: 0.02,
+        scoreKind: 'rank_fusion',
+        occurrences: 1,
+      },
+    ]);
+    mockGetFile.mockReturnValue('# Recall\n\nrank fusion recall content');
+
+    const results = await performActiveRecall('/mock/mind', 'rank fusion recall');
+
+    expect(results).toHaveLength(1);
+    expect(results[0].path).toBe('notes/rank-fusion.md');
   });
 
   it('excludes meta-files (README.md, INSTRUCTION.md, CONFIG.json)', async () => {
@@ -122,6 +140,22 @@ describe('performActiveRecall', () => {
     const results = await performActiveRecall('/mock/mind', 'test', { maxFiles: 2 });
 
     expect(results.length).toBe(2);
+  });
+
+  it('keeps default recall limits when optional config fields are undefined', async () => {
+    mockSearch.mockResolvedValue([
+      { path: 'notes/defaults.md', snippet: 'default fallback', score: 5.0, occurrences: 1 },
+    ]);
+    mockGetFile.mockReturnValue('default fallback content');
+
+    const results = await performActiveRecall('/mock/mind', 'default fallback', {
+      maxTokens: undefined,
+      maxFiles: undefined,
+      minScore: undefined,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(mockSearch).toHaveBeenCalledWith('/mock/mind', 'default fallback', { limit: 20 });
   });
 
   it('respects maxTokens budget', async () => {
@@ -194,12 +228,12 @@ describe('performActiveRecall', () => {
     expect(results[0].content).toBe(shortContent);
   });
 
-  it('expands snippet for long files with keyword match', async () => {
-    // Build a 2000-char file with keyword at position ~1000
-    const before = 'prefix '.repeat(100); // ~700 chars
+  it('returns a focused chunk for long files with keyword match', async () => {
+    // Build a long file with keyword in the second chunk.
+    const before = 'prefix '.repeat(240); // > 1600 chars
     const match = 'KEYWORD_MATCH here is the relevant content ';
-    const after = 'suffix '.repeat(100); // ~700 chars
-    const fullContent = before + match + after;
+    const after = 'suffix '.repeat(240);
+    const fullContent = `# Long note\n\n${before}\n\n## Relevant section\n\n${match}${after}`;
 
     mockSearch.mockResolvedValue([
       { path: 'notes/long.md', snippet: 'KEYWORD_MATCH', score: 5.0, occurrences: 1 },
@@ -208,7 +242,75 @@ describe('performActiveRecall', () => {
 
     const results = await performActiveRecall('/mock/mind', 'keyword_match');
 
-    expect(results[0].content.length).toBeLessThanOrEqual(810); // ~800 + "..."
+    expect(results[0].content.length).toBeLessThan(fullContent.length);
     expect(results[0].content).toContain('KEYWORD_MATCH');
+    expect(results[0].headingPath).toEqual(['Long note', 'Relevant section']);
+    expect(results[0].startLine).toBeGreaterThan(1);
+    expect(results[0].endLine).toBeGreaterThanOrEqual(results[0].startLine!);
+  });
+
+  it('uses heading-aware chunk scoring instead of the first keyword occurrence', async () => {
+    const intro = 'prompt '.repeat(260);
+    const fullContent = [
+      '# Prompt notes',
+      '',
+      '## Background',
+      intro,
+      '',
+      '## Recall Strategy',
+      'The recall strategy should prefer markdown chunks with exact section context.',
+    ].join('\n');
+
+    mockSearch.mockResolvedValue([
+      { path: 'notes/prompt.md', snippet: 'recall strategy should prefer markdown chunks', score: 5.0, occurrences: 1 },
+    ]);
+    mockGetFile.mockReturnValue(fullContent);
+
+    const results = await performActiveRecall('/mock/mind', 'recall strategy prompt');
+
+    expect(results[0].content).toContain('recall strategy should prefer markdown chunks');
+    expect(results[0].headingPath).toEqual(['Prompt notes', 'Recall Strategy']);
+    expect(results[0].content).not.toContain(intro.slice(0, 200));
+  });
+
+  it('matches Chinese queries without requiring embedding segmentation', async () => {
+    const unrelated = '普通记录 '.repeat(400);
+    const fullContent = [
+      '# 中文知识',
+      '',
+      '## 背景',
+      unrelated,
+      '',
+      '## 上下文片段 策略',
+      '这里记录上下文片段的召回策略，应该优先选择这个语义块。',
+    ].join('\n');
+
+    mockSearch.mockResolvedValue([
+      { path: 'notes/chinese.md', snippet: '上下文片段的召回策略', score: 5.0, occurrences: 1 },
+    ]);
+    mockGetFile.mockReturnValue(fullContent);
+
+    const results = await performActiveRecall('/mock/mind', '上下文片段');
+
+    expect(results[0].content).toContain('上下文片段的召回策略');
+    expect(results[0].headingPath).toEqual(['中文知识', '上下文片段 策略']);
+  });
+
+  it('boosts chunks from selected space prefixes without requiring embeddings', async () => {
+    mockSearch.mockResolvedValue([
+      { path: 'Archive/old.md', snippet: 'recall policy', score: 5.0, occurrences: 1 },
+      { path: 'Project/current.md', snippet: 'recall policy', score: 5.0, occurrences: 1 },
+    ]);
+    mockGetFile.mockImplementation((filePath: string) => {
+      if (filePath === 'Archive/old.md') return '# Old\n\nrecall policy from archive';
+      return '# Current\n\nrecall policy from selected project';
+    });
+
+    const results = await performActiveRecall('/mock/mind', 'recall policy', {
+      preferredPaths: ['Project'],
+    });
+
+    expect(results[0].path).toBe('Project/current.md');
+    expect(results[0].content).toContain('selected project');
   });
 });

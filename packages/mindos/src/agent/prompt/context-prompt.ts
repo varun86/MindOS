@@ -23,6 +23,14 @@ export type MindosAskInitializationContext = {
   initContextBlocks?: string[];
 };
 
+export type MindosAskRecalledKnowledgeItem = {
+  path: string;
+  content: string;
+  startLine?: number;
+  endLine?: number;
+  headingPath?: string[];
+};
+
 export type MindosAskSessionWorkDir = {
   path: string;
   label?: string;
@@ -54,7 +62,7 @@ export type BuildMindosContextPromptInput = {
   attachedFiles?: string[];
   fileContext?: MindosAskFileContext;
   uploadedParts?: string[];
-  recalledKnowledge?: Array<{ path: string; content: string }>;
+  recalledKnowledge?: MindosAskRecalledKnowledgeItem[];
   messages?: MindosAskPromptMessage[];
   agentInitialization?: MindosAskInitializationContext;
   activeRecall?: MindosAskActiveRecallConfig;
@@ -80,7 +88,8 @@ export type BuildMindosContextPromptServices = {
     maxFiles?: number;
     minScore?: number;
     excludePaths: string[];
-  }): Promise<Array<{ path: string; content: string }>>;
+    preferredPaths?: string[];
+  }): Promise<MindosAskRecalledKnowledgeItem[]>;
   now?: () => Date;
   formatLocalTime?: (date: Date) => string;
   warn?: (message: string, error?: unknown) => void;
@@ -217,7 +226,7 @@ function formatInitializationStatus(input: {
 async function recallMindosKnowledge(
   input: BuildMindosContextPromptInput,
   services: BuildMindosContextPromptServices,
-): Promise<Array<{ path: string; content: string }>> {
+): Promise<MindosAskRecalledKnowledgeItem[]> {
   if (!services.recallKnowledge) return [];
   const arConfig = input.activeRecall ?? {};
   if (arConfig.enabled === false) return [];
@@ -237,6 +246,7 @@ async function recallMindosKnowledge(
       maxFiles: arConfig.maxFiles,
       minScore: arConfig.minScore,
       excludePaths,
+      preferredPaths: input.sessionContextSelection?.spaces.map((space) => space.path) ?? [],
     });
     return recalled;
   } catch (error) {
@@ -380,17 +390,28 @@ function appendUploadedContextSections(
 
 function appendRecalledKnowledgeSections(
   sections: MindosContextPromptSection[],
-  recalledKnowledge: Array<{ path: string; content: string }> | undefined,
+  recalledKnowledge: MindosAskRecalledKnowledgeItem[] | undefined,
 ): void {
   if (!recalledKnowledge?.length) return;
   const block = recalledKnowledge
-    .map((item) => `### ${item.path}\n\n${item.content}`)
+    .map(formatRecalledKnowledgeItem)
     .join('\n\n---\n\n');
   sections.push({
     title: 'Auto-Recalled MindOS Knowledge',
     content: [
-      'MindOS found these related notes for the user request. Cite file paths when relying on them.',
+      'MindOS found these related note excerpts for the user request. They may be partial. Cite file paths and line ranges when relying on them.',
       block,
     ],
   });
+}
+
+function formatRecalledKnowledgeItem(item: MindosAskRecalledKnowledgeItem): string {
+  const hasLineRange = Number.isFinite(item.startLine) && Number.isFinite(item.endLine);
+  const location = hasLineRange ? `${item.path}:${item.startLine}-${item.endLine}` : item.path;
+  const heading = item.headingPath?.filter(Boolean).join(' > ');
+  return [
+    `### ${location}`,
+    heading ? `Heading: ${heading}` : '',
+    item.content,
+  ].filter(Boolean).join('\n\n');
 }
