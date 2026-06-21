@@ -110,10 +110,9 @@ export function renderMindosContextPrompt(context: MindosTurnContext): string {
   if (context.sections.length === 0) return context.prompt;
   return [
     context.prompt,
-    '---',
     '## MindOS Turn Context',
     ...context.sections.map(renderSection),
-  ].filter(Boolean).join('\n\n');
+  ].filter(Boolean).join('\n\n---\n\n');
 }
 
 export function formatMindosAskTimeContext(
@@ -152,7 +151,10 @@ export function compactMindosPromptForTokenBudget(prompt: string, options: Compa
       || section.includes('Current file from the MindOS knowledge base')
       || section.includes('Files uploaded by the user for this request')
       || section.includes('USER-UPLOADED');
-    const isCore = preserved.length === 0;
+    const trimmedSection = section.trim();
+    const isCore = preserved.length === 0
+      || trimmedSection === '## MindOS Turn Context'
+      || trimmedSection.startsWith('## Now\n');
 
     if (isCore || isAttachment) {
       preserved.push(section);

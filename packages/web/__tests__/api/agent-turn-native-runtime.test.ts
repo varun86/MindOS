@@ -148,7 +148,7 @@ function agentTurnRequest(body: unknown, sessionId = sessionIdFromBody(body)): N
 
 async function POST(req: NextRequest): Promise<Response> {
   const route = await import('../../app/api/agent/sessions/[sessionId]/turns/route');
-  return route.POST(req, { params: { sessionId: sessionIdFromRequest(req) } });
+  return route.POST(req, { params: Promise.resolve({ sessionId: sessionIdFromRequest(req) }) });
 }
 
 function sessionIdFromBody(body: unknown): string {
@@ -405,6 +405,53 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
     expect(nativeRuns[0]?.rootRunId).toBe(nativeRuns[0]?.id);
     expect(text).toContain('"type":"agent_run_context"');
     expect(text).toContain(`"rootRunId":"${nativeRuns[0]?.id}"`);
+  }, 15_000);
+
+  it('omits unchanged session context after its signature has been recorded', async () => {
+    mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
+    mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
+    mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
+    seedFile('Research/README.md', '# Research');
+    invalidateCache();
+    const workDir = process.cwd();
+    const baseBody = {
+      selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' },
+      workDir: { source: 'manual', path: workDir, label: 'web' },
+      contextSelection: {
+        version: 1,
+        spaces: [{ path: 'Research', label: 'Research' }],
+        assistants: [],
+      },
+      permissionMode: 'read',
+      chatSessionId: 'chat-session-context-signature',
+    };
+
+    const first = await POST(agentTurnRequest({
+      ...baseBody,
+      messages: [{ role: 'user', content: 'first turn' }],
+    }));
+
+    expect(first.status).toBe(200);
+    await first.text();
+    expect(capturedNativeOptions?.prompt).toContain('## Session Context');
+    const firstRun = listAgentRuns({ kind: 'native-runtime' })[0]!;
+    expect(firstRun.metadata?.sessionContextSignature).toEqual(expect.any(String));
+    expect(firstRun.metadata?.sessionContextInjected).toBe(true);
+    const firstSignature = firstRun.metadata?.sessionContextSignature;
+
+    capturedNativeOptions = null;
+    const second = await POST(agentTurnRequest({
+      ...baseBody,
+      messages: [{ role: 'user', content: 'second turn' }],
+    }));
+
+    expect(second.status).toBe(200);
+    await second.text();
+    expect(capturedNativeOptions?.prompt).toContain('## Now');
+    expect(capturedNativeOptions?.prompt).not.toContain('## Session Context');
+    const secondRun = listAgentRuns({ kind: 'native-runtime' })[0]!;
+    expect(secondRun.metadata?.sessionContextSignature).toBe(firstSignature);
+    expect(secondRun.metadata?.sessionContextInjected).toBe(false);
   }, 15_000);
 
   it('rejects crafted WorkDir changes after a prior run for the chat session', async () => {

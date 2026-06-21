@@ -5,7 +5,7 @@ import { handleAgentSessionTurnRouteRequest } from '../../../_lib/turn-runner';
 
 export async function POST(
   req: Request,
-  context: { params: Promise<{ sessionId: string }> | { sessionId: string } },
+  context: { params: Promise<{ sessionId: string }> },
 ) {
   return handleAgentSessionTurnRouteRequest(req, context);
 }

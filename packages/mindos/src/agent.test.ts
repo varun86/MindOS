@@ -270,4 +270,35 @@ describe('MindOS agent product contract', () => {
     expect(compacted).toContain('Files uploaded by the user for this request');
     expect(compacted).not.toContain('low priority section');
   });
+
+  it('compacts rendered turn sections independently', () => {
+    const prompt = renderMindosContextPrompt({
+      prompt: 'core prompt',
+      selectedSkills: [],
+      sections: [
+        { title: 'Now', content: 'UTC=2026-01-02T03:04:05.000Z\nLocal=test\nUnix=1767323045' },
+        { title: 'Initialization Context', content: 'init ' + 'i'.repeat(200) },
+        { title: 'Auto-Recalled MindOS Knowledge', content: 'recall ' + 'r'.repeat(200) },
+        { title: 'Attached files from the MindOS knowledge base', content: '### a.md\n\n' + 'a'.repeat(200) },
+        { title: 'Files uploaded by the user for this request', content: '### upload.txt\n\n' + 'u'.repeat(200) },
+      ],
+    });
+    const stripped: string[] = [];
+
+    const compacted = compactMindosPromptForTokenBudget(prompt, {
+      maxPromptTokens: 40,
+      estimateTokens: (value) => Math.ceil(value.length / 4),
+      onStrip: (section) => stripped.push(section),
+    });
+
+    expect(compacted).toContain('core prompt');
+    expect(compacted).toContain('## MindOS Turn Context');
+    expect(compacted).toContain('## Now');
+    expect(compacted).toContain('Attached files from the MindOS knowledge base');
+    expect(compacted).toContain('Files uploaded by the user for this request');
+    expect(compacted).not.toContain('## Initialization Context');
+    expect(compacted).not.toContain('## Auto-Recalled MindOS Knowledge');
+    expect(stripped.some((section) => section.includes('## Initialization Context'))).toBe(true);
+    expect(stripped.some((section) => section.includes('## Auto-Recalled MindOS Knowledge'))).toBe(true);
+  });
 });
