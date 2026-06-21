@@ -652,7 +652,7 @@ function AssistantLibraryToolbar({
     >
       <div
         data-assistant-command-grid
-        className="grid gap-3 2xl:grid-cols-[minmax(210px,0.72fr)_minmax(260px,0.9fr)_minmax(280px,1fr)] 2xl:items-center"
+        className="grid gap-3 2xl:grid-cols-[minmax(210px,0.72fr)_minmax(330px,0.95fr)_minmax(260px,1fr)] 2xl:items-center"
       >
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
@@ -675,7 +675,7 @@ function AssistantLibraryToolbar({
         <div
           role="group"
           aria-label="Filter assistants"
-          className="grid grid-cols-3 gap-1 rounded-lg border border-border/55 bg-background/55 p-1"
+          className="grid grid-cols-[1.55fr_1fr_1fr] gap-1 rounded-lg border border-border/55 bg-background/55 p-1"
         >
           {filterOptions.map(option => (
             <AssistantFilterPill
@@ -692,7 +692,7 @@ function AssistantLibraryToolbar({
           data-assistant-command-actions
           className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:justify-end"
         >
-          <label className="relative min-w-0 2xl:w-[min(28vw,360px)]">
+          <label className="relative min-w-0 2xl:w-[min(30vw,320px)]">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
             <input
               value={query}
@@ -717,7 +717,7 @@ function AssistantLibraryToolbar({
             type="button"
             onClick={onToggleCreate}
             aria-expanded={creating}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--amber)]/40 bg-background/75 px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--amber)]/40 bg-[var(--amber)]/[0.06] px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {creating ? <X size={13} /> : <Plus size={13} />}
             {copy.newAssistant ?? 'New Assistant'}
@@ -1072,7 +1072,7 @@ function AssistantUnifiedDetail({
           />
         </div>
 
-        <div className="mt-5 grid gap-2 border-t border-border/45 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-2 border-t border-border/45 pt-4 sm:grid-cols-2 2xl:grid-cols-4">
           <DetailMetaItem
             icon={<Route size={13} />}
             label={copy.preferredAgentLabel ?? 'Preferred agent'}

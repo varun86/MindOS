@@ -120,6 +120,8 @@ describe('SessionContextDock', () => {
       addSpace.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
+    expect(document.body.querySelector('[data-session-context-picker="spaces"]')?.textContent).not.toContain('术术');
+
     const search = document.body.querySelector('input[aria-label="Search spaces"]') as HTMLInputElement;
     act(() => {
       search.value = '术';

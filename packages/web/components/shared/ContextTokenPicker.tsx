@@ -121,7 +121,7 @@ export function ContextSelectionRow({
             title={chip.title}
             className="group inline-flex h-6 max-w-[180px] items-center gap-1 rounded-md bg-muted/45 px-1.5 text-[11px] text-foreground transition-colors hover:bg-muted/65"
           >
-            <ContextTokenIcon value={chip.icon} />
+            <ContextTokenIcon value={chip.icon} label={chip.label} />
             <span className="truncate">{chip.label}</span>
             <button
               type="button"
@@ -216,7 +216,7 @@ function ContextPickerPopover({
                 selected ? 'cursor-default text-muted-foreground' : 'text-foreground hover:bg-muted/55',
               )}
             >
-              <ContextTokenIcon value={candidate.icon} />
+              <ContextTokenIcon value={candidate.icon} label={candidate.label} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{candidate.label}</span>
                 {candidate.description ? (
@@ -243,10 +243,13 @@ function ContextPickerPopover({
   );
 }
 
-function ContextTokenIcon({ value }: { value: string }) {
+function ContextTokenIcon({ value, label }: { value: string; label?: string }) {
+  const icon = contextItemIcon(value);
+  if (label?.trim() === icon) return null;
+
   return (
     <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border/45 bg-background/65 text-[9px] font-semibold leading-none text-muted-foreground">
-      {contextItemIcon(value)}
+      {icon}
     </span>
   );
 }
