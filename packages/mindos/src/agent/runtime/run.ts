@@ -453,17 +453,43 @@ function shouldFallbackFromClaudeSdkTurnError(error: Error, signal?: AbortSignal
 function claudeCliPermissionModeForMindosMode(
   mode: MindosAgentRuntimeAskOptions['permissionMode'],
 ): ClaudeCodeCliPermissionMode {
-  return mode === 'read' ? 'dontAsk' : 'default';
+  switch (mode ?? 'ask') {
+    case 'read':
+      return 'dontAsk';
+    case 'ask':
+      return 'default';
+    case 'auto':
+      return 'auto';
+    case 'full':
+      return 'bypassPermissions';
+  }
 }
 
 function codexPermissionOptionsForMindosMode(
   mode: MindosAgentRuntimeAskOptions['permissionMode'],
 ): { approvalPolicy?: string; sandbox?: Record<string, unknown> } {
-  if (mode !== 'read') return {};
-  return {
-    approvalPolicy: 'never',
-    sandbox: { mode: 'read-only' },
-  };
+  switch (mode ?? 'ask') {
+    case 'read':
+      return {
+        approvalPolicy: 'never',
+        sandbox: { mode: 'read-only' },
+      };
+    case 'ask':
+      return {
+        approvalPolicy: 'untrusted',
+        sandbox: { mode: 'workspace-write' },
+      };
+    case 'auto':
+      return {
+        approvalPolicy: 'on-request',
+        sandbox: { mode: 'workspace-write' },
+      };
+    case 'full':
+      return {
+        approvalPolicy: 'never',
+        sandbox: { mode: 'danger-full-access' },
+      };
+  }
 }
 
 async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {

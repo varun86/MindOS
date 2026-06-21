@@ -1,15 +1,15 @@
 export type AssistantPermissionPolicyMode = 'read' | 'ask' | 'auto' | 'full';
 export type AssistantAskPermissionPolicyMode = AssistantPermissionPolicyMode;
-export type AssistantPermissionLevel = 'full-access';
+export type AssistantPermissionLevel = 'trusted-write';
 
 export const ASSISTANT_RUN_REGISTRY = {
-  'inbox-organizer': 'full-access',
-  dreaming: 'full-access',
+  'inbox-organizer': 'trusted-write',
+  dreaming: 'trusted-write',
 } as const satisfies Record<string, AssistantPermissionLevel>;
 
 export function assistantPermissionLevelToPolicyMode(permission: AssistantPermissionLevel): AssistantPermissionPolicyMode {
   switch (permission) {
-    case 'full-access':
+    case 'trusted-write':
       return 'ask';
   }
 }

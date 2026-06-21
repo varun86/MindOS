@@ -542,7 +542,7 @@ describe('/api/ask native runtime routing', () => {
     });
   });
 
-  it('maps Inbox Organizer assistant native runtime requests to full access permission mode', async () => {
+  it('maps Inbox Organizer assistant native runtime requests to trusted-write ask permission mode', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -562,7 +562,7 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedNativeOptions?.permissionMode).toBe('ask');
   });
 
-  it('keeps Inbox Organizer assistant runs on full access when native runtime options request agent permissions', async () => {
+  it('keeps Inbox Organizer assistant runs on ask permission when native runtime options request agent permissions', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
@@ -1042,7 +1042,7 @@ describe('/api/ask native runtime routing', () => {
     ]);
   });
 
-  it('maps selected ACP runtime in Inbox Organizer assistant runs to full access session permission', async () => {
+  it('maps selected ACP runtime in Inbox Organizer assistant runs to agent session permission', async () => {
     mockRunMindosAcpAskSession.mockImplementationOnce(async (options: Record<string, any>) => {
       capturedAcpOptions = options;
       await options.createSession(options.agentId, { cwd: '/tmp/mindos-test' });

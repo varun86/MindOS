@@ -774,6 +774,69 @@ describe('agent runtime adapters: Claude Code', () => {
     ]);
   });
 
+  it('maps interactive MindOS modes to Claude Code CLI permission modes', async () => {
+    const cases = [
+      { permissionMode: 'ask', expected: 'default' },
+      { permissionMode: 'auto', expected: 'auto' },
+      { permissionMode: 'full', expected: 'bypassPermissions' },
+    ] as const;
+
+    for (const { permissionMode, expected } of cases) {
+      const transport = createFakeClaudeTransport([
+        JSON.stringify({ type: 'result', subtype: 'success', session_id: `claude-session-${permissionMode}` }),
+      ]);
+
+      await runMindosAgentRuntimeAskSession({
+        runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
+        cwd: '/tmp/mind',
+        prompt: `Run with ${permissionMode}.`,
+        permissionMode,
+        send: () => {},
+        services: {
+          createClaudeClient: () => createClaudeCodeCliClient(transport),
+        },
+      });
+
+      const argv = transport.argv ?? [];
+      expect(argv.slice(0, 6)).toEqual([
+        '--print',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--permission-mode',
+        expected,
+      ]);
+      expect(argv.at(-1)).toBe(`Run with ${permissionMode}.`);
+    }
+  });
+
+  it('maps interactive MindOS modes to Claude Agent SDK permission modes', async () => {
+    const cases = [
+      { permissionMode: 'ask', expected: 'default' },
+      { permissionMode: 'auto', expected: 'auto' },
+      { permissionMode: 'full', expected: 'bypassPermissions' },
+    ] as const;
+
+    for (const { permissionMode, expected } of cases) {
+      const sdk = createFakeClaudeSdk([
+        { type: 'result', subtype: 'success', session_id: `claude-sdk-${permissionMode}`, is_error: false, result: '' },
+      ]);
+
+      await runMindosAgentRuntimeAskSession({
+        runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
+        cwd: '/tmp/mind',
+        prompt: `Run SDK with ${permissionMode}.`,
+        permissionMode,
+        send: () => {},
+        services: {
+          loadClaudeSdk: () => sdk,
+        },
+      });
+
+      expect(sdk.params?.options?.permissionMode).toBe(expected);
+    }
+  });
+
   it('adds a Claude Code permission prompt MCP bridge when configured', async () => {
     const transport = createFakeClaudeTransport([
       JSON.stringify({ type: 'result', subtype: 'success', session_id: 'claude-session-2' }),

@@ -81,19 +81,45 @@ export const MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES = [
   'update_section',
 ] as const;
 
+export const MINDOS_ASK_KB_TOOL_NAMES = [
+  'list_files',
+  'read_file',
+  'read_file_chunk',
+  'search',
+  'load_skill',
+  'get_recent',
+  'create_file',
+  'batch_create_files',
+  'write_file',
+  'append_to_file',
+  'insert_after_heading',
+  'update_section',
+  'get_backlinks',
+  'get_history',
+  'get_file_at_version',
+  'append_csv',
+  'lint',
+  'dreaming',
+  'compile',
+] as const;
+
 const SAFE_EXTENSION_SCOPES = [
   'kb',
   'ask-user-question',
   'pi-web-access',
 ] as const satisfies readonly MindosExtensionScope[];
 
-const AGENT_EXTENSION_SCOPES = [
+const AUTO_EXTENSION_SCOPES = [
   ...SAFE_EXTENSION_SCOPES,
-  'user-extensions',
-  'pi-mcp-adapter',
   'im',
   'subagents',
   'schedule-prompt',
+] as const satisfies readonly MindosExtensionScope[];
+
+const FULL_EXTENSION_SCOPES = [
+  ...AUTO_EXTENSION_SCOPES,
+  'user-extensions',
+  'pi-mcp-adapter',
 ] as const satisfies readonly MindosExtensionScope[];
 
 function fullToolScope(): MindosAgentToolScope {
@@ -110,6 +136,40 @@ function fullToolScope(): MindosAgentToolScope {
     im: true,
     schedule: true,
     userExtensions: true,
+  };
+}
+
+function askToolScope(): MindosAgentToolScope {
+  return {
+    kbRead: true,
+    kbWrite: 'bounded',
+    web: true,
+    askUserQuestion: true,
+    terminal: false,
+    mcp: false,
+    subagents: false,
+    acpDelegation: false,
+    a2aDelegation: false,
+    im: false,
+    schedule: false,
+    userExtensions: false,
+  };
+}
+
+function autoToolScope(): MindosAgentToolScope {
+  return {
+    kbRead: true,
+    kbWrite: 'all',
+    web: true,
+    askUserQuestion: true,
+    terminal: false,
+    mcp: false,
+    subagents: true,
+    acpDelegation: true,
+    a2aDelegation: true,
+    im: true,
+    schedule: true,
+    userExtensions: false,
   };
 }
 
@@ -139,16 +199,42 @@ function readOnlyPolicy(): MindosAgentPermissionPolicy {
   };
 }
 
-function interactiveAgentPolicy(mode: Exclude<MindosPermissionMode, 'read'>): MindosAgentPermissionPolicy {
+function askPolicy(): MindosAgentPermissionPolicy {
   return {
-    mode,
-    permissionMode: mode,
+    mode: 'ask',
+    permissionMode: 'ask',
+    runtimePermissionMode: 'agent',
+    acpPermissionMode: 'agent',
+    toolScope: askToolScope(),
+    kbToolNames: [...MINDOS_ASK_KB_TOOL_NAMES],
+    writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
+    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+  };
+}
+
+function autoPolicy(): MindosAgentPermissionPolicy {
+  return {
+    mode: 'auto',
+    permissionMode: 'auto',
+    runtimePermissionMode: 'agent',
+    acpPermissionMode: 'agent',
+    toolScope: autoToolScope(),
+    kbToolNames: [],
+    writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
+    extensionScopes: [...AUTO_EXTENSION_SCOPES],
+  };
+}
+
+function fullPolicy(): MindosAgentPermissionPolicy {
+  return {
+    mode: 'full',
+    permissionMode: 'full',
     runtimePermissionMode: 'agent',
     acpPermissionMode: 'agent',
     toolScope: fullToolScope(),
     kbToolNames: [],
     writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-    extensionScopes: [...AGENT_EXTENSION_SCOPES],
+    extensionScopes: [...FULL_EXTENSION_SCOPES],
   };
 }
 
@@ -156,7 +242,16 @@ export function createMindosAgentPermissionPolicy(
   mode: MindosPermissionMode = 'ask',
 ): MindosAgentPermissionPolicy {
   const normalized = assertMindosPermissionMode(mode);
-  return normalized === 'read' ? readOnlyPolicy() : interactiveAgentPolicy(normalized);
+  switch (normalized) {
+    case 'read':
+      return readOnlyPolicy();
+    case 'ask':
+      return askPolicy();
+    case 'auto':
+      return autoPolicy();
+    case 'full':
+      return fullPolicy();
+  }
 }
 
 export function createMindosKnowledgeWritePermissionPolicy(

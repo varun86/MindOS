@@ -149,12 +149,20 @@ describe('createMindosKbToolkit', () => {
     expect([...readonlyNames].some((name) => WRITE_TOOLS.has(name))).toBe(false);
     expect(readonlyNames.has('call_a2a_agent')).toBe(false);
 
-    const agentNames = new Set(
+    const askNames = new Set(
       toolkit.getToolsForPolicy(createMindosAgentPermissionPolicy('ask')).map((tool) => tool.name),
     );
-    expect(agentNames.has('write_file')).toBe(true);
-    expect(agentNames.has('call_a2a_agent')).toBe(true);
-    expect(agentNames.has('call_acp_agent')).toBe(true);
+    expect(askNames.has('write_file')).toBe(true);
+    expect(askNames.has('delete_file')).toBe(false);
+    expect(askNames.has('call_a2a_agent')).toBe(false);
+    expect(askNames.has('call_acp_agent')).toBe(false);
+
+    const autoNames = new Set(
+      toolkit.getToolsForPolicy(createMindosAgentPermissionPolicy('auto')).map((tool) => tool.name),
+    );
+    expect(autoNames.has('delete_file')).toBe(true);
+    expect(autoNames.has('call_a2a_agent')).toBe(true);
+    expect(autoNames.has('call_acp_agent')).toBe(true);
 
     const kbWriteNames = new Set(toolkit.getKnowledgeWriteTools().map((tool) => tool.name));
     expect(kbWriteNames.has('create_file')).toBe(true);

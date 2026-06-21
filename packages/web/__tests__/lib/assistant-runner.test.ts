@@ -64,8 +64,8 @@ describe('assistant runner utilities', () => {
     expect(isRegisteredAssistantRun('inbox-organizer')).toBe(true);
     expect(isRegisteredAssistantRun('dreaming')).toBe(true);
     expect(isRegisteredAssistantRun('unknown-assistant')).toBe(false);
-    expect(assistantPermissionLevelToPolicyMode('full-access')).toBe('ask');
-    expect(getAssistantPermissionLevel('dreaming')).toBe('full-access');
+    expect(assistantPermissionLevelToPolicyMode('trusted-write')).toBe('ask');
+    expect(getAssistantPermissionLevel('dreaming')).toBe('trusted-write');
     expect(getAssistantPermissionMode('dreaming')).toBe('ask');
     expect(getAssistantPermissionLevel('unknown-assistant')).toBeUndefined();
   });

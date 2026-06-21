@@ -844,6 +844,48 @@ describe('agent runtime adapters: Codex app-server', () => {
     ]);
   });
 
+  it('maps MindOS permission modes to Codex approval and sandbox options', async () => {
+    const cases = [
+      {
+        permissionMode: 'ask',
+        expected: { approvalPolicy: 'untrusted', sandbox: { mode: 'workspace-write' } },
+      },
+      {
+        permissionMode: 'auto',
+        expected: { approvalPolicy: 'on-request', sandbox: { mode: 'workspace-write' } },
+      },
+      {
+        permissionMode: 'full',
+        expected: { approvalPolicy: 'never', sandbox: { mode: 'danger-full-access' } },
+      },
+    ] as const;
+
+    for (const { permissionMode, expected } of cases) {
+      const transport = createFakeCodexTransport();
+      await runMindosAgentRuntimeAskSession({
+        runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
+        cwd: '/tmp/mind',
+        prompt: `Run with ${permissionMode}.`,
+        permissionMode,
+        send: () => {},
+        services: {
+          createCodexClient: () => createCodexAppServerClient(transport),
+        },
+      });
+
+      expect(transport.sent).toContainEqual({
+        method: 'turn/start',
+        id: 3,
+        params: {
+          threadId: 'thr-new',
+          cwd: '/tmp/mind',
+          input: [{ type: 'text', text: `Run with ${permissionMode}.` }],
+          ...expected,
+        },
+      });
+    }
+  });
+
   it('wraps selected skills as Codex text markers', async () => {
     const transport = createFakeCodexTransport();
     await runMindosAgentRuntimeAskSession({
@@ -864,6 +906,8 @@ describe('agent runtime adapters: Codex app-server', () => {
         threadId: 'thr-new',
         cwd: '/tmp/mind',
         input: [{ type: 'text', text: '$super-researcher\n\nSummarize this repo.' }],
+        approvalPolicy: 'untrusted',
+        sandbox: { mode: 'workspace-write' },
       },
     });
   });
@@ -935,6 +979,8 @@ describe('agent runtime adapters: Codex app-server', () => {
         threadId: 'thr-new',
         cwd: '/tmp/mind',
         input: [{ type: 'text', text: '$super-researcher Summarize this repo.' }],
+        approvalPolicy: 'untrusted',
+        sandbox: { mode: 'workspace-write' },
       },
     });
   });

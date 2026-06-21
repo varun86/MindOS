@@ -42,34 +42,100 @@ describe('MindOS Pi permission policy', () => {
     expect(hasMindosExtensionScope(policy, 'subagents')).toBe(false);
   });
 
-  it('maps interactive product modes to full local agent scope', () => {
-    for (const mode of ['ask', 'auto', 'full'] as const) {
-      const policy = createMindosAgentPermissionPolicy(mode);
+  it('maps ask permission to bounded KB writes without agentic extension scopes', () => {
+    const policy = createMindosAgentPermissionPolicy('ask');
 
-      expect(policy).toMatchObject({
-        mode,
-        permissionMode: mode,
-        runtimePermissionMode: 'agent',
-        acpPermissionMode: 'agent',
-        toolScope: {
-          kbRead: true,
-          kbWrite: 'all',
-          web: true,
-          askUserQuestion: true,
-          terminal: true,
-          mcp: true,
-          subagents: true,
-          acpDelegation: true,
-          a2aDelegation: true,
-          im: true,
-          schedule: true,
-          userExtensions: true,
-        },
-      });
-      expect(hasMindosExtensionScope(policy, 'pi-mcp-adapter')).toBe(true);
-      expect(hasMindosExtensionScope(policy, 'subagents')).toBe(true);
-      expect(hasMindosExtensionScope(policy, 'schedule-prompt')).toBe(true);
-    }
+    expect(policy).toMatchObject({
+      mode: 'ask',
+      permissionMode: 'ask',
+      runtimePermissionMode: 'agent',
+      acpPermissionMode: 'agent',
+      toolScope: {
+        kbRead: true,
+        kbWrite: 'bounded',
+        web: true,
+        askUserQuestion: true,
+        terminal: false,
+        mcp: false,
+        subagents: false,
+        acpDelegation: false,
+        a2aDelegation: false,
+        im: false,
+        schedule: false,
+        userExtensions: false,
+      },
+    });
+    expect(policy.kbToolNames).toContain('write_file');
+    expect(policy.kbToolNames).toContain('dreaming');
+    expect(policy.kbToolNames).not.toContain('delete_file');
+    expect(policy.kbToolNames).not.toContain('rename_file');
+    expect(policy.kbToolNames).not.toContain('move_file');
+    expect(policy.kbToolNames).not.toContain('edit_lines');
+    expect(hasMindosExtensionScope(policy, 'pi-web-access')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(false);
+    expect(hasMindosExtensionScope(policy, 'pi-mcp-adapter')).toBe(false);
+    expect(hasMindosExtensionScope(policy, 'user-extensions')).toBe(false);
+  });
+
+  it('maps auto permission to product automation without terminal, MCP, or user extensions', () => {
+    const policy = createMindosAgentPermissionPolicy('auto');
+
+    expect(policy).toMatchObject({
+      mode: 'auto',
+      permissionMode: 'auto',
+      runtimePermissionMode: 'agent',
+      acpPermissionMode: 'agent',
+      toolScope: {
+        kbRead: true,
+        kbWrite: 'all',
+        web: true,
+        askUserQuestion: true,
+        terminal: false,
+        mcp: false,
+        subagents: true,
+        acpDelegation: true,
+        a2aDelegation: true,
+        im: true,
+        schedule: true,
+        userExtensions: false,
+      },
+    });
+    expect(policy.kbToolNames).toEqual([]);
+    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'schedule-prompt')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'im')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'pi-mcp-adapter')).toBe(false);
+    expect(hasMindosExtensionScope(policy, 'user-extensions')).toBe(false);
+  });
+
+  it('maps full permission to the complete local agent scope', () => {
+    const policy = createMindosAgentPermissionPolicy('full');
+
+    expect(policy).toMatchObject({
+      mode: 'full',
+      permissionMode: 'full',
+      runtimePermissionMode: 'agent',
+      acpPermissionMode: 'agent',
+      toolScope: {
+        kbRead: true,
+        kbWrite: 'all',
+        web: true,
+        askUserQuestion: true,
+        terminal: true,
+        mcp: true,
+        subagents: true,
+        acpDelegation: true,
+        a2aDelegation: true,
+        im: true,
+        schedule: true,
+        userExtensions: true,
+      },
+    });
+    expect(policy.kbToolNames).toEqual([]);
+    expect(hasMindosExtensionScope(policy, 'pi-mcp-adapter')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'schedule-prompt')).toBe(true);
+    expect(hasMindosExtensionScope(policy, 'user-extensions')).toBe(true);
   });
 
   it('keeps bounded knowledge-write as a helper policy, not a product mode', () => {

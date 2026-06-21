@@ -318,6 +318,7 @@ export interface MindosKbToolkit {
   /** Bounded KB write tool set — skips destructive moves/deletes and delegation tools. */
   getKnowledgeWriteTools(): MindosAgentTool[];
   getReadonlyTools(): MindosAgentTool[];
+  /** Default request-scoped tool set for ask mode; full/auto callers must pass an explicit policy. */
   getRequestScopedTools(): MindosAgentTool[];
 }
 
