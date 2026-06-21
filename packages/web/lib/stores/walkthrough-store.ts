@@ -140,9 +140,12 @@ export const useWalkthroughStore = create<WalkthroughStoreState>((set, get) => {
         window.history.replaceState({}, '', url.pathname + (url.search || ''));
         clearLocallyDone();
         window.dispatchEvent(new Event('mindos:first-visit'));
+        set({ status: 'active', currentStep: 0 });
+        persistStep(0, false);
+        return () => {};
       }
 
-      // Only auto-start on desktop
+      // Only auto-resume on desktop; explicit welcome=1 is handled above.
       if (window.innerWidth < 768) return () => {};
 
       const locallyDone = isLocallyDone();

@@ -89,6 +89,70 @@ describe('walkthrough-store restartWalkthrough', () => {
     cleanup();
   });
 
+  it('uses welcome=1 as an explicit restart even when the server recorded completion', async () => {
+    window.history.replaceState({}, '', '/?welcome=1');
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/setup' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        guideState: {
+          active: true,
+          dismissed: false,
+          walkthroughStep: walkthroughSteps.length,
+          walkthroughDismissed: false,
+        },
+      }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cleanup = useWalkthroughStore.getState()._init();
+    await flushPromises();
+
+    expect(window.location.search).toBe('');
+    expect(useWalkthroughStore.getState()).toMatchObject({
+      status: 'active',
+      currentStep: 0,
+    });
+    expect(localStorage.getItem(WALKTHROUGH_DONE_STORAGE_KEY)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/api/setup', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guideState: { walkthroughStep: 0, walkthroughDismissed: false },
+      }),
+    });
+    cleanup();
+  });
+
+  it('honors explicit welcome=1 on mobile because the overlay has a mobile sheet', async () => {
+    window.history.replaceState({}, '', '/?welcome=1');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/setup' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        guideState: {
+          active: true,
+          dismissed: false,
+          walkthroughStep: walkthroughSteps.length,
+          walkthroughDismissed: false,
+        },
+      }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cleanup = useWalkthroughStore.getState()._init();
+    await flushPromises();
+
+    expect(useWalkthroughStore.getState()).toMatchObject({
+      status: 'active',
+      currentStep: 0,
+    });
+    cleanup();
+  });
+
   it('does not reactivate an incomplete server step when local completion is set', async () => {
     localStorage.setItem(WALKTHROUGH_DONE_STORAGE_KEY, '1');
     const fetchMock = vi.fn();
