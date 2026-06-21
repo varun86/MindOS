@@ -69,7 +69,7 @@ mindos/
 | 端点 | 功能 |
 |------|------|
 | `POST /api/ask` | AI 对话 — 流式输出，自动注入 bootstrap + skill |
-| `GET /api/ask-sessions` | 多轮对话历史 |
+| `GET /api/agent/sessions` | 多轮对话历史 |
 | `POST /api/auth` | Token 认证 |
 | `GET /api/backlinks?path=` | 反向链接查询 |
 | `GET /api/bootstrap` | Agent 上下文引导加载 |

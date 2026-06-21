@@ -20,4 +20,4 @@ export {
   type ToolExecEndEvent,
   type ToolExecStartEvent,
   type TurnEndEvent,
-} from '@geminilight/mindos/session';
+} from '@geminilight/mindos/agent/turn';

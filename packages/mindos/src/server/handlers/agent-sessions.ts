@@ -27,30 +27,30 @@ export type MindosChatSession = {
   [key: string]: unknown;
 };
 
-export type AskSessionsHandlerServices = {
+export type AgentSessionsHandlerServices = {
   storePath?: string;
 };
 
-export type AskSessionsSavePayload = {
+export type AgentSessionsSavePayload = {
   session?: unknown;
 };
 
-export type AskSessionsDeletePayload = {
+export type AgentSessionsDeletePayload = {
   id?: unknown;
   ids?: unknown;
 };
 
-export function handleAskSessionsGet(
-  services: AskSessionsHandlerServices = {},
+export function handleAgentSessionsGet(
+  services: AgentSessionsHandlerServices = {},
 ): MindosServerResponse<MindosChatSession[]> {
   return json(readSessions(resolveStorePath(services)));
 }
 
-export function handleAskSessionsPost(
+export function handleAgentSessionsPost(
   body: unknown,
-  services: AskSessionsHandlerServices = {},
+  services: AgentSessionsHandlerServices = {},
 ): MindosServerResponse<{ ok: true } | { error: string }> {
-  const session = (body as AskSessionsSavePayload | undefined)?.session;
+  const session = (body as AgentSessionsSavePayload | undefined)?.session;
   if (!isValidSession(session)) {
     return json({ error: 'Invalid session payload' }, { status: 400 });
   }
@@ -64,11 +64,11 @@ export function handleAskSessionsPost(
   return json({ ok: true });
 }
 
-export function handleAskSessionsDelete(
+export function handleAgentSessionsDelete(
   body: unknown,
-  services: AskSessionsHandlerServices = {},
+  services: AgentSessionsHandlerServices = {},
 ): MindosServerResponse<{ ok: true } | { error: string }> {
-  const payload = body as AskSessionsDeletePayload | undefined;
+  const payload = body as AgentSessionsDeletePayload | undefined;
   const ids = Array.isArray(payload?.ids)
     ? payload.ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
     : typeof payload?.id === 'string' && payload.id.length > 0
@@ -92,7 +92,7 @@ export function handleAskSessionsDelete(
   return json({ ok: true });
 }
 
-function resolveStorePath(services: AskSessionsHandlerServices): string {
+function resolveStorePath(services: AgentSessionsHandlerServices): string {
   return services.storePath ?? join(homedir(), '.mindos', 'sessions.json');
 }
 

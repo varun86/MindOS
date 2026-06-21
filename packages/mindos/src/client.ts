@@ -1,5 +1,5 @@
 import * as childProcess from 'node:child_process';
-import { parseMindosSseLine, type MindOSSSEvent } from './session.js';
+import { parseMindosSseLine, type MindOSSSEvent } from './agent/turn/index.js';
 
 export type MindosClientConfig = {
   baseUrl?: string | URL;

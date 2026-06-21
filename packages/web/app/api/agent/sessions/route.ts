@@ -1,15 +1,15 @@
 export const dynamic = 'force-dynamic';
 
 import {
-  handleAskSessionsDelete,
-  handleAskSessionsGet,
-  handleAskSessionsPost,
+  handleAgentSessionsDelete,
+  handleAgentSessionsGet,
+  handleAgentSessionsPost,
 } from '@geminilight/mindos/server';
 import { NextRequest } from 'next/server';
-import { toNextResponse } from '../_mindos-adapter';
+import { toNextResponse } from '../../_mindos-adapter';
 
 export function GET() {
-  return toNextResponse(handleAskSessionsGet());
+  return toNextResponse(handleAgentSessionsGet());
 }
 
 export async function POST(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   } catch {
     body = undefined;
   }
-  return toNextResponse(handleAskSessionsPost(body));
+  return toNextResponse(handleAgentSessionsPost(body));
 }
 
 export async function DELETE(req: NextRequest) {
@@ -29,5 +29,5 @@ export async function DELETE(req: NextRequest) {
   } catch {
     body = undefined;
   }
-  return toNextResponse(handleAskSessionsDelete(body));
+  return toNextResponse(handleAgentSessionsDelete(body));
 }

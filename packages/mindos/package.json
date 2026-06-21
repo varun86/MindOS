@@ -57,14 +57,6 @@
       "types": "./dist/tool.d.ts",
       "import": "./dist/tool.js"
     },
-    "./session": {
-      "types": "./dist/session.d.ts",
-      "import": "./dist/session.js"
-    },
-    "./session/pi-coding-agent": {
-      "types": "./dist/session/pi-coding-agent-runtime.d.ts",
-      "import": "./dist/session/pi-coding-agent-runtime.js"
-    },
     "./agent": {
       "types": "./dist/agent.d.ts",
       "import": "./dist/agent.js"
@@ -85,13 +77,13 @@
       "types": "./dist/agent/permission/*.d.ts",
       "import": "./dist/agent/permission/*.js"
     },
-    "./agent/session": {
-      "types": "./dist/agent/session/index.d.ts",
-      "import": "./dist/agent/session/index.js"
+    "./agent/turn": {
+      "types": "./dist/agent/turn/index.d.ts",
+      "import": "./dist/agent/turn/index.js"
     },
-    "./agent/session/*": {
-      "types": "./dist/agent/session/*.d.ts",
-      "import": "./dist/agent/session/*.js"
+    "./agent/turn/*": {
+      "types": "./dist/agent/turn/*.d.ts",
+      "import": "./dist/agent/turn/*.js"
     },
     "./agent/runtime": {
       "types": "./dist/agent/runtime/index.d.ts",
@@ -165,14 +157,6 @@
       "types": "./dist/agent/mindos-pi/*.d.ts",
       "import": "./dist/agent/mindos-pi/*.js"
     },
-    "./agent/pi": {
-      "types": "./dist/agent/pi/index.d.ts",
-      "import": "./dist/agent/pi/index.js"
-    },
-    "./agent/pi/*": {
-      "types": "./dist/agent/pi/*.d.ts",
-      "import": "./dist/agent/pi/*.js"
-    },
     "./agent/tool": {
       "types": "./dist/agent/tool/index.d.ts",
       "import": "./dist/agent/tool/index.js"
@@ -184,22 +168,6 @@
     "./agent/*": {
       "types": "./dist/agent/*.d.ts",
       "import": "./dist/agent/*.js"
-    },
-    "./agent-runtime": {
-      "types": "./dist/agent-runtime.d.ts",
-      "import": "./dist/agent-runtime.js"
-    },
-    "./agent-runtime/adapters": {
-      "types": "./dist/agent-runtime/adapters/index.d.ts",
-      "import": "./dist/agent-runtime/adapters/index.js"
-    },
-    "./agent-runtime/adapters/*": {
-      "types": "./dist/agent-runtime/adapters/*.d.ts",
-      "import": "./dist/agent-runtime/adapters/*.js"
-    },
-    "./agent-runtime/runtime-env": {
-      "types": "./dist/agent-runtime/runtime-env.d.ts",
-      "import": "./dist/agent-runtime/runtime-env.js"
     },
     "./foundation": {
       "types": "./dist/foundation.d.ts",

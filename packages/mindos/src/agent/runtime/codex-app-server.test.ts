@@ -8,12 +8,12 @@ import {
 import {
   createCodexAppServerClient,
   mapCodexAppServerNotificationToSseEvents,
-  runMindosAgentRuntimeAskSession,
+  runMindosNativeAgentTurn,
   type CodexAppServerMessage,
   type CodexAppServerClient,
   type CodexAppServerTransport,
   type MindOSSSEvent
-} from './agent-runtime.js';
+} from './index.js';
 
 class AsyncQueue<T> implements AsyncIterable<T> {
   private values: T[] = [];
@@ -803,7 +803,7 @@ describe('agent runtime adapters: Codex app-server', () => {
   it('runs a Codex native Ask session and returns the external thread binding', async () => {
     const events: MindOSSSEvent[] = [];
     const transport = createFakeCodexTransport();
-    const result = await runMindosAgentRuntimeAskSession({
+    const result = await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Summarize this repo.',
@@ -862,7 +862,7 @@ describe('agent runtime adapters: Codex app-server', () => {
 
     for (const { permissionMode, expected } of cases) {
       const transport = createFakeCodexTransport();
-      await runMindosAgentRuntimeAskSession({
+      await runMindosNativeAgentTurn({
         runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
         cwd: '/tmp/mind',
         prompt: `Run with ${permissionMode}.`,
@@ -888,7 +888,7 @@ describe('agent runtime adapters: Codex app-server', () => {
 
   it('wraps selected skills as Codex text markers', async () => {
     const transport = createFakeCodexTransport();
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Summarize this repo.',
@@ -914,7 +914,7 @@ describe('agent runtime adapters: Codex app-server', () => {
 
   it('passes structured runtime attachments to Codex as path context and local images', async () => {
     const transport = createFakeCodexTransport();
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Inspect these attachments.',
@@ -961,7 +961,7 @@ describe('agent runtime adapters: Codex app-server', () => {
 
   it('normalizes slash skill markers to Codex dollar markers', async () => {
     const transport = createFakeCodexTransport();
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: '/super-researcher Summarize this repo.',
@@ -987,7 +987,7 @@ describe('agent runtime adapters: Codex app-server', () => {
 
   it('resumes an existing Codex thread when the runtime carries an external session id', async () => {
     const transport = createFakeCodexTransport();
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex', externalSessionId: 'thr-existing' },
       cwd: '/tmp/mind',
       prompt: 'Continue.',
@@ -1026,7 +1026,7 @@ describe('agent runtime adapters: Codex app-server', () => {
     };
     const events: MindOSSSEvent[] = [];
 
-    const resultPromise = runMindosAgentRuntimeAskSession({
+    const resultPromise = runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Hang.',
@@ -1076,7 +1076,7 @@ describe('agent runtime adapters: Codex app-server', () => {
     };
     const events: MindOSSSEvent[] = [];
 
-    const resultPromise = runMindosAgentRuntimeAskSession({
+    const resultPromise = runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Hang during initialize.',
@@ -1124,7 +1124,7 @@ describe('agent runtime adapters: Codex app-server', () => {
       startTurn: async function* () {},
     };
 
-    const result = await runMindosAgentRuntimeAskSession({
+    const result = await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex', externalSessionId: 'thr-missing' },
       cwd: '/tmp/mind',
       prompt: 'Continue.',
@@ -1184,7 +1184,7 @@ describe('agent runtime adapters: Codex app-server', () => {
     };
 
     const events: MindOSSSEvent[] = [];
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Delete it.',
@@ -1258,7 +1258,7 @@ describe('agent runtime adapters: Codex app-server', () => {
       },
     };
 
-    await runMindosAgentRuntimeAskSession({
+    await runMindosNativeAgentTurn({
       runtime: { kind: 'codex', id: 'codex', name: 'Codex' },
       cwd: '/tmp/mind',
       prompt: 'Delete it.',

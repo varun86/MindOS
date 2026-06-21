@@ -8,7 +8,7 @@ import {
   encodeMindosSseEvent,
   createMindosUploadedFileParts,
   dirnameOfMindosPath,
-  expandMindosAskAttachedFiles,
+  expandMindosAgentAttachedFiles,
   detectMindosAgentLoop,
   getTextDelta,
   getToolExecutionEnd,
@@ -18,8 +18,8 @@ import {
   isToolExecutionStartEvent,
   isMindosRetryableError,
   isMindosTransientError,
-  loadMindosAskFileContext,
-  normalizeMindosAskStepLimit,
+  loadMindosAgentFileContext,
+  normalizeMindosAgentStepLimit,
   parseMindosSseLine,
   resolveMindosAgentTimeoutMs,
   mindosRetryDelay,
@@ -29,16 +29,16 @@ import {
   parseMindosOpenAICompatResponse,
   reassembleMindosOpenAISse,
   buildMindosExternalRuntimePrompt,
-  runMindosAcpAskSession,
+  runMindosAcpAgentTurn,
   runMindosNonStreamingFallback,
   runMindosOpenAICompatFallback,
-  runMindosAskWithRetry,
+  runMindosAgentTurnWithRetry,
   safeParseMindosJsonObject,
   sanitizeToolArgs,
   sanitizeToolOutput,
   sleepMindos,
   toMindosAgentMessages,
-} from './session/index.js';
+} from './agent/turn/index.js';
 import {
   createMindosPiAgentRuntime,
   runMindosPiAgentTurnProxyFallback,
@@ -299,10 +299,10 @@ describe('MindOS session event contract', () => {
   });
 
   it('normalizes ask step limits without Web dependencies', () => {
-    expect(normalizeMindosAskStepLimit({})).toBe(20);
-    expect(normalizeMindosAskStepLimit({ agentMaxSteps: 50 })).toBe(50);
-    expect(normalizeMindosAskStepLimit({ requestedMaxSteps: -1 })).toBe(1);
-    expect(normalizeMindosAskStepLimit({ requestedMaxSteps: 5000 })).toBe(999);
+    expect(normalizeMindosAgentStepLimit({})).toBe(20);
+    expect(normalizeMindosAgentStepLimit({ agentMaxSteps: 50 })).toBe(50);
+    expect(normalizeMindosAgentStepLimit({ requestedMaxSteps: -1 })).toBe(1);
+    expect(normalizeMindosAgentStepLimit({ requestedMaxSteps: 5000 })).toBe(999);
   });
 
   it('resolves agent timeout with a safe default for invalid environment values', () => {
@@ -314,7 +314,7 @@ describe('MindOS session event contract', () => {
   });
 
   it('expands directory attachments with a stable limit', () => {
-    expect(expandMindosAskAttachedFiles(['Space/', 'loose.md'], () => [
+    expect(expandMindosAgentAttachedFiles(['Space/', 'loose.md'], () => [
       'Space/a.md',
       'Space/b.md',
       'Other/c.md',
@@ -322,7 +322,7 @@ describe('MindOS session event contract', () => {
   });
 
   it('loads attached and current file context with validation and dedupe', () => {
-    const loaded = loadMindosAskFileContext(['a.md', 'a.md', 'too-big.md'], 'current.md', {
+    const loaded = loadMindosAgentFileContext(['a.md', 'a.md', 'too-big.md'], 'current.md', {
       readFile: (filePath) => `content:${filePath}`,
       truncate: (content) => content.slice(0, 20),
       validateFileSize: (filePath, cumulativeSize) => {
@@ -419,7 +419,7 @@ describe('MindOS session event contract', () => {
     let attempts = 0;
     let hasContent = false;
 
-    const result = await runMindosAskWithRetry({
+    const result = await runMindosAgentTurnWithRetry({
       maxRetries: 3,
       hasContent: () => hasContent,
       send: (event) => events.push(event),
@@ -445,7 +445,7 @@ describe('MindOS session event contract', () => {
     let hasContent = false;
     const events: Array<{ type: string }> = [];
 
-    const result = await runMindosAskWithRetry({
+    const result = await runMindosAgentTurnWithRetry({
       maxRetries: 3,
       hasContent: () => hasContent,
       send: (event) => events.push(event),
@@ -1095,7 +1095,7 @@ describe('MindOS session event contract', () => {
     const events: Array<{ type: string; delta?: string }> = [];
     const closed: string[] = [];
 
-    const result = await runMindosAcpAskSession({
+    const result = await runMindosAcpAgentTurn({
       agentId: 'agent-1',
       cwd: '/mind',
       prompt: 'hello',
@@ -1122,7 +1122,7 @@ describe('MindOS session event contract', () => {
     const closed: string[] = [];
     let attempts = 0;
 
-    const result = await runMindosAcpAskSession({
+    const result = await runMindosAcpAgentTurn({
       agentId: 'agent-1',
       cwd: '/mind',
       prompt: 'hello',
@@ -1159,7 +1159,7 @@ describe('MindOS session event contract', () => {
     const closed: string[] = [];
     let attempts = 0;
 
-    const result = await runMindosAcpAskSession({
+    const result = await runMindosAcpAgentTurn({
       agentId: 'agent-1',
       cwd: '/mind',
       prompt: 'hello',

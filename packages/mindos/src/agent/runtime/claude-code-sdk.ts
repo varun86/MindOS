@@ -3,7 +3,7 @@ import {
   sanitizeToolArgs,
   sanitizeToolOutput,
   type MindOSSSEvent,
-} from '../session/index.js';
+} from '../turn/index.js';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { nativeImport } from '../../foundation/native-import.js';
@@ -89,7 +89,7 @@ type ClaudeCodeSdkState = {
 };
 
 // Lazy: a module-scope `createRequire(import.meta.url)` would crash the whole
-// agent-runtime import graph if a bundler ships this file with a broken
+// agent runtime import graph if a bundler ships this file with a broken
 // import.meta — keep the failure scoped to binary resolution (which already
 // degrades gracefully to the CLI fallback).
 let lazyRequireFromHere: NodeRequire | undefined;

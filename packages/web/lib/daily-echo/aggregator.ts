@@ -3,7 +3,7 @@
  *
  * Collects 24-hour user behavior data from:
  * - File change events via /api/changes
- * - Chat sessions via /api/ask-sessions
+ * - Chat sessions via /api/agent/sessions
  * - User intentions from localStorage
  */
 
@@ -77,7 +77,7 @@ export async function aggregateDailyData(
     // Fetch chat sessions
     try {
       const sessionsRes = await apiFetch<ChatSession[]>(
-        '/api/ask-sessions',
+        '/api/agent/sessions',
         {
           method: 'GET',
           timeout: 5000,

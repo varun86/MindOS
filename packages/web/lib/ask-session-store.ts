@@ -187,7 +187,7 @@ function sortAndCap(list: ChatSession[]): ChatSession[] {
 
 async function fetchSessions(): Promise<ChatSession[] | null> {
   try {
-    const res = await fetch('/api/ask-sessions', { cache: 'no-store' });
+    const res = await fetch('/api/agent/sessions', { cache: 'no-store' });
     if (!res.ok) return null;
     const data = (await res.json()) as ChatSession[];
     if (!Array.isArray(data)) return null;
@@ -207,7 +207,7 @@ async function upsertSession(session: ChatSession): Promise<void> {
         return { ...m, images: m.images.map((img) => ({ ...img, data: '' })) };
       }),
     };
-    await fetch('/api/ask-sessions', {
+    await fetch('/api/agent/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: stripped }),
@@ -219,7 +219,7 @@ async function upsertSession(session: ChatSession): Promise<void> {
 
 async function removeSessionRemote(id: string): Promise<void> {
   try {
-    await fetch('/api/ask-sessions', {
+    await fetch('/api/agent/sessions', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
@@ -232,7 +232,7 @@ async function removeSessionRemote(id: string): Promise<void> {
 async function removeSessionsRemote(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   try {
-    await fetch('/api/ask-sessions', {
+    await fetch('/api/agent/sessions', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),

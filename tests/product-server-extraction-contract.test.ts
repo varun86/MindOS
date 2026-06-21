@@ -52,7 +52,7 @@ describe('Product server extraction contract', () => {
     expect(http).toContain('/api/agent-activity');
     expect(http).toContain('/api/agent-runtimes');
     expect(http).toContain('/api/agent-runtimes/codex/threads');
-    expect(http).toContain('/api/ask-sessions');
+    expect(http).toContain('/api/agent/sessions');
     expect(http).toContain('/api/space-overview');
     expect(http).toContain('/api/git');
     expect(http).toContain('/api/inbox');
@@ -134,8 +134,8 @@ describe('Product server extraction contract', () => {
     expect(contract).toContain("id: 'agent-runtimes.codex.thread.fork'");
     expect(contract).toContain("id: 'agent-runtimes.codex.thread.archive'");
     expect(contract).toContain("id: 'agent-runtimes.codex.thread.unarchive'");
-    expect(contract).toContain("id: 'ask-sessions'");
-    expect(contract).toContain("path: '/api/ask-sessions'");
+    expect(contract).toContain("id: 'agent-sessions'");
+    expect(contract).toContain("path: '/api/agent/sessions'");
     expect(contract).toContain("id: 'space-overview'");
     expect(contract).toContain("path: '/api/space-overview'");
     expect(contract).toContain("id: 'git'");
@@ -252,7 +252,7 @@ describe('Product server extraction contract', () => {
       'packages/web/app/api/agent-runtimes/codex/threads/[threadId]/archive/route.ts',
       'packages/web/app/api/agent-runtimes/codex/threads/[threadId]/fork/route.ts',
       'packages/web/app/api/agent-runtimes/codex/threads/[threadId]/unarchive/route.ts',
-      'packages/web/app/api/ask-sessions/route.ts',
+      'packages/web/app/api/agent/sessions/route.ts',
       'packages/web/app/api/space-overview/route.ts',
       'packages/web/app/api/git/route.ts',
       'packages/web/app/api/inbox/route.ts',

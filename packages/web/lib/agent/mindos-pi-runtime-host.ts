@@ -1,6 +1,6 @@
 import path from 'path';
 import os from 'os';
-import type { MindosPiCodingAgentRuntimeHostServices } from '@geminilight/mindos/session/pi-coding-agent';
+import type { MindosPiCodingAgentRuntimeHostServices } from '@geminilight/mindos/agent/mindos-pi';
 import { getModelConfig, hasImages } from '@/lib/agent/model';
 import { estimateStringTokens, getOllamaContextWindow } from '@/lib/agent/context';
 import { isProviderId, toPiProvider, type ProviderId } from '@/lib/agent/providers';

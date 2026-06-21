@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createMindosAgentRuntimeAdapter,
-} from './agent-runtime/adapters/mindos.js';
+} from './mindos.js';
 
 describe('MindOS runtime adapter', () => {
   it('describes the internal MindOS runtime and delegates creation to the injected factory', async () => {

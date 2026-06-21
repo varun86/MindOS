@@ -9,7 +9,7 @@ const root = resolve(__dirname, '..');
 const productRuntimeSubpaths = [
   '@geminilight/mindos/server',
   '@geminilight/mindos/client',
-  '@geminilight/mindos/session',
+  '@geminilight/mindos/agent/turn',
   '@geminilight/mindos/agent',
   '@geminilight/mindos/tool',
   '@geminilight/mindos/plugin',

@@ -1,43 +1,24 @@
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
-import { validateFileSize } from '@/lib/api-file-size-validation';
-import { truncate } from '@/lib/agent/tools';
-import type {
-  AgentMode,
-  AgentPermissionMode,
-  AgentRuntimeIdentity,
-  RuntimeSessionBinding,
-  NativeRuntimeOptions,
-  NativeRuntimeEffort,
-  SessionContextSelection,
-  SessionWorkDir,
-} from '@/lib/types';
+import { getMindRoot } from '@/lib/fs';
+import type { AgentPermissionMode } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
 import { resolveAssistantPermissionMode } from '@/lib/assistant-runtime-registry';
-import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath, resolveCommandPathCandidates } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
 import { en as i18nEn, zh as i18nZh } from '@/lib/i18n';
 import { MindOSError, apiError, ErrorCodes } from '@/lib/errors';
-import { performActiveRecall } from '@/lib/agent/active-recall';
 import { metrics } from '@/lib/metrics';
 import { resolveAgentTurnCompatMode } from '@/lib/agent/agent-turn-compat';
 import { createSession, promptStream, cancelPrompt, closeSession } from '@/lib/acp/session';
 import { getProjectRoot } from '@/lib/project-root';
-import type { Message as FrontendMessage } from '@/lib/types';
 import {
-  MINDOS_SSE_HEADERS,
-  encodeMindosSseEvent,
   type MindOSSSEvent,
   createMindosUploadedFileParts,
-  dirnameOfMindosPath,
-  expandMindosAskAttachedFiles,
-  loadMindosAskFileContext,
-  normalizeMindosAskStepLimit,
+  normalizeMindosAgentStepLimit,
   resolveMindosAgentTimeoutMs,
-  runMindosAcpAskSession,
+  runMindosAcpAgentTurn,
   runMindosNonStreamingFallback,
-} from '@geminilight/mindos/session';
+} from '@geminilight/mindos/agent/turn';
 import { runMindosPiAgentTurnSession } from '@geminilight/mindos/agent/mindos-pi';
 import {
   appendMindosRuntimeAttachmentPathContext,
@@ -46,22 +27,15 @@ import {
   createMindosRuntimeUploadedFileAttachments,
   materializeMindosRuntimeAttachments,
   resolveAgentRuntimeEnvOverlay,
-  runMindosAgentRuntimeAskSession,
-  type MindosAgentRuntimeSelection,
+  runMindosNativeAgentTurn,
 } from '@geminilight/mindos/agent/runtime';
-import {
-  handleAgentRuntimesGet,
-  type AgentRuntimeDescriptor,
-  type AgentRuntimesServices,
-} from '@geminilight/mindos/server';
 import {
   appendSseEventToAgentRun,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
   createMindosSessionContextSignature,
   normalizeMindosSelectedSkills,
-  type MindosAskInitializationContext,
-  type MindosAskRecalledKnowledgeItem,
+  type MindosAgentInitializationContext,
 } from '@geminilight/mindos/agent';
 import { renderMindosPiSelectedSkillPrompt } from '@geminilight/mindos/agent/mindos-pi';
 import {
@@ -73,7 +47,6 @@ import {
   requestRuntimePermissionViaBridge,
   runWithRuntimePermissionBridge,
 } from '@geminilight/mindos/agent/bridges/runtime-permission-bridge';
-import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import {
   createClaudePermissionPromptConfig,
   resolveRuntimePermissionBaseUrl,
@@ -84,12 +57,7 @@ import {
   listAgentRuns,
   startAgentRun,
   updateAgentRun,
-  type AgentRunRecord,
 } from '@geminilight/mindos/agent/ledger/run-ledger';
-import {
-  getCachedAvailableNativeRuntimeDescriptor,
-  rememberAvailableNativeRuntimeDescriptor,
-} from '@/lib/agent/native-runtime-descriptor-cache';
 import {
   createMindosAgentPermissionPolicy,
   type MindosPermissionMode,
@@ -98,261 +66,55 @@ import {
   runWithAgentRunContext,
   setAgentRunContextForResource,
 } from '@geminilight/mindos/agent/agent-run-context';
-import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
-import { isAbortLikeError } from '@geminilight/mindos/agent/ledger/run-cancellation';
+import { toMindosUiAgentMessages } from '@/lib/agent/to-agent-messages';
 import {
-  readPersistedAskSession,
+  readPersistedAgentSession,
   resolveSessionContext,
   SessionContextResolutionError,
 } from '@/lib/session-context-server';
-
-const NATIVE_ASK_HEALTH_GATE_TIMEOUT_MS = 3000;
-
-function agentRunErrorStatus(error: unknown, signal?: AbortSignal): 'failed' | 'canceled' | 'timed_out' {
-  if (signal?.aborted || isAbortLikeError(error)) return 'canceled';
-  return (error as any)?.code === 'TIMEOUT' ? 'timed_out' : 'failed';
-}
-
-function sendAgentRunContext(
-  send: (event: MindOSSSEvent) => void,
-  run: AgentRunRecord,
-): void {
-  send({
-    type: 'agent_run_context',
-    rootRunId: run.rootRunId ?? run.id,
-    ...(run.chatSessionId ? { chatSessionId: run.chatSessionId } : {}),
-    startedAt: run.startedAt,
-  } as unknown as MindOSSSEvent);
-}
-
-function formatMindosPiExtensionLoadStatus(errors: Array<{ path: string; error: string }> | undefined): string | null {
-  if (!errors?.length) return null;
-  const names = [...new Set(errors.map((entry) => path.basename(entry.path || 'extension')).filter(Boolean))].slice(0, 5);
-  const hasWebAccessError = errors.some((entry) => entry.path.includes('pi-web-access'));
-  const suffix = hasWebAccessError
-    ? ' pi-web-access is unavailable or incomplete, so web_search/fetch_content may be unavailable.'
-    : ' Some extension tools may be unavailable.';
-  return `MindOS detected ${errors.length} extension issue${errors.length === 1 ? '' : 's'}${names.length ? ` (${names.join(', ')})` : ''}.${suffix}`;
-}
-
-function compactStringEnv(env: Record<string, string | undefined> | undefined): Record<string, string> | undefined {
-  if (!env) return undefined;
-  const compact: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === 'string') compact[key] = value;
-  }
-  return Object.keys(compact).length > 0 ? compact : undefined;
-}
-
-function omitEnvKeys(
-  env: Record<string, string>,
-  reserved: Record<string, string>,
-): Record<string, string> {
-  const next: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (!(key in reserved)) next[key] = value;
-  }
-  return next;
-}
+import {
+  agentRunErrorStatus,
+  compactStringEnv,
+  createAgentTurnSseResponse,
+  formatMindosPiExtensionLoadStatus,
+  omitEnvKeys,
+  sendAgentRunContext,
+} from './turn-sse';
+import {
+  getLastUserContent,
+  getLastUserImages,
+  getLastUserSkillName,
+  normalizeAgentMode,
+  normalizeAgentPermissionMode,
+  normalizeAgentSessionTurnBody,
+  normalizeAssistantId,
+  normalizeMindosAgentOptions,
+  normalizeNativeRuntimeOptions,
+  validateAgentMode,
+  validateAgentPermissionMode,
+  validateNativeRuntimeOptions,
+  type AgentSessionTurnRouteContext,
+  type AgentTurnRequestBody,
+  type AgentTurnRequestContext,
+} from './turn-request';
+import {
+  acpAgentFromLegacySelection,
+  acpAgentFromRuntime,
+  isMindosRuntimeSelection,
+  nativeAgentRuntimeFromSelection,
+  resolveAvailableNativeRuntime,
+} from './runtime-selection';
+import {
+  dirnameOf,
+  expandAttachedFiles,
+  loadAttachedFileContext,
+  readKnowledgeFile,
+  recallMindosTurnKnowledge,
+  sessionContextRunMetadata,
+  shouldInjectSessionContext,
+} from './turn-context';
 
 // generateSkillsXml is in lib/agent/skills-xml.ts (not inline: Next.js route export constraints)
-
-function loadAttachedFileContext(
-  attachedFiles: string[] | undefined,
-  currentFile: string | undefined,
-): { contextParts: string[]; failedFiles: string[] } {
-  return loadMindosAskFileContext(attachedFiles, currentFile, {
-    readFile: getFileContent,
-    truncate,
-    validateFileSize: (filePath, cumulativeSize) => validateFileSize(path.join(getMindRoot(), filePath), cumulativeSize),
-    warn: (message: string, error?: unknown) => console.warn(message, error instanceof Error ? error.message : error),
-  });
-}
-
-/** Expand attachedFiles entries: directory paths (trailing /) become individual file paths. */
-function expandAttachedFiles(raw: string[]): string[] {
-  return expandMindosAskAttachedFiles(raw, collectAllFiles) ?? raw;
-}
-
-function acpAgentFromRuntime(runtime: unknown): { id: string; name: string } | null {
-  if (!runtime || typeof runtime !== 'object') return null;
-  const record = runtime as Partial<AgentRuntimeIdentity>;
-  if (record.kind !== 'acp' || typeof record.id !== 'string' || typeof record.name !== 'string') return null;
-  return { id: record.id, name: record.name };
-}
-
-function acpAgentFromLegacySelection(agent: unknown): { id: string; name: string } | null {
-  if (!agent || typeof agent !== 'object') return null;
-  const record = agent as { id?: unknown; name?: unknown };
-  if (typeof record.id !== 'string' || typeof record.name !== 'string') return null;
-  return { id: record.id, name: record.name };
-}
-
-function nativeAgentRuntimeFromSelection(runtime: unknown, binding?: unknown): MindosAgentRuntimeSelection | null {
-  if (!runtime || typeof runtime !== 'object') return null;
-  const record = runtime as Partial<AgentRuntimeIdentity> & { externalSessionId?: unknown };
-  if (record.kind !== 'codex' && record.kind !== 'claude') return null;
-  if (typeof record.id !== 'string' || typeof record.name !== 'string') return null;
-  const bindingResume = runtimeBindingResumeState(record, binding);
-  const hasTypedBinding = !!binding && typeof binding === 'object';
-  return {
-    id: record.id,
-    name: record.name,
-    kind: record.kind,
-    ...(bindingResume.externalSessionId ? { externalSessionId: bindingResume.externalSessionId } : {}),
-    ...(!hasTypedBinding && !bindingResume.matched && typeof record.externalSessionId === 'string' ? { externalSessionId: record.externalSessionId } : {}),
-  };
-}
-
-function isMindosRuntimeSelection(runtime: unknown): boolean {
-  if (!runtime || typeof runtime !== 'object') return false;
-  const record = runtime as Partial<AgentRuntimeIdentity>;
-  return record.kind === 'mindos';
-}
-
-function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const record = value as Record<string, unknown>;
-  const reasoningEffort = record.reasoningEffort === 'low'
-    || record.reasoningEffort === 'medium'
-    || record.reasoningEffort === 'high'
-    || record.reasoningEffort === 'xhigh'
-    ? record.reasoningEffort as NativeRuntimeEffort
-    : undefined;
-  const modelOverride = typeof record.modelOverride === 'string' && record.modelOverride.trim()
-    ? record.modelOverride.trim()
-    : undefined;
-  return {
-    ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(modelOverride ? { modelOverride } : {}),
-  };
-}
-
-function validateNativeRuntimeOptions(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (record.permissionMode !== undefined) {
-    return apiError(
-      ErrorCodes.INVALID_REQUEST,
-      'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode',
-      400,
-    );
-  }
-  if (record.agentMode !== undefined) {
-    return apiError(
-      ErrorCodes.INVALID_REQUEST,
-      'runtimeOptions.agentMode is no longer supported; use top-level agentMode',
-      400,
-    );
-  }
-  return null;
-}
-
-function normalizeAgentMode(value: unknown): AgentMode | undefined {
-  return value === 'default' || value === 'plan' || value === 'goal'
-    ? value
-    : undefined;
-}
-
-function normalizeAgentPermissionMode(value: unknown): AgentPermissionMode | undefined {
-  return value === 'read' || value === 'ask' || value === 'auto' || value === 'full'
-    ? value
-    : undefined;
-}
-
-function validateAgentMode(value: unknown) {
-  if (value === undefined || normalizeAgentMode(value)) return null;
-  return apiError(
-    ErrorCodes.INVALID_REQUEST,
-    'agentMode must be default, plan, or goal',
-    400,
-  );
-}
-
-function validateAgentPermissionMode(value: unknown) {
-  if (value === undefined || normalizeAgentPermissionMode(value)) return null;
-  return apiError(
-    ErrorCodes.INVALID_REQUEST,
-    'permissionMode must be read, ask, auto, or full',
-    400,
-  );
-}
-
-function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean; thinkingBudget?: number } {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const record = value as Record<string, unknown>;
-  const options: { enableThinking?: boolean; thinkingBudget?: number } = {};
-
-  if (typeof record.enableThinking === 'boolean') {
-    options.enableThinking = record.enableThinking;
-  }
-
-  if (typeof record.thinkingBudget === 'number' && Number.isFinite(record.thinkingBudget)) {
-    options.thinkingBudget = Math.min(50000, Math.max(1000, Math.floor(record.thinkingBudget)));
-  }
-
-  return options;
-}
-
-function latestSessionContextSignature(runs: AgentRunRecord[]): string | null {
-  for (const run of runs) {
-    const signature = run.metadata?.sessionContextSignature;
-    if (typeof signature === 'string' && signature) return signature;
-  }
-  return null;
-}
-
-function shouldInjectSessionContext(input: {
-  chatSessionId?: string;
-  signature: string | null;
-  priorRuns: AgentRunRecord[];
-}): boolean {
-  if (!input.signature) return false;
-  if (!input.chatSessionId) return true;
-  return latestSessionContextSignature(input.priorRuns) !== input.signature;
-}
-
-function sessionContextRunMetadata(signature: string | null, injected: boolean): Record<string, unknown> {
-  return signature
-    ? {
-      sessionContextSignature: signature,
-      sessionContextInjected: injected,
-    }
-    : {};
-}
-
-async function recallMindosTurnKnowledge(input: {
-  mindRoot: string;
-  lastUserContent: string;
-  currentFile?: string;
-  attachedFiles?: string[];
-  sessionSpaces: Array<{ path: string }>;
-  activeRecall?: {
-    enabled?: boolean;
-    maxTokens?: number;
-    maxFiles?: number;
-    minScore?: number;
-  };
-}): Promise<MindosAskRecalledKnowledgeItem[]> {
-  const activeRecall = input.activeRecall ?? {};
-  if (activeRecall.enabled === false || input.lastUserContent.trim().length <= 1) return [];
-
-  try {
-    return await performActiveRecall(input.mindRoot, input.lastUserContent, {
-      maxTokens: activeRecall.maxTokens,
-      maxFiles: activeRecall.maxFiles,
-      minScore: activeRecall.minScore,
-      excludePaths: [
-        ...(input.currentFile ? [input.currentFile] : []),
-        ...(Array.isArray(input.attachedFiles) ? input.attachedFiles : []),
-      ],
-      preferredPaths: input.sessionSpaces.map((space) => space.path),
-    });
-  } catch (error) {
-    console.warn('[agent-turn] Active recall failed, continuing without:', error);
-    return [];
-  }
-}
 
 function permissionModeForRequest(
   assistantId: string | undefined,
@@ -365,226 +127,8 @@ function permissionModeForRequest(
   );
 }
 
-function normalizeAssistantId(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function getLastUserContent(messages: FrontendMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    if (message?.role === 'user' && typeof message.content === 'string') return message.content;
-  }
-  return '';
-}
-
-function getLastUserSkillName(messages: FrontendMessage[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i] as FrontendMessage & { skillName?: unknown } | undefined;
-    if (message?.role !== 'user') continue;
-    return typeof message.skillName === 'string' && message.skillName.trim()
-      ? message.skillName.trim()
-      : undefined;
-  }
-  return undefined;
-}
-
-function getLastUserImages(messages: FrontendMessage[]): unknown[] {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    if (message?.role !== 'user') continue;
-    return Array.isArray(message.images) ? message.images : [];
-  }
-  return [];
-}
-
-function runtimeBindingResumeState(
-  runtime: Partial<AgentRuntimeIdentity>,
-  binding: unknown,
-): { matched: boolean; externalSessionId: string | null } {
-  if (!binding || typeof binding !== 'object') return { matched: false, externalSessionId: null };
-  const record = binding as Partial<RuntimeSessionBinding>;
-  if (record.runtime !== runtime.kind || record.runtimeId !== runtime.id) return { matched: false, externalSessionId: null };
-  if (runtime.kind === 'codex' && record.kind !== 'codex-thread') return { matched: false, externalSessionId: null };
-  if (runtime.kind === 'claude' && record.kind !== 'claude-session') return { matched: false, externalSessionId: null };
-  if (record.status && record.status !== 'active') return { matched: true, externalSessionId: null };
-  return {
-    matched: true,
-    externalSessionId: typeof record.externalSessionId === 'string' && record.externalSessionId.trim()
-      ? record.externalSessionId
-      : null,
-  };
-}
-
-function createAgentTurnSseResponse(
-  runAgent: (send: (event: MindOSSSEvent) => void) => Promise<void>,
-  fallbackErrorMessage: (error: unknown) => string = (error) => (
-    error instanceof Error && error.message
-      ? error.message
-      : 'MindOS agent turn stream failed unexpectedly.'
-  ),
-): Response {
-  const encoder = new TextEncoder();
-  const requestStartTime = Date.now();
-  const stream = new ReadableStream({
-    start(controller) {
-      let streamClosed = false;
-      function send(event: MindOSSSEvent) {
-        if (streamClosed) return;
-        try {
-          controller.enqueue(encoder.encode(encodeMindosSseEvent(event)));
-        } catch {
-          streamClosed = true;
-        }
-      }
-      function safeClose() {
-        if (streamClosed) return;
-        streamClosed = true;
-        try { controller.close(); } catch { /* already closed */ }
-      }
-
-      runAgent(send).then(() => {
-        metrics.recordRequest(Date.now() - requestStartTime);
-        safeClose();
-      }).catch((err) => {
-        metrics.recordRequest(Date.now() - requestStartTime);
-        metrics.recordError();
-        send({ type: 'error', message: fallbackErrorMessage(err) });
-        safeClose();
-      });
-    },
-  });
-
-  return new Response(stream, {
-    headers: MINDOS_SSE_HEADERS,
-  });
-}
-
-function runtimeSelectionWithBinaryPath(
-  runtime: MindosAgentRuntimeSelection,
-  binaryPath?: string,
-): MindosAgentRuntimeSelection {
-  return {
-    id: runtime.id,
-    name: runtime.name,
-    kind: runtime.kind,
-    ...(binaryPath ? { binaryPath } : {}),
-    ...(runtime.externalSessionId ? { externalSessionId: runtime.externalSessionId } : {}),
-  };
-}
-
-function isNativeRuntimeBinaryPath(binaryPath: string | undefined): binaryPath is string {
-  return typeof binaryPath === 'string' && binaryPath.trim().length > 0 && !binaryPath.startsWith('sdk:');
-}
-
-function runtimeSelectionWithVerifiedBinaryPath(
-  runtime: MindosAgentRuntimeSelection,
-  descriptor?: AgentRuntimeDescriptor,
-): MindosAgentRuntimeSelection | null {
-  const binaryPath = descriptor?.binaryPath;
-  if (!isNativeRuntimeBinaryPath(binaryPath)) return null;
-  return runtimeSelectionWithBinaryPath(runtime, binaryPath);
-}
-
-async function resolveAvailableNativeRuntime(
-  runtime: MindosAgentRuntimeSelection,
-): Promise<{ runtime: MindosAgentRuntimeSelection; unavailableReason: null } | { runtime: null; unavailableReason: string }> {
-  const services: AgentRuntimesServices = {
-    readSettings: readSettings as AgentRuntimesServices['readSettings'],
-    detectLocalAcpAgents: detectLocalAcpAgents as AgentRuntimesServices['detectLocalAcpAgents'],
-    resolveRuntimeCommand: resolveCommandPath as AgentRuntimesServices['resolveRuntimeCommand'],
-    resolveRuntimeCommandCandidates: resolveCommandPathCandidates as AgentRuntimesServices['resolveRuntimeCommandCandidates'],
-    checkNativeRuntimeHealth: checkNativeRuntimeHealth as AgentRuntimesServices['checkNativeRuntimeHealth'],
-  };
-  const res = await Promise.race([
-    handleAgentRuntimesGet(new URLSearchParams(`runtime=${runtime.kind}&force=1`), services),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), NATIVE_ASK_HEALTH_GATE_TIMEOUT_MS)),
-  ]);
-  if (!res) {
-    const cachedDescriptor = getCachedAvailableNativeRuntimeDescriptor(runtime.kind, runtime.id);
-    const cachedRuntime = runtimeSelectionWithVerifiedBinaryPath(runtime, cachedDescriptor ?? undefined);
-    if (cachedRuntime) {
-      return {
-        runtime: cachedRuntime,
-        unavailableReason: null,
-      };
-    }
-    return {
-      runtime: null,
-      unavailableReason: `${runtime.name} is still being verified. Please retry in a moment.`,
-    };
-  }
-  const body = res.body;
-  if (res.status !== 200 || !body || !('runtime' in body)) {
-    return {
-      runtime: null,
-      unavailableReason: `Unable to verify ${runtime.name} before starting the turn.`,
-    };
-  }
-  const descriptor = body.runtime;
-  if (descriptor.kind !== runtime.kind || descriptor.id !== runtime.id) {
-    return {
-      runtime: null,
-      unavailableReason: `${runtime.name} is not available.`,
-    };
-  }
-  if (descriptor.status === 'available') {
-    rememberAvailableNativeRuntimeDescriptor(descriptor);
-    const verifiedRuntime = runtimeSelectionWithVerifiedBinaryPath(runtime, descriptor);
-    if (!verifiedRuntime) {
-      return {
-        runtime: null,
-        unavailableReason: `${descriptor.name} is unavailable. MindOS could not resolve a local executable path.`,
-      };
-    }
-    return {
-      runtime: verifiedRuntime,
-      unavailableReason: null,
-    };
-  }
-  const statusText = descriptor.status === 'signed-out'
-    ? 'signed out'
-    : descriptor.status === 'missing'
-      ? 'not installed'
-      : 'unavailable';
-  const compactReason = descriptor.availability?.reason
-    ? compactRuntimeDisplayReason(descriptor.availability.reason, { runtime: descriptor.kind === 'codex' || descriptor.kind === 'claude' ? descriptor.kind : undefined })
-    : '';
-  return {
-    runtime: null,
-    unavailableReason: `${descriptor.name} is ${statusText}.${compactReason ? ` ${compactReason}` : ''}`,
-  };
-}
-
-// SSE event contract and pi-agent event guards → @geminilight/mindos/session
-
-function readKnowledgeFile(filePath: string): { ok: boolean; content: string; truncated: boolean; error?: string } {
-  try {
-    const raw = getFileContent(filePath);
-    if (raw.length > 20_000) {
-      return {
-        ok: true,
-        content: truncate(raw),
-        truncated: true,
-        error: undefined,
-      };
-    }
-    return { ok: true, content: raw, truncated: false };
-  } catch (err) {
-    return {
-      ok: false,
-      content: '',
-      truncated: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 // skillDirCandidates, resolveSkillFile, resolveSkillReference, readAbsoluteFile
 // → @/lib/agent/skill-resolver
-
-function dirnameOf(filePath?: string): string | null {
-  return dirnameOfMindosPath(filePath);
-}
 
 // toPiCustomToolDefinitions adapter removed — KB tools now registered via kb-extension.ts
 
@@ -594,56 +138,6 @@ function dirnameOf(filePath?: string): string | null {
 // ---------------------------------------------------------------------------
 // POST /api/agent/sessions/:sessionId/turns
 // ---------------------------------------------------------------------------
-
-export type AgentTurnRequestBody = {
-  messages: FrontendMessage[];
-  /** Per-turn agent behavior. Behavior defaults to the normal agent loop. */
-  agentMode?: AgentMode;
-  /** Per-turn permission policy compiled by each runtime adapter. */
-  permissionMode?: AgentPermissionMode;
-  currentFile?: string;
-  attachedFiles?: string[];
-  uploadedFiles?: Array<{
-    name: string;
-    content: string;
-    mimeType?: string;
-    size?: number;
-    dataBase64?: string;
-  }>;
-  maxSteps?: number;
-  /** Assistant binding. This is not an ask mode. */
-  assistantId?: string;
-  /** ACP agent selection: if present, route to ACP instead of MindOS */
-  selectedAcpAgent?: { id: string; name: string } | null;
-  /** Unified runtime selection. ACP values mirror selectedAcpAgent for compatibility. */
-  selectedRuntime?: (AgentRuntimeIdentity & { externalSessionId?: string }) | null;
-  /** Typed external runtime binding for native Codex/Claude resume. */
-  runtimeBinding?: RuntimeSessionBinding | null;
-  /** Session-bound execution cwd. */
-  workDir?: SessionWorkDir;
-  /** Dynamic selected Spaces / Assistants for this turn. */
-  contextSelection?: SessionContextSelection;
-  /** Per-request provider override from the chat panel capsule */
-  providerOverride?: string;
-  /** Per-request model override from the inline model picker */
-  modelOverride?: string;
-  /** Per-request native runtime controls for Codex / Claude Code. */
-  runtimeOptions?: NativeRuntimeOptions;
-  /** Per-request MindOS PI agent controls. */
-  agentOptions?: { enableThinking?: boolean; thinkingBudget?: number };
-  /** MindOS Chat Panel session id for run ledger correlation. */
-  chatSessionId?: string;
-};
-
-export type AgentSessionTurnRouteContext = {
-  params?: Promise<{ sessionId?: string }> | { sessionId?: string };
-};
-
-export type AgentTurnRequestContext = {
-  headers?: Headers;
-  signal?: AbortSignal;
-  request?: Request;
-};
 
 function resolveRuntimePermissionBaseUrlForAgentTurnContext(context: AgentTurnRequestContext): string {
   if (context.request) return resolveRuntimePermissionBaseUrl(context.request);
@@ -701,125 +195,6 @@ async function resolveAgentSessionRouteId(context: AgentSessionTurnRouteContext)
     : undefined;
 }
 
-export function normalizeAgentSessionTurnBody(
-  rawBody: unknown,
-  sessionId: string,
-): { ok: true; body: AgentTurnRequestBody } | { ok: false; message: string } {
-  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
-    return { ok: false, message: 'Invalid agent session turn request body' };
-  }
-
-  const record = rawBody as Record<string, unknown>;
-  if ('mode' in record || 'mode' in (objectField(record, 'options') ?? {})) {
-    return { ok: false, message: 'mode is no longer supported' };
-  }
-  const options = objectField(record, 'options');
-  if (options?.agentMode !== undefined) {
-    return { ok: false, message: 'options.agentMode is no longer supported; use top-level agentMode' };
-  }
-  if (options?.permissionMode !== undefined) {
-    return { ok: false, message: 'options.permissionMode is no longer supported; use top-level permissionMode' };
-  }
-  if (Array.isArray(record.messages)) {
-    return {
-      ok: true,
-      body: {
-        ...(record as unknown as AgentTurnRequestBody),
-        chatSessionId: sessionId,
-      },
-    };
-  }
-
-  const messageRecord = objectField(record, 'message');
-  const text = stringField(messageRecord, 'text') ?? stringField(messageRecord, 'content') ?? stringField(record, 'prompt');
-  const images = arrayField(messageRecord, 'images') ?? arrayField(record, 'images');
-  if (!text && (!images || images.length === 0)) {
-    return { ok: false, message: 'message.text is required' };
-  }
-
-  const context = objectField(record, 'context');
-  const runtimeOptions = objectField(options, 'runtimeOptions') ?? pickRuntimeOptions(options) ?? record.runtimeOptions;
-  const message: FrontendMessage = {
-    role: 'user',
-    content: text ?? '',
-    timestamp: Date.now(),
-    ...(images ? { images: images as FrontendMessage['images'] } : {}),
-    ...(stringField(messageRecord, 'skillName') ? { skillName: stringField(messageRecord, 'skillName') } : {}),
-  };
-
-  return {
-    ok: true,
-    body: {
-      messages: [message],
-      chatSessionId: sessionId,
-      ...(normalizeAgentMode(record.agentMode) ? { agentMode: normalizeAgentMode(record.agentMode) } : {}),
-      ...(normalizeAgentPermissionMode(record.permissionMode) ? { permissionMode: normalizeAgentPermissionMode(record.permissionMode) } : {}),
-      ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
-      ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
-        ? { currentFile: stringField(context, 'currentFile') ?? stringField(record, 'currentFile') }
-        : {}),
-      ...(arrayField(context, 'attachedFiles') ?? arrayField(record, 'attachedFiles')
-        ? { attachedFiles: stringArrayField(context, 'attachedFiles') ?? stringArrayField(record, 'attachedFiles') ?? [] }
-        : {}),
-      ...(arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')
-        ? { uploadedFiles: (arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')) as AgentTurnRequestBody['uploadedFiles'] }
-        : {}),
-      ...(objectField(context, 'workDir') ?? objectField(record, 'workDir')
-        ? { workDir: (objectField(context, 'workDir') ?? objectField(record, 'workDir')) as AgentTurnRequestBody['workDir'] }
-        : {}),
-      ...(objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')
-        ? { contextSelection: (objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')) as AgentTurnRequestBody['contextSelection'] }
-        : {}),
-      ...(objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')
-        ? { selectedRuntime: (objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')) as AgentTurnRequestBody['selectedRuntime'] }
-        : {}),
-      ...(objectField(record, 'runtimeBinding')
-        ? { runtimeBinding: objectField(record, 'runtimeBinding') as AgentTurnRequestBody['runtimeBinding'] }
-        : {}),
-      ...(runtimeOptions && typeof runtimeOptions === 'object' && !Array.isArray(runtimeOptions)
-        ? { runtimeOptions: runtimeOptions as AgentTurnRequestBody['runtimeOptions'] }
-        : {}),
-      ...(objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')
-        ? { agentOptions: (objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')) as AgentTurnRequestBody['agentOptions'] }
-        : {}),
-      ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
-      ...(stringField(record, 'providerOverride') ? { providerOverride: stringField(record, 'providerOverride') } : {}),
-      ...(stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride')
-        ? { modelOverride: stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride') }
-        : {}),
-    },
-  };
-}
-
-function objectField(record: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined {
-  const value = record?.[key];
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-}
-
-function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
-  const value = record?.[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function arrayField(record: Record<string, unknown> | undefined, key: string): unknown[] | undefined {
-  const value = record?.[key];
-  return Array.isArray(value) ? value : undefined;
-}
-
-function stringArrayField(record: Record<string, unknown> | undefined, key: string): string[] | undefined {
-  const values = arrayField(record, key)?.filter((item): item is string => typeof item === 'string');
-  return values && values.length > 0 ? values : undefined;
-}
-
-function pickRuntimeOptions(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!record) return undefined;
-  const runtimeOptions: Record<string, unknown> = {};
-  for (const key of ['reasoningEffort', 'modelOverride']) {
-    if (record[key] !== undefined) runtimeOptions[key] = record[key];
-  }
-  return Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined;
-}
-
 export async function runAgentTurnRequestBody(
   body: AgentTurnRequestBody,
   requestContext: AgentTurnRequestContext = {},
@@ -837,7 +212,7 @@ export async function runAgentTurnRequestBody(
   if (permissionModeError) return permissionModeError;
   const agentMode = normalizeAgentMode(body.agentMode) ?? 'default';
   const requestPermissionModeInput = normalizeAgentPermissionMode(body.permissionMode);
-  const mindosUiMessages = toMindosUiAskMessages(messages);
+  const mindosUiMessages = toMindosUiAgentMessages(messages);
   const selectedNativeRuntime = nativeAgentRuntimeFromSelection(body.selectedRuntime, body.runtimeBinding);
   const legacySelectedAcpAgent = acpAgentFromLegacySelection(body.selectedAcpAgent);
   const selectedAcpAgent = selectedNativeRuntime || body.selectedRuntime === null || isMindosRuntimeSelection(body.selectedRuntime)
@@ -857,7 +232,7 @@ export async function runAgentTurnRequestBody(
     : undefined;
   const mindRoot = getMindRoot();
   const projectRoot = getProjectRoot();
-  const priorSession = readPersistedAskSession(chatSessionId);
+  const priorSession = readPersistedAgentSession(chatSessionId);
   const recentSessionRuns = chatSessionId ? listAgentRuns({ chatSessionId, limit: 20 }) : [];
   const priorRuns = recentSessionRuns
     .map((run) => ({
@@ -936,7 +311,7 @@ export async function runAgentTurnRequestBody(
   // Detect locale from Accept-Language header for i18n status messages
   const acceptLang = requestHeaders.get('accept-language') ?? '';
   const t = acceptLang.startsWith('zh') ? i18nZh.ask : i18nEn.ask;
-  const stepLimit = normalizeMindosAskStepLimit({
+  const stepLimit = normalizeMindosAgentStepLimit({
     requestedMaxSteps: body.maxSteps,
     agentMaxSteps: agentConfig.maxSteps,
   });
@@ -1024,7 +399,7 @@ export async function runAgentTurnRequestBody(
             }, () => runWithAskUserQuestionBridge({
               runId: runtimeRunId,
               send: (event) => sendWithLedger(event as unknown as MindOSSSEvent),
-            }, () => runMindosAgentRuntimeAskSession({
+            }, () => runMindosNativeAgentTurn({
               runtime: nativeRuntime,
               cwd: executionCwd,
               prompt: externalPrompt,
@@ -1131,7 +506,7 @@ export async function runAgentTurnRequestBody(
           rootRunId: acpRun.rootRunId ?? acpRun.id,
           parentRunId: acpRun.id,
         }, () => (
-          runMindosAcpAskSession({
+          runMindosAcpAgentTurn({
             agentId: selectedAcpAgent.id,
             cwd: executionCwd,
             prompt: acpPrompt,
@@ -1198,7 +573,7 @@ export async function runAgentTurnRequestBody(
     });
   }
 
-  let agentInitialization: MindosAskInitializationContext | undefined;
+  let agentInitialization: MindosAgentInitializationContext | undefined;
   {
     // Auto-load skill + bootstrap context for each request.
     const isZh = serverSettings.disabledSkills?.includes('mindos') ?? false;

@@ -16,7 +16,7 @@ import type {
   MindosRuntimePermissionResult,
   MindosRuntimePermissionRisk,
 } from '../runtime/index.js';
-import type { MindOSSSEvent } from '../session/index.js';
+import type { MindOSSSEvent } from '../turn/index.js';
 import { RUNTIME_PERMISSION_BRIDGE_KEY, getProcessGlobal } from '../global-state.js';
 import {
   redactSensitiveObject,

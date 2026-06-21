@@ -19,7 +19,7 @@ import {
   normalizeSessionWorkDirForClient,
 } from '@/lib/session-context';
 import {
-  handleAskSessionsGet,
+  handleAgentSessionsGet,
   isMindosBuiltinAssistantId,
   listLocalAssistants,
   type MindosChatSession,
@@ -528,9 +528,9 @@ function isChatSession(value: MindosChatSession | unknown): value is ChatSession
   );
 }
 
-export function readPersistedAskSession(sessionId: string | undefined): ChatSession | null {
+export function readPersistedAgentSession(sessionId: string | undefined): ChatSession | null {
   if (!sessionId) return null;
-  const response = handleAskSessionsGet();
+  const response = handleAgentSessionsGet();
   const sessions = Array.isArray(response.body) ? response.body : [];
   const session = sessions.find((item) => item.id === sessionId);
   if (!isChatSession(session)) return null;

@@ -6,7 +6,7 @@ import {
   sanitizeToolArgs,
   sanitizeToolOutput,
   type MindOSSSEvent,
-} from '../session/index.js';
+} from '../turn/index.js';
 import { buildCodexAppServerEnv } from './codex-env.js';
 import { compactRuntimeFailureMessage } from './runtime-errors.js';
 import {

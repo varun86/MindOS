@@ -85,7 +85,7 @@ export const MINDOS_WEB_API_ROUTE_OWNERSHIP: MindosWebApiRouteOwnership[] = [
   migrated('/api/agents/custom/detect', 'medium'),
   migrated('/api/agents/custom', 'high'),
   migrated('/api/agent-capabilities', 'medium'),
-  migrated('/api/ask-sessions'),
+  migrated('/api/agent/sessions'),
   route('/api/agent/sessions/[sessionId]/turns', 'product-owned', 'stream', 'Phase 6: generated client and stream adapter', 'high', 'Canonical session/turn route for agent execution.'),
   host('/api/agent/runtime-permission', 'Runtime permission decisions are per active Web agent turn and use in-memory bridge state owned by the host Chat Panel.', 'high'),
   host('/api/agent/runtime-permission/request', 'Native runtime permission requests are per active Web agent turn and use in-memory bridge state owned by the host Chat Panel.', 'high'),

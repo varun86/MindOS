@@ -138,21 +138,21 @@ describe('MindOS server contract: core, files, HTTP', () => {
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
-      id: 'ask-sessions',
+      id: 'agent-sessions',
       method: 'GET',
-      path: '/api/ask-sessions',
+      path: '/api/agent/sessions',
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
-      id: 'ask-sessions.save',
+      id: 'agent-sessions.save',
       method: 'POST',
-      path: '/api/ask-sessions',
+      path: '/api/agent/sessions',
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
-      id: 'ask-sessions.delete',
+      id: 'agent-sessions.delete',
       method: 'DELETE',
-      path: '/api/ask-sessions',
+      path: '/api/agent/sessions',
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
@@ -1312,7 +1312,7 @@ hidden: true
         body: JSON.stringify({ seed: 'abc' }),
       })).json()).toEqual({ token: 'ba78-16bf-8f01-cfea-4141-40de' });
       expect(await (await fetch(`${base}/api/workflows`)).json()).toEqual({ workflows: [] });
-      expect(await (await fetch(`${base}/api/ask-sessions`)).json()).toEqual([]);
+      expect(await (await fetch(`${base}/api/agent/sessions`)).json()).toEqual([]);
       expect(await (await fetch(`${base}/api/space-overview?space=Space`)).json()).toEqual({ fileCount: 1 });
       expect(await (await fetch(`${base}/api/git?op=is_repo`)).json()).toEqual({ isRepo: false });
       expect(await (await fetch(`${base}/api/inbox`)).json()).toMatchObject({ files: expect.any(Array) });

@@ -22,7 +22,7 @@
 - `scripts/setup.js`（`runSkillInstallStep`）
 
 ### 统计与审计
-- 对话会话：`app/app/api/ask-sessions/route.ts`，落盘 `~/.mindos/sessions.json`
+- 对话会话：`app/app/api/agent/sessions/route.ts`，落盘 `~/.mindos/sessions.json`
 - 工具调用审计：`app/lib/core/agent-audit-log.ts`，落盘 `<mindRoot>/.mindos/agent-audit-log.json`
 - Token/请求等 runtime 指标：`app/lib/metrics.ts` + `app/app/api/monitoring/route.ts`
 
@@ -150,7 +150,7 @@
 
 #### 对话会话（MindOS 面板会话）
 - 存储文件：`~/.mindos/sessions.json`
-- 接口：`/api/ask-sessions`（GET/POST/DELETE）
+- 接口：`/api/agent/sessions`（GET/POST/DELETE）
 - 结构：`id/currentFile/createdAt/updatedAt/messages[]`
 
 #### 工具调用审计（MindOS agent actions）
@@ -229,7 +229,7 @@
 - `GET /api/mcp/agents`：每个 agent 的 present/installed/scope/transport
 - `GET /api/mcp/status`：MCP 端口、endpoint、token 状态
 - `GET /api/monitoring`：请求数、token 累计、错误率
-- `GET /api/ask-sessions`：对话会话列表
+- `GET /api/agent/sessions`：对话会话列表
 
 ### 文件
 - `~/.mindos/config.json`：`authToken/mcpPort/ai.provider` 等

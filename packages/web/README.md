@@ -83,7 +83,7 @@ Request → middleware.ts (auth) → API route → lib/fs.ts (cache + mindRoot) 
 | GET | `/api/git?op=...` | Git operations: `is_repo`, `history`, `show` |
 | GET | `/api/graph` | Knowledge graph (nodes + edges) |
 | POST | `/api/agent/sessions/[sessionId]/turns` | AI agent turn streaming (SSE) |
-| GET/POST | `/api/ask-sessions` | Chat session persistence |
+| GET/POST | `/api/agent/sessions` | Chat session persistence |
 | POST | `/api/extract-pdf` | PDF text extraction |
 | GET/POST | `/api/settings` | User preferences |
 

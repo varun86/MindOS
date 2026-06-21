@@ -20,9 +20,9 @@ import {
 } from 'vitest';
 import {
   handleAgentCapabilitiesGet,
-  handleAskSessionsDelete,
-  handleAskSessionsGet,
-  handleAskSessionsPost,
+  handleAgentSessionsDelete,
+  handleAgentSessionsGet,
+  handleAgentSessionsPost,
   handleBacklinks,
   handleBootstrapGet,
   handleConnectGet,
@@ -203,7 +203,7 @@ describe('MindOS server contract: product operations', () => {
   });
 
   it('persists ask sessions in the product runtime store', () => {
-    const root = mkdtempSync(join(tmpdir(), 'mindos-ask-sessions-'));
+    const root = mkdtempSync(join(tmpdir(), 'mindos-agent-sessions-'));
     const storePath = join(root, 'sessions.json');
     const session = {
       id: 's1',
@@ -212,19 +212,19 @@ describe('MindOS server contract: product operations', () => {
       messages: [{ role: 'user', content: 'hello' }],
     };
 
-    expect(handleAskSessionsGet({ storePath }).body).toEqual([]);
-    expect(handleAskSessionsPost({ session }, { storePath })).toMatchObject({
+    expect(handleAgentSessionsGet({ storePath }).body).toEqual([]);
+    expect(handleAgentSessionsPost({ session }, { storePath })).toMatchObject({
       status: 200,
       body: { ok: true },
     });
     // Per-session storage: each session lives in its own file under sessions/.
     expect(JSON.parse(readFileSync(join(root, 'sessions', `${Buffer.from('s1').toString('base64url')}.json`), 'utf-8'))).toEqual(session);
-    expect(handleAskSessionsGet({ storePath }).body).toEqual([session]);
-    expect(handleAskSessionsDelete({ id: 's1' }, { storePath })).toMatchObject({
+    expect(handleAgentSessionsGet({ storePath }).body).toEqual([session]);
+    expect(handleAgentSessionsDelete({ id: 's1' }, { storePath })).toMatchObject({
       status: 200,
       body: { ok: true },
     });
-    expect(handleAskSessionsGet({ storePath }).body).toEqual([]);
+    expect(handleAgentSessionsGet({ storePath }).body).toEqual([]);
   });
 
   it('returns lightweight space overview stats without Web compile dependencies', () => {

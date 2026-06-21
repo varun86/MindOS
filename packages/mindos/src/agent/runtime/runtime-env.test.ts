@@ -12,7 +12,7 @@ import {
   readPlatformEnvironmentValue,
   resolveAgentRuntimeEnvOverlay,
   resolveClaudeCodeSdkNativeBinaryPath
-} from './agent-runtime.js';
+} from './index.js';
 
 describe('agent runtime adapters: environment detection', () => {
   it('injects only the configured Codex provider key from the runtime environment fallback', () => {

@@ -1,5 +1,5 @@
-import type { MindOSSSEvent } from '../session/index.js';
-import { redactSensitiveText } from '../session/index.js';
+import type { MindOSSSEvent } from '../turn/index.js';
+import { redactSensitiveText } from '../turn/index.js';
 import type { MindosPermissionMode } from '../permission/index.js';
 import {
   createClaudeCodeCliClient,
@@ -40,7 +40,7 @@ export type MindosAgentRuntimeSelection = {
   binaryPath?: string;
 };
 
-export type MindosAgentRuntimeAskServices = {
+export type MindosNativeAgentTurnServices = {
   createCodexClient?(options: {
     cwd: string;
     signal?: AbortSignal;
@@ -133,7 +133,7 @@ export type MindosRuntimeUserQuestionResult = {
   error?: string;
 };
 
-export type MindosAgentRuntimeAskOptions = {
+export type MindosNativeAgentTurnOptions = {
   runtime: MindosAgentRuntimeSelection;
   cwd: string;
   prompt: string;
@@ -146,10 +146,10 @@ export type MindosAgentRuntimeAskOptions = {
   runtimeEnv?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   send(event: MindOSSSEvent): void;
-  services?: MindosAgentRuntimeAskServices;
+  services?: MindosNativeAgentTurnServices;
 };
 
-export type MindosAgentRuntimeAskResult = {
+export type MindosNativeAgentTurnResult = {
   externalSessionId?: string;
   error?: Error;
 };
@@ -173,23 +173,23 @@ type ResolvedClaudeClient = {
 };
 
 function sendNativeRuntimeStatus(
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   runtime: MindosNativeAgentRuntimeKind,
   message: string,
 ): void {
   options.send({ type: 'status', visible: true, runtime, message });
 }
 
-export async function runMindosAgentRuntimeAskSession(
-  options: MindosAgentRuntimeAskOptions,
-): Promise<MindosAgentRuntimeAskResult> {
+export async function runMindosNativeAgentTurn(
+  options: MindosNativeAgentTurnOptions,
+): Promise<MindosNativeAgentTurnResult> {
   const scoped = withNativeRuntimeTimeout(options);
   try {
     if (scoped.options.runtime.kind === 'claude') {
-      return await runClaudeAskSession(scoped.options);
+      return await runClaudeNativeAgentTurn(scoped.options);
     }
 
-    return await runCodexAskSession(scoped.options);
+    return await runCodexNativeAgentTurn(scoped.options);
   } finally {
     scoped.cleanup();
   }
@@ -301,8 +301,8 @@ async function* iterateWithNativeRuntimeAbort<T>(
   }
 }
 
-function withNativeRuntimeTimeout(options: MindosAgentRuntimeAskOptions): {
-  options: MindosAgentRuntimeAskOptions;
+function withNativeRuntimeTimeout(options: MindosNativeAgentTurnOptions): {
+  options: MindosNativeAgentTurnOptions;
   cleanup(): void;
 } {
   const timeoutMs = options.timeoutMs;
@@ -340,7 +340,7 @@ function withNativeRuntimeTimeout(options: MindosAgentRuntimeAskOptions): {
   };
 }
 
-async function runClaudeAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {
+async function runClaudeNativeAgentTurn(options: MindosNativeAgentTurnOptions): Promise<MindosNativeAgentTurnResult> {
   let client: ClaudeCodeCliClient | undefined;
   let sessionId = options.runtime.externalSessionId;
   const turnState = { sessionId };
@@ -394,7 +394,7 @@ async function runClaudeAskSession(options: MindosAgentRuntimeAskOptions): Promi
 }
 
 async function runClaudeTurnWithClient(
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   resolvedClient: ResolvedClaudeClient,
   state: { sessionId?: string },
 ): Promise<string | undefined> {
@@ -451,7 +451,7 @@ function shouldFallbackFromClaudeSdkTurnError(error: Error, signal?: AbortSignal
 }
 
 function claudeCliPermissionModeForMindosMode(
-  mode: MindosAgentRuntimeAskOptions['permissionMode'],
+  mode: MindosNativeAgentTurnOptions['permissionMode'],
 ): ClaudeCodeCliPermissionMode {
   switch (mode ?? 'ask') {
     case 'read':
@@ -466,7 +466,7 @@ function claudeCliPermissionModeForMindosMode(
 }
 
 function codexPermissionOptionsForMindosMode(
-  mode: MindosAgentRuntimeAskOptions['permissionMode'],
+  mode: MindosNativeAgentTurnOptions['permissionMode'],
 ): { approvalPolicy?: string; sandbox?: Record<string, unknown> } {
   switch (mode ?? 'ask') {
     case 'read':
@@ -492,7 +492,7 @@ function codexPermissionOptionsForMindosMode(
   }
 }
 
-async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promise<MindosAgentRuntimeAskResult> {
+async function runCodexNativeAgentTurn(options: MindosNativeAgentTurnOptions): Promise<MindosNativeAgentTurnResult> {
   let client: CodexAppServerClient | undefined;
   let threadId = options.runtime.externalSessionId;
   const pendingServerRequests: CodexPendingServerRequests = new Map();
@@ -581,7 +581,7 @@ async function runCodexAskSession(options: MindosAgentRuntimeAskOptions): Promis
 }
 
 async function resolveCodexClient(
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   handleServerRequest?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown,
 ): Promise<CodexAppServerClient> {
   if (options.services?.createCodexClient) {
@@ -598,7 +598,7 @@ async function resolveCodexClient(
   );
 }
 
-async function resolveClaudeClient(options: MindosAgentRuntimeAskOptions): Promise<ResolvedClaudeClient> {
+async function resolveClaudeClient(options: MindosNativeAgentTurnOptions): Promise<ResolvedClaudeClient> {
   const command = requireClaudeLocalCliPath(options);
 
   if (options.services?.createClaudeClient) {
@@ -627,7 +627,7 @@ async function resolveClaudeClient(options: MindosAgentRuntimeAskOptions): Promi
   };
 }
 
-async function resolveClaudeSdkClient(options: MindosAgentRuntimeAskOptions): Promise<ClaudeCodeCliClient> {
+async function resolveClaudeSdkClient(options: MindosNativeAgentTurnOptions): Promise<ClaudeCodeCliClient> {
   const command = requireClaudeLocalCliPath(options);
   if (options.services?.createClaudeSdkClient) {
     return options.services.createClaudeSdkClient({
@@ -651,7 +651,7 @@ async function resolveClaudeSdkClient(options: MindosAgentRuntimeAskOptions): Pr
 }
 
 async function resolveClaudeCliClient(
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   command = requireClaudeLocalCliPath(options),
 ): Promise<ClaudeCodeCliClient> {
   if (options.services?.createClaudeCliClient) {
@@ -673,14 +673,14 @@ function isNativeCliBinaryPath(value: string | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0 && !value.startsWith('sdk:');
 }
 
-function requireClaudeLocalCliPath(options: MindosAgentRuntimeAskOptions): string {
+function requireClaudeLocalCliPath(options: MindosNativeAgentTurnOptions): string {
   if (isNativeCliBinaryPath(options.runtime.binaryPath)) return options.runtime.binaryPath;
   throw new Error('Claude Code requires a local claude executable detected by MindOS. MindOS does not bundle the Claude Agent SDK native runtime.');
 }
 
 async function handleCodexServerRequest(
   request: CodexAppServerServerRequest,
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   pendingServerRequests?: CodexPendingServerRequests,
 ): Promise<unknown> {
   if (isCodexUserInputRequest(request)) {
@@ -718,7 +718,7 @@ async function handleCodexServerRequest(
 
 async function handleCodexUserInputRequest(
   request: CodexAppServerServerRequest,
-  options: MindosAgentRuntimeAskOptions,
+  options: MindosNativeAgentTurnOptions,
   pendingServerRequests?: CodexPendingServerRequests,
 ): Promise<unknown> {
   const questionRequest = buildCodexUserQuestionRequest(request);

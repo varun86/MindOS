@@ -54,7 +54,7 @@ let serverSessions: ChatSession[] = [];
 function stubFetch() {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('/api/ask-sessions')) {
+    if (url.includes('/api/agent/sessions')) {
       return Promise.resolve({
         ok: true,
         json: async () => serverSessions,
@@ -260,7 +260,7 @@ describe('/chat/<id> missing-session fallback', () => {
     const { host } = await renderPage('ghost-1');
 
     // refreshSessions was attempted before declaring the session missing.
-    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('/api/ask-sessions'))).toBe(true);
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('/api/agent/sessions'))).toBe(true);
     expect(host.textContent).toContain('This conversation no longer exists');
     expect(host.textContent).toContain('30-session history limit');
     expect(host.querySelector('[data-testid="ask-content"]')).toBeNull();

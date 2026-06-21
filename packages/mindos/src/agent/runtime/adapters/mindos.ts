@@ -7,8 +7,8 @@ import type {
   MindosPiAgentRuntimeServices,
 } from '../../mindos-pi/session.js';
 import type {
-  MindosUiAskMessage,
-} from '../../session/index.js';
+  MindosUiAgentMessage,
+} from '../../turn/index.js';
 import { mindosRuntimeDescriptor } from '../descriptors.js';
 import type { AgentRuntimeDescriptor } from '../registry.js';
 
@@ -28,7 +28,7 @@ export type MindosAgentRuntimeHostServices = Pick<
 
 export type MindosAgentRuntimeAdapterOptions =
   Omit<MindosPiAgentRuntimeOptions, 'messages' | 'services' | 'bashTool'> & {
-    messages: MindosUiAskMessage[];
+    messages: MindosUiAgentMessage[];
     hostServices: MindosAgentRuntimeHostServices;
   };
 

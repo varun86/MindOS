@@ -7,7 +7,8 @@ import { buildAssistantAgentTurnRequestBody } from '@/lib/assistant-runner';
 import { DREAMING_ASSISTANT_ID, buildDreamingAssistantRunPrompt } from '@/lib/dreaming-assistant';
 import { isRegisteredAssistantRun } from '@/lib/assistant-runtime-registry';
 import { handleRouteErrorSimple } from '@/lib/errors';
-import { runAgentTurnRequestBody, type AgentTurnRequestBody } from '../agent/_lib/turn-runner';
+import { runAgentTurnRequestBody } from '../agent/_lib/turn-runner';
+import type { AgentTurnRequestBody } from '../agent/_lib/turn-request';
 
 class AssistantRunError extends Error {
   constructor(

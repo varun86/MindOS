@@ -1,7 +1,7 @@
 /**
  * Sunk from packages/web/lib/agent/stream-consumer.ts (Wave 4,
  * spec-agent-core-consolidation). Lives in the core package adjacent to the
- * native runtime transports (src/agent-runtime/) as the foundation for the
+ * native runtime transports (src/agent/runtime/) as the foundation for the
  * AgentRuntimeAdapter unification — hosts consume runtime SSE streams
  * through this one parser instead of growing per-runtime copies.
  *
@@ -35,7 +35,7 @@ import type {
   TextPart,
   ToolCallPart,
 } from './stream-message-types.js';
-import { parseMindosSseLine } from '../session/index.js';
+import { parseMindosSseLine } from '../turn/index.js';
 import { redactSensitiveObject, redactSensitiveText } from '../redaction.js';
 
 /** Tools that modify files — trigger files-changed notification on completion */

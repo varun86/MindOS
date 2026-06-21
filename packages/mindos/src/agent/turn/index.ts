@@ -393,25 +393,25 @@ export function parseMindosSseLine(line: string): MindOSSSEvent | null {
   }
 }
 
-export type MindosAskFileValidationResult = {
+export type MindosAgentFileValidationResult = {
   valid: boolean;
   newCumulativeSize: number;
   error?: string;
 };
 
-export type MindosAskFileContextServices = {
+export type MindosAgentFileContextServices = {
   readFile(filePath: string): string;
   truncate?: (content: string) => string;
-  validateFileSize?: (filePath: string, cumulativeSize: number) => MindosAskFileValidationResult;
+  validateFileSize?: (filePath: string, cumulativeSize: number) => MindosAgentFileValidationResult;
   warn?: (message: string, error?: unknown) => void;
 };
 
-export type MindosAskFileContext = {
+export type MindosAgentFileContext = {
   contextParts: string[];
   failedFiles: string[];
 };
 
-export function normalizeMindosAskStepLimit(options: {
+export function normalizeMindosAgentStepLimit(options: {
   requestedMaxSteps?: unknown;
   agentMaxSteps?: number;
 }): number {
@@ -428,7 +428,7 @@ export function resolveMindosAgentTimeoutMs(raw: string | undefined = undefined,
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;
 }
 
-export function expandMindosAskAttachedFiles(
+export function expandMindosAgentAttachedFiles(
   raw: string[] | undefined,
   collectAllFiles: () => string[],
   maxDirFiles = 30,
@@ -450,11 +450,11 @@ export function expandMindosAskAttachedFiles(
   return result;
 }
 
-export function loadMindosAskFileContext(
+export function loadMindosAgentFileContext(
   attachedFiles: string[] | undefined,
   currentFile: string | undefined,
-  services: MindosAskFileContextServices,
-): MindosAskFileContext {
+  services: MindosAgentFileContextServices,
+): MindosAgentFileContext {
   const contextParts: string[] = [];
   const failedFiles: string[] = [];
   const seen = new Set<string>();
@@ -513,7 +513,7 @@ export function createMindosUploadedFileParts(
 
 export type MindosExternalRuntimePromptInput = {
   prompt: string;
-  fileContext?: MindosAskFileContext;
+  fileContext?: MindosAgentFileContext;
   uploadedParts?: string[];
   recalledKnowledge?: Array<{
     path: string;
@@ -647,7 +647,7 @@ export function sleepMindos(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-export type MindosAskRetryOptions = {
+export type MindosAgentTurnRetryOptions = {
   maxRetries?: number;
   signal?: AbortSignal;
   hasContent(): boolean;
@@ -661,7 +661,7 @@ export type MindosAskRetryOptions = {
   retryMessage?: (attempt: number, maxRetries: number) => string;
 };
 
-export async function runMindosAskWithRetry(options: MindosAskRetryOptions): Promise<Error | null> {
+export async function runMindosAgentTurnWithRetry(options: MindosAgentTurnRetryOptions): Promise<Error | null> {
   const maxRetries = options.maxRetries ?? 3;
   const isTransient = options.isTransientError ?? isMindosTransientError;
   const delayForAttempt = options.retryDelay ?? mindosRetryDelay;
@@ -777,7 +777,7 @@ function planEntryIcon(status: string | undefined): string {
   return '\u23f3';
 }
 
-export type MindosAcpAskSessionServices = {
+export type MindosAcpAgentTurnServices = {
   createSession(agentId: string, options: { cwd: string; permissionMode?: 'agent' | 'readonly' }): Promise<{ id: string }>;
   promptStream(
     sessionId: string,
@@ -789,7 +789,7 @@ export type MindosAcpAskSessionServices = {
   closeSession(sessionId: string): Promise<void>;
 };
 
-export type MindosAcpAskSessionOptions = MindosAcpAskSessionServices & {
+export type MindosAcpAgentTurnOptions = MindosAcpAgentTurnServices & {
   agentId: string;
   cwd: string;
   prompt: string;
@@ -805,11 +805,11 @@ export type MindosAcpAskSessionOptions = MindosAcpAskSessionServices & {
   errorMessage?: (error: Error) => string;
 };
 
-export type MindosAcpAskSessionResult = {
+export type MindosAcpAgentTurnResult = {
   error?: Error;
 };
 
-export async function runMindosAcpAskSession(options: MindosAcpAskSessionOptions): Promise<MindosAcpAskSessionResult> {
+export async function runMindosAcpAgentTurn(options: MindosAcpAgentTurnOptions): Promise<MindosAcpAgentTurnResult> {
   let sessionId: string | undefined;
 
   const closeCurrentSession = async () => {
@@ -821,7 +821,7 @@ export async function runMindosAcpAskSession(options: MindosAcpAskSessionOptions
 
   try {
     const timeoutMs = options.timeoutMs ?? resolveMindosAgentTimeoutMs();
-    const lastError = await runMindosAskWithRetry({
+    const lastError = await runMindosAgentTurnWithRetry({
       maxRetries: options.maxRetries,
       signal: options.signal,
       hasContent: options.hasContent,
@@ -961,7 +961,7 @@ export type MindosUiMessagePart =
   | MindosUiToolCallPart
   | MindosUiRuntimeStatusPart;
 
-export type MindosUiAskMessage = {
+export type MindosUiAgentMessage = {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: number;
@@ -972,7 +972,7 @@ export type MindosUiAskMessage = {
 
 export type MindosAgentHistoryMessage = Record<string, unknown>;
 
-export function toMindosAgentMessages(messages: MindosUiAskMessage[]): MindosAgentHistoryMessage[] {
+export function toMindosAgentMessages(messages: MindosUiAgentMessage[]): MindosAgentHistoryMessage[] {
   const result: MindosAgentHistoryMessage[] = [];
 
   for (const msg of messages) {

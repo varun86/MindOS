@@ -43,7 +43,7 @@ vi.mock('@/lib/toast', () => {
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 // --- fetch control -----------------------------------------------------------
-// GET /api/ask-sessions (no method in init) returns the seeded session list;
+// GET /api/agent/sessions (no method in init) returns the seeded session list;
 // POST/DELETE persistence calls get an empty OK response.
 let fetchResponder: (url: string, init?: RequestInit) => Promise<unknown>;
 const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {

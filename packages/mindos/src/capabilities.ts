@@ -5,7 +5,7 @@ export type MindosCapabilityLoadMode = 'core' | 'facade' | 'optional' | 'host';
 export type MindosProductRuntimeBoundary =
   | 'server'
   | 'client'
-  | 'session'
+  | 'turn'
   | 'agent'
   | 'tool'
   | 'plugin'
@@ -29,7 +29,7 @@ export interface MindosCapabilityContract {
 export interface MindosProductRuntimeBoundaryContract {
   readonly boundary: MindosProductRuntimeBoundary;
   readonly owner: '@geminilight/mindos';
-  readonly publicEntry: `@geminilight/mindos/${MindosProductRuntimeBoundary}`;
+  readonly publicEntry: `@geminilight/mindos${string}`;
   readonly defaultForm: MindosProductRuntimeBoundaryDefaultForm;
   readonly packageSplitDefault: false;
   readonly futurePackageEligibility: MindosProductRuntimeBoundaryPackageEligibility;
@@ -125,9 +125,9 @@ export const MINDOS_PRODUCT_RUNTIME_BOUNDARIES: readonly MindosProductRuntimeBou
     graduationCriteria: PRODUCT_RUNTIME_PACKAGE_GRADUATION_CRITERIA,
   },
   {
-    boundary: 'session',
+    boundary: 'turn',
     owner: '@geminilight/mindos',
-    publicEntry: '@geminilight/mindos/session',
+    publicEntry: '@geminilight/mindos/agent/turn',
     defaultForm: 'subpath',
     packageSplitDefault: false,
     futurePackageEligibility: 'not-planned',
@@ -146,7 +146,7 @@ export const MINDOS_PRODUCT_RUNTIME_BOUNDARIES: readonly MindosProductRuntimeBou
     futurePackageEligibility: 'not-planned',
     graduationRequired: true,
     role: 'Owns agent descriptors, prompts, model policy, and prompt compaction rules.',
-    allowedImporters: ['packages/web server adapters', 'packages/mindos/src/session', 'packages/mindos/src/server'],
+    allowedImporters: ['packages/web server adapters', 'packages/mindos/src/agent/turn', 'packages/mindos/src/server'],
     forbiddenImporters: PRODUCT_INTERNAL_FORBIDDEN_IMPORTERS,
     graduationCriteria: PRODUCT_RUNTIME_PACKAGE_GRADUATION_CRITERIA,
   },
@@ -159,7 +159,7 @@ export const MINDOS_PRODUCT_RUNTIME_BOUNDARIES: readonly MindosProductRuntimeBou
     futurePackageEligibility: 'not-planned',
     graduationRequired: true,
     role: 'Owns built-in tool definitions, registry behavior, permission-aware execution schema, and result shape.',
-    allowedImporters: ['packages/mindos/src/session', 'packages/mindos/src/plugin', 'packages/mindos/src/server'],
+    allowedImporters: ['packages/mindos/src/agent/turn', 'packages/mindos/src/plugin', 'packages/mindos/src/server'],
     forbiddenImporters: PRODUCT_INTERNAL_FORBIDDEN_IMPORTERS,
     graduationCriteria: PRODUCT_RUNTIME_PACKAGE_GRADUATION_CRITERIA,
   },

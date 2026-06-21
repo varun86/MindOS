@@ -83,17 +83,17 @@ export {
   type CodexThreadListPayload,
   type CodexThreadManagerServices,
   type CodexThreadReadPayload,
-} from './handlers/agent-runtime-codex.js';
+} from './handlers/agent-runtimes-codex.js';
 
 export {
-  handleAskSessionsDelete,
-  handleAskSessionsGet,
-  handleAskSessionsPost,
-  type AskSessionsDeletePayload,
-  type AskSessionsHandlerServices,
-  type AskSessionsSavePayload,
+  handleAgentSessionsDelete,
+  handleAgentSessionsGet,
+  handleAgentSessionsPost,
+  type AgentSessionsDeletePayload,
+  type AgentSessionsHandlerServices,
+  type AgentSessionsSavePayload,
   type MindosChatSession,
-} from './handlers/ask-sessions.js';
+} from './handlers/agent-sessions.js';
 
 export {
   MINDOS_ASSISTANTS_ROOT,

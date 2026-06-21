@@ -3,7 +3,7 @@ import { readSettings } from '@/lib/settings';
 import { getProjectRoot } from '@/lib/project-root';
 import type { Message as FrontendMessage } from '@/lib/types';
 import { performActiveRecall } from '@/lib/agent/active-recall';
-import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
+import { toMindosUiAgentMessages } from '@/lib/agent/to-agent-messages';
 import {
   getTextDelta,
   getThinkingDelta,
@@ -13,7 +13,7 @@ import {
   isThinkingDeltaEvent,
   isToolExecutionEndEvent,
   isToolExecutionStartEvent,
-} from '@geminilight/mindos/session';
+} from '@geminilight/mindos/agent/turn';
 import { buildMindosContextPrompt, buildMindosSystemPrompt } from '@geminilight/mindos/agent';
 import type { MindosPermissionMode } from '@geminilight/mindos/agent/mindos-pi/permission';
 import { resolveHeadlessAgentPermission, type HeadlessAgentEntryPoint } from './headless-permission-guard';
@@ -43,7 +43,7 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
   const historyMessages = Array.isArray(options.historyMessages) ? options.historyMessages : [];
   const currentMessage: FrontendMessage = { role: 'user', content: options.userMessage, timestamp: Date.now() };
   const allMessages = [...historyMessages, currentMessage];
-  const mindosUiMessages = toMindosUiAskMessages(allMessages);
+  const mindosUiMessages = toMindosUiAgentMessages(allMessages);
   const serverSettings = readSettings();
   const agentConfig = serverSettings.agent ?? {};
   const projectRoot = getProjectRoot();

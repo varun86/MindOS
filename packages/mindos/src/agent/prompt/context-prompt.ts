@@ -1,17 +1,17 @@
-import type { MindosAskFileContext } from '../../session/index.js';
+import type { MindosAgentFileContext } from '../turn/index.js';
 import {
   normalizeMindosSelectedSkills,
   type MindosSelectedSkill,
 } from '../selected-skills.js';
 
-export type MindosAskInitializationContext = {
+export type MindosAgentInitializationContext = {
   targetDir?: string | null;
   initFailures?: string[];
   truncationWarnings?: string[];
   initContextBlocks?: string[];
 };
 
-export type MindosAskRecalledKnowledgeItem = {
+export type MindosAgentRecalledKnowledgeItem = {
   path: string;
   content: string;
   startLine?: number;
@@ -19,19 +19,19 @@ export type MindosAskRecalledKnowledgeItem = {
   headingPath?: string[];
 };
 
-export type MindosAskSessionWorkDir = {
+export type MindosAgentSessionWorkDir = {
   path: string;
   label?: string;
   source?: string;
 };
 
-export type MindosAskSessionContextSelection = {
+export type MindosAgentSessionContextSelection = {
   version: 1;
   spaces: Array<{ path: string; label?: string }>;
   assistants: Array<{ id: string; name?: string; kind?: string }>;
 };
 
-export type MindosAskSessionContextIssue = {
+export type MindosAgentSessionContextIssue = {
   code: string;
   severity: 'info' | 'warning' | 'error';
   message: string;
@@ -41,15 +41,15 @@ export type MindosAskSessionContextIssue = {
 export type BuildMindosContextPromptInput = {
   prompt: string;
   mindRoot?: string;
-  fileContext?: MindosAskFileContext;
+  fileContext?: MindosAgentFileContext;
   uploadedParts?: string[];
-  recalledKnowledge?: MindosAskRecalledKnowledgeItem[];
-  agentInitialization?: MindosAskInitializationContext;
+  recalledKnowledge?: MindosAgentRecalledKnowledgeItem[];
+  agentInitialization?: MindosAgentInitializationContext;
   selectedSkills?: MindosSelectedSkill[];
   includeSessionContext?: boolean;
-  sessionWorkDir?: MindosAskSessionWorkDir;
-  sessionContextSelection?: MindosAskSessionContextSelection;
-  sessionContextIssues?: MindosAskSessionContextIssue[];
+  sessionWorkDir?: MindosAgentSessionWorkDir;
+  sessionContextSelection?: MindosAgentSessionContextSelection;
+  sessionContextIssues?: MindosAgentSessionContextIssue[];
 };
 
 export type BuildMindosContextPromptServices = {
@@ -90,7 +90,7 @@ export async function buildMindosTurnContext(
 
   contextSections.push({
     title: 'Now',
-    content: formatMindosAskTimeContext(services, { includeUnix: true }).replace(/^## Now\n\n?/, ''),
+    content: formatMindosAgentTimeContext(services, { includeUnix: true }).replace(/^## Now\n\n?/, ''),
   });
 
   appendSessionContext(contextSections, input);
@@ -115,7 +115,7 @@ export function renderMindosContextPrompt(context: MindosTurnContext): string {
   ].filter(Boolean).join('\n\n---\n\n');
 }
 
-export function formatMindosAskTimeContext(
+export function formatMindosAgentTimeContext(
   services: Pick<BuildMindosContextPromptServices, 'now' | 'formatLocalTime'>,
   options: { includeUnix: boolean },
 ): string {
@@ -253,9 +253,9 @@ function appendSessionContext(
 }
 
 export function createMindosSessionContextSignature(input: {
-  sessionWorkDir?: MindosAskSessionWorkDir;
-  sessionContextSelection?: MindosAskSessionContextSelection;
-  sessionContextIssues?: MindosAskSessionContextIssue[];
+  sessionWorkDir?: MindosAgentSessionWorkDir;
+  sessionContextSelection?: MindosAgentSessionContextSelection;
+  sessionContextIssues?: MindosAgentSessionContextIssue[];
 }): string | null {
   const issues = (input.sessionContextIssues ?? [])
     .filter((issue) => issue.severity !== 'info')
@@ -320,7 +320,7 @@ function appendInitializationContext(
 
 function appendFileContextSections(
   sections: MindosContextPromptSection[],
-  context: MindosAskFileContext | undefined,
+  context: MindosAgentFileContext | undefined,
 ): void {
   if (!context) return;
   if (context.contextParts.length > 0) {
@@ -356,7 +356,7 @@ function appendUploadedContextSections(
 
 function appendRecalledKnowledgeSections(
   sections: MindosContextPromptSection[],
-  recalledKnowledge: MindosAskRecalledKnowledgeItem[] | undefined,
+  recalledKnowledge: MindosAgentRecalledKnowledgeItem[] | undefined,
 ): void {
   if (!recalledKnowledge?.length) return;
   const block = recalledKnowledge
@@ -371,7 +371,7 @@ function appendRecalledKnowledgeSections(
   });
 }
 
-function formatRecalledKnowledgeItem(item: MindosAskRecalledKnowledgeItem): string {
+function formatRecalledKnowledgeItem(item: MindosAgentRecalledKnowledgeItem): string {
   const hasLineRange = Number.isFinite(item.startLine) && Number.isFinite(item.endLine);
   const location = hasLineRange ? `${item.path}:${item.startLine}-${item.endLine}` : item.path;
   const heading = item.headingPath?.filter(Boolean).join(' > ');

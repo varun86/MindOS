@@ -54,7 +54,7 @@ describe('OpenCode architecture alignment', () => {
     }
 
     expect(spec).toContain('packages/mindos/src/agent/runtime');
-    expect(spec).toContain('packages/mindos/src/agent/session');
+    expect(spec).toContain('packages/mindos/src/agent/turn');
     expect(spec).toContain('packages/mindos/src/agent/mindos-pi/runtime.ts');
     expect(spec).toContain('package exports');
 
@@ -84,21 +84,15 @@ describe('OpenCode architecture alignment', () => {
       types: './dist/tool.d.ts',
       import: './dist/tool.js',
     });
-    expect(pkg.exports?.['./session']).toEqual({
-      types: './dist/session.d.ts',
-      import: './dist/session.js',
-    });
-    expect(pkg.exports?.['./session/pi-coding-agent']).toEqual({
-      types: './dist/session/pi-coding-agent-runtime.d.ts',
-      import: './dist/session/pi-coding-agent-runtime.js',
-    });
+    expect(pkg.exports?.['./session']).toBeUndefined();
+    expect(pkg.exports?.['./session/pi-coding-agent']).toBeUndefined();
     expect(pkg.exports?.['./agent']).toEqual({
       types: './dist/agent.d.ts',
       import: './dist/agent.js',
     });
-    expect(pkg.exports?.['./agent/session']).toEqual({
-      types: './dist/agent/session/index.d.ts',
-      import: './dist/agent/session/index.js',
+    expect(pkg.exports?.['./agent/turn']).toEqual({
+      types: './dist/agent/turn/index.d.ts',
+      import: './dist/agent/turn/index.js',
     });
     expect(pkg.exports?.['./agent/runtime']).toEqual({
       types: './dist/agent/runtime/index.d.ts',
@@ -132,18 +126,10 @@ describe('OpenCode architecture alignment', () => {
       types: './dist/agent/mindos-pi/extension/index.d.ts',
       import: './dist/agent/mindos-pi/extension/index.js',
     });
-    expect(pkg.exports?.['./agent/pi']).toEqual({
-      types: './dist/agent/pi/index.d.ts',
-      import: './dist/agent/pi/index.js',
-    });
-    expect(pkg.exports?.['./agent-runtime/adapters']).toEqual({
-      types: './dist/agent-runtime/adapters/index.d.ts',
-      import: './dist/agent-runtime/adapters/index.js',
-    });
-    expect(pkg.exports?.['./agent-runtime/adapters/*']).toEqual({
-      types: './dist/agent-runtime/adapters/*.d.ts',
-      import: './dist/agent-runtime/adapters/*.js',
-    });
+    expect(pkg.exports?.['./agent/pi']).toBeUndefined();
+    expect(pkg.exports?.['./agent-runtime']).toBeUndefined();
+    expect(pkg.exports?.['./agent-runtime/adapters']).toBeUndefined();
+    expect(pkg.exports?.['./agent-runtime/adapters/*']).toBeUndefined();
     expect(pkg.files).toContain('dist/');
   });
 
@@ -208,46 +194,39 @@ describe('OpenCode architecture alignment', () => {
   it('exposes plugin, tool, session, and agent contracts from the product runtime', () => {
     const plugin = readText('packages/mindos/src/plugin.ts');
     const tool = readText('packages/mindos/src/tool.ts');
-    const session = readText('packages/mindos/src/session.ts');
     const agent = readText('packages/mindos/src/agent.ts');
     const agentTurnRoute = readText('packages/web/app/api/agent/sessions/[sessionId]/turns/route.ts');
     const agentTurnRunner = readText('packages/web/app/api/agent/_lib/turn-runner.ts');
     const headlessAgent = readText('packages/web/lib/agent/headless.ts');
     const piRuntimeAdapter = readText('packages/mindos/src/agent/mindos-pi/runtime.ts');
-    const piRuntimeCompatShim = readText('packages/mindos/src/agent/pi/runtime.ts');
-    const piRuntimeCompat = readText('packages/mindos/src/session/pi-coding-agent-runtime.ts');
     const mindosRuntimeAdapter = readText('packages/mindos/src/agent/runtime/adapters/mindos.ts');
-    const mindosRuntimeCompat = readText('packages/mindos/src/agent-runtime/adapters/mindos.ts');
-    const sessionIndex = readText('packages/mindos/src/agent/session/index.ts');
+    const turnIndex = readText('packages/mindos/src/agent/turn/index.ts');
     const mindosPiSession = readText('packages/mindos/src/agent/mindos-pi/session.ts');
-    const openAiCompatFallback = readText('packages/mindos/src/agent/session/openai-compat-fallback.ts');
-    const sessionCompatIndex = readText('packages/mindos/src/session/index.ts');
+    const openAiCompatFallback = readText('packages/mindos/src/agent/turn/openai-compat-fallback.ts');
     const streamConsumer = readText('packages/web/lib/agent/stream-consumer.ts');
     const toAgentMessages = readText('packages/web/lib/agent/to-agent-messages.ts');
 
     expect(plugin).toContain("from './plugin/index.js'");
     expect(tool).toContain("from './tool/index.js'");
-    expect(session).toContain("from './agent/session/index.js'");
     expect(agent).toContain("from './agent/index.js'");
-    expect(sessionCompatIndex).toContain("from '../agent/session/index.js'");
 
     expect(readText('packages/mindos/src/plugin/index.ts')).toContain('validateMindosPluginManifest');
     expect(readText('packages/mindos/src/tool/index.ts')).toContain('createMindosToolRegistry');
-    expect(sessionIndex).toContain('MINDOS_SESSION_STREAM_SCHEMA');
-    expect(sessionIndex).toContain('encodeMindosSseEvent');
-    expect(sessionIndex).not.toContain('normalizeMindosAskMode');
-    expect(sessionIndex).toContain('detectMindosAgentLoop');
-    expect(sessionIndex).toContain('toMindosAgentMessages');
-    expect(sessionIndex).toContain('runMindosAskWithRetry');
-    expect(sessionIndex).toContain('mapMindosAcpUpdateToSseEvents');
-    expect(sessionIndex).toContain('runMindosAcpAskSession');
-    expect(sessionIndex).not.toContain('runMindosPiAgentTurnSession');
-    expect(sessionIndex).not.toContain('runMindosPiAgentTurnProxyFallback');
-    expect(sessionIndex).toContain('createMindosAgentEventReducer');
-    expect(sessionIndex).toContain('resolveMindosAgentTimeoutMs');
-    expect(sessionIndex).toContain('runMindosNonStreamingFallback');
-    expect(sessionIndex).toContain('buildMindosCompatEndpointCandidates');
-    expect(sessionIndex).not.toContain('createMindosPiAgentRuntime');
+    expect(turnIndex).toContain('MINDOS_SESSION_STREAM_SCHEMA');
+    expect(turnIndex).toContain('encodeMindosSseEvent');
+    expect(turnIndex).not.toContain('normalizeMindosAskMode');
+    expect(turnIndex).toContain('detectMindosAgentLoop');
+    expect(turnIndex).toContain('toMindosAgentMessages');
+    expect(turnIndex).toContain('runMindosAgentTurnWithRetry');
+    expect(turnIndex).toContain('mapMindosAcpUpdateToSseEvents');
+    expect(turnIndex).toContain('runMindosAcpAgentTurn');
+    expect(turnIndex).not.toContain('runMindosPiAgentTurnSession');
+    expect(turnIndex).not.toContain('runMindosPiAgentTurnProxyFallback');
+    expect(turnIndex).toContain('createMindosAgentEventReducer');
+    expect(turnIndex).toContain('resolveMindosAgentTimeoutMs');
+    expect(turnIndex).toContain('runMindosNonStreamingFallback');
+    expect(turnIndex).toContain('buildMindosCompatEndpointCandidates');
+    expect(turnIndex).not.toContain('createMindosPiAgentRuntime');
     expect(mindosPiSession).toContain('runMindosPiAgentTurnSession');
     expect(mindosPiSession).toContain('runMindosPiAgentTurnProxyFallback');
     expect(mindosPiSession).toContain('createMindosPiAgentRuntime');
@@ -268,19 +247,21 @@ describe('OpenCode architecture alignment', () => {
     expect(existsSync(resolve(root, 'packages/mindos/src/agent/mindos-pi/runtime.ts'))).toBe(true);
     expect(existsSync(resolve(root, 'packages/mindos/src/agent/mindos-pi/extension/extension-tools.ts'))).toBe(true);
     expect(existsSync(resolve(root, 'packages/mindos/src/agent/mindos-pi/extension/kb-extension.ts'))).toBe(true);
-    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/runtime.ts'))).toBe(true);
-    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/extension-tools.ts'))).toBe(true);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent/session/index.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/runtime.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent/pi/extension-tools.ts'))).toBe(false);
+    expect(existsSync(resolve(root, 'packages/mindos/src/session/pi-coding-agent-runtime.ts'))).toBe(false);
     expect(existsSync(resolve(root, 'packages/mindos/src/agent/runtime/adapters/mindos.ts'))).toBe(true);
-    expect(existsSync(resolve(root, 'packages/mindos/src/agent-runtime/adapters/mindos.ts'))).toBe(true);
+    expect(existsSync(resolve(root, 'packages/mindos/src/agent-runtime/adapters/mindos.ts'))).toBe(false);
     expect(readText('packages/mindos/src/agent/prompt/system-prompt.ts')).toContain('buildMindosSystemPrompt');
     expect(readText('packages/mindos/src/agent/prompt/system-prompt.ts')).not.toContain('buildMindosContextPrompt');
     expect(readText('packages/mindos/src/agent/prompt/context-prompt.ts')).toContain('buildMindosContextPrompt');
     expect(readText('packages/mindos/src/agent/prompt/context-prompt.ts')).toContain('compactMindosPromptForTokenBudget');
     expect(agentTurnRoute).toContain("from '../../../_lib/turn-runner'");
     expect(agentTurnRoute).toContain('handleAgentSessionTurnRouteRequest');
-    expect(agentTurnRunner).toContain("from '@geminilight/mindos/session'");
+    expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent/turn'");
     expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent/mindos-pi'");
-    expect(agentTurnRunner).toContain('runMindosAcpAskSession');
+    expect(agentTurnRunner).toContain('runMindosAcpAgentTurn');
     expect(agentTurnRunner).toContain('runMindosPiAgentTurnSession');
     expect(agentTurnRunner).toContain('resolveMindosAgentTimeoutMs');
     expect(agentTurnRunner).toContain('runMindosNonStreamingFallback');
@@ -301,8 +282,6 @@ describe('OpenCode architecture alignment', () => {
     expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent'");
     expect(agentTurnRunner).toContain('buildMindosSystemPrompt');
     expect(agentTurnRunner).toContain('buildMindosContextPrompt');
-    expect(agentTurnRunner).not.toContain("from '@geminilight/mindos/session/pi-coding-agent'");
-    expect(agentTurnRunner).not.toContain("await import('@geminilight/mindos/session/pi-coding-agent')");
     expect(agentTurnRunner).toContain("await import('@geminilight/mindos/agent/runtime/adapters/mindos')");
     expect(agentTurnRunner).toContain('createMindosAgentRuntime');
     expect(agentTurnRunner).toContain('const externalPrompt = await buildMindosContextPrompt');
@@ -319,16 +298,12 @@ describe('OpenCode architecture alignment', () => {
     // extension loading (no KB tools) and Claude SDK CLI resolution.
     const nativeImportHelper = readText('packages/mindos/src/foundation/native-import.ts');
     const claudeSdkAdapter = readText('packages/mindos/src/agent/runtime/claude-code-sdk.ts');
-    const claudeSdkCompat = readText('packages/mindos/src/agent-runtime/claude-code-sdk.ts');
     expect(nativeImportHelper).toContain("new Function('specifier', 'return import(specifier)')");
     expect(piRuntimeAdapter).toContain('@earendil-works/pi-coding-agent');
     expect(piRuntimeAdapter).toContain("import { nativeImport } from '../../foundation/native-import.js'");
     expect(piRuntimeAdapter).not.toMatch(/^import\s*\{[^}]*\}\s*from '@earendil-works\/pi-coding-agent';/m);
     expect(piRuntimeAdapter).not.toContain("from '@mariozechner/pi-coding-agent'");
-    expect(piRuntimeCompatShim).toContain("from '../mindos-pi/runtime.js'");
-    expect(piRuntimeCompat).toContain("from '../agent/mindos-pi/runtime.js'");
     expect(claudeSdkAdapter).toContain("import { nativeImport } from '../../foundation/native-import.js'");
-    expect(claudeSdkCompat).toContain("from '../agent/runtime/claude-code-sdk.js'");
     expect(claudeSdkAdapter).not.toContain("import('@anthropic-ai/claude-agent-sdk')");
     expect(claudeSdkAdapter).not.toMatch(/^const requireFromHere = createRequire/m);
     expect(piRuntimeAdapter).toContain('createMindosPiAgentRuntime');
@@ -337,7 +312,6 @@ describe('OpenCode architecture alignment', () => {
     expect(mindosRuntimeAdapter).toContain('createMindosAgentRuntime');
     expect(mindosRuntimeAdapter).toContain('createMindosPiCodingAgentRuntime');
     expect(mindosRuntimeAdapter).toContain("from '../../mindos-pi/runtime.js'");
-    expect(mindosRuntimeCompat).toContain("from '../../agent/runtime/adapters/mindos.js'");
     expect(readText('packages/mindos/src/agent/tool/index.ts')).not.toContain('kb-extension');
     expect(readText('packages/mindos/src/agent/tool/kb-extension.ts')).toContain("from '../mindos-pi/extension/kb-extension.js'");
     expect(readText('packages/web/lib/agent/kb-extension.ts')).toContain('@geminilight/mindos/agent/mindos-pi/extension/kb-extension');
@@ -353,10 +327,10 @@ describe('OpenCode architecture alignment', () => {
     expect(streamConsumer).toContain("from '@geminilight/mindos/agent/stream/stream-consumer'");
 
     expect(readText('packages/web/lib/agent/prompt.ts')).toContain("from '@geminilight/mindos/agent'");
-    expect(readText('packages/web/lib/agent/retry.ts')).toContain("from '@geminilight/mindos/session'");
-    expect(readText('packages/web/lib/agent/reconnect.ts')).toContain("from '@geminilight/mindos/session'");
-    expect(readText('packages/web/lib/agent/loop-detection.ts')).toContain("from '@geminilight/mindos/session'");
-    expect(readText('packages/web/lib/agent/non-streaming.ts')).toContain("from '@geminilight/mindos/session'");
-    expect(toAgentMessages).toContain("from '@geminilight/mindos/session'");
+    expect(readText('packages/web/lib/agent/retry.ts')).toContain("from '@geminilight/mindos/agent/turn'");
+    expect(readText('packages/web/lib/agent/reconnect.ts')).toContain("from '@geminilight/mindos/agent/turn'");
+    expect(readText('packages/web/lib/agent/loop-detection.ts')).toContain("from '@geminilight/mindos/agent/turn'");
+    expect(readText('packages/web/lib/agent/non-streaming.ts')).toContain("from '@geminilight/mindos/agent/turn'");
+    expect(toAgentMessages).toContain("from '@geminilight/mindos/agent/turn'");
   });
 });

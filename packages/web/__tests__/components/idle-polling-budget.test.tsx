@@ -47,7 +47,7 @@ beforeEach(() => {
   apiFetchMock.mockImplementation(async (url: string) => {
     if (url.startsWith('/api/monitoring')) return { knowledgeBase: { fileCount: 3 } };
     if (url.startsWith('/api/changes')) return { events: [], unreadCount: 0 };
-    if (url.startsWith('/api/ask-sessions')) return [];
+    if (url.startsWith('/api/agent/sessions')) return [];
     return {};
   });
 });

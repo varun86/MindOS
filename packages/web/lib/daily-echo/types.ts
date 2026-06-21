@@ -323,7 +323,7 @@ export interface ContentChangeEvent {
 }
 
 /**
- * Chat session from `/api/ask-sessions`
+ * Chat session from `/api/agent/sessions`
  * Used to count sessions in 24-hour window
  */
 export interface ChatSession {

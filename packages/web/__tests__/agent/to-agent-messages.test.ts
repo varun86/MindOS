@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
+import { toMindosUiAgentMessages } from '@/lib/agent/to-agent-messages';
 import type { Message } from '@/lib/types';
 
-describe('toMindosUiAskMessages', () => {
+describe('toMindosUiAgentMessages', () => {
   it('filters UI-only agent timeline parts before sending messages to agent runtimes', () => {
     const messages: Message[] = [
       {
@@ -35,7 +35,7 @@ describe('toMindosUiAskMessages', () => {
       },
     ];
 
-    expect(toMindosUiAskMessages(messages)).toEqual([
+    expect(toMindosUiAgentMessages(messages)).toEqual([
       {
         role: 'assistant',
         content: 'Done',

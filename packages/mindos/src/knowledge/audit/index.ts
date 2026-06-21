@@ -4,7 +4,7 @@ import { resolveExistingSafe } from '../../foundation/security/index.js';
 import type { IFileSystem } from '../storage/index.js';
 import { existsSync } from 'node:fs';
 import * as path from 'path';
-import { redactSensitiveObject, redactSensitiveText } from '../../session/redaction.js';
+import { redactSensitiveObject, redactSensitiveText } from '../../agent/turn/redaction.js';
 
 // Helper functions for Result type
 function ok<T>(value: T): Result<T> {

@@ -2,13 +2,13 @@ import type { Message as FrontendMessage } from '@/lib/types';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import {
   toMindosAgentMessages,
-  type MindosUiAskMessage,
+  type MindosUiAgentMessage,
   type MindosUiMessagePart,
-} from '@geminilight/mindos/session';
+} from '@geminilight/mindos/agent/turn';
 
 export type { AgentMessage } from '@earendil-works/pi-agent-core';
 
-export function toMindosUiAskMessages(messages: FrontendMessage[]): MindosUiAskMessage[] {
+export function toMindosUiAgentMessages(messages: FrontendMessage[]): MindosUiAgentMessage[] {
   return messages.map((message) => {
     const parts = message.parts
       ?.map(toMindosUiMessagePart)
@@ -30,5 +30,5 @@ function toMindosUiMessagePart(part: NonNullable<FrontendMessage['parts']>[numbe
 }
 
 export function toAgentMessages(messages: FrontendMessage[]): AgentMessage[] {
-  return toMindosAgentMessages(toMindosUiAskMessages(messages)) as unknown as AgentMessage[];
+  return toMindosAgentMessages(toMindosUiAgentMessages(messages)) as unknown as AgentMessage[];
 }

@@ -7,11 +7,11 @@ import {
   createCodexAppServerStdioTransport,
   killChildWithEscalation,
   readLoginShellEnvValue,
-  runMindosAgentRuntimeAskSession,
+  runMindosNativeAgentTurn,
   type ClaudeCodeCliTransport,
   type CodexAppServerMessage,
   type MindOSSSEvent,
-} from './agent-runtime.js';
+} from './index.js';
 
 function createCapturingClaudeTransport(lines: string[]): ClaudeCodeCliTransport & { argv: string[] | null } {
   return {
@@ -228,7 +228,7 @@ describe('native runtime error redaction', () => {
   it('redacts secrets from transport failures before sending them to the client', async () => {
     const events: MindOSSSEvent[] = [];
     const secret = 'sk-aaaaaaaaaaaaaaaaaaaaaaaa';
-    const result = await runMindosAgentRuntimeAskSession({
+    const result = await runMindosNativeAgentTurn({
       runtime: { kind: 'claude', id: 'claude', name: 'Claude Code', binaryPath: '/usr/local/bin/claude' },
       cwd: '/tmp',
       prompt: 'hi',

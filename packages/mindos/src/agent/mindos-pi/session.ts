@@ -13,14 +13,14 @@ import type { MindosExecutableTool } from '../tool/executable-tool.js';
 import {
   createMindosAgentEventReducer,
   resolveMindosAgentTimeoutMs,
-  runMindosAskWithRetry,
+  runMindosAgentTurnWithRetry,
   runMindosWithTimeout,
   toMindosAgentMessages,
   type MindOSSSEvent,
   type MindosAgentHistoryMessage,
-  type MindosUiAskMessage,
+  type MindosUiAgentMessage,
   type MindosUiImagePart,
-} from '../session/index.js';
+} from '../turn/index.js';
 
 export type MindosPiAgentSessionAdapter = {
   subscribe(callback: (event: unknown) => void): void;
@@ -124,7 +124,7 @@ export async function runMindosPiAgentTurnSession(options: MindosPiAgentTurnSess
   if (handledCachedProxyFallback) return { hasContent, lastModelError };
 
   const timeoutMs = options.timeoutMs ?? resolveMindosAgentTimeoutMs();
-  const lastPromptError = await runMindosAskWithRetry({
+  const lastPromptError = await runMindosAgentTurnWithRetry({
     signal: options.signal,
     hasContent: () => hasContent,
     send: options.send,
@@ -216,7 +216,7 @@ export type MindosPiAgentRuntimeServices = {
   resolveModelConfig(input: {
     providerOverride?: string;
     modelOverride?: string;
-    messages: MindosUiAskMessage[];
+    messages: MindosUiAgentMessage[];
     hasImages: boolean;
   }): MindosResolvedModelConfig;
   toRuntimeProvider(provider: string): string;
@@ -287,7 +287,7 @@ function isMindosPiWebAccessExtensionPath(extensionPath: string): boolean {
 }
 
 export type MindosPiAgentRuntimeOptions = {
-  messages: MindosUiAskMessage[];
+  messages: MindosUiAgentMessage[];
   systemPrompt: string;
   providerOverride?: string;
   modelOverride?: string;
@@ -553,11 +553,11 @@ function createMindosPiSettingsConfig(
   };
 }
 
-function hasMindosMessageImages(messages: MindosUiAskMessage[]): boolean {
+function hasMindosMessageImages(messages: MindosUiAgentMessage[]): boolean {
   return messages.some((message) => (extractMindosUserImages(message)?.length ?? 0) > 0);
 }
 
-function extractMindosUserImages(message: MindosUiAskMessage | undefined): MindosUiImagePart[] | undefined {
+function extractMindosUserImages(message: MindosUiAgentMessage | undefined): MindosUiImagePart[] | undefined {
   if (!message || message.role !== 'user') return undefined;
   const images = message.images?.filter((image) => image.data);
   return images && images.length > 0 ? images : undefined;

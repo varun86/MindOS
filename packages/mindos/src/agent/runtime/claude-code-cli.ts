@@ -7,7 +7,7 @@ import {
   sanitizeToolArgs,
   sanitizeToolOutput,
   type MindOSSSEvent,
-} from '../session/index.js';
+} from '../turn/index.js';
 import type { MindosSelectedSkill } from '../selected-skills.js';
 import type { MindosRuntimeAttachment } from './attachments.js';
 

@@ -1,7 +1,7 @@
 import {
   MINDOS_SSE_HEADERS,
   type MindOSSSEvent,
-} from '../../session/index.js';
+} from '../../agent/turn/index.js';
 import type { MindosPermissionMode } from '../../agent/permission/index.js';
 
 export type MindosAgentTurnMessage = Record<string, unknown>;

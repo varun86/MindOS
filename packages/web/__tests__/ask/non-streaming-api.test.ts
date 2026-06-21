@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mindosPiMessagesToOpenAI as piMessagesToOpenAI,
   reassembleMindosOpenAISse as reassembleSSE,
-} from '@geminilight/mindos/session';
+} from '@geminilight/mindos/agent/turn';
 
 /**
  * Tests for non-streaming API fallback.

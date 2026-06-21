@@ -366,7 +366,7 @@ export function flushPersist(sessionId: string) {
   if (!payload) return;
 
   sessionsUpdater?.(payload);
-  void fetch('/api/ask-sessions', {
+  void fetch('/api/agent/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session: payload }),

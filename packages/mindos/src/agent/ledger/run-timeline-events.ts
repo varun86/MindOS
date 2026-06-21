@@ -1,4 +1,4 @@
-import type { MindOSSSEvent } from '../session/index.js';
+import type { MindOSSSEvent } from '../turn/index.js';
 import {
   appendAgentRunEvent,
   getAgentRun,

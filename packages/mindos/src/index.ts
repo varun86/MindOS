@@ -91,7 +91,7 @@ export {
   type MindosSessionEvent,
   type MindosSessionEventType,
   type MindosSessionStreamSchema,
-} from './session.js';
+} from './agent/turn/index.js';
 
 export {
   defineMindosAgent,
@@ -107,7 +107,7 @@ export {
   type ClaudeCodeCliClient,
   type ClaudeCodeCliEvent,
   type ClaudeCodeCliTransport,
-  runMindosAgentRuntimeAskSession,
+  runMindosNativeAgentTurn,
   type CodexAppServerClient,
   type CodexAppServerClientInfo,
   type CodexAppServerMessage,
@@ -116,9 +116,9 @@ export {
   type CodexAppServerResponse,
   type CodexAppServerTransport,
   type CodexTurnInput,
-  type MindosAgentRuntimeAskOptions,
-  type MindosAgentRuntimeAskResult,
-  type MindosAgentRuntimeAskServices,
+  type MindosNativeAgentTurnOptions,
+  type MindosNativeAgentTurnResult,
+  type MindosNativeAgentTurnServices,
   type MindosAgentRuntimeSelection,
   type MindosNativeAgentRuntimeKind,
-} from './agent-runtime.js';
+} from './agent/runtime/index.js';

@@ -39,7 +39,7 @@ import {
   handleCodexThreadUnarchivePost,
   handleCodexThreadsGet,
   type CodexThreadManagerServices,
-} from './handlers/agent-runtime-codex.js';
+} from './handlers/agent-runtimes-codex.js';
 import { handleAgentRuntimesGet } from './handlers/agent-runtimes.js';
 import {
   handleAgentCopySkillPost,
@@ -51,7 +51,7 @@ import {
   type CustomAgentDef,
   type CustomAgentDetectPayload,
 } from './handlers/agents.js';
-import { handleAskSessionsDelete, handleAskSessionsGet, handleAskSessionsPost } from './handlers/ask-sessions.js';
+import { handleAgentSessionsDelete, handleAgentSessionsGet, handleAgentSessionsPost } from './handlers/agent-sessions.js';
 import { handleAssistantsDelete, handleAssistantsGet, handleAssistantsPost } from './handlers/assistants.js';
 import { handleBootstrapGet } from './handlers/bootstrap.js';
 import { handleChannelsVerifyPost, type ChannelsVerifyServices } from './handlers/channels-verify.js';
@@ -140,7 +140,7 @@ import { handleTreeVersion } from './handlers/tree-version.js';
 import { handleRestartPost, handleUpdateCheckGet, handleUpdatePost, handleUpdateStatusGet } from './handlers/update.js';
 import { handleWorkflowsGet, handleWorkflowsPost } from './handlers/workflows.js';
 import { CORS_HEADERS, json, type MindosServerResponse } from './response.js';
-import { encodeMindosSseEvent, type MindOSSSEvent } from '../session/index.js';
+import { encodeMindosSseEvent, type MindOSSSEvent } from '../agent/turn/index.js';
 import { getLocalIPv4 } from './handlers/connect.js';
 
 export type MindosChannelServices =
@@ -153,7 +153,7 @@ export type MindosHttpServices = {
   mindRoot: string;
   runtimeRoot?: string;
   staticRoot?: string;
-  askSessionsStorePath?: string;
+  agentSessionsStorePath?: string;
   updateStatusPath?: string;
   collectAllFiles(): string[];
   getRecentlyModified(limit: number): Array<{ path: string; mtime: number }>;
@@ -226,7 +226,7 @@ export function createDefaultMindosHttpServices(options: DefaultMindosHttpServic
     mindRoot,
     runtimeRoot: options.runtimeRoot,
     staticRoot: options.staticRoot,
-    askSessionsStorePath: options.homeDir ? `${options.homeDir}/.mindos/sessions.json` : undefined,
+    agentSessionsStorePath: options.homeDir ? `${options.homeDir}/.mindos/sessions.json` : undefined,
     updateStatusPath: options.homeDir ? `${options.homeDir}/.mindos/update-status.json` : undefined,
     collectAllFiles: () => treeCache.collectAllFiles(),
     getRecentlyModified: (limit) => treeCache.getRecentlyModified(limit),
@@ -798,8 +798,8 @@ async function handleRequest(
       await writeSseResponse(res, response);
       return;
     }
-    if (route === 'GET /api/ask-sessions') {
-      writeResponse(res, handleAskSessionsGet({ storePath: services.askSessionsStorePath }));
+    if (route === 'GET /api/agent/sessions') {
+      writeResponse(res, handleAgentSessionsGet({ storePath: services.agentSessionsStorePath }));
       return;
     }
     if (route === 'GET /api/space-overview') {
@@ -810,12 +810,12 @@ async function handleRequest(
       writeResponse(res, await handleGit(url.searchParams, services));
       return;
     }
-    if (route === 'POST /api/ask-sessions') {
-      writeResponse(res, handleAskSessionsPost(await readJsonBody(req), { storePath: services.askSessionsStorePath }));
+    if (route === 'POST /api/agent/sessions') {
+      writeResponse(res, handleAgentSessionsPost(await readJsonBody(req), { storePath: services.agentSessionsStorePath }));
       return;
     }
-    if (route === 'DELETE /api/ask-sessions') {
-      writeResponse(res, handleAskSessionsDelete(await readJsonBody(req), { storePath: services.askSessionsStorePath }));
+    if (route === 'DELETE /api/agent/sessions') {
+      writeResponse(res, handleAgentSessionsDelete(await readJsonBody(req), { storePath: services.agentSessionsStorePath }));
       return;
     }
     if (route === 'GET /api/file') {

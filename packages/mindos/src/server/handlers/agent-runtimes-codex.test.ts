@@ -6,7 +6,7 @@ import {
   handleCodexThreadUnarchivePost,
   handleCodexThreadsGet,
   type CodexThreadManagerServices,
-} from './server.js';
+} from './agent-runtimes-codex.js';
 
 function createFakeServices(): CodexThreadManagerServices & { calls: Array<{ method: string; input?: unknown }> } {
   const calls: Array<{ method: string; input?: unknown }> = [];

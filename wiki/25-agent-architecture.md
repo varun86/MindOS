@@ -128,7 +128,7 @@ MindOS 支持两种对话模式，用户可在 Ask 面板顶部切换：
 
 ### 清理
 
-前端删除 session 时，`DELETE /api/ask-sessions` 同时清理 `~/.mindos/sessions/<sessionId>/` 目录。
+前端删除 session 时，`DELETE /api/agent/sessions` 同时清理 `~/.mindos/sessions/<sessionId>/` 目录。
 
 ## 五、资源发现
 

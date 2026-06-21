@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { getTestMindRoot, seedFile } from '../setup';
 import { invalidateCache } from '../../lib/fs';
 import { realpathSync } from 'node:fs';
-import type { MindosAgentRuntimeAskOptions } from '@geminilight/mindos/agent/runtime';
+import type { MindosNativeAgentTurnOptions } from '@geminilight/mindos/agent/runtime';
 import type { AgentRuntimeDescriptor } from '@geminilight/mindos/server';
 import { listAgentEvents, listAgentRuns, resetAgentRunsForTest, startAgentRun } from '@geminilight/mindos/agent/ledger/run-ledger';
 import {
@@ -11,15 +11,15 @@ import {
   resetNativeRuntimeDescriptorCacheForTest,
 } from '@/lib/agent/native-runtime-descriptor-cache';
 
-let capturedNativeOptions: MindosAgentRuntimeAskOptions | null = null;
+let capturedNativeOptions: MindosNativeAgentTurnOptions | null = null;
 let capturedAcpOptions: Record<string, any> | null = null;
 let capturedMindosRuntimeOptions: Record<string, any> | null = null;
 const mockDetectLocalAcpAgents = vi.fn();
 const mockResolveCommandPath = vi.fn();
 const mockResolveCommandPathCandidates = vi.fn();
 const mockCheckNativeRuntimeHealth = vi.fn();
-const mockRunMindosAgentRuntimeAskSession = vi.fn();
-const mockRunMindosAcpAskSession = vi.fn();
+const mockRunMindosNativeAgentTurn = vi.fn();
+const mockRunMindosAcpAgentTurn = vi.fn();
 const mockRunMindosPiAgentTurnSession = vi.fn();
 const mockCreateAcpSession = vi.fn();
 const mockCreateMindosAgentRuntime = vi.fn();
@@ -107,15 +107,15 @@ vi.mock('@geminilight/mindos/agent/runtime', async (importOriginal) => {
       injectedKeys: input?.settings?.keys ?? [],
       missingKeys: [],
     })),
-    runMindosAgentRuntimeAskSession: mockRunMindosAgentRuntimeAskSession,
+    runMindosNativeAgentTurn: mockRunMindosNativeAgentTurn,
   };
 });
 
-vi.mock('@geminilight/mindos/session', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@geminilight/mindos/session')>();
+vi.mock('@geminilight/mindos/agent/turn', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@geminilight/mindos/agent/turn')>();
   return {
     ...actual,
-    runMindosAcpAskSession: mockRunMindosAcpAskSession,
+    runMindosAcpAgentTurn: mockRunMindosAcpAgentTurn,
   };
 });
 
@@ -175,8 +175,8 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
     mockResolveCommandPathCandidates.mockReset();
     mockResolveCommandPathCandidates.mockResolvedValue([]);
     mockCheckNativeRuntimeHealth.mockReset();
-    mockRunMindosAgentRuntimeAskSession.mockReset();
-    mockRunMindosAcpAskSession.mockReset();
+    mockRunMindosNativeAgentTurn.mockReset();
+    mockRunMindosAcpAgentTurn.mockReset();
     mockRunMindosPiAgentTurnSession.mockReset();
     mockCreateAcpSession.mockReset();
     mockCreateAcpSession.mockResolvedValue({ id: 'acp-session-1' });
@@ -185,13 +185,13 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
       throw new Error('pi runtime should not initialize for native runtime requests');
     });
     resetNativeRuntimeDescriptorCacheForTest();
-    mockRunMindosAgentRuntimeAskSession.mockImplementation(async (options: MindosAgentRuntimeAskOptions) => {
+    mockRunMindosNativeAgentTurn.mockImplementation(async (options: MindosNativeAgentTurnOptions) => {
       capturedNativeOptions = options;
       options.send({ type: 'text_delta', delta: 'native ok' });
       options.send({ type: 'done' });
       return { externalSessionId: 'thr_123' };
     });
-    mockRunMindosAcpAskSession.mockImplementation(async (options: {
+    mockRunMindosAcpAgentTurn.mockImplementation(async (options: {
       agentId: string;
       send: (event: { type: string; delta?: string }) => void;
     }) => {
@@ -231,8 +231,8 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
         message: 'mode is no longer supported',
       }),
     });
-    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
-    expect(mockRunMindosAcpAskSession).not.toHaveBeenCalled();
+    expect(mockRunMindosNativeAgentTurn).not.toHaveBeenCalled();
+    expect(mockRunMindosAcpAgentTurn).not.toHaveBeenCalled();
     expect(mockCreateMindosAgentRuntime).not.toHaveBeenCalled();
   });
 
@@ -507,14 +507,14 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
         issueCode: 'runtime_resume_untrusted',
       },
     });
-    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
+    expect(mockRunMindosNativeAgentTurn).not.toHaveBeenCalled();
   });
 
   it('keeps native runtime assistant text and routine connection statuses out of the visible activity timeline', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
-    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+    mockRunMindosNativeAgentTurn.mockImplementationOnce(async (options: MindosNativeAgentTurnOptions) => {
       capturedNativeOptions = options;
       options.send({ type: 'status', runtime: 'claude', visible: true, message: 'Starting Claude Code locally.' });
       options.send({ type: 'text_delta', delta: 'plain answer' });
@@ -867,7 +867,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
       error: { message: 'Codex is still being verified. Please retry in a moment.' },
     });
     expect(capturedNativeOptions).toBeNull();
-    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
+    expect(mockRunMindosNativeAgentTurn).not.toHaveBeenCalled();
   });
 
   it('does not start Claude when verification hangs without a cached local CLI path', async () => {
@@ -890,7 +890,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
       error: { message: 'Claude Code is still being verified. Please retry in a moment.' },
     });
     expect(capturedNativeOptions).toBeNull();
-    expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
+    expect(mockRunMindosNativeAgentTurn).not.toHaveBeenCalled();
   });
 
   it('uses the real Claude CLI path returned by runtime health before launching', async () => {
@@ -937,7 +937,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
-    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+    mockRunMindosNativeAgentTurn.mockImplementationOnce(async (options: MindosNativeAgentTurnOptions) => {
       capturedNativeOptions = options;
       throw new Error('native bridge exploded');
     });
@@ -970,7 +970,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'codex' ? '/usr/local/bin/codex' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
-    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+    mockRunMindosNativeAgentTurn.mockImplementationOnce(async (options: MindosNativeAgentTurnOptions) => {
       capturedNativeOptions = options;
       options.send({ type: 'text_delta', delta: 'partial native output' });
       return { error: new Error('native runtime returned failure'), externalSessionId: 'thr_failed' };
@@ -1009,7 +1009,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
     const timeoutError = Object.assign(new Error('Native runtime timed out after 1s.'), { code: 'TIMEOUT' });
-    mockRunMindosAgentRuntimeAskSession.mockImplementationOnce(async (options: MindosAgentRuntimeAskOptions) => {
+    mockRunMindosNativeAgentTurn.mockImplementationOnce(async (options: MindosNativeAgentTurnOptions) => {
       capturedNativeOptions = options;
       options.send({ type: 'text_delta', delta: 'partial native output' });
       return { error: timeoutError, externalSessionId: 'claude-timeout' };
@@ -1069,7 +1069,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
   });
 
   it('maps selected ACP runtime in Inbox Organizer assistant runs to agent session permission', async () => {
-    mockRunMindosAcpAskSession.mockImplementationOnce(async (options: Record<string, any>) => {
+    mockRunMindosAcpAgentTurn.mockImplementationOnce(async (options: Record<string, any>) => {
       capturedAcpOptions = options;
       await options.createSession(options.agentId, { cwd: '/tmp/mindos-test' });
       options.send({ type: 'text_delta', delta: 'acp assistant ok' });
@@ -1114,7 +1114,7 @@ describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
   });
 
   it('records selected ACP streaming runtime failures in the run ledger', async () => {
-    mockRunMindosAcpAskSession.mockImplementationOnce(async (options: {
+    mockRunMindosAcpAgentTurn.mockImplementationOnce(async (options: {
       agentId: string;
       send: (event: { type: string; delta?: string }) => void;
     }) => {
