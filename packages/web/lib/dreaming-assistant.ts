@@ -54,7 +54,7 @@ export function buildDreamingAssistantRunPrompt({
   return buildAssistantRunPrompt({
     ...(assistantPrompt?.trim() ? { assistantPrompt: assistantPrompt.trim() } : {}),
     runTitle: 'Current Dreaming Run',
-    intro: 'Use the assistant instructions above as the operating prompt for this run.',
+    intro: 'Use the active Assistant instructions as the operating prompt for this run.',
     itemsLabel: 'Dreaming scope',
     items: [
       `space: ${space ?? 'all'}`,

@@ -59,7 +59,7 @@ export function buildInboxOrganizerRunPrompt(
   return buildAssistantRunPrompt({
     ...(assistantPrompt?.trim() ? { assistantPrompt: assistantPrompt.trim() } : {}),
     runTitle: 'Current Inbox Review Run',
-    intro: 'Use the assistant instructions above as the operating prompt for this run.',
+    intro: 'Use the active Assistant instructions as the operating prompt for this run.',
     itemsLabel: 'Files in this review run',
     items: fileList.length > 0 ? fileList : ['Inbox/(no files selected)'],
     rules: [

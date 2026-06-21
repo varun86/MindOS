@@ -77,7 +77,7 @@ describe('assistant runner utilities', () => {
     const prompt = buildAssistantRunPrompt({
       assistantPrompt: '# Assistant\n\n## Role\n\nReview inputs.',
       runTitle: 'Current Inbox Review Run',
-      intro: 'Use the assistant instructions above.',
+      intro: 'Use the active Assistant instructions.',
       itemsLabel: 'Files in this review run',
       items: ['Inbox/a.md', 'Inbox/b.md'],
       rules: ['Treat attachments as source of truth.'],
