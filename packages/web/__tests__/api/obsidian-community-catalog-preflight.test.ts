@@ -106,6 +106,55 @@ describe('/api/obsidian/community-catalog/preflight', () => {
     );
   });
 
+  it('surfaces community manifest policy issues and derived capability coverage without blocking legacy packages', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/manifest.json')) {
+        return new Response(JSON.stringify({
+          id: 'obsidian-legacy-plugin',
+          name: 'Legacy Plugin',
+          version: '1.0.0',
+        }), { status: 200 });
+      }
+      if (url.endsWith('/main.js')) {
+        return new Response("const { Plugin, Notice } = require('obsidian'); module.exports = class Legacy extends Plugin {};", { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    }));
+
+    const { GET } = await importRoute();
+    const res = await GET(new NextRequest('http://localhost/api/obsidian/community-catalog/preflight?repo=owner/legacy&pluginId=obsidian-legacy-plugin'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({
+      ok: true,
+      policy: {
+        status: 'review',
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'community-id-contains-obsidian', field: 'id' }),
+          expect.objectContaining({ code: 'community-id-ends-plugin', field: 'id' }),
+          expect.objectContaining({ code: 'manifest-author-missing', field: 'author' }),
+          expect.objectContaining({ code: 'manifest-min-app-version-missing', field: 'minAppVersion' }),
+          expect.objectContaining({ code: 'manifest-description-missing', field: 'description' }),
+          expect.objectContaining({ code: 'manifest-desktop-only-missing', field: 'isDesktopOnly' }),
+        ]),
+      },
+      derivedCapabilities: {
+        coverage: expect.arrayContaining([
+          expect.objectContaining({ api: 'Plugin', support: 'full', surface: 'core' }),
+          expect.objectContaining({ api: 'Notice', support: 'snapshot-only', surface: 'entries' }),
+        ]),
+        summary: expect.objectContaining({
+          full: 1,
+          'snapshot-only': 1,
+        }),
+      },
+      installable: true,
+      installBlockedReasons: [],
+    });
+  });
+
   it('caches identical read-only preflight requests', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

@@ -6,7 +6,17 @@ import {
   type CompatibilityLevel,
   type PluginCompatibilityReport,
 } from './compatibility-report';
+import {
+  buildObsidianCapabilityCoverage,
+  summarizeObsidianCapabilityCoverage,
+  type ObsidianCapabilityCoverage,
+  type ObsidianCapabilitySupport,
+} from './capability-matrix';
 import { ManifestError, validateManifest } from './manifest';
+import {
+  lintObsidianCommunityManifestPolicy,
+  type ObsidianCommunityManifestPolicyReport,
+} from './manifest-policy';
 import { OBSIDIAN_PLUGIN_STYLESHEET_MAX_BYTES } from './stylesheet-host';
 import type { PluginManifest } from './types';
 import { compareCommunityVersionStrings, isCommunityVersionAtMost } from './community-version';
@@ -121,6 +131,11 @@ export interface ObsidianCommunityPluginPreflight {
   compatibility: {
     level: CompatibilityLevel;
     report: PluginCompatibilityReport;
+  };
+  policy: ObsidianCommunityManifestPolicyReport;
+  derivedCapabilities: {
+    coverage: ObsidianCapabilityCoverage[];
+    summary: Record<ObsidianCapabilitySupport, number>;
   };
   support: ObsidianCommunityPreflightSupport;
   surfacePreview: ObsidianCommunitySurfacePreview[];
@@ -432,6 +447,8 @@ export async function fetchObsidianCommunityPluginPackage(
 
   const compatibilityReport = analyzePluginCompatibility(mainJs, manifest);
   const level = getCompatibilityLevel(compatibilityReport);
+  const policy = lintObsidianCommunityManifestPolicy(manifest);
+  const coverage = buildObsidianCapabilityCoverage(compatibilityReport);
   const installBlockedReasons = [
     ...manifestIdMismatchReasons(options.pluginId, manifest.id),
     ...manifestVersionMismatchReasons(source.resolvedVersion, manifest.version),
@@ -444,6 +461,7 @@ export async function fetchObsidianCommunityPluginPackage(
       level,
       report: compatibilityReport,
     },
+    policy,
     installable,
     installBlockedReasons,
     stylesCss: typeof stylesCss === 'string',
@@ -471,6 +489,11 @@ export async function fetchObsidianCommunityPluginPackage(
       compatibility: {
         level,
         report: compatibilityReport,
+      },
+      policy,
+      derivedCapabilities: {
+        coverage,
+        summary: summarizeObsidianCapabilityCoverage(coverage),
       },
       support: buildObsidianCommunityPreflightSupport(supportInput),
       surfacePreview: buildObsidianCommunitySurfacePreview(supportInput),

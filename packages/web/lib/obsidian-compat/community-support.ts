@@ -3,6 +3,7 @@ import {
   type ObsidianImportSupportKind,
 } from './import-policy';
 import type { CompatibilityLevel, PluginCompatibilityReport } from './compatibility-report';
+import type { ObsidianCommunityManifestPolicyReport } from './manifest-policy';
 
 export type ObsidianCommunityPreflightSupportLevel = ObsidianImportSupportKind | 'native';
 export type ObsidianCommunitySurfacePreviewId =
@@ -35,6 +36,7 @@ export interface ObsidianCommunitySupportInput {
     level: CompatibilityLevel;
     report: PluginCompatibilityReport;
   };
+  policy?: ObsidianCommunityManifestPolicyReport;
   installable: boolean;
   installBlockedReasons?: string[];
   stylesCss: boolean;
@@ -167,6 +169,16 @@ export function buildObsidianCommunityPreflightSupport(
       blockers: input.compatibility.report.blockers,
     },
   });
+
+  if (support.kind === 'ready' && input.policy?.status === 'review') {
+    return {
+      kind: 'review',
+      label: 'Review manifest',
+      reason: input.policy.issues[0]?.message
+        ?? 'This plugin package is installable, but its manifest needs community policy review.',
+      installable: true,
+    };
+  }
 
   return {
     kind: support.kind,

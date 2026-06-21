@@ -22,6 +22,7 @@ function supportInput(overrides: Partial<ObsidianCommunitySupportInput> = {}): O
 
   return {
     compatibility,
+    ...(overrides.policy ? { policy: overrides.policy } : {}),
     installable: overrides.installable ?? true,
     installBlockedReasons: overrides.installBlockedReasons ?? [],
     stylesCss: overrides.stylesCss ?? false,
@@ -84,6 +85,27 @@ describe('Obsidian community preflight support projection', () => {
       { id: 'editor', state: 'catalog', count: 1 },
       { id: 'network', state: 'limited', count: 1 },
     ]);
+  });
+
+  it('upgrades otherwise ready packages to review when community manifest policy needs attention', () => {
+    const input = supportInput({
+      policy: {
+        status: 'review',
+        issues: [{
+          code: 'manifest-author-missing',
+          field: 'author',
+          severity: 'review',
+          message: 'Obsidian community manifests should include an author.',
+        }],
+      },
+    });
+
+    expect(buildObsidianCommunityPreflightSupport(input)).toMatchObject({
+      kind: 'review',
+      label: 'Review manifest',
+      installable: true,
+      reason: 'Obsidian community manifests should include an author.',
+    });
   });
 
   it('marks unsupported APIs as review when no install blocker exists', () => {
