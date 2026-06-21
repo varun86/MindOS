@@ -197,6 +197,8 @@ describe('OpenCode architecture alignment', () => {
     const agent = readText('packages/mindos/src/agent.ts');
     const agentTurnRoute = readText('packages/web/app/api/agent/sessions/[sessionId]/turns/route.ts');
     const agentTurnRunner = readText('packages/web/app/api/agent/_lib/turn-runner.ts');
+    const externalTurnRunner = readText('packages/web/app/api/agent/_lib/turn-runner-external.ts');
+    const mindosPiTurnRunner = readText('packages/web/app/api/agent/_lib/turn-runner-mindos-pi.ts');
     const headlessAgent = readText('packages/web/lib/agent/headless.ts');
     const piRuntimeAdapter = readText('packages/mindos/src/agent/mindos-pi/runtime.ts');
     const mindosRuntimeAdapter = readText('packages/mindos/src/agent/runtime/adapters/mindos.ts');
@@ -261,10 +263,17 @@ describe('OpenCode architecture alignment', () => {
     expect(agentTurnRoute).toContain('handleAgentSessionTurnRouteRequest');
     expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent/turn'");
     expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent/mindos-pi'");
-    expect(agentTurnRunner).toContain('runMindosAcpAgentTurn');
-    expect(agentTurnRunner).toContain('runMindosPiAgentTurnSession');
-    expect(agentTurnRunner).toContain('resolveMindosAgentTimeoutMs');
-    expect(agentTurnRunner).toContain('runMindosNonStreamingFallback');
+    expect(agentTurnRunner).toContain("await import('./turn-runner-external')");
+    expect(agentTurnRunner).toContain("await import('./turn-runner-mindos-pi')");
+    expect(agentTurnRunner).not.toContain('runMindosAcpAgentTurn');
+    expect(agentTurnRunner).not.toContain('runMindosPiAgentTurnSession');
+    expect(agentTurnRunner).not.toContain('resolveMindosAgentTimeoutMs');
+    expect(agentTurnRunner).not.toContain('runMindosNonStreamingFallback');
+    expect(externalTurnRunner).toContain('runMindosAcpAgentTurn');
+    expect(externalTurnRunner).toContain('resolveMindosAgentTimeoutMs');
+    expect(mindosPiTurnRunner).toContain('runMindosPiAgentTurnSession');
+    expect(mindosPiTurnRunner).toContain('resolveMindosAgentTimeoutMs');
+    expect(mindosPiTurnRunner).toContain('runMindosNonStreamingFallback');
     expect(agentTurnRunner).not.toContain('const MAX_RETRIES = 3');
     expect(agentTurnRunner).not.toContain('const ACP_MAX_RETRIES = 3');
     expect(agentTurnRunner).not.toContain('lastModelError ? t.proxyCompatDetecting : t.proxyCompatMode');
@@ -282,15 +291,16 @@ describe('OpenCode architecture alignment', () => {
     expect(agentTurnRunner).toContain("from '@geminilight/mindos/agent'");
     expect(agentTurnRunner).toContain('buildMindosSystemPrompt');
     expect(agentTurnRunner).toContain('buildMindosContextPrompt');
-    expect(agentTurnRunner).toContain("await import('@geminilight/mindos/agent/runtime/adapters/mindos')");
-    expect(agentTurnRunner).toContain('createMindosAgentRuntime');
-    expect(agentTurnRunner).toContain('const externalPrompt = await buildMindosContextPrompt');
+    expect(mindosPiTurnRunner).toContain("await import('@geminilight/mindos/agent/runtime/adapters/mindos')");
+    expect(mindosPiTurnRunner).toContain('createMindosAgentRuntime');
+    expect(agentTurnRunner).toContain('const externalPromptBase = await buildMindosContextPrompt');
+    expect(agentTurnRunner).toContain('const externalPrompt = prependMindosActiveAssistantPrompt(externalPromptBase, activeAssistant)');
     expect(agentTurnRunner).toContain('const commonTurnPrompt = await buildMindosContextPrompt');
     expect(agentTurnRunner).toContain('const turnPrompt = renderMindosPiSelectedSkillPrompt(commonTurnPrompt, selectedSkills)');
-    expect(agentTurnRunner).toContain('prompt: externalPrompt');
-    expect(agentTurnRunner).toContain('prompt: turnPrompt');
-    expect(agentTurnRunner.indexOf('if (selectedNativeRuntime || selectedAcpAgent)')).toBeLessThan(
-      agentTurnRunner.indexOf("await import('@geminilight/mindos/agent/runtime/adapters/mindos')"),
+    expect(externalTurnRunner).toContain('prompt: input.externalPrompt');
+    expect(mindosPiTurnRunner).toContain('prompt: input.turnPrompt');
+    expect(agentTurnRunner.indexOf('if (verifiedNativeRuntime || selectedAcpAgent)')).toBeLessThan(
+      agentTurnRunner.indexOf("await import('./turn-runner-mindos-pi')"),
     );
     // Native-only SDKs must load through the bundler-proof native import: a
     // static `import ... from` (or even a plain dynamic import) lets Next.js
