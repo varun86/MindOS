@@ -90,6 +90,9 @@ describe('StudioContent', () => {
 
     const items = host.querySelectorAll('[data-studio-project-item="default"]');
     expect(items.length).toBeGreaterThan(0);
+    const itemClasses = items[0].getAttribute('class')?.split(/\s+/) ?? [];
+    expect(itemClasses.some(className => className.startsWith('xl:grid-cols-'))).toBe(true);
+    expect(itemClasses.some(className => className.startsWith('md:grid-cols-'))).toBe(false);
 
     const firstContext = items[0].querySelector('[data-studio-context-braid]');
     expect(firstContext).not.toBeNull();

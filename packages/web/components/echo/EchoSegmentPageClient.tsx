@@ -512,12 +512,12 @@ function GrowthPanel({
             </div>
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-0 right-4 hidden h-32 w-20 text-[var(--success)]/38 md:block" aria-hidden>
-          <span className="absolute bottom-0 left-12 h-24 w-2 origin-bottom -rotate-12 rounded-full bg-current" />
-          <span className="absolute bottom-8 left-7 h-10 w-6 origin-bottom -rotate-45 rounded-full bg-current opacity-70" />
-          <span className="absolute bottom-14 left-12 h-12 w-7 origin-bottom rotate-45 rounded-full bg-current opacity-65" />
+        <div className="pointer-events-none absolute bottom-0 right-3 hidden h-32 w-24 overflow-hidden text-[var(--success)]/38 md:block" aria-hidden>
+          <span className="absolute bottom-0 left-8 h-24 w-2 origin-bottom -rotate-12 rounded-full bg-current" />
+          <span className="absolute bottom-8 left-4 h-10 w-6 origin-bottom -rotate-45 rounded-full bg-current opacity-70" />
+          <span className="absolute bottom-14 left-7 h-12 w-7 origin-bottom rotate-45 rounded-full bg-current opacity-65" />
           <span className="absolute bottom-20 left-3 h-10 w-6 origin-bottom -rotate-45 rounded-full bg-current opacity-55" />
-          <span className="absolute bottom-24 left-14 h-12 w-7 origin-bottom rotate-45 rounded-full bg-current opacity-50" />
+          <span className="absolute bottom-24 left-7 h-12 w-7 origin-bottom rotate-45 rounded-full bg-current opacity-50" />
         </div>
       </section>
     </>

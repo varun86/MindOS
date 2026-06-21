@@ -105,8 +105,29 @@ describe('DirView large directory virtualization', () => {
       await Promise.resolve();
     });
 
-    expect(host.querySelector('[data-dir-view-virtualized="grid"]')).not.toBeNull();
+    const grid = host.querySelector('[data-dir-view-virtualized="grid"]');
+    const gridClasses = grid?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(grid).not.toBeNull();
+    expect(gridClasses).toContain('lg:grid-cols-3');
+    expect(gridClasses).toContain('xl:grid-cols-4');
+    expect(gridClasses).toContain('2xl:grid-cols-5');
+    expect(gridClasses).not.toContain('md:grid-cols-4');
     expect(host.querySelectorAll('[data-dir-view-entry]')).toHaveLength(5);
+  });
+
+  it('keeps non-virtualized directory grids out of four columns until xl', async () => {
+    const { default: DirView } = await import('@/components/DirView');
+
+    await act(async () => {
+      root.render(<DirView dirPath="Small" entries={makeEntries(6)} />);
+      await Promise.resolve();
+    });
+
+    const gridClasses = host.querySelector('[data-dir-view-grid]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(gridClasses).toContain('lg:grid-cols-3');
+    expect(gridClasses).toContain('xl:grid-cols-4');
+    expect(gridClasses).toContain('2xl:grid-cols-5');
+    expect(gridClasses).not.toContain('md:grid-cols-4');
   });
 
   it('virtualizes large list directories instead of mounting every entry', async () => {

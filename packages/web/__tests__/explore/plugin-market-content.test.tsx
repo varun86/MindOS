@@ -234,6 +234,27 @@ describe('PluginMarketContent', () => {
     expect(links).toContain('/settings?tab=plugins&panel=import');
   });
 
+  it('keeps Plugin Market dense rows stacked until wide content space', async () => {
+    await act(async () => {
+      root.render(<PluginMarketContent />);
+      await flushPluginMarketPromises();
+    });
+
+    const headerClasses = host.querySelector('[data-plugin-market-header]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    const searchFormClasses = host.querySelector('[data-plugin-market-search-form]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    const rowClasses = host.querySelector('[data-plugin-market-row="dataview"]')?.firstElementChild?.getAttribute('class')?.split(/\s+/) ?? [];
+
+    expect(headerClasses).toContain('flex-col');
+    expect(headerClasses).toContain('xl:flex-row');
+    expect(headerClasses).not.toContain('md:flex-row');
+    expect(searchFormClasses).toContain('flex-col');
+    expect(searchFormClasses).toContain('xl:flex-row');
+    expect(searchFormClasses).not.toContain('md:flex-row');
+    expect(rowClasses).toContain('flex-col');
+    expect(rowClasses).toContain('xl:flex-row');
+    expect(rowClasses).not.toContain('lg:flex-row');
+  });
+
   it('opens the installed filter from the market manage route', async () => {
     window.history.replaceState(null, '', '/explore/plugins?filter=installed');
 

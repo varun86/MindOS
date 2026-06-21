@@ -74,7 +74,7 @@ describe('InboxView product shape', () => {
     expect(pageShell?.className).toContain('workbench-content-page');
     expect(pageShell?.className).toContain('inbox-content-page');
     const mainLayout = host.querySelector('[data-inbox-main-layout]');
-    expect(mainLayout?.className).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]');
+    expect(mainLayout?.className).toContain('2xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]');
     expect(mainLayout?.className).not.toContain('max-w-[1120px]');
     expect(host.querySelector('[data-inbox-page-title]')?.textContent).toBe('New capture');
     expect(host.querySelector('[data-inbox-back-to-capture]')).toBeNull();
@@ -101,10 +101,14 @@ describe('InboxView product shape', () => {
     expect(stageButton?.closest('[data-inbox-composer-footer]')).not.toBeNull();
     expect(stageButton?.closest('[data-inbox-primary-actions]')).toBeNull();
     expect(host.querySelector('[data-inbox-attach-action]')?.textContent).toContain('Attach');
-    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).toContain('Save to Inbox');
-    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).toContain('Organize to Mind');
-    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).not.toContain('Attach');
-    expect(host.querySelector('[data-inbox-primary-actions]')?.textContent).not.toContain('Stage as note');
+    const primaryActions = host.querySelector('[data-inbox-primary-actions]');
+    expect(primaryActions?.className).toContain('min-w-0');
+    expect(primaryActions?.className).toContain('flex-wrap');
+    expect(primaryActions?.className).not.toContain('shrink-0');
+    expect(primaryActions?.textContent).toContain('Save to Inbox');
+    expect(primaryActions?.textContent).toContain('Organize to Mind');
+    expect(primaryActions?.textContent).not.toContain('Attach');
+    expect(primaryActions?.textContent).not.toContain('Stage as note');
     expect(host.textContent).not.toContain('Next action');
     expect(host.textContent).not.toContain('Save only');
     expect(host.textContent).not.toContain('Suggested: Save only');
@@ -384,7 +388,8 @@ describe('InboxView product shape', () => {
     expect(host.textContent).toContain('1 selected');
     expect(host.textContent).toContain('Organize 1 selected');
     const actionColumn = host.querySelector('[data-inbox-row-actions]');
-    expect(actionColumn?.className).toContain('md:w-[184px]');
+    expect(actionColumn?.className).toContain('xl:w-[118px]');
+    expect(actionColumn?.className).toContain('xl:flex');
     expect(actionColumn?.className).toContain('pointer-events-none');
     expect(actionColumn?.className).not.toContain('group-hover:flex');
 

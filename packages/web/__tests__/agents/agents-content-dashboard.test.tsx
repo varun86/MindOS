@@ -209,6 +209,8 @@ describe('Agents content dashboard', () => {
     expect(html).toContain('href="/agents?tab=agent"');
     expect(html).toContain('href="/agents?tab=capabilities"');
     expect(html).toContain('href="/agents?tab=channels"');
+    expect(html).toContain('xl:grid xl:w-auto xl:grid-cols-4');
+    expect(html).not.toContain('lg:grid lg:w-auto lg:grid-cols-4');
     expect(html).toContain(a.overview.systemModelTitle);
     expect(html).toContain(a.overview.assistantLabel);
     expect(html).toContain(a.overview.agentLabel);
@@ -259,6 +261,10 @@ describe('Agents content dashboard', () => {
     expect(html).toContain('Cursor');
     expect(html).toContain('/agent-icons/openai.svg');
     expect(html).toContain('/agent-icons/claude.svg');
+    expect(html).toContain('sm:grid-cols-2 xl:grid-cols-4');
+    expect(html).toContain('grid gap-3 xl:grid-cols-3');
+    expect(html).not.toContain('sm:grid-cols-2 lg:grid-cols-4');
+    expect(html).not.toContain('grid gap-3 md:grid-cols-3');
     expect(html).not.toContain(a.localClients.skillCount(3));
     expect(html).not.toContain(a.localClients.projectScope);
     expect(html).not.toContain(a.localClients.globalScope);

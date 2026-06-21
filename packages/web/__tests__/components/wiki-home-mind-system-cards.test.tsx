@@ -99,6 +99,26 @@ describe('WikiHomeContent Mind System cards', () => {
     expect(searchButton?.textContent).not.toContain('⌘K');
   });
 
+  it('keeps workspace Spaces out of three columns until xl content width', async () => {
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<WikiHomeContent
+        spaces={[
+          { name: 'Projects', path: 'Projects', fileCount: 3, description: 'Project notes' },
+          { name: 'Research', path: 'Research', fileCount: 2, description: 'Research notes' },
+          { name: 'Archive', path: 'Archive', fileCount: 1, description: 'Archive notes' },
+        ]}
+        recent={[]}
+        mindSystemSpaces={mindSystemRecords()}
+      />);
+    });
+
+    const gridClasses = host.querySelector('[data-workspace-spaces-grid]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(gridClasses).toContain('sm:grid-cols-2');
+    expect(gridClasses).toContain('xl:grid-cols-3');
+    expect(gridClasses).not.toContain('lg:grid-cols-3');
+  });
+
   it('uses Chinese framed theme-color icons for the four Mind System cards', async () => {
     await act(async () => {
       root = createRoot(host);

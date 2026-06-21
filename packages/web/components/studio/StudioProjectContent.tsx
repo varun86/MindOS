@@ -360,7 +360,7 @@ function SessionRow({
         : 'bg-muted-foreground/35';
   const statusDot = <span className={cn('h-2 w-2 rounded-full', dotClass)} title={sessionStatusLabel(session.status, locale)} />;
   const className = cn(
-    'group grid gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_140px_112px_2.5rem]',
+    'group grid gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 xl:grid-cols-[minmax(0,1fr)_140px_112px_2.5rem]',
     session.href ? 'transition-colors hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : '',
     active ? 'bg-[var(--amber-subtle)]' : '',
   );
@@ -406,6 +406,7 @@ function SessionRow({
     return (
       <Link
         href={session.href}
+        data-studio-session-row
         className={className}
         aria-label={`${title} · ${agentName}`}
       >
@@ -415,7 +416,7 @@ function SessionRow({
   }
 
   return (
-    <div className={className}>
+    <div data-studio-session-row className={className}>
       {content}
     </div>
   );

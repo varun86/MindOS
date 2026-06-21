@@ -730,11 +730,11 @@ export default function InboxView() {
           <div
             className={
               activeView === 'queue'
-                ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
+                ? 'grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
                 : activeView === 'shelved'
-                  ? 'grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
+                  ? 'grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_350px] 2xl:grid-cols-[minmax(0,1.08fr)_380px]'
                   : activeView === 'capture'
-                    ? 'grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] xl:items-stretch'
+                    ? 'grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] 2xl:items-stretch'
                     : 'max-w-[760px]'
             }
             data-inbox-main-layout
@@ -892,7 +892,7 @@ export default function InboxView() {
                         </div>
                       )}
 
-                      <div className="flex flex-col gap-2 border-t border-border/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col flex-wrap gap-2 border-t border-border/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex shrink-0 items-center gap-2">
                           <button
                             type="button"
@@ -904,7 +904,7 @@ export default function InboxView() {
                             {t.inbox.attachButton}
                           </button>
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2" data-inbox-primary-actions>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2 sm:justify-end" data-inbox-primary-actions>
                           {hasPendingCapture && (
                             <button
                               type="button"
@@ -1032,7 +1032,7 @@ export default function InboxView() {
             </div>
 
             {activeView === 'capture' && (
-              <aside className="min-w-0 xl:self-stretch">
+              <aside className="min-w-0 2xl:self-stretch">
                 <InboxCapturePreviewPanel
                   draftText={draftText}
                   stagedNotes={stagedNotes}
@@ -1046,7 +1046,7 @@ export default function InboxView() {
             )}
 
             {activeView === 'capture' && (
-              <div className="min-w-0 xl:col-span-2">
+              <div className="min-w-0 2xl:col-span-2">
                 <InboxQueueSection
                   sectionRef={reviewSectionRef}
                   variant="preview"
@@ -1073,7 +1073,7 @@ export default function InboxView() {
             )}
 
             {activeView === 'queue' && (
-              <aside className="lg:sticky lg:top-[calc(var(--app-titlebar-h)+24px)] lg:self-start">
+              <aside className="xl:sticky xl:top-[calc(var(--app-titlebar-h)+24px)] xl:self-start">
                 <InboxItemDetailsPanel
                   file={selectedFile}
                   understanding={selectedUnderstanding}
@@ -1085,7 +1085,7 @@ export default function InboxView() {
             )}
 
             {activeView === 'shelved' && (
-              <aside className="lg:sticky lg:top-[calc(var(--app-titlebar-h)+24px)] lg:self-start">
+              <aside className="xl:sticky xl:top-[calc(var(--app-titlebar-h)+24px)] xl:self-start">
                 <InboxItemDetailsPanel
                   file={selectedFile}
                   understanding={selectedUnderstanding}
@@ -1762,7 +1762,7 @@ function InboxOrganizationAgentBar({
   return (
     <div className="border-b border-border/45 bg-background/35 px-3 py-3" data-inbox-organizer-command-strip>
       <div className="flex flex-col gap-2.5">
-        <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-2.5 xl:flex-row xl:flex-wrap xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber)]">
               <Sparkles size={12} />
@@ -1792,7 +1792,7 @@ function InboxOrganizationAgentBar({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -1813,13 +1813,13 @@ function InboxOrganizationAgentBar({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
             {onShelveSelected && (
               <button
                 type="button"
                 onClick={onShelveSelected}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Archive size={13} />
                 {t.inbox.shelveSelectedAction(selectedCount)}
@@ -1829,7 +1829,7 @@ function InboxOrganizationAgentBar({
               type="button"
               onClick={onOrganize}
               disabled={disabled}
-              className="inline-flex min-w-[154px] items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-w-[154px] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
             >
               {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
               {organizing ? t.inbox.organizing : t.inbox.organizeSelectedAction(selectedCount)}
@@ -1869,7 +1869,7 @@ function InboxQueuePreviewActionBar({
   return (
     <div className="border-b border-border/50 bg-background/45 px-3 py-3" data-inbox-queue-preview-action>
       <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             {canSelect && (
               <>
@@ -1894,13 +1894,13 @@ function InboxQueuePreviewActionBar({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
             {onShelveSelected && (
               <button
                 type="button"
                 onClick={onShelveSelected}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Archive size={13} />
                 {t.inbox.shelveSelectedAction(selectedCount)}
@@ -1911,7 +1911,7 @@ function InboxQueuePreviewActionBar({
                 type="button"
                 onClick={onOrganize}
                 disabled={disabled}
-                className="inline-flex min-w-[142px] items-center justify-center gap-1.5 rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex min-w-[142px] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {organizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                 {organizing ? t.inbox.organizing : t.inbox.organizeSelectedAction(selectedCount)}
@@ -1920,7 +1920,7 @@ function InboxQueuePreviewActionBar({
             <button
               type="button"
               onClick={onOpenWorkbench}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
             >
               {t.inbox.reviewPendingAction(files.length)}
               <ArrowRight size={12} />

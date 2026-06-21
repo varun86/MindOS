@@ -257,7 +257,7 @@ export default function AgentsRuntimeSection({
             {copy.refresh}
           </button>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 xl:grid-cols-3">
           {endpoints.map((endpoint) => (
             <EndpointCard
               key={endpoint.key}
@@ -397,7 +397,7 @@ export function AgentsRuntimeContractsSection({ variant = 'grid' }: { variant?: 
   }
 
   return (
-    <section className="grid gap-3 md:grid-cols-3">
+    <section className="grid gap-3 xl:grid-cols-3">
       {contracts.map((contract) => (
         <RuntimeContractCard
           key={contract.title}

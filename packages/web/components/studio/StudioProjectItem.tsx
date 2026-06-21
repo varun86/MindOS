@@ -150,8 +150,8 @@ export function StudioProjectItem({
       onPointerEnter={() => onPreview?.(project.id)}
       className={`group relative grid min-w-0 gap-3 border-t border-border/55 transition-colors first:border-t-0 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         compact
-          ? 'px-3 py-3 md:grid-cols-[minmax(0,1.1fr)_minmax(180px,0.75fr)_auto]'
-          : 'px-4 py-4 md:grid-cols-[minmax(0,1.15fr)_minmax(220px,0.75fr)_minmax(110px,0.22fr)_28px]'
+          ? 'px-3 py-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(180px,0.75fr)_auto]'
+          : 'px-4 py-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(220px,0.75fr)_minmax(110px,0.22fr)_28px]'
       } ${selected ? 'bg-card/70' : ''}`}
     >
       <span className={`pointer-events-none absolute bottom-3 left-0 top-3 w-px rounded-r-full transition-colors group-hover:bg-[var(--amber)] ${
@@ -180,7 +180,7 @@ export function StudioProjectItem({
         </div>
       </div>
 
-      <div className="min-w-0 md:border-l md:border-border/45 md:pl-4">
+      <div className="min-w-0 xl:border-l xl:border-border/45 xl:pl-4">
         <div className="mb-1 text-[11px] font-medium text-muted-foreground">
           {locale === 'zh' ? '下一步' : 'Next move'}
         </div>
@@ -189,7 +189,7 @@ export function StudioProjectItem({
         </p>
       </div>
 
-      <div className={`${compact ? 'flex items-center justify-between gap-3 md:block' : 'flex items-center justify-between gap-3 md:block'} min-w-0`}>
+      <div className={`${compact ? 'flex items-center justify-between gap-3 xl:block' : 'flex items-center justify-between gap-3 xl:block'} min-w-0`}>
         <div className="text-[11px] font-medium text-muted-foreground [font-variant-numeric:tabular-nums]">
           {locale === 'zh' ? `${sessionCount} 个对话` : `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'}`}
         </div>
@@ -199,11 +199,11 @@ export function StudioProjectItem({
       </div>
 
       {!compact ? (
-        <div className="hidden items-center justify-end md:flex">
+        <div className="hidden items-center justify-end xl:flex">
           <ArrowRight size={16} className="text-muted-foreground/45 transition-colors group-hover:text-[var(--amber)]" />
         </div>
       ) : (
-        <div className="flex items-center justify-end md:hidden">
+        <div className="flex items-center justify-end xl:hidden">
           <ArrowRight size={15} className="text-muted-foreground/45 transition-colors group-hover:text-[var(--amber)]" />
         </div>
       )}

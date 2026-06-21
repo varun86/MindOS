@@ -204,7 +204,7 @@ export default function SkillMarketContent() {
   return (
     <main className="min-h-full bg-background text-foreground">
       <div className="content-width px-4 py-8 md:px-6 md:py-10">
-        <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <header data-skill-market-header className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <Link
               href="/explore"
@@ -237,7 +237,7 @@ export default function SkillMarketContent() {
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 md:pt-11">
+          <div className="flex flex-wrap items-center gap-2 xl:pt-11">
             <Link
               href="/agents?tab=skills"
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--amber)] bg-[var(--amber)] px-2.5 text-xs font-medium text-[var(--amber-foreground)] transition-colors hover:bg-[var(--amber)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -250,7 +250,8 @@ export default function SkillMarketContent() {
 
         <section className="mb-4 rounded-xl border border-border/60 bg-card/65 p-4 shadow-[0_1px_2px_0_color-mix(in_srgb,var(--foreground)_5%,transparent)]">
           <form
-            className="flex flex-col gap-2 md:flex-row md:items-center"
+            data-skill-market-search-form
+            className="flex flex-col gap-2 xl:flex-row xl:items-center"
             onSubmit={(event) => {
               event.preventDefault();
               const nextQuery = normalizeSearchInput(skillInput);
@@ -269,7 +270,7 @@ export default function SkillMarketContent() {
                 className="h-10 w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 xl:shrink-0">
               {(skillInput || skillQuery !== SKILL_MARKET_DEFAULT_QUERY) && (
                 <button
                   type="button"
@@ -463,7 +464,7 @@ function MarketSkeletonRows() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between ${
+          className={`flex flex-col gap-3 px-4 py-4 xl:flex-row xl:items-start xl:justify-between ${
             index === 0 ? '' : 'border-t border-border/70'
           }`}
         >
@@ -499,8 +500,8 @@ const MarketSkillRow = memo(function MarketSkillRow({
   onCopyInstallCommand: (skill: SkillMarketItem) => void | Promise<void>;
 }) {
   return (
-    <article className={`px-4 py-4 ${index === 0 ? '' : 'border-t border-border/70'}`}>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <article data-skill-market-row={skill.id} className={`px-4 py-4 ${index === 0 ? '' : 'border-t border-border/70'}`}>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background font-mono text-xs font-semibold text-[var(--amber-text)]">
             <Zap size={15} aria-hidden="true" />

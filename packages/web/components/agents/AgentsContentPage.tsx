@@ -408,7 +408,7 @@ function AgentModeOverview({
       aria-label={overview.title}
     >
       <div className="min-w-0 p-3.5">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {items.map((item) => (
             <Link
               key={item.href}
@@ -502,7 +502,7 @@ function AgentsPageNav({
 
   return (
     <nav aria-label={copy.navAriaLabel} className="mt-5 overflow-x-auto pb-1">
-      <div className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm lg:grid lg:w-auto lg:grid-cols-4">
+      <div className="flex w-max min-w-full overflow-hidden rounded-xl border border-border/60 bg-card/35 shadow-sm xl:grid xl:w-auto xl:grid-cols-4">
         {navItems.map(item => (
           <Link
             key={item.id}
@@ -513,7 +513,7 @@ function AgentsPageNav({
               event.preventDefault();
               if (activeGroup !== item.id) smoothPush(item.href);
             }}
-            className={`group min-h-[70px] w-[156px] shrink-0 border-r border-border/45 px-3 py-2.5 transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:w-auto lg:px-4 lg:py-3 ${
+            className={`group min-h-[70px] w-[156px] shrink-0 border-r border-border/45 px-3 py-2.5 transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:w-auto xl:px-4 xl:py-3 ${
               activeGroup === item.id
                 ? 'bg-[var(--amber)]/[0.08] text-foreground'
                 : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
@@ -538,7 +538,7 @@ function AgentsPageNav({
               ) : null}
             </span>
             <span className="mt-2 block text-xs font-medium text-foreground">{item.label}</span>
-            <span className="mt-0.5 block truncate text-2xs text-muted-foreground/65 lg:block">{item.hint}</span>
+            <span className="mt-0.5 block truncate text-2xs text-muted-foreground/65 xl:block">{item.hint}</span>
           </Link>
         ))}
       </div>
@@ -556,7 +556,7 @@ function OverviewSkeleton() {
         <div className="px-4 py-2.5 border-b border-border bg-muted/10">
           <div className="h-4 w-32 bg-muted rounded" />
         </div>
-        <div className="grid grid-cols-3 md:grid-cols-6 divide-x divide-border">
+        <div className="grid grid-cols-3 xl:grid-cols-6 divide-x divide-border">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="px-3 py-3.5 flex flex-col items-center gap-2">
               <div className="h-3 w-16 bg-muted rounded" />
@@ -567,7 +567,7 @@ function OverviewSkeleton() {
       </div>
 
       {/* Quick nav skeleton */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="rounded-xl border border-border bg-card p-4 flex items-start gap-3.5">
             <div className="w-10 h-10 rounded-lg bg-muted" />
@@ -585,7 +585,7 @@ function OverviewSkeleton() {
           <div className="h-4 w-24 bg-muted rounded" />
           <div className="h-3 w-16 bg-muted rounded" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-border bg-card p-3.5">
               <div className="flex items-center gap-2.5 mb-3">

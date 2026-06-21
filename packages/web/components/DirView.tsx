@@ -525,7 +525,7 @@ const VirtualDirGridList = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLD
         {...props}
         ref={ref}
         data-dir-view-virtualized="grid"
-        className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 ${className ?? ''}`}
+        className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 ${className ?? ''}`}
       />
     );
   },
@@ -669,7 +669,7 @@ export default function DirView({ dirPath, entries, spacePreview }: DirViewProps
                 itemContent={(index) => renderGridEntry(visibleEntries[index])}
               />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+              <div data-dir-view-grid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
                 {visibleEntries.map(entry => (
                   <DirGridEntryItem
                     key={entry.path}

@@ -69,7 +69,7 @@ export function InboxFileRow({
     : ext === 'json' ? 'text-violet-500/70'
       : ext === 'pdf' ? 'text-error/60'
         : 'text-muted-foreground/60';
-  const actionColumnWidth = 'md:w-[184px]';
+  const actionColumnWidth = secondaryAction ? 'xl:w-[184px]' : 'xl:w-[118px]';
   const actionColumnVisibility = selected
     ? 'pointer-events-auto opacity-100'
     : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100';
@@ -93,7 +93,7 @@ export function InboxFileRow({
         }}
         aria-pressed={selected}
         aria-label={file.name}
-        className={`group flex items-center gap-3 px-4 py-3 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+        className={`group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
           selected ? 'bg-[var(--amber-subtle)]/45' : 'bg-card hover:bg-accent'
         }${animate ? ' animate-[fadeSlideUp_0.22s_ease_both]' : ''}`}
         style={animate ? { animationDelay: `${index * 30}ms` } : undefined}
@@ -127,17 +127,17 @@ export function InboxFileRow({
         )}
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm text-foreground truncate" title={file.name}>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 truncate text-sm text-foreground" title={file.name}>
               {baseName}
             </span>
             {extStyle && (
-              <span className={`text-2xs font-mono px-1.5 py-px rounded shrink-0 ${extStyle.bg} ${extStyle.text}`}>
+              <span className={`shrink-0 rounded px-1.5 py-px font-mono text-2xs ${extStyle.bg} ${extStyle.text}`}>
                 .{ext}
               </span>
             )}
             {file.isAging && (
-              <span className="text-2xs px-1.5 py-px rounded shrink-0 bg-[var(--amber)]/10 text-[var(--amber)]/70" title={t.inbox.agingHint}>
+              <span className="shrink-0 rounded bg-[var(--amber)]/10 px-1.5 py-px text-2xs text-[var(--amber)]/70" title={t.inbox.agingHint}>
                 {t.inbox.agingHint}
               </span>
             )}
@@ -145,21 +145,21 @@ export function InboxFileRow({
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             {file.source && (
               <>
-                <span className="max-w-[180px] truncate rounded-md bg-muted/45 px-1.5 py-px text-2xs text-muted-foreground" title={getInboxSourceLabel(file.source) ?? undefined}>
+                <span className="max-w-[180px] truncate whitespace-nowrap rounded-md bg-muted/45 px-1.5 py-px text-2xs text-muted-foreground" title={getInboxSourceLabel(file.source) ?? undefined}>
                   {getInboxSourceLabel(file.source)}
                 </span>
-                <span className="text-2xs text-muted-foreground/30">·</span>
+                <span className="shrink-0 text-2xs text-muted-foreground/30">·</span>
               </>
             )}
-            <span className="text-2xs text-muted-foreground/40 tabular-nums">{sizeLabel}</span>
-            <span className="text-2xs text-muted-foreground/30">·</span>
-            <span className="text-2xs text-muted-foreground/40 tabular-nums">{age}</span>
+            <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground/40 tabular-nums">{sizeLabel}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground/30">·</span>
+            <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground/40 tabular-nums">{age}</span>
           </div>
         </div>
 
         <div
           data-inbox-row-actions
-          className={`hidden shrink-0 items-center justify-end gap-1 transition-opacity duration-100 md:flex ${actionColumnWidth} ${actionColumnVisibility}`}
+          className={`hidden shrink-0 items-center justify-end gap-1 transition-opacity duration-100 xl:flex ${actionColumnWidth} ${actionColumnVisibility}`}
         >
           {secondaryAction && SecondaryIcon && (
             <button

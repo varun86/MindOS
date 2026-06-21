@@ -190,6 +190,27 @@ describe('SkillMarketContent', () => {
     expect(links).toContain('https://github.com/vercel-labs/agent-browser');
   });
 
+  it('keeps Skill Market dense rows stacked until wide content space', async () => {
+    await act(async () => {
+      root.render(<SkillMarketContent />);
+      await flushSkillMarketPromises();
+    });
+
+    const headerClasses = host.querySelector('[data-skill-market-header]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    const searchFormClasses = host.querySelector('[data-skill-market-search-form]')?.getAttribute('class')?.split(/\s+/) ?? [];
+    const rowClasses = host.querySelector('[data-skill-market-row="vercel-labs/agent-browser/agent-browser"]')?.firstElementChild?.getAttribute('class')?.split(/\s+/) ?? [];
+
+    expect(headerClasses).toContain('flex-col');
+    expect(headerClasses).toContain('xl:flex-row');
+    expect(headerClasses).not.toContain('md:flex-row');
+    expect(searchFormClasses).toContain('flex-col');
+    expect(searchFormClasses).toContain('xl:flex-row');
+    expect(searchFormClasses).not.toContain('md:flex-row');
+    expect(rowClasses).toContain('flex-col');
+    expect(rowClasses).toContain('xl:flex-row');
+    expect(rowClasses).not.toContain('lg:flex-row');
+  });
+
   it('searches skills and copies an explicit CLI install command', async () => {
     await act(async () => {
       root.render(<SkillMarketContent />);

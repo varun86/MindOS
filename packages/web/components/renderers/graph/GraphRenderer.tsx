@@ -199,7 +199,7 @@ export function GraphRenderer({ filePath }: RendererContext) {
         onSearchTermChange={setSearchTerm}
       />
 
-      <div className="mt-3 grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(210px,260px)]">
+      <div className="mt-3 grid items-stretch gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(210px,260px)]">
         <div className="h-[calc(100vh_-_178px)] min-h-[440px] w-full">
           <ReactFlow
             nodes={rfNodes}

@@ -93,7 +93,7 @@ export default function TrashPageClient({ initialItems }: { initialItems: TrashM
   return (
     <div className="min-h-[calc(100vh-var(--app-titlebar-h))]">
       <div className="px-4 md:px-6 pt-6 md:pt-8">
-        <div className="content-width xl:mr-[220px] rounded-xl border border-border bg-card px-4 py-3 md:px-5 md:py-4">
+        <div className="content-width 2xl:mr-[220px] rounded-xl border border-border bg-card px-4 py-3 md:px-5 md:py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -124,7 +124,7 @@ export default function TrashPageClient({ initialItems }: { initialItems: TrashM
       </div>
 
       <div className="px-4 md:px-6 py-4 md:py-6">
-        <div className="content-width xl:mr-[220px]">
+        <div className="content-width 2xl:mr-[220px]">
           {items.length === 0 ? (
             <div className="rounded-xl border border-border/40 bg-card/30 p-12 text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted/60 mb-4">
@@ -134,7 +134,7 @@ export default function TrashPageClient({ initialItems }: { initialItems: TrashM
               <p className="text-xs text-muted-foreground/40 mt-1 max-w-xs mx-auto leading-relaxed">{t.trash.emptySubtext}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {items.map(item => {
                 const days = daysUntil(item.expiresAt);
                 const isExpiring = days <= 3;

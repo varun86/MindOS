@@ -326,7 +326,7 @@ function ContinueNextPanel({
         </div>
       </div>
 
-      <div className="grid gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)]">
+      <div className="grid gap-5 px-4 py-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-semibold text-foreground">{title}</h2>
@@ -344,7 +344,7 @@ function ContinueNextPanel({
           </div>
         </div>
 
-        <div className="min-w-0 border-border/55 lg:border-l lg:pl-5">
+        <div className="min-w-0 border-border/55 xl:border-l xl:pl-5">
           <div className="text-[11px] font-medium text-muted-foreground">{copy.continueHint}</div>
           <p className="mt-2 text-sm leading-relaxed text-foreground">{nextAction}</p>
           <div className="mt-3 flex items-center gap-3">
@@ -525,7 +525,7 @@ function StudioStatsView({
         <StudioMetric icon={<ListChecks size={13} aria-hidden="true" />} label={copy.reviewLoad} value={reviewItemCount} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
         <div className="rounded-xl border border-border/60 bg-card/45 p-4">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-sm font-semibold text-foreground">{copy.activityRhythm}</h2>
@@ -566,7 +566,7 @@ function StudioStatsView({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="rounded-xl border border-border/60 bg-card/45 p-4">
           <h2 className="text-sm font-semibold text-foreground">{copy.contextCoverage}</h2>
           <div className="mt-4 grid gap-3">

@@ -230,7 +230,7 @@ export function ChannelConversation({ status, im, platform, onSaved }: {
           {advancedOpen && (
             <div className="mt-4 space-y-3">
               <p className="text-xs leading-relaxed text-muted-foreground">{im.conversationAdvancedHint}</p>
-              <div className="grid gap-3 lg:grid-cols-3">
+              <div className="grid gap-3 xl:grid-cols-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{im.conversationPublicBaseUrl}</label>
                   <input

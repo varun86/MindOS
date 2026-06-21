@@ -234,9 +234,39 @@ describe('AgentsPresetsSection', () => {
     expect(commandCenter!.textContent).toContain('Custom');
     expect(commandCenter!.textContent).toContain('New Assistant');
     expect(commandCenter!.querySelector('input[aria-label="Search assistants..."]')).not.toBeNull();
+    const commandGrid = commandCenter!.querySelector('[data-assistant-command-grid]');
+    const commandActions = commandCenter!.querySelector('[data-assistant-command-actions]');
+    const commandGridClasses = commandGrid?.getAttribute('class')?.split(/\s+/) ?? [];
+    const commandActionClasses = commandActions?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(commandGridClasses.some(className => className.startsWith('2xl:grid-cols-'))).toBe(true);
+    expect(commandGridClasses.some(className => className.startsWith('xl:grid-cols-'))).toBe(false);
+    expect(commandActionClasses).toContain('min-w-0');
+    expect(commandActionClasses).toContain('2xl:justify-end');
 
     expect(host.querySelector('[data-assistant-command-column="workspace"] button[data-assistant-run="inbox-organizer"]')).not.toBeNull();
     expect(Array.from(host.querySelectorAll('button[data-assistant-run="inbox-organizer"]'))).toHaveLength(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps the Assistant create composer stacked until there is enough content width', async () => {
+    mockAssistantsFetch();
+    const { host, root } = await renderSection();
+
+    await act(async () => {
+      clickButton(host, 'New Assistant');
+      await flushEffects();
+    });
+
+    const composer = host.querySelector('[data-assistant-create-composer]');
+    const fields = host.querySelector('[data-assistant-create-fields]');
+    const fieldClasses = fields?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(composer).not.toBeNull();
+    expect(fieldClasses.some(className => className.startsWith('2xl:grid-cols-'))).toBe(true);
+    expect(fieldClasses.some(className => className.startsWith('lg:grid-cols-'))).toBe(false);
+    expect(fieldClasses.some(className => className.startsWith('xl:grid-cols-'))).toBe(false);
 
     await act(async () => {
       root.unmount();

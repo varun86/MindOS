@@ -213,7 +213,7 @@ export default function WikiHomeContent({ spaces, recent, mindSystemSpaces }: Wi
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <div data-workspace-spaces-grid className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
               {visibleSpaces.map((space) => {
                 const emoji = extractEmoji(space.name);
                 const label = stripEmoji(space.name);

@@ -542,7 +542,7 @@ export default function AgentsPresetsSection({
           </div>
         ) : null}
 
-        <div className="xl:grid xl:min-h-[690px] xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="2xl:grid 2xl:min-h-[690px] 2xl:grid-cols-[360px_minmax(0,1fr)]">
           <AssistantDirectory
             copy={copy}
             loading={loading}
@@ -561,7 +561,7 @@ export default function AgentsPresetsSection({
             deletingAssistantId={deletingAssistantId}
           />
 
-          <main className="min-w-0 border-t border-border/55 bg-background/35 xl:border-l xl:border-t-0">
+          <main className="min-w-0 border-t border-border/55 bg-background/35 2xl:border-l 2xl:border-t-0">
             {loading ? (
               <AssistantDetailSkeleton />
             ) : error ? (
@@ -650,7 +650,10 @@ function AssistantLibraryToolbar({
       data-assistant-command-center
       className="border-b border-border/55 bg-card/45 px-4 py-3.5 lg:px-5"
     >
-      <div className="grid gap-3 xl:grid-cols-[minmax(210px,0.72fr)_minmax(260px,0.9fr)_minmax(280px,1fr)] xl:items-center">
+      <div
+        data-assistant-command-grid
+        className="grid gap-3 2xl:grid-cols-[minmax(210px,0.72fr)_minmax(260px,0.9fr)_minmax(280px,1fr)] 2xl:items-center"
+      >
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
             <FolderLock size={15} />
@@ -685,8 +688,11 @@ function AssistantLibraryToolbar({
           ))}
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:justify-end">
-          <label className="relative min-w-0 xl:w-[min(34vw,360px)]">
+        <div
+          data-assistant-command-actions
+          className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:justify-end"
+        >
+          <label className="relative min-w-0 2xl:w-[min(28vw,360px)]">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
             <input
               value={query}
@@ -772,8 +778,11 @@ function CreateAssistantComposer({
 }) {
   const effectiveId = slugifyAssistantId(draft.id || draft.name);
   return (
-    <section className="rounded-xl border border-[var(--amber)]/25 bg-[var(--amber)]/[0.04] p-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(180px,0.75fr)_minmax(220px,1fr)_minmax(260px,1.3fr)_auto] lg:items-end">
+    <section data-assistant-create-composer className="rounded-xl border border-[var(--amber)]/25 bg-[var(--amber)]/[0.04] p-4">
+      <div
+        data-assistant-create-fields
+        className="grid gap-3 2xl:grid-cols-[minmax(160px,0.75fr)_minmax(200px,1fr)_minmax(240px,1.3fr)_auto] 2xl:items-end"
+      >
         <label className="grid gap-1.5">
           <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground/60">{copy.assistantIdLabel ?? 'Assistant ID'}</span>
           <input
@@ -809,7 +818,7 @@ function CreateAssistantComposer({
             className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}

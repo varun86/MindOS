@@ -9,7 +9,7 @@ export function GalleryView({ headers, rows, cfg }: { headers: string[]; rows: s
   const descIdx = headers.indexOf(cfg.descField);
   const tagIdx = headers.indexOf(cfg.tagField);
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div data-csv-gallery-grid className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
       {rows.map((row, i) => {
         const title = titleIdx >= 0 ? row[titleIdx] : row[0] ?? '';
         const desc = descIdx >= 0 ? row[descIdx] : '';

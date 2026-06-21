@@ -98,6 +98,10 @@ describe('Studio Project UI', () => {
     expect(view.host.querySelector('input[placeholder="Search title, artifact, or summary"]')).not.toBeNull();
     expect(view.host.querySelector('select')).not.toBeNull();
     expect(view.host.querySelector('[data-stable-row-trailing]')).not.toBeNull();
+    const sessionRow = view.host.querySelector('[data-studio-session-row]');
+    const sessionRowClasses = sessionRow?.getAttribute('class')?.split(/\s+/) ?? [];
+    expect(sessionRowClasses.some(className => className.startsWith('xl:grid-cols-'))).toBe(true);
+    expect(sessionRowClasses.some(className => className.startsWith('md:grid-cols-'))).toBe(false);
     expect(view.host.querySelector<HTMLAnchorElement>('a[href*="title=Launch+brief+review"]')).not.toBeNull();
 
     const newSession = view.host.querySelector<HTMLAnchorElement>('a[href="/chat/new?projectId=launch-practice"]');

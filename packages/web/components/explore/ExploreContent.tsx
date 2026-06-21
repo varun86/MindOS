@@ -78,7 +78,7 @@ export default function ExploreContent() {
       </div>
 
       {/* Card grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" style={{ paddingLeft: '1rem' }}>
+      <div data-explore-use-case-grid className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3" style={{ paddingLeft: '1rem' }}>
         {filtered.map(uc => {
           const data = getUseCaseText(uc.id);
           if (!data) return null;
