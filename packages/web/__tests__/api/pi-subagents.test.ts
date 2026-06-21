@@ -111,7 +111,6 @@ describe('pi-subagents built-in extension', () => {
 
         const readonlyPaths = getMindosWebPiRuntimePaths({
           ...base,
-          mode: 'agent',
           permissionPolicy: createMindosAgentPermissionPolicy('read'),
         });
         const readonlyExtensionList = readonlyPaths.additionalExtensionPaths.join('\n');
@@ -125,7 +124,6 @@ describe('pi-subagents built-in extension', () => {
 
         const kbWritePaths = getMindosWebPiRuntimePaths({
           ...base,
-          mode: 'agent',
           permissionPolicy: createMindosKnowledgeWritePermissionPolicy('ask'),
         });
         const kbWriteExtensionList = kbWritePaths.additionalExtensionPaths.join('\n');
@@ -136,15 +134,18 @@ describe('pi-subagents built-in extension', () => {
         expect(kbWriteExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
         expect(kbWriteExtensionList).not.toContain('schedule-prompt');
 
-        const agentPaths = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
-        const agentExtensionList = agentPaths.additionalExtensionPaths.join('\n');
-        expect(agentExtensionList).toContain('kb-extension');
-        expect(agentExtensionList).toContain('pi-web-access');
-        expect(agentExtensionList).not.toContain('pi-mcp-adapter');
-        expect(agentExtensionList).not.toContain('mindos-mcp-adapter-extension');
-        expect(agentExtensionList).toContain('subagent-ledger-extension');
-        expect(agentExtensionList).toContain(path.join('lib', 'im', 'index.ts'));
-        expect(agentExtensionList).toContain('schedule-prompt');
+        const autoPaths = getMindosWebPiRuntimePaths({
+          ...base,
+          permissionPolicy: createMindosAgentPermissionPolicy('auto'),
+        });
+        const autoExtensionList = autoPaths.additionalExtensionPaths.join('\n');
+        expect(autoExtensionList).toContain('kb-extension');
+        expect(autoExtensionList).toContain('pi-web-access');
+        expect(autoExtensionList).not.toContain('pi-mcp-adapter');
+        expect(autoExtensionList).not.toContain('mindos-mcp-adapter-extension');
+        expect(autoExtensionList).toContain('subagent-ledger-extension');
+        expect(autoExtensionList).toContain(path.join('lib', 'im', 'index.ts'));
+        expect(autoExtensionList).toContain('schedule-prompt');
 
         fs.mkdirSync(path.join(tempHome, '.mindos'), { recursive: true });
         fs.writeFileSync(path.join(tempHome, '.mindos', 'mcp.json'), JSON.stringify({
@@ -155,10 +156,13 @@ describe('pi-subagents built-in extension', () => {
             },
           },
         }), 'utf-8');
-        const agentWithMcpPaths = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
-        const agentWithMcpExtensionList = agentWithMcpPaths.additionalExtensionPaths.join('\n');
-        expect(agentWithMcpExtensionList).toContain('mindos-mcp-adapter-extension');
-        expect(agentWithMcpExtensionList).not.toContain(path.join('node_modules', 'pi-mcp-adapter', 'index.ts'));
+        const fullWithMcpPaths = getMindosWebPiRuntimePaths({
+          ...base,
+          permissionPolicy: createMindosAgentPermissionPolicy('full'),
+        });
+        const fullWithMcpExtensionList = fullWithMcpPaths.additionalExtensionPaths.join('\n');
+        expect(fullWithMcpExtensionList).toContain('mindos-mcp-adapter-extension');
+        expect(fullWithMcpExtensionList).not.toContain(path.join('node_modules', 'pi-mcp-adapter', 'index.ts'));
       } finally {
         if (previousHome === undefined) {
           delete process.env.HOME;

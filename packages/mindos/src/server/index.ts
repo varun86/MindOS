@@ -37,7 +37,6 @@ export {
   type AgentCapability,
   type AgentCapabilityInput,
   type AgentCapabilityKind,
-  type AgentCapabilityMode,
   type AgentCapabilityPermissionRequired,
   type AgentCapabilitySource,
   type AgentCapabilitySourceKey,

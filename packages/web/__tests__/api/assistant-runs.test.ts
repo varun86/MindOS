@@ -38,7 +38,6 @@ describe('POST /api/assistant-runs', () => {
     expect(delegatedContext.request?.url).toBe('http://localhost/api/assistant-runs');
     expect(delegatedBody).toMatchObject({
       assistantId: 'inbox-organizer',
-      mode: 'agent',
       messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
       uploadedFiles: [{ name: 'capture.md', content: 'source' }],
       providerOverride: 'p_stepfun',
@@ -86,7 +85,6 @@ describe('POST /api/assistant-runs', () => {
     const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(delegatedBody).toMatchObject({
       assistantId: 'inbox-organizer',
-      mode: 'agent',
       messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       chatSessionId: 'chat-1',
@@ -115,7 +113,6 @@ describe('POST /api/assistant-runs', () => {
     const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(delegatedBody).toMatchObject({
       assistantId: 'dreaming',
-      mode: 'agent',
       maxSteps: 16,
     });
     const messages = delegatedBody.messages as Array<{ role: string; content: string }>;
@@ -171,7 +168,6 @@ describe('POST /api/assistant-runs', () => {
     const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(delegatedBody).toMatchObject({
       assistantId: 'daily-signal',
-      mode: 'agent',
       messages: [{ role: 'user', content: 'Run this assistant.' }],
       runtimeOptions: { permissionMode: 'read', reasoningEffort: 'high' },
     });

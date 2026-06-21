@@ -297,10 +297,10 @@ describe('MindOS session event contract', () => {
   });
 
   it('normalizes ask step limits without Web dependencies', () => {
-    expect(normalizeMindosAskStepLimit({ mode: 'agent' })).toBe(20);
-    expect(normalizeMindosAskStepLimit({ mode: 'agent', agentMaxSteps: 50 })).toBe(50);
-    expect(normalizeMindosAskStepLimit({ mode: 'agent', requestedMaxSteps: -1 })).toBe(1);
-    expect(normalizeMindosAskStepLimit({ mode: 'agent', requestedMaxSteps: 5000 })).toBe(999);
+    expect(normalizeMindosAskStepLimit({})).toBe(20);
+    expect(normalizeMindosAskStepLimit({ agentMaxSteps: 50 })).toBe(50);
+    expect(normalizeMindosAskStepLimit({ requestedMaxSteps: -1 })).toBe(1);
+    expect(normalizeMindosAskStepLimit({ requestedMaxSteps: 5000 })).toBe(999);
   });
 
   it('resolves agent timeout with a safe default for invalid environment values', () => {
@@ -320,7 +320,7 @@ describe('MindOS session event contract', () => {
   });
 
   it('loads attached and current file context with validation and dedupe', () => {
-    const loaded = loadMindosAskFileContext(['a.md', 'a.md', 'too-big.md'], 'current.md', 'agent', {
+    const loaded = loadMindosAskFileContext(['a.md', 'a.md', 'too-big.md'], 'current.md', {
       readFile: (filePath) => `content:${filePath}`,
       truncate: (content) => content.slice(0, 20),
       validateFileSize: (filePath, cumulativeSize) => {
@@ -355,7 +355,6 @@ describe('MindOS session event contract', () => {
   it('builds external runtime prompts with explicit MindOS turn context', () => {
     const prompt = buildMindosExternalRuntimePrompt({
       prompt: 'Summarize the attached plan.',
-      mode: 'agent',
       fileContext: {
         contextParts: ['### Attached file from the MindOS knowledge base: Plan.md\n\nAlpha plan'],
         failedFiles: ['Missing.md'],
@@ -897,7 +896,6 @@ describe('MindOS session event contract', () => {
     };
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'agent',
       messages: [{ role: 'user', content: 'hello', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -928,7 +926,6 @@ describe('MindOS session event contract', () => {
           captured.sessionCwd = config.cwd;
           return { session };
         },
-        setKbMode: () => {},
       },
     });
 
@@ -997,7 +994,6 @@ describe('MindOS session event contract', () => {
     };
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'agent',
       messages: [{ role: 'user', content: 'search web', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -1021,7 +1017,6 @@ describe('MindOS session event contract', () => {
         createResourceLoader: () => resourceLoader,
         convertToLlm: (messages) => [...messages],
         createAgentSession: async () => ({ session }),
-        setKbMode: () => {},
       },
     });
 
@@ -1352,7 +1347,6 @@ describe('MindOS session event contract', () => {
     };
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'agent',
       messages: [
         { role: 'user', content: 'hello', timestamp: 1 },
         { role: 'assistant', content: 'hi', timestamp: 2 },
@@ -1414,7 +1408,6 @@ describe('MindOS session event contract', () => {
           calls.push(`agent:${config.cwd}:${config.thinkingLevel}:${allowlist}:${config.noTools}:${customToolNames}`);
           return { session };
         },
-        setKbMode: (mode) => calls.push(`kb:${mode}`),
         generateSkillsXml: (skills) => `<skills>${skills.map((skill) => skill.name).join(',')}</skills>`,
       },
     });
@@ -1445,7 +1438,7 @@ describe('MindOS session event contract', () => {
     expect(runtime.systemPrompt).not.toContain('## Active Skill Request');
     expect(capturedSystemPrompt).toBe('base prompt');
     // The streaming session reads its system prompt through the resource
-    // loader's override on reload — the agent-mode skill index must arrive
+    // loader's override on reload — the runtime skill index must arrive
     // there, not just in runtime.systemPrompt (which only the non-streaming
     // fallback uses). The active skill request is turn-local context and stays
     // out of the system prompt.
@@ -1465,7 +1458,6 @@ describe('MindOS session event contract', () => {
     expect(calls).toEqual([
       'model:openai:gpt-test:true',
       'convert:2',
-      'kb:agent',
       'auth:runtime:anthropic:key',
       'settings:{"enableSkillCommands":true,"thinkingBudgets":{"medium":3000},"compaction":{"enabled":false}}',
       'loader:/repo:/skills:/ext',
@@ -1491,7 +1483,6 @@ describe('MindOS session event contract', () => {
     const reportedErrors: unknown[] = [];
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'agent',
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -1519,7 +1510,6 @@ describe('MindOS session event contract', () => {
         }),
         convertToLlm: (messages) => [...messages],
         createAgentSession: async () => ({ session }),
-        setKbMode: () => {},
         onExtensionLoadErrors: (errors) => { reportedErrors.push(errors); },
       },
     });
@@ -1538,7 +1528,6 @@ describe('MindOS session event contract', () => {
     const webAccessPath = '/repo/packages/web/node_modules/pi-web-access/index.ts';
 
     const runtime = await createMindosPiAgentRuntime({
-      mode: 'agent',
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -1581,7 +1570,6 @@ describe('MindOS session event contract', () => {
         }),
         convertToLlm: (messages) => [...messages],
         createAgentSession: async () => ({ session }),
-        setKbMode: () => {},
       },
     });
 
@@ -1601,7 +1589,6 @@ describe('MindOS session event contract', () => {
     };
 
     await createMindosPiAgentRuntime({
-      mode: 'agent',
       allowProjectBash: false,
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
@@ -1632,7 +1619,6 @@ describe('MindOS session event contract', () => {
           captured = config as unknown as Record<string, unknown>;
           return { session };
         },
-        setKbMode: () => {},
       },
     });
 
@@ -1656,7 +1642,6 @@ describe('MindOS session event contract', () => {
     };
 
     await createMindosPiAgentRuntime({
-      mode: 'agent',
       allowProjectBash: false,
       messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
       systemPrompt: 'prompt',
@@ -1687,7 +1672,6 @@ describe('MindOS session event contract', () => {
           captured = config as unknown as Record<string, unknown>;
           return { session };
         },
-        setKbMode: () => {},
       },
     });
 

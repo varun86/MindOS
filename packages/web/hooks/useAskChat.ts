@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback, useLayoutEffect } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, AskMode, LocalAttachment, RuntimeSessionBinding, NativeRuntimeOptions } from '@/lib/types';
+import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, LocalAttachment, RuntimeSessionBinding, NativeRuntimeOptions } from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { annotateMessageWithAgentRuntime, compactAgentRuntimeIdentity, getMatchingRuntimeSessionBinding, isRuntimeSessionBindingResumable } from '@/lib/ask-agent';
@@ -76,7 +76,6 @@ export interface AskChatRefs {
 
 interface UseAskChatOpts {
   currentFile?: string;
-  askMode: AskMode;
   providerOverride: ProviderId | `p_${string}` | null;
   modelOverride: string | null;
   nativeRuntimeOptions?: NativeRuntimeOptions;
@@ -107,7 +106,6 @@ function isWorkDirContextError(error: Error & { httpStatus?: number; issueCode?:
 
 export function useAskChat({
   currentFile,
-  askMode,
   providerOverride,
   modelOverride,
   nativeRuntimeOptions = {},
@@ -304,7 +302,6 @@ export function useAskChat({
       runtimeBinding: matchingRuntimeBinding ?? null,
       workDir: sessionContextSnapshot.workDir,
       contextSelection: sessionContextSnapshot.contextSelection,
-      mode: askMode,
       chatSessionId: sessionId,
       providerOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : providerOverride ?? undefined,
       modelOverride: selectedRuntimeBase && selectedRuntimeBase.kind !== 'mindos' ? undefined : modelOverride ?? undefined,
@@ -470,7 +467,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, askMode, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
+  }, [currentFile, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
 
   return {
     isLoading,

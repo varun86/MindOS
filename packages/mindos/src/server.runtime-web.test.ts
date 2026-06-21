@@ -984,17 +984,16 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       messages: [{ role: 'user', content: 'hello' }],
       mode: 'organize',
     }, {
-      askStream: () => throwingAsyncIterable(new Error('should not stream removed ask modes')),
+      askStream: () => throwingAsyncIterable(new Error('should not stream removed mode fields')),
     });
     expect(removedMode).toMatchObject({
       ok: false,
       status: 400,
-      body: { error: 'mode must be agent' },
+      body: { error: 'mode is no longer supported' },
     });
 
     const valid = handleAskStream({
       messages: [{ role: 'user', content: 'hello' }],
-      mode: 'agent',
       attachedFiles: ['note.md', 123],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       runtimeBinding: {
@@ -1017,7 +1016,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
       askStream: async function* (input) {
-        yield { type: 'status', message: `mode=${input.mode};runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
+        yield { type: 'status', message: `runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
         yield { type: 'status', message: `binding=${input.runtimeBinding?.kind}:${input.runtimeBinding?.externalSessionId}` };
         yield { type: 'status', message: `context=${input.chatSessionId};cwd=${input.workDir?.path};spaces=${input.contextSelection?.spaces[0]?.path};permission=${input.runtimeOptions?.permissionMode}` };
         yield { type: 'text_delta', delta: String(input.messages[0]?.content ?? '') };
@@ -1030,7 +1029,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
-      { type: 'status', message: 'mode=agent;runtime=codex:codex' },
+      { type: 'status', message: 'runtime=codex:codex' },
       { type: 'status', message: 'binding=codex-thread:thr_123' },
       { type: 'status', message: 'context=chat-context-1;cwd=/repo/app;spaces=Research;permission=read' },
       { type: 'text_delta', delta: 'hello' },

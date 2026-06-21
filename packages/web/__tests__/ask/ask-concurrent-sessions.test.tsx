@@ -96,7 +96,6 @@ describe('concurrent chat sessions (useAskChat × ask-run-store)', () => {
 
   function Harness({ activeSessionId }: { activeSessionId: string | null }) {
     chat = useAskChat({
-      askMode: 'agent',
       providerOverride: null,
       modelOverride: null,
       activeSessionId,

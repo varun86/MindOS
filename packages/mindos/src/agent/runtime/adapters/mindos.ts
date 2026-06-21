@@ -2,7 +2,6 @@ import {
   createMindosPiCodingAgentRuntime,
 } from '../../mindos-pi/runtime.js';
 import type {
-  MindosAskMode,
   MindosPiAgentRuntime,
   MindosPiAgentRuntimeOptions,
   MindosPiAgentRuntimeServices,
@@ -15,7 +14,6 @@ export type MindosAgentRuntimeHostServices = Pick<
   MindosPiAgentRuntimeServices,
   | 'resolveModelConfig'
   | 'toRuntimeProvider'
-  | 'setKbMode'
   | 'generateSkillsXml'
   | 'getOllamaContextWindow'
   | 'estimateTokens'
@@ -27,8 +25,7 @@ export type MindosAgentRuntimeHostServices = Pick<
 >;
 
 export type MindosAgentRuntimeAdapterOptions =
-  Omit<MindosPiAgentRuntimeOptions, 'mode' | 'messages' | 'services' | 'bashTool'> & {
-    mode: MindosAskMode;
+  Omit<MindosPiAgentRuntimeOptions, 'messages' | 'services' | 'bashTool'> & {
     messages: MindosUiAskMessage[];
     hostServices: MindosAgentRuntimeHostServices;
   };

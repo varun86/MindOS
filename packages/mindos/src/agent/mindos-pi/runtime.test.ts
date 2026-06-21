@@ -44,7 +44,6 @@ import { createMindosPiCodingAgentRuntime } from './runtime.js';
 describe('MindOS Pi coding agent runtime', () => {
   it('creates the bash tool against the session workDir', async () => {
     await createMindosPiCodingAgentRuntime({
-      mode: 'agent',
       messages: [{ role: 'user', content: 'hello', timestamp: 1 }],
       systemPrompt: 'prompt',
       projectRoot: '/repo',
@@ -62,7 +61,6 @@ describe('MindOS Pi coding agent runtime', () => {
           provider: 'openai',
         }),
         toRuntimeProvider: (provider) => provider,
-        setKbMode: () => {},
       },
     });
 

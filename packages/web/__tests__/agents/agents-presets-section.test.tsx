@@ -444,7 +444,7 @@ Write an updated morning brief.
     const askCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/assistant-runs' && init?.method === 'POST');
     expect(askCall).toBeTruthy();
     const askBody = JSON.parse(askCall![1]!.body as string);
-    expect(askBody.mode).toBe('agent');
+    expect(askBody).not.toHaveProperty('mode');
     expect(askBody.assistantId).toBe('research-scout');
     expect(askBody.runtimeOptions).toEqual({ permissionMode: 'read' });
     expect(askBody.messages[0].content).toContain('Research Scout');

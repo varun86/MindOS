@@ -137,7 +137,6 @@ function listKnowledgeToolCapabilities(services: MindosAgentCapabilityRegistrySe
       source: 'mindos',
       status: 'available',
       permissionRequired,
-      availableInModes: modesForPermission(permissionRequired),
       inputKinds: ['json'],
       outputKinds: ['text'],
       supportsStreaming: false,
@@ -168,7 +167,6 @@ async function listPiSubagentCapabilities(services: MindosAgentCapabilityRegistr
     source: 'pi-subagents',
     status: 'available',
     permissionRequired: 'ask',
-    availableInModes: ['agent'],
     inputKinds: ['text', 'files', 'context'],
     outputKinds: ['text', 'structured'],
     supportsStreaming: true,
@@ -222,7 +220,6 @@ function listMcpToolCapabilities(services: MindosAgentCapabilityRegistryServices
       source: 'mcp',
       status: serverCache ? 'cached' : 'available',
       permissionRequired: 'ask',
-      availableInModes: ['agent'],
       inputKinds: ['json'],
       outputKinds: ['text', 'structured'],
       supportsStreaming: false,
@@ -289,7 +286,6 @@ function listA2aAgentCapabilities(services: MindosAgentCapabilityRegistryService
     source: 'a2a',
     status: agent.reachable ? 'available' : 'error',
     permissionRequired: 'ask',
-    availableInModes: ['agent'],
     inputKinds: agent.card.defaultInputModes,
     outputKinds: agent.card.defaultOutputModes,
     supportsStreaming: agent.card.capabilities.streaming,
@@ -343,7 +339,6 @@ function runtimeToCapability(runtime: AgentRuntimeDescriptor): AgentCapabilityIn
         ? 'missing'
         : 'error',
     permissionRequired: runtime.kind === 'mindos' ? 'read' : 'ask',
-    availableInModes: runtime.kind === 'mindos' ? modesForPermission('read') : ['agent'],
     inputKinds: ['text', 'files', 'context'],
     outputKinds: ['text', 'tool-events'],
     supportsStreaming: true,
@@ -373,11 +368,6 @@ function permissionForKbTool(toolName: string): 'read' | 'ask' {
   if (READONLY_KB_TOOL_NAMES.has(toolName)) return 'read';
   if (KNOWLEDGE_WRITE_TOOL_NAMES.has(toolName)) return 'ask';
   return 'ask';
-}
-
-function modesForPermission(permission: 'read' | 'ask' | 'auto' | 'full'): Array<'agent'> {
-  if (permission === 'read' || permission === 'ask' || permission === 'auto' || permission === 'full') return ['agent'];
-  return ['agent'];
 }
 
 function discoverPiSubagents(

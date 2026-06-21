@@ -110,7 +110,7 @@ describe('MindOS subagent ledger extension', () => {
         { action: 'list' },
         undefined,
         undefined,
-        { sessionManager, cwd: '/tmp/mindos', mode: 'agent' },
+        { sessionManager, cwd: '/tmp/mindos' },
       );
     } finally {
       restoreContext();
@@ -154,7 +154,7 @@ describe('MindOS subagent ledger extension', () => {
         },
         undefined,
         undefined,
-        { sessionManager, cwd: '/tmp/mindos', mode: 'agent' },
+        { sessionManager, cwd: '/tmp/mindos' },
       );
     } finally {
       restoreContext();

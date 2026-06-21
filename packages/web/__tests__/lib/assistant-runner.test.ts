@@ -24,7 +24,6 @@ describe('assistant runner utilities', () => {
     });
 
     expect(body).toEqual({
-      mode: 'agent',
       assistantId: 'inbox-organizer',
       messages: [{ role: 'user', content: 'Organize this' }],
       uploadedFiles: [{ name: 'capture.md', content: 'source' }],

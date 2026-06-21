@@ -156,7 +156,7 @@ describe('MindOS Agent bounded MCP runtime config', () => {
     expect(sandboxCache.servers.linear.tools).toEqual([{ name: 'danger', description: 'Danger' }]);
   });
 
-  it('only loads the MindOS MCP wrapper in agent mode when at least one server is explicitly allowlisted', async () => {
+  it('only loads the MindOS MCP wrapper in full permission when at least one server is explicitly allowlisted', async () => {
     const { getMindosWebPiRuntimePaths } = await import('@/lib/agent/mindos-pi-runtime-host');
     const { createMindosAgentPermissionPolicy } = await import('@geminilight/mindos/agent/mindos-pi/permission');
     const base = {
@@ -165,7 +165,10 @@ describe('MindOS Agent bounded MCP runtime config', () => {
       serverSettings: {},
     };
 
-    const withoutAllowlist = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
+    const withoutAllowlist = getMindosWebPiRuntimePaths({
+      ...base,
+      permissionPolicy: createMindosAgentPermissionPolicy('full'),
+    });
     expect(withoutAllowlist.additionalExtensionPaths.join('\n')).not.toContain('pi-mcp-adapter');
     expect(withoutAllowlist.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
 
@@ -178,23 +181,24 @@ describe('MindOS Agent bounded MCP runtime config', () => {
       },
     });
 
-    const withAllowlist = getMindosWebPiRuntimePaths({ ...base, mode: 'agent' });
+    const withAllowlist = getMindosWebPiRuntimePaths({
+      ...base,
+      permissionPolicy: createMindosAgentPermissionPolicy('full'),
+    });
     const extensionList = withAllowlist.additionalExtensionPaths.join('\n');
     expect(extensionList).toContain('mindos-mcp-adapter-extension');
     expect(extensionList).not.toContain(path.join('node_modules', 'pi-mcp-adapter', 'index.ts'));
 
     const readonlyPaths = getMindosWebPiRuntimePaths({
       ...base,
-      mode: 'agent',
       permissionPolicy: createMindosAgentPermissionPolicy('read'),
     });
-    const kbWritePaths = getMindosWebPiRuntimePaths({
+    const askPaths = getMindosWebPiRuntimePaths({
       ...base,
-      mode: 'agent',
-      permissionPolicy: createMindosAgentPermissionPolicy('read'),
+      permissionPolicy: createMindosAgentPermissionPolicy('ask'),
     });
     expect(readonlyPaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
-    expect(kbWritePaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
+    expect(askPaths.additionalExtensionPaths.join('\n')).not.toContain('mindos-mcp-adapter-extension');
   });
 
   it('wraps the upstream proxy tool so tool-level MCP allowlists cannot be bypassed', async () => {

@@ -53,8 +53,8 @@ describe('kbExtension permission policy scoping', () => {
 
     const names = registeredToolNames((register) => {
       runWithKbPermissionPolicy(readonlyPolicy, () => {
-        // A concurrent agent-mode request mutates the module-level policy
-        // between this request's setKbMode() and its reload().
+        // A concurrent write-capable request mutates the module-level policy
+        // between this request's scoped policy setup and its reload().
         setKbPermissionPolicy(agentPolicy);
         kbExtension({ registerTool: register } as never);
       });

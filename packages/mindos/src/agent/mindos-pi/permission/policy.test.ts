@@ -191,8 +191,8 @@ describe('MindOS Pi permission policy', () => {
   it('maps runtime contexts into the same product-mode policy contract', () => {
     expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'read' }).mode).toBe('read');
     expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'auto' }).mode).toBe('auto');
-    expect(createMindosAgentPermissionPolicyFromContext({ mode: 'agent' }).mode).toBe('ask');
-    expect(createMindosAgentPermissionPolicyFromContext({ askMode: 'readonly' }).mode).toBe('ask');
+    expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'invalid' }).mode).toBe('ask');
+    expect(createMindosAgentPermissionPolicyFromContext({ permissionMode: 'invalid' }, 'read').mode).toBe('read');
     expect(createMindosAgentPermissionPolicyFromContext(undefined).mode).toBe('ask');
   });
 });

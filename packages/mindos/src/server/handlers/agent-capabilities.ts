@@ -1,8 +1,6 @@
 import { json, type MindosServerResponse } from '../response.js';
 import { redactSensitiveObject, redactSensitiveText } from '../../session/redaction.js';
 
-export type AgentCapabilityMode = 'agent';
-
 export type AgentCapabilityKind =
   | 'kb-tool'
   | 'pi-subagent'
@@ -31,7 +29,6 @@ export type AgentCapabilityInput = {
   source?: unknown;
   status?: unknown;
   permissionRequired?: unknown;
-  availableInModes?: unknown;
   inputKinds?: unknown;
   outputKinds?: unknown;
   supportsStreaming?: unknown;
@@ -51,7 +48,6 @@ export type AgentCapability = {
   source: AgentCapabilitySource;
   status: AgentCapabilityStatus;
   permissionRequired: AgentCapabilityPermissionRequired;
-  availableInModes: AgentCapabilityMode[];
   inputKinds: string[];
   outputKinds: string[];
   supportsStreaming: boolean;
@@ -73,7 +69,6 @@ export type AgentCapabilitySourceStatus = {
 };
 
 export type AgentCapabilitiesPayload = {
-  mode: AgentCapabilityMode;
   include: AgentCapabilitySourceKey[];
   capabilities: AgentCapability[];
   sources: AgentCapabilitySourceStatus[];
@@ -85,7 +80,6 @@ export type AgentCapabilitiesServices = Partial<Record<
 >>;
 
 const SOURCE_ORDER = ['kb', 'subagents', 'acp', 'native', 'mcp', 'a2a'] as const satisfies readonly AgentCapabilitySourceKey[];
-const MODE_ORDER = ['agent'] as const satisfies readonly AgentCapabilityMode[];
 const KIND_SET = new Set<AgentCapabilityKind>([
   'kb-tool',
   'pi-subagent',
@@ -103,9 +97,8 @@ export async function handleAgentCapabilitiesGet(
   searchParams: URLSearchParams,
   services: AgentCapabilitiesServices = {},
 ): Promise<MindosServerResponse<AgentCapabilitiesPayload | { error: string }>> {
-  const mode = normalizeMode(searchParams.get('mode'));
-  if (!mode) {
-    return json({ error: 'mode must be agent' }, { status: 400 });
+  if (searchParams.has('mode')) {
+    return json({ error: 'mode is no longer supported' }, { status: 400 });
   }
   const include = normalizeInclude(searchParams.get('include'));
   const sources: AgentCapabilitySourceStatus[] = [];
@@ -123,8 +116,7 @@ export async function handleAgentCapabilitiesGet(
       const loaded = await loader();
       const normalized = loaded
         .map((item) => normalizeCapability(item))
-        .filter((item): item is AgentCapability => Boolean(item))
-        .filter((item) => item.availableInModes.includes(mode));
+        .filter((item): item is AgentCapability => Boolean(item));
       capabilities.push(...normalized);
       sources.push({ id: sourceId, status: 'ok', count: normalized.length });
     } catch (error) {
@@ -138,16 +130,10 @@ export async function handleAgentCapabilitiesGet(
   }
 
   return json({
-    mode,
     include,
     capabilities: sortCapabilities(capabilities),
     sources,
   });
-}
-
-function normalizeMode(value: string | null): AgentCapabilityMode | null {
-  if (value === null || value === '' || value === 'agent') return 'agent';
-  return null;
 }
 
 function normalizeInclude(value: string | null): AgentCapabilitySourceKey[] {
@@ -176,8 +162,6 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
   const permissionRequired = typeof input.permissionRequired === 'string' && PERMISSION_SET.has(input.permissionRequired as AgentCapabilityPermissionRequired)
     ? input.permissionRequired as AgentCapabilityPermissionRequired
     : 'ask';
-  const availableInModes = normalizeModes(input.availableInModes);
-  if (availableInModes.length === 0) return null;
 
   const status = typeof input.status === 'string' && STATUS_SET.has(input.status as AgentCapabilityStatus)
     ? input.status as AgentCapabilityStatus
@@ -199,7 +183,6 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
     source,
     status,
     permissionRequired,
-    availableInModes,
     inputKinds: normalizeStringArray(input.inputKinds),
     outputKinds: normalizeStringArray(input.outputKinds),
     supportsStreaming: input.supportsStreaming === true,
@@ -210,13 +193,6 @@ function normalizeCapability(input: AgentCapabilityInput): AgentCapability | nul
     defaultTimeoutMs,
     ...(metadata && Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
-}
-
-function normalizeModes(value: unknown): AgentCapabilityMode[] {
-  const fallback: AgentCapabilityMode[] = ['agent'];
-  if (!Array.isArray(value)) return fallback;
-  const requested = new Set(value.filter((item): item is AgentCapabilityMode => MODE_ORDER.includes(item as AgentCapabilityMode)));
-  return MODE_ORDER.filter((mode) => requested.has(mode));
 }
 
 function normalizeStringArray(value: unknown): string[] {

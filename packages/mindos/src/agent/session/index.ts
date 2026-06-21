@@ -414,8 +414,6 @@ export function parseMindosSseLine(line: string): MindOSSSEvent | null {
   }
 }
 
-export type MindosAskMode = 'agent';
-
 export type MindosAskFileValidationResult = {
   valid: boolean;
   newCumulativeSize: number;
@@ -435,7 +433,6 @@ export type MindosAskFileContext = {
 };
 
 export function normalizeMindosAskStepLimit(options: {
-  mode: MindosAskMode;
   requestedMaxSteps?: unknown;
   agentMaxSteps?: number;
 }): number {
@@ -477,7 +474,6 @@ export function expandMindosAskAttachedFiles(
 export function loadMindosAskFileContext(
   attachedFiles: string[] | undefined,
   currentFile: string | undefined,
-  mode: string,
   services: MindosAskFileContextServices,
 ): MindosAskFileContext {
   const contextParts: string[] = [];
@@ -494,7 +490,7 @@ export function loadMindosAskFileContext(
       newCumulativeSize: cumulativeSize,
     };
     if (!validation.valid) {
-      services.warn?.(`[ask] ${mode}: file size validation failed for "${filePath}": ${validation.error ?? 'invalid'}`);
+      services.warn?.(`[ask] file size validation failed for "${filePath}": ${validation.error ?? 'invalid'}`);
       failedFiles.push(filePath);
       return;
     }
@@ -505,7 +501,7 @@ export function loadMindosAskFileContext(
       contextParts.push(`### ${label}: ${filePath}\n\n${content}`);
       cumulativeSize = validation.newCumulativeSize;
     } catch (error) {
-      services.warn?.(`[ask] ${mode}: failed to read ${label.startsWith('Attached') ? 'attached file' : 'currentFile'} "${filePath}":`, error);
+      services.warn?.(`[ask] failed to read ${label.startsWith('Attached') ? 'attached file' : 'currentFile'} "${filePath}":`, error);
       failedFiles.push(filePath);
     }
   }
@@ -538,7 +534,6 @@ export function createMindosUploadedFileParts(
 
 export type MindosExternalRuntimePromptInput = {
   prompt: string;
-  mode?: MindosAskMode;
   fileContext?: MindosAskFileContext;
   uploadedParts?: string[];
   recalledKnowledge?: Array<{
@@ -1073,7 +1068,7 @@ export type MindosPiRuntimeResourceLoaderConfig = {
   settingsManager: unknown;
   systemPrompt: string;
   /**
-   * Re-evaluated by the SDK loader on every reload(). The agent-mode system
+   * Re-evaluated by the SDK loader on every reload(). Runtime system
    * prompt suffix (skills XML + active-skill directive) is delivered through
    * this hook — `systemPrompt` above is captured once at construction, so
    * appending to it after the loader exists never reaches the session.
@@ -1124,7 +1119,6 @@ export type MindosPiAgentRuntimeServices = {
   createResourceLoader(config: MindosPiRuntimeResourceLoaderConfig): MindosPiResourceLoaderAdapter;
   createAgentSession(config: MindosPiRuntimeCreateAgentSessionConfig): Promise<{ session: MindosPiAgentSessionAdapter }>;
   convertToLlm(messages: MindosAgentHistoryMessage[]): unknown[];
-  setKbMode(mode: MindosAskMode): void;
   generateSkillsXml?(skills: MindosDiscoveredSkill[]): string;
   getOllamaContextWindow?(baseUrl: string, modelName: string): Promise<number | undefined>;
   estimateTokens?(content: string): number;
@@ -1185,7 +1179,6 @@ function isMindosPiWebAccessExtensionPath(extensionPath: string): boolean {
 }
 
 export type MindosPiAgentRuntimeOptions = {
-  mode: MindosAskMode;
   messages: MindosUiAskMessage[];
   systemPrompt: string;
   providerOverride?: string;
@@ -1267,8 +1260,6 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
   const historyMessages = agentMessages.slice(0, -1);
   const llmHistoryMessages = options.services.convertToLlm(historyMessages);
 
-  options.services.setKbMode(options.mode);
-
   const authStorage = options.services.createAuthStorage();
   authStorage.setRuntimeApiKey(options.services.toRuntimeProvider(modelConfig.provider), modelConfig.apiKey);
   const modelRegistry = options.services.createModelRegistry(authStorage);
@@ -1306,18 +1297,16 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
   await resourceLoader.reload();
   recordExtensionLoadErrors();
 
-  if (options.mode === 'agent') {
-    const disabledSkillNames = new Set(options.serverSettings?.disabledSkills ?? []);
-    const discoveredSkills = resourceLoader.getSkills?.().skills ?? [];
-    const thirdPartySkills = discoveredSkills.filter(
-      (skill) => !coreSkillNames.has(skill.name) && !skill.disableModelInvocation && !disabledSkillNames.has(skill.name),
-    );
-    if (thirdPartySkills.length > 0 && options.services.generateSkillsXml) {
-      runtimeSystemPromptSections.push(options.services.generateSkillsXml(thirdPartySkills));
-    }
+  const disabledSkillNames = new Set(options.serverSettings?.disabledSkills ?? []);
+  const discoveredSkills = resourceLoader.getSkills?.().skills ?? [];
+  const thirdPartySkills = discoveredSkills.filter(
+    (skill) => !coreSkillNames.has(skill.name) && !skill.disableModelInvocation && !disabledSkillNames.has(skill.name),
+  );
+  if (thirdPartySkills.length > 0 && options.services.generateSkillsXml) {
+    runtimeSystemPromptSections.push(options.services.generateSkillsXml(thirdPartySkills));
   }
 
-  const customTools = options.mode === 'agent' && options.allowProjectBash !== false ? [options.bashTool] : [];
+  const customTools = options.allowProjectBash !== false ? [options.bashTool] : [];
   let registeredToolSummaries = collectMindosPiRegisteredToolSummaries({
     resourceLoader,
     customTools,

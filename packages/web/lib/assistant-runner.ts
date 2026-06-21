@@ -97,7 +97,6 @@ export function buildAssistantAskRequestBody({
 }: AssistantAskRequestOptions): Record<string, unknown> {
   const body: Record<string, unknown> = {
     messages,
-    mode: 'agent',
   };
   if (uploadedFiles) body.uploadedFiles = uploadedFiles;
   if (typeof maxSteps === 'number') body.maxSteps = maxSteps;

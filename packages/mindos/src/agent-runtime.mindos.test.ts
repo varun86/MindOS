@@ -32,7 +32,14 @@ describe('MindOS runtime adapter', () => {
       },
     });
 
-    const options = { mode: 'agent' };
+    const options = {
+      messages: [],
+      systemPrompt: 'prompt',
+      projectRoot: '/repo',
+      agentDir: '/home/test/.pi',
+      mindRoot: '/mind',
+      hostServices: {},
+    };
     await expect(adapter.createRuntime(options as never)).resolves.toBe(fakeRuntime);
     expect(createdOptions).toEqual([options]);
   });

@@ -7,7 +7,6 @@ import { useLocale } from '@/lib/stores/locale-store';
 import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AskPermissionLevel, Message, NativeRuntimeOptions } from '@/lib/types';
 import ModeCapsule, {
   getPersistedPermissionLevel,
-  permissionLevelToAskMode,
   permissionLevelToNativeRuntimePermission,
 } from '@/components/ask/ModeCapsule';
 import { useAskSession } from '@/hooks/useAskSession';
@@ -176,7 +175,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
   const [modelOverride, setModelOverride] = useState<string | null>(null);
   const [nativeRuntimeOptions, setNativeRuntimeOptions] = useState<NativeRuntimeOptions>({});
-  const askMode = useMemo(() => permissionLevelToAskMode(permissionLevel), [permissionLevel]);
   const effectiveNativeRuntimeOptions = useMemo<NativeRuntimeOptions>(() => ({
     ...nativeRuntimeOptions,
     permissionMode: permissionLevelToNativeRuntimePermission(permissionLevel),
@@ -414,7 +412,6 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
   }), []);
   const chat = useAskChat({
     currentFile,
-    askMode,
     providerOverride,
     modelOverride,
     nativeRuntimeOptions: effectiveNativeRuntimeOptions,

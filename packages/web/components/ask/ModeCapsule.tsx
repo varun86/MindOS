@@ -3,10 +3,9 @@
 import { Shield, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import AskOptionCapsule, { type AskOptionCapsuleOption } from '@/components/ask/AskOptionCapsule';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { AskMode, AskPermissionLevel, NativeRuntimePermissionMode } from '@/lib/types';
+import type { AskPermissionLevel, NativeRuntimePermissionMode } from '@/lib/types';
 
 const STORAGE_KEY = 'mindos-permission-level.v1';
-const LEGACY_MODE_STORAGE_KEY = 'mindos-ask-mode';
 
 interface ModeCapsuleProps {
   mode: AskPermissionLevel;
@@ -18,16 +17,6 @@ function isPermissionLevel(value: unknown): value is AskPermissionLevel {
   return value === 'read' || value === 'ask' || value === 'auto' || value === 'full';
 }
 
-function legacyModeToPermissionLevel(mode: unknown): AskPermissionLevel | null {
-  if (mode === 'chat') return 'read';
-  if (mode === 'agent') return 'ask';
-  return null;
-}
-
-export function permissionLevelToAskMode(level: AskPermissionLevel): AskMode {
-  return 'agent';
-}
-
 export function permissionLevelToNativeRuntimePermission(level: AskPermissionLevel): NativeRuntimePermissionMode {
   return level;
 }
@@ -37,14 +26,6 @@ export function getPersistedPermissionLevel(): AskPermissionLevel {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (isPermissionLevel(stored)) return stored;
-
-    const legacy = localStorage.getItem(LEGACY_MODE_STORAGE_KEY);
-    const migrated = legacyModeToPermissionLevel(legacy);
-    if (migrated) {
-      localStorage.setItem(STORAGE_KEY, migrated);
-      localStorage.removeItem(LEGACY_MODE_STORAGE_KEY);
-      return migrated;
-    }
   } catch {
     // localStorage unavailable; keep the in-memory default.
   }
@@ -57,14 +38,6 @@ export function persistPermissionLevel(mode: AskPermissionLevel): void {
   } catch {
     // localStorage unavailable; the current render still uses the selected value.
   }
-}
-
-export function getPersistedMode(): AskMode {
-  return permissionLevelToAskMode(getPersistedPermissionLevel());
-}
-
-export function persistMode(mode: AskMode | 'chat'): void {
-  persistPermissionLevel(legacyModeToPermissionLevel(mode) ?? 'ask');
 }
 
 function permissionIcon(mode: AskPermissionLevel, size = 11) {

@@ -5,7 +5,6 @@ import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
 import type {
   AgentRuntimeIdentity,
-  AskModeApi,
   RuntimeSessionBinding,
   NativeRuntimeOptions,
   NativeRuntimePermissionMode,
@@ -160,9 +159,8 @@ function omitEnvKeys(
 function loadAttachedFileContext(
   attachedFiles: string[] | undefined,
   currentFile: string | undefined,
-  mode: string,
 ): { contextParts: string[]; failedFiles: string[] } {
-  return loadMindosAskFileContext(attachedFiles, currentFile, mode, {
+  return loadMindosAskFileContext(attachedFiles, currentFile, {
     readFile: getFileContent,
     truncate,
     validateFileSize: (filePath, cumulativeSize) => validateFileSize(path.join(getMindRoot(), filePath), cumulativeSize),
@@ -269,11 +267,6 @@ function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean
   }
 
   return options;
-}
-
-function normalizeAskModeApiInput(value: unknown): AskModeApi | null {
-  if (value === undefined || value === null) return 'agent';
-  return value === 'agent' ? value : null;
 }
 
 function latestSessionContextSignature(runs: AgentRunRecord[]): string | null {
@@ -589,8 +582,6 @@ export type AskRouteRequestBody = {
     dataBase64?: string;
   }>;
   maxSteps?: number;
-  /** Ask prompt mode. Tool permissions are controlled by runtimeOptions.permissionMode. */
-  mode?: AskModeApi;
   /** Assistant binding. This is not an ask mode. */
   assistantId?: string;
   /** ACP agent selection: if present, route to ACP instead of MindOS */
@@ -690,6 +681,9 @@ export function normalizeAgentTurnAskBody(
   }
 
   const record = rawBody as Record<string, unknown>;
+  if ('mode' in record || 'mode' in (objectField(record, 'options') ?? {})) {
+    return { ok: false, message: 'mode is no longer supported' };
+  }
   if (Array.isArray(record.messages)) {
     return {
       ok: true,
@@ -722,7 +716,6 @@ export function normalizeAgentTurnAskBody(
     ok: true,
     body: {
       messages: [message],
-      mode: 'agent',
       chatSessionId: sessionId,
       ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
       ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
@@ -798,6 +791,9 @@ export async function runAskRequestBody(
   const requestSignal = requestContext.signal ?? new AbortController().signal;
 
   const { messages, currentFile, attachedFiles: rawAttached, uploadedFiles } = body;
+  if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'mode')) {
+    return apiError(ErrorCodes.INVALID_REQUEST, 'mode is no longer supported', 400);
+  }
   const mindosUiMessages = toMindosUiAskMessages(messages);
   const selectedNativeRuntime = nativeAgentRuntimeFromSelection(body.selectedRuntime, body.runtimeBinding);
   const legacySelectedAcpAgent = acpAgentFromLegacySelection(body.selectedAcpAgent);
@@ -805,10 +801,6 @@ export async function runAskRequestBody(
     ? null
     : (acpAgentFromRuntime(body.selectedRuntime) ?? legacySelectedAcpAgent);
   const attachedFiles = Array.isArray(rawAttached) ? expandAttachedFiles(rawAttached) : rawAttached;
-  const askMode = normalizeAskModeApiInput(body.mode);
-  if (!askMode) {
-    return apiError(ErrorCodes.INVALID_REQUEST, 'mode must be agent', 400);
-  }
   const assistantId = normalizeAssistantId(body.assistantId);
   const nativeRuntimeOptionsError = validateNativeRuntimeOptions(body.runtimeOptions);
   if (nativeRuntimeOptionsError) return nativeRuntimeOptionsError;
@@ -865,7 +857,7 @@ export async function runAskRequestBody(
 
   // Diagnostic: log attached files so silent failures are visible
   if (Array.isArray(attachedFiles) && attachedFiles.length > 0) {
-    console.log(`[ask] mode=${askMode} permission=${permissionPolicy.mode} attachedFiles=${JSON.stringify(attachedFiles)} currentFile=${currentFile ?? 'none'}`);
+    console.log(`[ask] permission=${permissionPolicy.mode} attachedFiles=${JSON.stringify(attachedFiles)} currentFile=${currentFile ?? 'none'}`);
   }
 
   // Read agent config from settings
@@ -902,7 +894,6 @@ export async function runAskRequestBody(
   const acceptLang = requestHeaders.get('accept-language') ?? '';
   const t = acceptLang.startsWith('zh') ? i18nZh.ask : i18nEn.ask;
   const stepLimit = normalizeMindosAskStepLimit({
-    mode: askMode,
     requestedMaxSteps: body.maxSteps,
     agentMaxSteps: agentConfig.maxSteps,
   });
@@ -910,9 +901,8 @@ export async function runAskRequestBody(
   const thinkingBudget = mindosAgentOptions.thinkingBudget ?? agentConfig.thinkingBudget ?? 5000;
   const contextStrategy = agentConfig.contextStrategy ?? 'auto';
 
-  // Uploaded files — shared by all modes
-  // These are already truncated client-side (80K limit), so only apply a generous
-  // server-side cap to guard against malformed requests.
+  // Uploaded files are already truncated client-side (80K limit), so only
+  // apply a generous server-side cap to guard against malformed requests.
   const uploadedParts = createMindosUploadedFileParts(uploadedFiles);
   const runtimeAttachments = [
     ...createMindosRuntimeUploadedFileAttachments(uploadedFiles),
@@ -922,7 +912,7 @@ export async function runAskRequestBody(
 
   if (verifiedNativeRuntime || selectedAcpAgent) {
     const lastUserContent = getLastUserContent(messages);
-    const fileContext = loadAttachedFileContext(attachedFiles, currentFile, 'external');
+    const fileContext = loadAttachedFileContext(attachedFiles, currentFile);
     const recalledKnowledge = await recallMindosTurnKnowledge({
       mindRoot,
       lastUserContent,
@@ -1164,8 +1154,7 @@ export async function runAskRequestBody(
   }
 
   let agentInitialization: MindosAskInitializationContext | undefined;
-  if (askMode === 'agent') {
-    // Agent mode: full prompt assembly
+  {
     // Auto-load skill + bootstrap context for each request.
     const isZh = serverSettings.disabledSkills?.includes('mindos') ?? false;
     const skillDirName = isZh ? 'mindos-zh' : 'mindos';
@@ -1266,7 +1255,7 @@ export async function runAskRequestBody(
   }
 
   const lastUserContent = getLastUserContent(messages);
-  const fileContext = loadAttachedFileContext(attachedFiles, currentFile, askMode);
+  const fileContext = loadAttachedFileContext(attachedFiles, currentFile);
   const recalledKnowledge = await recallMindosTurnKnowledge({
     mindRoot,
     lastUserContent,
@@ -1299,21 +1288,20 @@ export async function runAskRequestBody(
   let systemPrompt = systemPromptBase;
 
   // Log system prompt size for diagnosing context truncation issues (e.g. Ollama)
-  console.log(`[ask] mode=${askMode} systemPrompt=${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
+  console.log(`[ask] systemPrompt=${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
 
   try {
     const {
       createWebMindosPiRuntimeHostServices,
       getMindosWebPiRuntimePaths,
     } = await import('@/lib/agent/mindos-pi-runtime-host');
-    const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, mode: askMode, permissionPolicy });
+    const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, permissionPolicy });
     const { createMindosAgentRuntime } = await import('@geminilight/mindos/agent/runtime/adapters/mindos');
     const { runWithKbPermissionPolicy } = await import('@/lib/agent/kb-extension');
     // Scope the kb tool policy to this request: runtime creation reloads the
-    // kb extension, and concurrent requests with different modes must not
+    // kb extension, and concurrent requests with different permissions must not
     // race on the module-level policy.
     const runtime = await runWithKbPermissionPolicy(permissionPolicy, () => createMindosAgentRuntime({
-      mode: askMode,
       messages: mindosUiMessages,
       systemPrompt,
       providerOverride: body.providerOverride,

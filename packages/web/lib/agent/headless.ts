@@ -1,7 +1,7 @@
 import { getMindRoot } from '@/lib/fs';
 import { readSettings } from '@/lib/settings';
 import { getProjectRoot } from '@/lib/project-root';
-import type { AskModeApi, Message as FrontendMessage } from '@/lib/types';
+import type { Message as FrontendMessage } from '@/lib/types';
 import { performActiveRecall } from '@/lib/agent/active-recall';
 import { toMindosUiAskMessages } from '@/lib/agent/to-agent-messages';
 import {
@@ -15,18 +15,18 @@ import {
   isToolExecutionStartEvent,
 } from '@geminilight/mindos/session';
 import { buildMindosContextPrompt, buildMindosSystemPrompt } from '@geminilight/mindos/agent';
-import { resolveHeadlessAgentMode, type HeadlessAgentEntryPoint } from './headless-mode-guard';
+import type { MindosPermissionMode } from '@geminilight/mindos/agent/mindos-pi/permission';
+import { resolveHeadlessAgentPermission, type HeadlessAgentEntryPoint } from './headless-permission-guard';
 
 export interface HeadlessAgentRunOptions {
   userMessage: string;
   historyMessages?: FrontendMessage[];
-  mode?: AskModeApi;
+  permissionMode?: MindosPermissionMode;
   maxSteps?: number;
   providerOverride?: string;
   modelOverride?: string;
   workDir?: string;
   entrypoint?: HeadlessAgentEntryPoint;
-  allowAgentMode?: boolean;
 }
 
 export interface HeadlessAgentRunResult {
@@ -36,11 +36,10 @@ export interface HeadlessAgentRunResult {
 }
 
 export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promise<HeadlessAgentRunResult> {
-  const modeDecision = resolveHeadlessAgentMode({
+  const permissionDecision = resolveHeadlessAgentPermission({
     entrypoint: options.entrypoint,
-    allowAgentMode: options.allowAgentMode,
+    permissionMode: options.permissionMode,
   });
-  const agentMode = modeDecision.effectiveMode;
   const historyMessages = Array.isArray(options.historyMessages) ? options.historyMessages : [];
   const currentMessage: FrontendMessage = { role: 'user', content: options.userMessage, timestamp: Date.now() };
   const allMessages = [...historyMessages, currentMessage];
@@ -90,11 +89,10 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
   const { createMindosAgentRuntime } = await import('@geminilight/mindos/agent/runtime/adapters/mindos');
   const { runWithKbPermissionPolicy } = await import('@/lib/agent/kb-extension');
   const { createMindosAgentPermissionPolicy } = await import('@geminilight/mindos/agent/mindos-pi/permission');
-  const permissionPolicy = createMindosAgentPermissionPolicy(modeDecision.permissionPolicyMode);
-  const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, mode: agentMode, permissionPolicy });
+  const permissionPolicy = createMindosAgentPermissionPolicy(permissionDecision.permissionPolicyMode);
+  const runtimePaths = getMindosWebPiRuntimePaths({ projectRoot, mindRoot, serverSettings, permissionPolicy });
   // Scope the kb tool policy to this request — see route.ts for the rationale.
   const runtime = await runWithKbPermissionPolicy(permissionPolicy, () => createMindosAgentRuntime({
-    mode: agentMode,
     messages: mindosUiMessages,
     systemPrompt,
     providerOverride: options.providerOverride,

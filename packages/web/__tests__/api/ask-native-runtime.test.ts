@@ -192,7 +192,7 @@ describe('/api/ask native runtime routing', () => {
     }
   });
 
-  it('rejects removed organize ask mode before runtime routing', async () => {
+  it('rejects removed mode field before runtime routing', async () => {
     const { POST } = await import('../../app/api/ask/route');
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Organize these captures' }],
@@ -202,7 +202,7 @@ describe('/api/ask native runtime routing', () => {
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toMatchObject({
       error: expect.objectContaining({
-        message: 'mode must be agent',
+        message: 'mode is no longer supported',
       }),
     });
     expect(mockRunMindosAgentRuntimeAskSession).not.toHaveBeenCalled();
@@ -240,7 +240,6 @@ describe('/api/ask native runtime routing', () => {
       modelOverride: 'claude-sonnet-4-20250514',
       runtimeOptions: { permissionMode: 'read' },
       agentOptions: { enableThinking: true, thinkingBudget: 8000 },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
@@ -309,7 +308,6 @@ describe('/api/ask native runtime routing', () => {
         reasoningEffort: 'high',
         permissionMode: 'read',
       },
-      mode: 'agent',
       chatSessionId: 'chat-native-1',
     }));
 
@@ -400,7 +398,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'try to move cwd' }],
       workDir: { source: 'manual', path: getTestMindRoot() },
-      mode: 'agent',
       chatSessionId: 'chat-locked-workdir',
     }));
 
@@ -431,7 +428,6 @@ describe('/api/ask native runtime routing', () => {
         updatedAt: 1,
       },
       workDir: { source: 'manual', path: process.cwd() },
-      mode: 'agent',
       chatSessionId: 'chat-untrusted-runtime-resume',
     }));
 
@@ -467,7 +463,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
-      mode: 'agent',
       chatSessionId: 'chat-native-activity',
     }));
 
@@ -508,7 +503,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Read the workspace only' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
-      mode: 'agent',
       runtimeOptions: { permissionMode: 'read' },
     }));
 
@@ -528,7 +522,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
@@ -551,7 +544,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Organize with full assistant access' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'agent',
       assistantId: 'inbox-organizer',
     }));
 
@@ -572,7 +564,6 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Organize safely' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       runtimeOptions: { permissionMode: 'ask', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
-      mode: 'agent',
       assistantId: 'inbox-organizer',
     }));
 
@@ -594,7 +585,6 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Preview without writes' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       runtimeOptions: { permissionMode: 'read' },
-      mode: 'agent',
       assistantId: 'inbox-organizer',
     }));
 
@@ -618,7 +608,6 @@ describe('/api/ask native runtime routing', () => {
         modelOverride: 'claude-sonnet-4-20250514',
         reasoningEffort: 'xhigh',
       },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(400);
@@ -653,7 +642,6 @@ describe('/api/ask native runtime routing', () => {
         status: 'failed',
         updatedAt: 1,
       },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
@@ -689,7 +677,6 @@ describe('/api/ask native runtime routing', () => {
         status: 'active',
         updatedAt: 1,
       },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
@@ -727,7 +714,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'agent',
     }));
     const body = await res.json();
 
@@ -751,7 +737,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'agent',
     }));
     const body = await res.json();
 
@@ -786,7 +771,6 @@ describe('/api/ask native runtime routing', () => {
     const responsePromise = POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex even if detection is slow' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
-      mode: 'agent',
     }));
 
     await vi.advanceTimersByTimeAsync(3000);
@@ -813,7 +797,6 @@ describe('/api/ask native runtime routing', () => {
     const responsePromise = POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex while detection is slow' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
-      mode: 'agent',
     }));
 
     await vi.advanceTimersByTimeAsync(3000);
@@ -839,7 +822,6 @@ describe('/api/ask native runtime routing', () => {
     const responsePromise = POST(askRequest({
       messages: [{ role: 'user', content: 'Use Claude Code even if detection is slow' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude', binaryPath: '/tmp/fake-claude' },
-      mode: 'agent',
     }));
 
     await vi.advanceTimersByTimeAsync(3000);
@@ -867,7 +849,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude', binaryPath: '/tmp/fake-claude' },
-      mode: 'agent',
     }));
 
     expect(res.status).toBe(200);
@@ -891,7 +872,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex with timeout' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'agent',
     }));
     await res.text();
 
@@ -912,7 +892,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
-      mode: 'agent',
       chatSessionId: 'chat-native-throw',
     }));
     const text = await res.text();
@@ -948,7 +927,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      mode: 'agent',
       chatSessionId: 'chat-native-error',
     }));
     const text = await res.text();
@@ -989,7 +967,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
-      mode: 'agent',
       chatSessionId: 'chat-native-timeout',
     }));
     const text = await res.text();
@@ -1018,7 +995,6 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Use the selected ACP agent' }],
       selectedRuntime: { id: 'broken-runtime' },
       selectedAcpAgent: { id: 'legacy-acp', name: 'Legacy ACP' },
-      mode: 'agent',
     }));
     const text = await res.text();
 
@@ -1057,7 +1033,6 @@ describe('/api/ask native runtime routing', () => {
       messages: [{ role: 'user', content: 'Organize through ACP safely' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
       workDir: { source: 'manual', path: workDir, label: 'repo' },
-      mode: 'agent',
       assistantId: 'inbox-organizer',
       chatSessionId: 'chat-acp-1',
     }));
@@ -1103,7 +1078,6 @@ describe('/api/ask native runtime routing', () => {
     const res = await POST(askRequest({
       messages: [{ role: 'user', content: 'Use the selected ACP agent' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
-      mode: 'agent',
       runtimeOptions: { permissionMode: 'read' },
     }));
     const text = await res.text();

@@ -32,7 +32,6 @@ function classifyAgentArgs(
 
 function buildAskBody(
   content: string | string[],
-  mode: 'agent',
   opts: { file?: string; maxSteps?: number } = {},
 ) {
   const messages = Array.isArray(content)
@@ -43,7 +42,7 @@ function buildAskBody(
       }))
     : [{ role: 'user', content, timestamp: Date.now() }];
 
-  const body: Record<string, unknown> = { messages, mode };
+  const body: Record<string, unknown> = { messages };
   if (opts.file) body.attachedFiles = [opts.file];
   if (opts.maxSteps) body.maxSteps = opts.maxSteps;
   return body;
@@ -106,9 +105,9 @@ describe('Agent CLI routing', () => {
 // ── API body construction ─────────────────────────────────────────────────────
 
 describe('Ask API body construction', () => {
-  it('builds agent mode body with correct message format', () => {
-    const body = buildAskBody('do something', 'agent');
-    expect(body.mode).toBe('agent');
+  it('builds request body with correct message format', () => {
+    const body = buildAskBody('do something');
+    expect(body).not.toHaveProperty('mode');
     expect(body.messages).toHaveLength(1);
     const msg = (body.messages as any[])[0];
     expect(msg.role).toBe('user');
@@ -117,7 +116,7 @@ describe('Ask API body construction', () => {
   });
 
   it('builds multi-turn conversation body', () => {
-    const body = buildAskBody(['hello', 'hi there', 'how are you'], 'agent');
+    const body = buildAskBody(['hello', 'hi there', 'how are you']);
     expect(body.messages).toHaveLength(3);
     const msgs = body.messages as any[];
     expect(msgs[0].role).toBe('user');
@@ -126,17 +125,17 @@ describe('Ask API body construction', () => {
   });
 
   it('attaches file when provided', () => {
-    const body = buildAskBody('summarize', 'agent', { file: 'notes.md' });
+    const body = buildAskBody('summarize', { file: 'notes.md' });
     expect(body.attachedFiles).toEqual(['notes.md']);
   });
 
   it('sets maxSteps when provided', () => {
-    const body = buildAskBody('do task', 'agent', { maxSteps: 10 });
+    const body = buildAskBody('do task', { maxSteps: 10 });
     expect(body.maxSteps).toBe(10);
   });
 
   it('omits attachedFiles and maxSteps when not provided', () => {
-    const body = buildAskBody('simple task', 'agent');
+    const body = buildAskBody('simple task');
     expect(body.attachedFiles).toBeUndefined();
     expect(body.maxSteps).toBeUndefined();
   });

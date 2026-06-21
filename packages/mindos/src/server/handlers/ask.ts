@@ -74,7 +74,6 @@ export type MindosAskStreamRequest = {
   attachedFiles?: string[];
   uploadedFiles?: MindosUploadedFile[];
   maxSteps?: number;
-  mode?: 'agent';
   assistantId?: string;
   selectedRuntime?: MindosSelectedRuntime | null;
   runtimeBinding?: MindosRuntimeSessionBinding | null;
@@ -132,9 +131,8 @@ function parseAskStreamRequest(body: unknown):
     return { ok: false, status: 400, body: { error: 'messages must be an array' } };
   }
 
-  const mode = record.mode;
-  if (mode !== undefined && mode !== 'agent') {
-    return { ok: false, status: 400, body: { error: 'mode must be agent' } };
+  if ('mode' in record) {
+    return { ok: false, status: 400, body: { error: 'mode is no longer supported' } };
   }
 
   const selectedRuntime = normalizeSelectedRuntime(record);
@@ -165,7 +163,6 @@ function parseAskStreamRequest(body: unknown):
       ...(Array.isArray(record.attachedFiles) ? { attachedFiles: record.attachedFiles.filter((item): item is string => typeof item === 'string') } : {}),
       ...(Array.isArray(record.uploadedFiles) ? { uploadedFiles: normalizeUploadedFiles(record.uploadedFiles) } : {}),
       ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
-      ...(mode ? { mode } : {}),
       ...(typeof record.assistantId === 'string' && record.assistantId.trim() ? { assistantId: record.assistantId.trim() } : {}),
       ...(selectedRuntime !== undefined ? { selectedRuntime } : {}),
       ...(runtimeBinding !== undefined ? { runtimeBinding } : {}),
@@ -191,6 +188,9 @@ function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
   }
 
   const record = body as Record<string, unknown>;
+  if ('mode' in record || 'mode' in (objectField(record, 'options') ?? {})) {
+    return { ok: false, status: 400, body: { error: 'mode is no longer supported' } };
+  }
   if (Array.isArray(record.messages)) {
     return { ok: true, body: { ...record, chatSessionId: sessionId } };
   }
@@ -215,7 +215,6 @@ function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
         ...(images ? { images } : {}),
         ...(stringField(message, 'skillName') ? { skillName: stringField(message, 'skillName') } : {}),
       }],
-      mode: 'agent',
       chatSessionId: sessionId,
       ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
       ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')

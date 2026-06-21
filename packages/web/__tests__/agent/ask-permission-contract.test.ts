@@ -119,18 +119,12 @@ describe('MINDOS_SYSTEM_PROMPT', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AskMode type — compile-time type check
+// Permission type — compile-time contract
 // ---------------------------------------------------------------------------
 
-describe('AskMode type', () => {
-  it('accepts valid mode values', async () => {
-    const { AskMode } = await import('@/lib/types') as any;
-    const validModes: Array<import('@/lib/types').AskMode> = ['agent'];
-    expect(validModes).toHaveLength(1);
-  });
-
-  it('AskModeApi only accepts agent', async () => {
-    const validModes: Array<import('@/lib/types').AskModeApi> = ['agent'];
-    expect(validModes).toHaveLength(1);
+describe('AskPermissionLevel type', () => {
+  it('accepts valid permission values without an ask-mode wrapper', () => {
+    const validModes: Array<import('@/lib/types').AskPermissionLevel> = ['read', 'ask', 'auto', 'full'];
+    expect(validModes).toHaveLength(4);
   });
 });

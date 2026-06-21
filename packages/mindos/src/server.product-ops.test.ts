@@ -102,7 +102,7 @@ describe('MindOS server contract: product operations', () => {
   });
 
   it('aggregates agent capabilities with source isolation and safe metadata', async () => {
-    const response = await handleAgentCapabilitiesGet(new URLSearchParams('mode=agent'), {
+    const response = await handleAgentCapabilitiesGet(new URLSearchParams(), {
       kb: () => [
         {
           id: 'kb:read',
@@ -112,7 +112,6 @@ describe('MindOS server contract: product operations', () => {
           source: 'mindos',
           status: 'available',
           permissionRequired: 'read',
-          availableInModes: ['agent'],
           metadata: {
             toolName: 'read_file',
             execute: () => 'must not leak',
@@ -127,7 +126,6 @@ describe('MindOS server contract: product operations', () => {
           source: 'mindos',
           status: 'available',
           permissionRequired: 'ask',
-          availableInModes: ['agent'],
         },
       ],
       subagents: () => {
@@ -143,7 +141,6 @@ describe('MindOS server contract: product operations', () => {
         kind: 'kb-tool',
         source: 'mindos',
         permissionRequired: 'read',
-        availableInModes: ['agent'],
         metadata: {
           toolName: 'read_file',
           apiKey: '[redacted]',
@@ -154,7 +151,6 @@ describe('MindOS server contract: product operations', () => {
         kind: 'kb-tool',
         source: 'mindos',
         permissionRequired: 'ask',
-        availableInModes: ['agent'],
       }),
     ]));
     expect(JSON.stringify(response.body)).not.toContain('must not leak');
@@ -166,7 +162,11 @@ describe('MindOS server contract: product operations', () => {
       error: 'Authorization: Bearer [redacted]',
     });
 
-    const agent = await handleAgentCapabilitiesGet(new URLSearchParams('mode=agent&include=kb,mcp,a2a'), {
+    const removedMode = await handleAgentCapabilitiesGet(new URLSearchParams('mode=agent'), {});
+    expect(removedMode.status).toBe(400);
+    expect(removedMode.body).toEqual({ error: 'mode is no longer supported' });
+
+    const agent = await handleAgentCapabilitiesGet(new URLSearchParams('include=kb,mcp,a2a'), {
       kb: () => [{
         kind: 'kb-tool',
         name: 'Delete File',

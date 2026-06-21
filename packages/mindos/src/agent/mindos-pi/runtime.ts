@@ -24,7 +24,6 @@ export type MindosPiCodingAgentRuntimeHostServices = Pick<
   MindosPiAgentRuntimeServices,
   | 'resolveModelConfig'
   | 'toRuntimeProvider'
-  | 'setKbMode'
   | 'generateSkillsXml'
   | 'getOllamaContextWindow'
   | 'estimateTokens'

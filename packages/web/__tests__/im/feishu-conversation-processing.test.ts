@@ -60,7 +60,6 @@ describe('Feishu conversation processing', () => {
     expect(runHeadlessAgent).toHaveBeenCalledWith(expect.objectContaining({
       userMessage: '你好',
       historyMessages: [{ role: 'assistant', content: 'Previous reply', timestamp: 1 }],
-      mode: 'agent',
       entrypoint: 'im',
     }));
     expect(sendIMMessage).toHaveBeenCalledWith(expect.objectContaining({

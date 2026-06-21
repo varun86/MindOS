@@ -53,7 +53,6 @@ describe('useAiOrganize start request', () => {
     }));
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(request).toMatchObject({
-      mode: 'agent',
       assistantId: 'inbox-organizer',
       providerOverride: 'p_capture',
       modelOverride: 'capture-model',

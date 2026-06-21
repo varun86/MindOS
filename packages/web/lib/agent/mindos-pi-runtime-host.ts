@@ -1,12 +1,10 @@
 import path from 'path';
 import os from 'os';
-import type { MindosAskMode } from '@geminilight/mindos/session';
 import type { MindosPiCodingAgentRuntimeHostServices } from '@geminilight/mindos/session/pi-coding-agent';
 import { getModelConfig, hasImages } from '@/lib/agent/model';
 import { estimateStringTokens, getOllamaContextWindow } from '@/lib/agent/context';
 import { isProviderId, toPiProvider, type ProviderId } from '@/lib/agent/providers';
 import { findProvider, isProviderEntryId } from '@/lib/custom-endpoints';
-import { setKbPermissionPolicy } from '@/lib/agent/kb-extension';
 import { registerWebKbExtensionHost } from '@/lib/agent/kb-extension-host';
 import { scanExtensionPaths } from '@/lib/pi-integration/extensions';
 import { generateSkillsXml } from '@/lib/agent/skills-xml';
@@ -20,7 +18,6 @@ import {
   createMindosAgentPermissionPolicy,
   hasMindosExtensionScope,
   type MindosAgentPermissionPolicy,
-  type MindosPermissionMode,
 } from '@geminilight/mindos/agent/mindos-pi/permission';
 
 type WebServerSettings = {
@@ -34,18 +31,13 @@ type WebServerSettings = {
   };
 };
 
-function permissionModeFromAskMode(mode: MindosAskMode): MindosPermissionMode {
-  return mode === 'agent' ? 'ask' : 'ask';
-}
-
 export function getMindosWebPiRuntimePaths(input: {
   projectRoot: string;
   mindRoot: string;
   serverSettings: WebServerSettings;
-  mode: MindosAskMode;
   permissionPolicy?: MindosAgentPermissionPolicy;
 }): { agentDir: string; additionalSkillPaths: string[]; additionalExtensionPaths: string[] } {
-  const policy = input.permissionPolicy ?? createMindosAgentPermissionPolicy(permissionModeFromAskMode(input.mode));
+  const policy = input.permissionPolicy ?? createMindosAgentPermissionPolicy('ask');
   const webAppDir = path.join(input.projectRoot, 'packages', 'web');
   const additionalExtensionPaths: string[] = [];
 
@@ -126,7 +118,6 @@ export function createWebMindosPiRuntimeHostServices(
       });
     },
     toRuntimeProvider: (provider) => toPiProvider(provider as ProviderId),
-    setKbMode: (mode) => setKbPermissionPolicy(createMindosAgentPermissionPolicy(permissionModeFromAskMode(mode))),
     generateSkillsXml: (skills) => generateSkillsXml(skills as any),
     getOllamaContextWindow,
     estimateTokens: estimateStringTokens,
