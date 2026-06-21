@@ -132,6 +132,12 @@ describe('MindOS server contract: core, files, HTTP', () => {
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
+      id: 'agent.sessions.turns.create',
+      method: 'POST',
+      path: '/api/agent/sessions/[sessionId]/turns',
+      auth: 'required',
+    });
+    expect(contract.routes).toContainEqual({
       id: 'ask-sessions',
       method: 'GET',
       path: '/api/ask-sessions',

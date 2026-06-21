@@ -110,6 +110,16 @@ export function handleAskStream(
   };
 }
 
+export function handleAgentSessionTurnStream(
+  sessionId: string,
+  body: unknown,
+  services: AskStreamHandlerServices,
+): AskStreamHandlerResult {
+  const normalized = normalizeAgentSessionTurnBody(sessionId, body);
+  if (!normalized.ok) return normalized;
+  return handleAskStream(normalized.body, services);
+}
+
 function parseAskStreamRequest(body: unknown):
   | { ok: true; body: MindosAskStreamRequest }
   | { ok: false; status: number; body: { error: string } } {
@@ -168,6 +178,105 @@ function parseAskStreamRequest(body: unknown):
       ...(typeof record.modelOverride === 'string' ? { modelOverride: record.modelOverride } : {}),
     },
   };
+}
+
+function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
+  | { ok: true; body: unknown }
+  | { ok: false; status: number; body: { error: string } } {
+  if (!sessionId.trim()) {
+    return { ok: false, status: 400, body: { error: 'sessionId is required' } };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false, status: 400, body: { error: 'Invalid agent session turn request body' } };
+  }
+
+  const record = body as Record<string, unknown>;
+  if (Array.isArray(record.messages)) {
+    return { ok: true, body: { ...record, chatSessionId: sessionId } };
+  }
+
+  const message = objectField(record, 'message');
+  const text = stringField(message, 'text') ?? stringField(message, 'content') ?? stringField(record, 'prompt');
+  const images = arrayField(message, 'images') ?? arrayField(record, 'images');
+  if (!text && (!images || images.length === 0)) {
+    return { ok: false, status: 400, body: { error: 'message.text is required' } };
+  }
+
+  const context = objectField(record, 'context');
+  const options = objectField(record, 'options');
+  const runtimeOptions = objectField(options, 'runtimeOptions') ?? pickRuntimeOptions(options) ?? objectField(record, 'runtimeOptions');
+  return {
+    ok: true,
+    body: {
+      messages: [{
+        role: 'user',
+        content: text ?? '',
+        timestamp: Date.now(),
+        ...(images ? { images } : {}),
+        ...(stringField(message, 'skillName') ? { skillName: stringField(message, 'skillName') } : {}),
+      }],
+      mode: 'agent',
+      chatSessionId: sessionId,
+      ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
+      ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
+        ? { currentFile: stringField(context, 'currentFile') ?? stringField(record, 'currentFile') }
+        : {}),
+      ...(arrayField(context, 'attachedFiles') ?? arrayField(record, 'attachedFiles')
+        ? { attachedFiles: stringArrayField(context, 'attachedFiles') ?? stringArrayField(record, 'attachedFiles') ?? [] }
+        : {}),
+      ...(arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')
+        ? { uploadedFiles: arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles') }
+        : {}),
+      ...(objectField(context, 'workDir') ?? objectField(record, 'workDir')
+        ? { workDir: objectField(context, 'workDir') ?? objectField(record, 'workDir') }
+        : {}),
+      ...(objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')
+        ? { contextSelection: objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection') }
+        : {}),
+      ...(objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')
+        ? { selectedRuntime: objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime') }
+        : {}),
+      ...(objectField(record, 'runtimeBinding') ? { runtimeBinding: objectField(record, 'runtimeBinding') } : {}),
+      ...(runtimeOptions ? { runtimeOptions } : {}),
+      ...(objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')
+        ? { agentOptions: objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions') }
+        : {}),
+      ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
+      ...(stringField(record, 'providerOverride') ? { providerOverride: stringField(record, 'providerOverride') } : {}),
+      ...(stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride')
+        ? { modelOverride: stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride') }
+        : {}),
+    },
+  };
+}
+
+function objectField(record: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined {
+  const value = record?.[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function arrayField(record: Record<string, unknown> | undefined, key: string): unknown[] | undefined {
+  const value = record?.[key];
+  return Array.isArray(value) ? value : undefined;
+}
+
+function stringArrayField(record: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  const values = arrayField(record, key)?.filter((item): item is string => typeof item === 'string');
+  return values && values.length > 0 ? values : undefined;
+}
+
+function pickRuntimeOptions(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!record) return undefined;
+  const runtimeOptions: Record<string, unknown> = {};
+  for (const key of ['permissionMode', 'reasoningEffort', 'modelOverride']) {
+    if (record[key] !== undefined) runtimeOptions[key] = record[key];
+  }
+  return Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined;
 }
 
 function normalizeUploadedFiles(files: unknown[]): MindosUploadedFile[] {

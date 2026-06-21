@@ -103,7 +103,7 @@ import {
 import { handleMcpRestartPost } from './handlers/mcp-restart.js';
 import { handleMcpStatus, handleMcpTokenReveal, type MindosMcpStatusServices, type MindosMcpStatusSettings } from './handlers/mcp-status.js';
 import { handleRawFile } from './handlers/file-raw.js';
-import { handleAskStream } from './handlers/ask.js';
+import { handleAgentSessionTurnStream, handleAskStream } from './handlers/ask.js';
 import { handleRecentFiles } from './handlers/recent-files.js';
 import { handleSearch, type SearchRequestOptions } from './handlers/search.js';
 import { handleSearchPrewarm } from './handlers/search-prewarm.js';
@@ -787,6 +787,17 @@ async function handleRequest(
       writeResponse(res, await handleChangesPost(await readJsonBody(req), services));
       return;
     }
+    const agentSessionTurnRoute = parseAgentSessionTurnRoute(method, url.pathname);
+    if (agentSessionTurnRoute) {
+      const body = await readJsonBody(req);
+      const response = handleAgentSessionTurnStream(agentSessionTurnRoute.sessionId, body, services);
+      if (!response.ok) {
+        writeResponse(res, response);
+        return;
+      }
+      await writeSseResponse(res, response);
+      return;
+    }
     if (route === 'POST /api/ask') {
       const body = await readJsonBody(req);
       const response = handleAskStream(body, services);
@@ -890,6 +901,10 @@ function isAuthorizedRequest(route: string, req: IncomingMessage, services: Mind
 }
 
 function resolveAuthRoute(method: string, pathname: string): string {
+  const agentSessionTurnRoute = parseAgentSessionTurnRoute(method, pathname);
+  if (agentSessionTurnRoute) {
+    return 'POST /api/agent/sessions/[sessionId]/turns';
+  }
   const codexThreadRoute = parseCodexThreadRoute(method, pathname);
   if (!codexThreadRoute) {
     if (
@@ -902,6 +917,16 @@ function resolveAuthRoute(method: string, pathname: string): string {
   }
   const suffix = codexThreadRoute.action ? `/${codexThreadRoute.action}` : '';
   return `${method} /api/agent-runtimes/codex/threads/[threadId]${suffix}`;
+}
+
+function parseAgentSessionTurnRoute(
+  method: string,
+  pathname: string,
+): { sessionId: string } | null {
+  if (method !== 'POST') return null;
+  const match = /^\/api\/agent\/sessions\/([^/]+)\/turns$/.exec(pathname);
+  if (!match?.[1]) return null;
+  return { sessionId: decodeURIComponent(match[1]) };
 }
 
 function parseCodexThreadRoute(

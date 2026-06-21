@@ -24,6 +24,7 @@ import {
   checkCodexProviderEnvironment,
   checkClaudeRuntimeHealth,
   mergeCodexProviderAndLoginHealth,
+  handleAgentSessionTurnStream,
   handleAskStream,
   handleAgentRuntimesGet,
   handleStaticArtifact,
@@ -1037,6 +1038,45 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     ]);
   });
 
+  it('normalizes agent session turn requests into ask stream input', async () => {
+    const valid = handleAgentSessionTurnStream('session-from-path', {
+      chatSessionId: 'body-should-not-win',
+      message: { text: 'hello from turn', skillName: 'research' },
+      runtime: { id: 'codex', name: 'Codex', kind: 'codex' },
+      context: {
+        workDir: { source: 'manual', path: '/repo/app', label: 'app' },
+        selection: {
+          spaces: [{ path: 'Research', label: 'Research' }],
+          assistants: [],
+        },
+        attachedFiles: ['note.md', 123],
+      },
+      options: {
+        permissionMode: 'read',
+        reasoningEffort: 'high',
+        modelOverride: 'gpt-test',
+      },
+    }, {
+      askStream: async function* (input) {
+        yield { type: 'status', message: `context=${input.chatSessionId};message=${input.messages[0]?.content};skill=${input.messages[0]?.skillName}` };
+        yield { type: 'status', message: `runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id};cwd=${input.workDir?.path};space=${input.contextSelection?.spaces[0]?.path}` };
+        yield { type: 'status', message: `permission=${input.runtimeOptions?.permissionMode};effort=${input.runtimeOptions?.reasoningEffort};model=${input.runtimeOptions?.modelOverride}` };
+        yield { type: 'done' };
+      },
+    });
+
+    expect(valid.ok).toBe(true);
+    if (!valid.ok) throw new Error('expected agent session turn stream');
+    const events = [];
+    for await (const event of valid.body) events.push(event);
+    expect(events).toEqual([
+      { type: 'status', message: 'context=session-from-path;message=hello from turn;skill=research' },
+      { type: 'status', message: 'runtime=codex:codex;cwd=/repo/app;space=Research' },
+      { type: 'status', message: 'permission=read;effort=high;model=gpt-test' },
+      { type: 'done' },
+    ]);
+  });
+
   it('preserves context Space paths for the trusted Web resolver instead of rewriting them', async () => {
     const valid = handleAskStream({
       messages: [{ role: 'user', content: 'hello' }],
@@ -1185,6 +1225,15 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/event-stream');
       expect(await response.text()).toContain('data:{"type":"text_delta","delta":"hello"}');
+
+      const turnResponse = await fetch(`${base}/api/agent/sessions/chat-route-1/turns`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: { text: 'turn hello' } }),
+      });
+      expect(turnResponse.status).toBe(200);
+      expect(turnResponse.headers.get('content-type')).toContain('text/event-stream');
+      expect(await turnResponse.text()).toContain('data:{"type":"text_delta","delta":"turn hello"}');
     } finally {
       await new Promise<void>((resolve, reject) => app.server.close((error) => error ? reject(error) : resolve()));
     }

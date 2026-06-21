@@ -220,13 +220,15 @@ describe('AgentsPresetsSection', () => {
     });
   });
 
-  it('places assistant filters, search, and creation inside the library toolbar', async () => {
+  it('places assistant filters, search, and creation in the cross-column toolbar', async () => {
     mockAssistantsFetch();
     const { host, root } = await renderSection();
 
+    const shell = host.querySelector('[data-assistant-shell]');
     const commandCenter = host.querySelector('[data-assistant-command-center]');
     expect(commandCenter).not.toBeNull();
-    expect(commandCenter!.closest('[data-assistant-command-column="library"]')).not.toBeNull();
+    expect(shell?.firstElementChild).toBe(commandCenter);
+    expect(commandCenter!.closest('[data-assistant-command-column="library"]')).toBeNull();
     expect(commandCenter!.textContent).toContain('All assistants');
     expect(commandCenter!.textContent).toContain('Built-in');
     expect(commandCenter!.textContent).toContain('Custom');
@@ -410,9 +412,9 @@ Write an updated morning brief.
     const { host, root } = await renderSection();
 
     const deleteButton = host.querySelector('button[data-assistant-delete="inbox-organizer"]') as HTMLButtonElement;
-    expect(deleteButton).toBeTruthy();
-    expect(deleteButton.disabled).toBe(true);
-    expect(deleteButton.textContent).toContain('Protected');
+    expect(deleteButton).toBeNull();
+    expect(host.querySelector('[data-assistant-detail-actions="inbox-organizer"]')).toBeTruthy();
+    expect(host.textContent).toContain('Protected');
 
     await act(async () => {
       root.unmount();

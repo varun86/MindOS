@@ -58,8 +58,10 @@ import {
   appendSseEventToAgentRun,
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
+  createMindosSessionContextSignature,
   normalizeMindosSelectedSkills,
   type MindosAskInitializationContext,
+  type MindosAskRecalledKnowledgeItem,
 } from '@geminilight/mindos/agent';
 import { renderMindosPiSelectedSkillPrompt } from '@geminilight/mindos/agent/mindos-pi';
 import {
@@ -272,6 +274,66 @@ function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean
 function normalizeAskModeApiInput(value: unknown): AskModeApi | null {
   if (value === undefined || value === null) return 'agent';
   return value === 'agent' ? value : null;
+}
+
+function latestSessionContextSignature(runs: AgentRunRecord[]): string | null {
+  for (const run of runs) {
+    const signature = run.metadata?.sessionContextSignature;
+    if (typeof signature === 'string' && signature) return signature;
+  }
+  return null;
+}
+
+function shouldInjectSessionContext(input: {
+  chatSessionId?: string;
+  signature: string | null;
+  priorRuns: AgentRunRecord[];
+}): boolean {
+  if (!input.signature) return false;
+  if (!input.chatSessionId) return true;
+  return latestSessionContextSignature(input.priorRuns) !== input.signature;
+}
+
+function sessionContextRunMetadata(signature: string | null, injected: boolean): Record<string, unknown> {
+  return signature
+    ? {
+      sessionContextSignature: signature,
+      sessionContextInjected: injected,
+    }
+    : {};
+}
+
+async function recallMindosTurnKnowledge(input: {
+  mindRoot: string;
+  lastUserContent: string;
+  currentFile?: string;
+  attachedFiles?: string[];
+  sessionSpaces: Array<{ path: string }>;
+  activeRecall?: {
+    enabled?: boolean;
+    maxTokens?: number;
+    maxFiles?: number;
+    minScore?: number;
+  };
+}): Promise<MindosAskRecalledKnowledgeItem[]> {
+  const activeRecall = input.activeRecall ?? {};
+  if (activeRecall.enabled === false || input.lastUserContent.trim().length <= 1) return [];
+
+  try {
+    return await performActiveRecall(input.mindRoot, input.lastUserContent, {
+      maxTokens: activeRecall.maxTokens,
+      maxFiles: activeRecall.maxFiles,
+      minScore: activeRecall.minScore,
+      excludePaths: [
+        ...(input.currentFile ? [input.currentFile] : []),
+        ...(Array.isArray(input.attachedFiles) ? input.attachedFiles : []),
+      ],
+      preferredPaths: input.sessionSpaces.map((space) => space.path),
+    });
+  } catch (error) {
+    console.warn('[ask] Active recall failed, continuing without:', error);
+    return [];
+  }
 }
 
 function permissionModeForRequest(
@@ -553,6 +615,10 @@ export type AskRouteRequestBody = {
   chatSessionId?: string;
 };
 
+export type AgentSessionTurnRouteContext = {
+  params?: Promise<{ sessionId?: string }> | { sessionId?: string };
+};
+
 export type AskRouteRequestContext = {
   headers?: Headers;
   signal?: AbortSignal;
@@ -580,6 +646,148 @@ export async function handleAskRouteRequest(req: Request) {
     signal: req.signal,
     request: req,
   });
+}
+
+export async function handleAgentSessionTurnRouteRequest(
+  req: Request,
+  context: AgentSessionTurnRouteContext = {},
+) {
+  const sessionId = await resolveAgentSessionRouteId(context);
+  if (!sessionId) {
+    return apiError(ErrorCodes.INVALID_REQUEST, 'sessionId is required', 400);
+  }
+
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return apiError(ErrorCodes.INVALID_REQUEST, 'Invalid JSON body', 400);
+  }
+
+  const body = normalizeAgentTurnAskBody(rawBody, sessionId);
+  if (!body.ok) return apiError(ErrorCodes.INVALID_REQUEST, body.message, 400);
+
+  return runAskRequestBody(body.body, {
+    headers: req.headers,
+    signal: req.signal,
+    request: req,
+  });
+}
+
+async function resolveAgentSessionRouteId(context: AgentSessionTurnRouteContext): Promise<string | undefined> {
+  const params = await context.params;
+  return typeof params?.sessionId === 'string' && params.sessionId.trim()
+    ? params.sessionId.trim()
+    : undefined;
+}
+
+export function normalizeAgentTurnAskBody(
+  rawBody: unknown,
+  sessionId: string,
+): { ok: true; body: AskRouteRequestBody } | { ok: false; message: string } {
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return { ok: false, message: 'Invalid agent session turn request body' };
+  }
+
+  const record = rawBody as Record<string, unknown>;
+  if (Array.isArray(record.messages)) {
+    return {
+      ok: true,
+      body: {
+        ...(record as unknown as AskRouteRequestBody),
+        chatSessionId: sessionId,
+      },
+    };
+  }
+
+  const messageRecord = objectField(record, 'message');
+  const text = stringField(messageRecord, 'text') ?? stringField(messageRecord, 'content') ?? stringField(record, 'prompt');
+  const images = arrayField(messageRecord, 'images') ?? arrayField(record, 'images');
+  if (!text && (!images || images.length === 0)) {
+    return { ok: false, message: 'message.text is required' };
+  }
+
+  const context = objectField(record, 'context');
+  const options = objectField(record, 'options');
+  const runtimeOptions = objectField(options, 'runtimeOptions') ?? pickRuntimeOptions(options) ?? record.runtimeOptions;
+  const message: FrontendMessage = {
+    role: 'user',
+    content: text ?? '',
+    timestamp: Date.now(),
+    ...(images ? { images: images as FrontendMessage['images'] } : {}),
+    ...(stringField(messageRecord, 'skillName') ? { skillName: stringField(messageRecord, 'skillName') } : {}),
+  };
+
+  return {
+    ok: true,
+    body: {
+      messages: [message],
+      mode: 'agent',
+      chatSessionId: sessionId,
+      ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
+      ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
+        ? { currentFile: stringField(context, 'currentFile') ?? stringField(record, 'currentFile') }
+        : {}),
+      ...(arrayField(context, 'attachedFiles') ?? arrayField(record, 'attachedFiles')
+        ? { attachedFiles: stringArrayField(context, 'attachedFiles') ?? stringArrayField(record, 'attachedFiles') ?? [] }
+        : {}),
+      ...(arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')
+        ? { uploadedFiles: (arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')) as AskRouteRequestBody['uploadedFiles'] }
+        : {}),
+      ...(objectField(context, 'workDir') ?? objectField(record, 'workDir')
+        ? { workDir: (objectField(context, 'workDir') ?? objectField(record, 'workDir')) as AskRouteRequestBody['workDir'] }
+        : {}),
+      ...(objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')
+        ? { contextSelection: (objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')) as AskRouteRequestBody['contextSelection'] }
+        : {}),
+      ...(objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')
+        ? { selectedRuntime: (objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')) as AskRouteRequestBody['selectedRuntime'] }
+        : {}),
+      ...(objectField(record, 'runtimeBinding')
+        ? { runtimeBinding: objectField(record, 'runtimeBinding') as AskRouteRequestBody['runtimeBinding'] }
+        : {}),
+      ...(runtimeOptions && typeof runtimeOptions === 'object' && !Array.isArray(runtimeOptions)
+        ? { runtimeOptions: runtimeOptions as AskRouteRequestBody['runtimeOptions'] }
+        : {}),
+      ...(objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')
+        ? { agentOptions: (objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')) as AskRouteRequestBody['agentOptions'] }
+        : {}),
+      ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
+      ...(stringField(record, 'providerOverride') ? { providerOverride: stringField(record, 'providerOverride') } : {}),
+      ...(stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride')
+        ? { modelOverride: stringField(record, 'modelOverride') ?? stringField(options, 'modelOverride') }
+        : {}),
+    },
+  };
+}
+
+function objectField(record: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined {
+  const value = record?.[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function arrayField(record: Record<string, unknown> | undefined, key: string): unknown[] | undefined {
+  const value = record?.[key];
+  return Array.isArray(value) ? value : undefined;
+}
+
+function stringArrayField(record: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  const values = arrayField(record, key)?.filter((item): item is string => typeof item === 'string');
+  return values && values.length > 0 ? values : undefined;
+}
+
+function pickRuntimeOptions(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!record) return undefined;
+  const runtimeOptions: Record<string, unknown> = {};
+  for (const key of ['permissionMode', 'reasoningEffort', 'modelOverride']) {
+    if (record[key] !== undefined) runtimeOptions[key] = record[key];
+  }
+  return Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined;
 }
 
 export async function runAskRequestBody(
@@ -615,15 +823,15 @@ export async function runAskRequestBody(
   const mindRoot = getMindRoot();
   const projectRoot = getProjectRoot();
   const priorSession = readPersistedAskSession(chatSessionId);
-  const priorRuns = chatSessionId
-    ? listAgentRuns({ chatSessionId, limit: 20 }).map((run) => ({
+  const recentSessionRuns = chatSessionId ? listAgentRuns({ chatSessionId, limit: 20 }) : [];
+  const priorRuns = recentSessionRuns
+    .map((run) => ({
       cwd: run.cwd,
       archiveSessionId: run.archive?.sessionId,
       externalSessionId: typeof run.metadata?.externalSessionId === 'string'
         ? run.metadata.externalSessionId
         : undefined,
-    }))
-    : [];
+    }));
   let sessionContext: ReturnType<typeof resolveSessionContext>;
   try {
     sessionContext = resolveSessionContext({
@@ -644,6 +852,16 @@ export async function runAskRequestBody(
     throw error;
   }
   const executionCwd = sessionContext.resolvedWorkDir.path;
+  const sessionContextSignature = createMindosSessionContextSignature({
+    sessionWorkDir: sessionContext.resolvedWorkDir,
+    sessionContextSelection: sessionContext.resolvedSelection,
+    sessionContextIssues: sessionContext.issues,
+  });
+  const includeSessionContext = shouldInjectSessionContext({
+    chatSessionId,
+    signature: sessionContextSignature,
+    priorRuns: recentSessionRuns,
+  });
 
   // Diagnostic: log attached files so silent failures are visible
   if (Array.isArray(attachedFiles) && attachedFiles.length > 0) {
@@ -705,21 +923,14 @@ export async function runAskRequestBody(
   if (verifiedNativeRuntime || selectedAcpAgent) {
     const lastUserContent = getLastUserContent(messages);
     const fileContext = loadAttachedFileContext(attachedFiles, currentFile, 'external');
-    const excludePaths = [
-      ...(currentFile ? [currentFile] : []),
-      ...(Array.isArray(attachedFiles) ? attachedFiles : []),
-    ];
-    let recalledKnowledge: Awaited<ReturnType<typeof performActiveRecall>> = [];
-    const activeRecall = agentConfig.activeRecall ?? {};
-    if (activeRecall.enabled !== false && lastUserContent.trim().length > 1) {
-      recalledKnowledge = await performActiveRecall(mindRoot, lastUserContent, {
-        maxTokens: activeRecall.maxTokens,
-        maxFiles: activeRecall.maxFiles,
-        minScore: activeRecall.minScore,
-        excludePaths,
-        preferredPaths: sessionContext.resolvedSelection.spaces.map((space) => space.path),
-      });
-    }
+    const recalledKnowledge = await recallMindosTurnKnowledge({
+      mindRoot,
+      lastUserContent,
+      currentFile,
+      attachedFiles,
+      sessionSpaces: sessionContext.resolvedSelection.spaces,
+      activeRecall: agentConfig.activeRecall,
+    });
     const externalPrompt = await buildMindosContextPrompt({
       prompt: lastUserContent,
       mindRoot,
@@ -727,10 +938,12 @@ export async function runAskRequestBody(
       uploadedParts,
       recalledKnowledge,
       selectedSkills,
+      includeSessionContext,
       sessionWorkDir: sessionContext.resolvedWorkDir,
       sessionContextSelection: sessionContext.resolvedSelection,
       sessionContextIssues: sessionContext.issues,
     });
+    const sessionContextMetadata = sessionContextRunMetadata(sessionContextSignature, includeSessionContext);
 
     return createAskSseResponse((send) => runWithAgentRunContext({ chatSessionId }, async () => {
       const nativeRuntime = verifiedNativeRuntime;
@@ -752,6 +965,7 @@ export async function runAskRequestBody(
               applied: permissionPolicy.runtimePermissionMode,
               target: nativeRuntime.kind,
             },
+            ...sessionContextMetadata,
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
@@ -830,6 +1044,7 @@ export async function runAskRequestBody(
                 applied: permissionPolicy.runtimePermissionMode,
                 target: nativeRuntime.kind,
               },
+              ...sessionContextMetadata,
               ...(result.externalSessionId ? { externalSessionId: result.externalSessionId } : {}),
             },
           });
@@ -868,6 +1083,7 @@ export async function runAskRequestBody(
               applied: permissionPolicy.acpPermissionMode,
               target: 'acp',
             },
+            ...sessionContextMetadata,
             sessionWorkDir: sessionContext.resolvedWorkDir.path,
             sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
             sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
@@ -1050,6 +1266,15 @@ export async function runAskRequestBody(
   }
 
   const lastUserContent = getLastUserContent(messages);
+  const fileContext = loadAttachedFileContext(attachedFiles, currentFile, askMode);
+  const recalledKnowledge = await recallMindosTurnKnowledge({
+    mindRoot,
+    lastUserContent,
+    currentFile,
+    attachedFiles,
+    sessionSpaces: sessionContext.resolvedSelection.spaces,
+    activeRecall: agentConfig.activeRecall,
+  });
   const systemPromptBase = buildMindosSystemPrompt({
     mindRoot,
     environment: {
@@ -1060,20 +1285,15 @@ export async function runAskRequestBody(
   const commonTurnPrompt = await buildMindosContextPrompt({
     prompt: lastUserContent,
     mindRoot,
-    currentFile,
-    attachedFiles,
+    fileContext,
     uploadedParts,
-    messages: mindosUiMessages,
+    recalledKnowledge,
     agentInitialization,
-    activeRecall: agentConfig.activeRecall,
     selectedSkills,
+    includeSessionContext,
     sessionWorkDir: sessionContext.resolvedWorkDir,
     sessionContextSelection: sessionContext.resolvedSelection,
     sessionContextIssues: sessionContext.issues,
-  }, {
-    loadFileContext: loadAttachedFileContext,
-    recallKnowledge: (query, options) => performActiveRecall(mindRoot, query, options),
-    warn: (message, error) => console.warn(message, error),
   });
   const turnPrompt = renderMindosPiSelectedSkillPrompt(commonTurnPrompt, selectedSkills);
   let systemPrompt = systemPromptBase;
@@ -1128,6 +1348,7 @@ export async function runAskRequestBody(
     } = runtime;
     const extensionLoadErrors = (runtime as { extensionLoadErrors?: Array<{ path: string; error: string }> }).extensionLoadErrors;
     const extensionLoadStatus = formatMindosPiExtensionLoadStatus(extensionLoadErrors);
+    const sessionContextMetadata = sessionContextRunMetadata(sessionContextSignature, includeSessionContext);
 
     // ── SSE Stream ──
     return createAskSseResponse(async (send) => {
@@ -1147,6 +1368,7 @@ export async function runAskRequestBody(
             applied: permissionPolicy.runtimePermissionMode,
             target: 'mindos-pi',
           },
+          ...sessionContextMetadata,
           sessionSpaces: sessionContext.resolvedSelection.spaces.map((space) => space.path),
           sessionAssistants: sessionContext.resolvedSelection.assistants.map((assistant) => assistant.id),
           ...(assistantId ? { assistantId } : {}),

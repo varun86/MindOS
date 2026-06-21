@@ -90,6 +90,7 @@ export const MINDOS_SERVER_ROUTES: MindosServerRouteContract[] = [
   { id: 'workflows', method: 'GET', path: '/api/workflows', auth: 'required' },
   { id: 'workflows.create', method: 'POST', path: '/api/workflows', auth: 'required' },
   { id: 'ask.stream', method: 'POST', path: '/api/ask', auth: 'required' },
+  { id: 'agent.sessions.turns.create', method: 'POST', path: '/api/agent/sessions/[sessionId]/turns', auth: 'required' },
   { id: 'ask-sessions', method: 'GET', path: '/api/ask-sessions', auth: 'required' },
   { id: 'ask-sessions.save', method: 'POST', path: '/api/ask-sessions', auth: 'required' },
   { id: 'ask-sessions.delete', method: 'DELETE', path: '/api/ask-sessions', auth: 'required' },

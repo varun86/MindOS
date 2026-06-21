@@ -513,97 +513,213 @@ export default function AgentsPresetsSection({
 
   return (
     <div className="space-y-4">
-      {creating ? (
-        <CreateAssistantComposer
-          draft={createDraft}
-          busy={creatingAssistant}
+      <div data-assistant-shell className="overflow-hidden rounded-xl border border-border/60 bg-card/30 shadow-sm">
+        <AssistantLibraryToolbar
           copy={copy}
-          onChange={setCreateDraft}
-          onCancel={() => {
-            setCreating(false);
-            setCreateDraft({ id: '', name: '', description: '' });
-          }}
-          onCreate={() => void createAssistant()}
-        />
-      ) : null}
-
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/30 shadow-sm xl:grid xl:min-h-[690px] xl:grid-cols-[360px_minmax(0,1fr)]">
-        <AssistantDirectory
-          copy={copy}
-          loading={loading}
-          error={error}
           counts={counts}
           filteredCount={filteredAssistants.length}
-          groupedAssistants={groupedAssistants}
-          selectedId={selected?.id}
           query={query}
           filter={filter}
           creating={creating}
-          onRetry={loadAssistants}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
           onToggleCreate={() => setCreating(current => !current)}
-          onSelect={(assistantId) => {
-            setSelectedId(assistantId);
-            setSection('overview');
-          }}
-          runningAssistantId={runningAssistantId}
-          deletingAssistantId={deletingAssistantId}
         />
 
-        <main className="min-w-0 border-t border-border/55 bg-background/35 xl:border-l xl:border-t-0">
-          {loading ? (
-            <AssistantDetailSkeleton />
-          ) : error ? (
-            <div className="p-4">
-              <AssistantStateCard
-                icon={<AlertCircle size={18} />}
-                title={copy.loadFailed ?? 'Failed to load assistants.'}
-                body={error}
-                actionLabel={copy.retry ?? 'Retry'}
-                onAction={loadAssistants}
-              />
-            </div>
-          ) : !selected ? (
-            <div className="p-4">
-              <AssistantStateCard
-                icon={<FolderLock size={18} />}
-                title={copy.emptyTitle ?? 'No local assistants found'}
-                body={copy.emptyHint ?? 'Create an Assistant profile to add one.'}
-              />
-            </div>
-          ) : (
-            <AssistantUnifiedDetail
-              assistant={selected}
-              section={section}
-              promptValue={promptValue}
-              profileEdit={profileEdit}
-              hasPromptChanges={hasPromptChanges}
-              hasProfileChanges={hasProfileChanges}
-              savingPrompt={savingPrompt}
-              savingProfile={savingProfile}
-              deleting={deletingAssistantId === selected.id}
-              running={runningAssistantId === selected.id}
-              runResult={runResult?.assistantId === selected.id ? runResult : null}
+        {creating ? (
+          <div className="border-b border-border/55 bg-[var(--amber)]/[0.025] p-4">
+            <CreateAssistantComposer
+              draft={createDraft}
+              busy={creatingAssistant}
               copy={copy}
-              onSectionChange={setSection}
-              onPromptChange={(value) => setPromptEdits(prev => ({ ...prev, [selected.id]: value }))}
-              onSavePrompt={savePrompt}
-              onDiscardPrompt={discardPromptChanges}
-              onProfileChange={(next) => setProfileEdits(prev => ({ ...prev, [selected.id]: next }))}
-              onSaveProfile={saveProfile}
-              onDiscardProfile={() => setProfileEdits(prev => {
-                const next = { ...prev };
-                delete next[selected.id];
-                return next;
-              })}
-              onRun={() => void runAssistant(selected)}
-              onDelete={() => void deleteAssistant(selected)}
+              onChange={setCreateDraft}
+              onCancel={() => {
+                setCreating(false);
+                setCreateDraft({ id: '', name: '', description: '' });
+              }}
+              onCreate={() => void createAssistant()}
             />
-          )}
-        </main>
+          </div>
+        ) : null}
+
+        <div className="xl:grid xl:min-h-[690px] xl:grid-cols-[360px_minmax(0,1fr)]">
+          <AssistantDirectory
+            copy={copy}
+            loading={loading}
+            error={error}
+            counts={counts}
+            filteredCount={filteredAssistants.length}
+            groupedAssistants={groupedAssistants}
+            selectedId={selected?.id}
+            onRetry={loadAssistants}
+            hasQuery={query.trim().length > 0}
+            onSelect={(assistantId) => {
+              setSelectedId(assistantId);
+              setSection('overview');
+            }}
+            runningAssistantId={runningAssistantId}
+            deletingAssistantId={deletingAssistantId}
+          />
+
+          <main className="min-w-0 border-t border-border/55 bg-background/35 xl:border-l xl:border-t-0">
+            {loading ? (
+              <AssistantDetailSkeleton />
+            ) : error ? (
+              <div className="p-4">
+                <AssistantStateCard
+                  icon={<AlertCircle size={18} />}
+                  title={copy.loadFailed ?? 'Failed to load assistants.'}
+                  body={error}
+                  actionLabel={copy.retry ?? 'Retry'}
+                  onAction={loadAssistants}
+                />
+              </div>
+            ) : !selected ? (
+              <div className="p-4">
+                <AssistantStateCard
+                  icon={<FolderLock size={18} />}
+                  title={copy.emptyTitle ?? 'No local assistants found'}
+                  body={copy.emptyHint ?? 'Create an Assistant profile to add one.'}
+                />
+              </div>
+            ) : (
+              <AssistantUnifiedDetail
+                assistant={selected}
+                section={section}
+                promptValue={promptValue}
+                profileEdit={profileEdit}
+                hasPromptChanges={hasPromptChanges}
+                hasProfileChanges={hasProfileChanges}
+                savingPrompt={savingPrompt}
+                savingProfile={savingProfile}
+                deleting={deletingAssistantId === selected.id}
+                running={runningAssistantId === selected.id}
+                runResult={runResult?.assistantId === selected.id ? runResult : null}
+                copy={copy}
+                onSectionChange={setSection}
+                onPromptChange={(value) => setPromptEdits(prev => ({ ...prev, [selected.id]: value }))}
+                onSavePrompt={savePrompt}
+                onDiscardPrompt={discardPromptChanges}
+                onProfileChange={(next) => setProfileEdits(prev => ({ ...prev, [selected.id]: next }))}
+                onSaveProfile={saveProfile}
+                onDiscardProfile={() => setProfileEdits(prev => {
+                  const next = { ...prev };
+                  delete next[selected.id];
+                  return next;
+                })}
+                onRun={() => void runAssistant(selected)}
+                onDelete={() => void deleteAssistant(selected)}
+              />
+            )}
+          </main>
+        </div>
       </div>
     </div>
+  );
+}
+
+function AssistantLibraryToolbar({
+  copy,
+  counts,
+  filteredCount,
+  query,
+  filter,
+  creating,
+  onQueryChange,
+  onFilterChange,
+  onToggleCreate,
+}: {
+  copy: PresetsCopy;
+  counts: AssistantCounts;
+  filteredCount: number;
+  query: string;
+  filter: AssistantFilter;
+  creating: boolean;
+  onQueryChange: (value: string) => void;
+  onFilterChange: (value: AssistantFilter) => void;
+  onToggleCreate: () => void;
+}) {
+  const filterOptions: Array<{ value: AssistantFilter; label: string; count: number }> = [
+    { value: 'all', label: copy.filterAll ?? 'All assistants', count: counts.total },
+    { value: 'builtin', label: copy.filterBuiltin ?? copy.builtinLabel ?? 'Built-in', count: counts.builtin },
+    { value: 'custom', label: copy.filterCustom ?? copy.customLabel ?? 'Custom', count: counts.custom },
+  ];
+
+  return (
+    <header
+      data-assistant-command-center
+      className="border-b border-border/55 bg-card/45 px-4 py-3.5 lg:px-5"
+    >
+      <div className="grid gap-3 xl:grid-cols-[minmax(210px,0.72fr)_minmax(260px,0.9fr)_minmax(280px,1fr)] xl:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
+            <FolderLock size={15} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-semibold text-foreground">{copy.presetRail}</p>
+              <span className="rounded-md bg-background/70 px-2 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+                {filteredCount}/{counts.total}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[11px] font-medium text-[var(--amber-text)]">
+              {copy.localRoot ?? 'Local Assistant Library'}
+            </p>
+            <p className="sr-only">{copy.localRootHint}</p>
+          </div>
+        </div>
+
+        <div
+          role="group"
+          aria-label="Filter assistants"
+          className="grid grid-cols-3 gap-1 rounded-lg border border-border/55 bg-background/55 p-1"
+        >
+          {filterOptions.map(option => (
+            <AssistantFilterPill
+              key={option.value}
+              active={filter === option.value}
+              label={option.label}
+              count={option.count}
+              onClick={() => onFilterChange(option.value)}
+            />
+          ))}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:justify-end">
+          <label className="relative min-w-0 xl:w-[min(34vw,360px)]">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
+            <input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              aria-label={copy.searchPlaceholder ?? 'Search assistants'}
+              placeholder={copy.searchPlaceholder ?? 'Search assistants...'}
+              className="h-9 w-full rounded-lg border border-border bg-background/75 pl-8 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/45 focus-visible:border-[var(--amber)]/45 focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => onQueryChange('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X size={12} />
+              </button>
+            ) : null}
+          </label>
+
+          <button
+            type="button"
+            onClick={onToggleCreate}
+            aria-expanded={creating}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--amber)]/40 bg-background/75 px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {creating ? <X size={13} /> : <Plus size={13} />}
+            {copy.newAssistant ?? 'New Assistant'}
+          </button>
+        </div>
+      </div>
+      <p className="sr-only">{copy.libraryHint}</p>
+    </header>
   );
 }
 
@@ -725,13 +841,8 @@ function AssistantDirectory({
   filteredCount,
   groupedAssistants,
   selectedId,
-  query,
-  filter,
-  creating,
   onRetry,
-  onQueryChange,
-  onFilterChange,
-  onToggleCreate,
+  hasQuery,
   onSelect,
   runningAssistantId,
   deletingAssistantId,
@@ -743,97 +854,15 @@ function AssistantDirectory({
   filteredCount: number;
   groupedAssistants: AssistantGroups;
   selectedId?: string;
-  query: string;
-  filter: AssistantFilter;
-  creating: boolean;
   onRetry: () => void;
-  onQueryChange: (value: string) => void;
-  onFilterChange: (value: AssistantFilter) => void;
-  onToggleCreate: () => void;
+  hasQuery: boolean;
   onSelect: (assistantId: string) => void;
   runningAssistantId: string | null;
   deletingAssistantId: string | null;
 }) {
-  const filterOptions: Array<{ value: AssistantFilter; label: string; count: number }> = [
-    { value: 'all', label: copy.filterAll ?? 'All assistants', count: counts.total },
-    { value: 'builtin', label: copy.filterBuiltin ?? copy.builtinLabel ?? 'Built-in', count: counts.builtin },
-    { value: 'custom', label: copy.filterCustom ?? copy.customLabel ?? 'Custom', count: counts.custom },
-  ];
-
   return (
     <aside data-assistant-command-column="library" className="min-w-0 bg-card/25">
-      <div className="space-y-3 border-b border-border/55 p-4">
-        <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 text-[var(--amber)]">
-            <FolderLock size={15} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-foreground">{copy.presetRail}</p>
-            <p className="mt-0.5 truncate text-[11px] font-medium text-[var(--amber-text)]">{copy.localRoot ?? 'Local Assistant Library'}</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground/65">{copy.localRootHint ?? 'Local Assistant profiles are ready to inspect and edit.'}</p>
-          </div>
-          <span className="rounded-md bg-background/70 px-2 py-1 font-mono text-[10px] text-muted-foreground tabular-nums">
-            {filteredCount}/{counts.total}
-          </span>
-        </div>
-        <p className="sr-only">{copy.libraryHint}</p>
-
-        <div
-          data-assistant-command-center
-          className="space-y-2"
-        >
-          <div
-            role="group"
-            aria-label="Filter assistants"
-            className="grid grid-cols-3 gap-1 rounded-lg border border-border/55 bg-background/55 p-1"
-          >
-            {filterOptions.map(option => (
-              <AssistantFilterPill
-                key={option.value}
-                active={filter === option.value}
-                label={option.label}
-                count={option.count}
-                onClick={() => onFilterChange(option.value)}
-              />
-            ))}
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_auto]">
-            <label className="relative min-w-0">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/55" />
-              <input
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                aria-label={copy.searchPlaceholder ?? 'Search assistants'}
-                placeholder={copy.searchPlaceholder ?? 'Search assistants...'}
-                className="h-9 w-full rounded-lg border border-border bg-background/75 pl-8 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/45 focus-visible:border-[var(--amber)]/45 focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              {query ? (
-                <button
-                  type="button"
-                  onClick={() => onQueryChange('')}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X size={12} />
-                </button>
-              ) : null}
-            </label>
-
-            <button
-              type="button"
-              onClick={onToggleCreate}
-              aria-expanded={creating}
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--amber)]/40 bg-background/75 px-3 text-xs font-medium text-[var(--amber-text)] transition-colors hover:bg-[var(--amber)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {creating ? <X size={13} /> : <Plus size={13} />}
-              {copy.newAssistant ?? 'New Assistant'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-h-[calc(100vh-260px)] min-h-[420px] overflow-y-auto">
+      <div className="max-h-[calc(100vh-230px)] min-h-[420px] overflow-y-auto">
         {loading ? (
           <LibraryLoading label={copy.loading ?? 'Loading assistants...'} />
         ) : error ? (
@@ -851,7 +880,7 @@ function AssistantDirectory({
         ) : filteredCount === 0 ? (
           <LibraryEmpty
             title={copy.noMatchesTitle ?? 'No matching assistants'}
-            hint={query ? copy.noMatchesHint ?? 'Try a different name, ID, skill, or MCP filter.' : copy.emptyHint ?? 'Create an Assistant profile to add one.'}
+            hint={hasQuery ? copy.noMatchesHint ?? 'Try a different name, ID, skill, or MCP filter.' : copy.emptyHint ?? 'Create an Assistant profile to add one.'}
           />
         ) : (
           <div>
@@ -987,12 +1016,12 @@ function AssistantUnifiedDetail({
   return (
     <article data-assistant-command-column="workspace" className="min-h-full bg-background/30">
       <div className="border-b border-border/55 px-5 py-5 lg:px-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-start">
           <div className="flex min-w-0 items-start gap-3.5">
             <AssistantAvatar assistant={assistant} size="lg" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h2 className="text-2xl font-semibold leading-tight tracking-normal text-foreground">{assistant.name}</h2>
+                <h2 className="text-2xl font-semibold leading-tight text-foreground">{assistant.name}</h2>
                 <ReadinessPill
                   ready={assistant.promptReady}
                   readyLabel={copy.readyLabel ?? 'Ready'}
@@ -1007,7 +1036,7 @@ function AssistantUnifiedDetail({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              <p className="mt-2 max-w-[74ch] text-sm leading-6 text-muted-foreground">
                 {description}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70">
@@ -1024,31 +1053,17 @@ function AssistantUnifiedDetail({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <button
-              type="button"
-              onClick={onRun}
-              disabled={!assistant.promptReady || running}
-              data-assistant-run={assistant.id}
-              className="inline-flex h-9 min-w-28 items-center justify-center gap-2 rounded-lg bg-[var(--amber)] px-3 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              {running ? copy.runningLabel ?? 'Running' : copy.launchTitle}
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={!assistant.deletable || deleting}
-              data-assistant-delete={assistant.id}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {deleting ? <Loader2 size={13} className="animate-spin" /> : assistant.deletable ? <Trash2 size={13} /> : <ShieldCheck size={13} />}
-              {assistant.deletable ? copy.deleteAssistant ?? 'Delete' : copy.protectedLabel ?? 'Protected'}
-            </button>
-          </div>
+          <AssistantDetailActions
+            assistant={assistant}
+            deleting={deleting}
+            running={running}
+            copy={copy}
+            onRun={onRun}
+            onDelete={onDelete}
+          />
         </div>
 
-        <div className="mt-5 grid gap-2 border-t border-border/45 pt-4 sm:grid-cols-2 2xl:grid-cols-4">
+        <div className="mt-5 grid gap-2 border-t border-border/45 pt-4 sm:grid-cols-2 xl:grid-cols-4">
           <DetailMetaItem
             icon={<Route size={13} />}
             label={copy.preferredAgentLabel ?? 'Preferred agent'}
@@ -1134,6 +1149,52 @@ function AssistantUnifiedDetail({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function AssistantDetailActions({
+  assistant,
+  deleting,
+  running,
+  copy,
+  onRun,
+  onDelete,
+}: {
+  assistant: AssistantView;
+  deleting: boolean;
+  running: boolean;
+  copy: PresetsCopy;
+  onRun: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      data-assistant-detail-actions={assistant.id}
+      className="flex flex-wrap items-center gap-2 2xl:w-40 2xl:flex-col 2xl:items-stretch"
+    >
+      <button
+        type="button"
+        onClick={onRun}
+        disabled={!assistant.promptReady || running}
+        data-assistant-run={assistant.id}
+        className="inline-flex h-10 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[var(--amber)] px-4 text-sm font-medium text-[var(--amber-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring 2xl:w-full"
+      >
+        {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+        {running ? copy.runningLabel ?? 'Running' : copy.launchTitle}
+      </button>
+      {assistant.deletable ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          data-assistant-delete={assistant.id}
+          className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background/70 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring 2xl:w-full"
+        >
+          {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+          {copy.deleteAssistant ?? 'Delete'}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

@@ -58,21 +58,29 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
       cwd: workDir,
     },
   });
+  const activeRecall = agentConfig.activeRecall ?? {};
+  const recalledKnowledge = activeRecall.enabled === false || options.userMessage.trim().length <= 1
+    ? []
+    : await performActiveRecall(mindRoot, options.userMessage, {
+      maxTokens: activeRecall.maxTokens,
+      maxFiles: activeRecall.maxFiles,
+      minScore: activeRecall.minScore,
+      excludePaths: [],
+      preferredPaths: [],
+    }).catch((error) => {
+      console.warn('[headless-agent] Active recall failed, continuing without:', error);
+      return [];
+    });
   const turnPrompt = await buildMindosContextPrompt({
     prompt: options.userMessage,
-    mode: agentMode,
     mindRoot,
-    messages: mindosUiMessages,
-    activeRecall: agentConfig.activeRecall,
+    recalledKnowledge,
+    fileContext: { contextParts: [], failedFiles: [] },
     sessionWorkDir: {
       path: workDir,
       label: workDir.split(/[\\/]/).filter(Boolean).pop() || workDir,
       source: options.workDir ? 'manual' : 'mind-root',
     },
-  }, {
-    loadFileContext: () => ({ contextParts: [], failedFiles: [] }),
-    recallKnowledge: (query, recallOptions) => performActiveRecall(mindRoot, query, recallOptions),
-    warn: (message, error) => console.warn(message, error),
   });
 
   const {

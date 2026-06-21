@@ -86,6 +86,7 @@ export const MINDOS_WEB_API_ROUTE_OWNERSHIP: MindosWebApiRouteOwnership[] = [
   migrated('/api/agents/custom', 'high'),
   migrated('/api/agent-capabilities', 'medium'),
   migrated('/api/ask-sessions'),
+  route('/api/agent/sessions/[sessionId]/turns', 'product-owned', 'stream', 'Phase 6: generated client and stream adapter', 'high', 'Canonical session/turn route for agent execution; currently shares the ask runner while clients migrate off the legacy ask name.'),
   route('/api/ask', 'product-owned', 'stream', 'Phase 6: generated client and stream adapter', 'high', 'Ask is mostly Product runtime-owned through session and agent modules, but the streaming Web route still owns host assembly and should become a generated stream adapter.'),
   host('/api/ask/runtime-permission', 'Runtime permission decisions are per active Web ask run and use in-memory bridge state owned by the host Chat Panel.', 'high'),
   host('/api/ask/runtime-permission/request', 'Native runtime permission requests are per active Web ask run and use in-memory bridge state owned by the host Chat Panel.', 'high'),

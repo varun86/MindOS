@@ -10,6 +10,7 @@ import {
   buildMindosContextPrompt,
   buildMindosSystemPrompt,
   compactMindosPromptForTokenBudget,
+  createMindosSessionContextSignature,
   defineMindosAgent,
   loadMindosAgentPrompt,
   renderMindosContextPrompt,
@@ -106,12 +107,18 @@ describe('MindOS agent product contract', () => {
     const prompt = await buildMindosContextPrompt({
       prompt: 'find project alpha',
       mindRoot: '/tmp/mind',
-      currentFile: 'Space/current.md',
-      attachedFiles: ['Space/a.md'],
+      fileContext: {
+        contextParts: ['### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha'],
+        failedFiles: ['missing.md'],
+      },
       uploadedParts: ['### upload.txt\n\nuploaded content'],
-      messages: [
-        { role: 'user', content: 'find project alpha' },
-      ],
+      recalledKnowledge: [{
+        path: 'Recall.md',
+        content: 'recalled content',
+        startLine: 10,
+        endLine: 18,
+        headingPath: ['Research', 'Recall'],
+      }],
       agentInitialization: {
         targetDir: 'Space',
         initFailures: ['bootstrap.config_json: failed (missing)'],
@@ -131,26 +138,9 @@ describe('MindOS agent product contract', () => {
         message: 'Assistant "old" is missing\nDo something else',
         target: 'old',
       }],
-      activeRecall: {
-        enabled: true,
-        maxTokens: 1000,
-        maxFiles: 2,
-        minScore: 0.1,
-      },
     }, {
       now: () => new Date('2026-01-02T03:04:05.000Z'),
       formatLocalTime: () => 'Friday, January 2, 2026 at 11:04:05 AM GMT+8',
-      loadFileContext: () => ({
-        contextParts: ['### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha'],
-        failedFiles: ['missing.md'],
-      }),
-      recallKnowledge: async () => [{
-        path: 'Recall.md',
-        content: 'recalled content',
-        startLine: 10,
-        endLine: 18,
-        headingPath: ['Research', 'Recall'],
-      }],
     });
 
     expect(prompt).toContain('find project alpha');
@@ -186,7 +176,7 @@ describe('MindOS agent product contract', () => {
   it('builds structured turn context separately from rendering', async () => {
     const context = await buildMindosTurnContext({
       prompt: 'use it',
-      selectedSkillName: 'third-party',
+      selectedSkills: [{ name: 'third-party', source: 'user-selected' }],
     }, {
       now: () => new Date('2026-01-02T03:04:05.000Z'),
       formatLocalTime: () => 'Friday, January 2, 2026 at 11:04:05 AM GMT+8',
@@ -197,6 +187,61 @@ describe('MindOS agent product contract', () => {
     expect(context.sections.map((section) => section.title)).toEqual(['Now']);
     expect(renderMindosContextPrompt(context)).toContain('## Now');
     expect(renderMindosContextPrompt(context)).not.toContain('load_skill');
+  });
+
+  it('lets callers skip unchanged session context while preserving turn-local sections', async () => {
+    const prompt = await buildMindosContextPrompt({
+      prompt: 'continue',
+      includeSessionContext: false,
+      sessionWorkDir: { path: '/tmp/project-alpha', label: 'project-alpha' },
+      sessionContextSelection: {
+        version: 1,
+        spaces: [{ path: 'Research', label: 'Research' }],
+        assistants: [{ id: 'ui-reviewer', name: 'UI Reviewer', kind: 'assistant' }],
+      },
+      fileContext: {
+        contextParts: ['### Attached file from the MindOS knowledge base: Space/a.md\n\nAlpha'],
+        failedFiles: [],
+      },
+      uploadedParts: ['### upload.txt\n\nuploaded content'],
+    }, {
+      now: () => new Date('2026-01-02T03:04:05.000Z'),
+      formatLocalTime: () => 'Friday, January 2, 2026 at 11:04:05 AM GMT+8',
+    });
+
+    expect(prompt).toContain('## Now');
+    expect(prompt).not.toContain('## Session Context');
+    expect(prompt).toContain('## Attached files from the MindOS knowledge base');
+    expect(prompt).toContain('## Files uploaded by the user for this request');
+  });
+
+  it('computes stable session context signatures from rendered metadata inputs', () => {
+    const input = {
+      sessionWorkDir: { path: '/tmp/project-alpha', label: 'project-alpha' },
+      sessionContextSelection: {
+        version: 1 as const,
+        spaces: [{ path: 'Research', label: 'Research' }],
+        assistants: [{ id: 'ui-reviewer', name: 'UI Reviewer', kind: 'assistant' }],
+      },
+      sessionContextIssues: [{
+        code: 'missing',
+        severity: 'warning' as const,
+        message: 'Assistant missing',
+      }],
+    };
+
+    expect(createMindosSessionContextSignature(input)).toBe(createMindosSessionContextSignature({
+      ...input,
+      sessionContextIssues: [{ ...input.sessionContextIssues[0]!, message: 'Assistant\nmissing' }],
+    }));
+    expect(createMindosSessionContextSignature(input)).not.toBe(createMindosSessionContextSignature({
+      ...input,
+      sessionContextSelection: {
+        version: 1,
+        spaces: [{ path: 'Different', label: 'Different' }],
+        assistants: input.sessionContextSelection.assistants,
+      },
+    }));
   });
 
   it('renders selected skill activation only for MindOS Pi prompts', () => {

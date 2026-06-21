@@ -551,6 +551,7 @@ export {
 } from './handlers/static.js';
 
 export {
+  handleAgentSessionTurnStream,
   handleAskStream,
   type AskStreamHandlerResult,
   type AskStreamHandlerServices,

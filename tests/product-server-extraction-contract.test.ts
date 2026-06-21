@@ -34,6 +34,7 @@ describe('Product server extraction contract', () => {
     expect(http).toContain('/api/extract-pdf');
     expect(http).toContain('/api/extract-docx');
     expect(http).toContain('/api/ask');
+    expect(http).toContain('/api/agent/sessions/');
     expect(http).toContain('/api/a2a');
     expect(http).toContain('/api/a2a/agents');
     expect(http).toContain('/api/a2a/delegations');
@@ -101,6 +102,8 @@ describe('Product server extraction contract', () => {
     expect(contract).toContain("path: '/api/extract-docx'");
     expect(contract).toContain("id: 'ask.stream'");
     expect(contract).toContain("path: '/api/ask'");
+    expect(contract).toContain("id: 'agent.sessions.turns.create'");
+    expect(contract).toContain("path: '/api/agent/sessions/[sessionId]/turns'");
     expect(contract).toContain("id: 'a2a'");
     expect(contract).toContain("id: 'a2a.agents'");
     expect(contract).toContain("id: 'a2a.delegations'");
