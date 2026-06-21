@@ -13,11 +13,13 @@ import WalkthroughTooltip from './WalkthroughTooltip';
  */
 export default function WalkthroughOverlay() {
   const wt = useWalkthrough();
+  const { t } = useLocale();
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const maskId = useId();
 
   const step = wt ? walkthroughSteps[wt.currentStep] : null;
+  const stepData = wt ? t.walkthrough.steps[wt.currentStep] as { title: string; body: string } | undefined : undefined;
 
   const measureTarget = useCallback(() => {
     if (!step) return;
@@ -46,12 +48,28 @@ export default function WalkthroughOverlay() {
     };
   }, [measureTarget]);
 
-  // Re-measure when step changes
+  // Re-measure when step changes or late-rendered shell/content anchors appear.
   useEffect(() => {
     measureTarget();
+    let frame = 0;
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measureTarget);
+    };
+    const observer = new MutationObserver(scheduleMeasure);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-walkthrough', 'class', 'style'],
+    });
     // Slight delay to account for animations
     const timer = setTimeout(measureTarget, 100);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [wt?.currentStep, measureTarget]);
 
   // ESC to dismiss — depend on skip only, not the entire context object
@@ -68,22 +86,7 @@ export default function WalkthroughOverlay() {
     return () => window.removeEventListener('keydown', handler, true);
   }, [skipFn]);
 
-  // If target element doesn't exist (e.g. panel not enabled), auto-skip
-  // after a grace period. Use stable store ref to avoid re-triggering on
-  // every store change (which caused spurious skips during step transitions).
   const currentStep = wt?.currentStep ?? 0;
-  useEffect(() => {
-    if (!step) return;
-    // Wait 500ms for DOM to settle (sidebar animations, lazy rendering)
-    const timer = setTimeout(() => {
-      const el = document.querySelector(`[data-walkthrough="${step.anchor}"]`);
-      if (!el) {
-        useWalkthroughStore.getState().next();
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep]); // Only re-run when step index changes, not on every store update
 
   // Safety timeout: if overlay stays for 60s without user interaction, auto-dismiss.
   // Prevents permanently stuck overlay from any unforeseen edge case.
@@ -94,7 +97,7 @@ export default function WalkthroughOverlay() {
     return () => clearTimeout(timer);
   }, [currentStep]); // Reset on each step change
 
-  if (!wt || !step) return null;
+  if (!wt || !step || !stepData) return null;
 
   // Mobile: bottom sheet instead of spotlight
   if (isMobile) {
@@ -163,16 +166,47 @@ export default function WalkthroughOverlay() {
       )}
 
       {/* Fallback dismiss button — shown when target element NOT found.
-          Without this, user sees dark overlay but no visible UI to dismiss it. */}
+          Without this, routes that do not render a walkthrough anchor would
+          consume the tour without explaining the current step. */}
       {!targetRect && (
-        <div className="fixed inset-0 z-app-walkthrough-surface flex items-center justify-center pointer-events-none">
-          <button
-            onClick={wt.skip}
-            className="pointer-events-auto px-4 py-2 text-sm rounded-lg font-medium transition-all hover:opacity-90"
-            style={{ background: 'var(--amber)', color: 'var(--amber-foreground)' }}
+        <div className="fixed inset-0 z-app-walkthrough-surface flex items-center justify-center p-4 pointer-events-none">
+          <div
+            role="dialog"
+            aria-label={stepData.title}
+            className="pointer-events-auto w-full max-w-sm rounded-xl border border-[var(--amber)] bg-card p-4 shadow-xl animate-in fade-in duration-200"
           >
-            {wt.currentStep === wt.totalSteps - 1 ? '✓' : '→'}
-          </button>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded-full bg-[var(--amber-dim)] px-1.5 py-0.5 font-mono text-2xs text-[var(--amber)]">
+                {t.walkthrough.step(wt.currentStep + 1, wt.totalSteps)}
+              </span>
+            </div>
+            <h3 className="mb-1 text-sm font-semibold text-foreground">{stepData.title}</h3>
+            <p className="text-xs leading-relaxed text-muted-foreground">{stepData.body}</p>
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+              <button
+                onClick={wt.skip}
+                className="text-xs text-muted-foreground transition-colors hover:opacity-80"
+              >
+                {t.walkthrough.skip}
+              </button>
+              <div className="flex items-center gap-2">
+                {wt.currentStep > 0 && (
+                  <button
+                    onClick={wt.back}
+                    className="rounded-lg px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                  >
+                    {t.walkthrough.back}
+                  </button>
+                )}
+                <button
+                  onClick={wt.next}
+                  className="rounded-lg bg-[var(--amber)] px-3 py-1.5 text-xs font-medium text-[var(--amber-foreground)] transition-all hover:opacity-90"
+                >
+                  {wt.currentStep === wt.totalSteps - 1 ? t.walkthrough.done : t.walkthrough.next}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

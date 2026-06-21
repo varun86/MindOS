@@ -262,6 +262,10 @@ export const onboardingZh = {
         body: 'MindOS 会自动读取你的知识库。问它项目相关的事，不需要每次都重复交代背景。',
       },
       {
+        title: '回响：记住人',
+        body: '回响沉淀人物画像、关系、偏好和对话记忆，让上下文围绕真实的人展开，而不只是文件和目录。',
+      },
+      {
         title: '多 Agent 共享记忆',
         body: '通过 MCP 连接 Cursor、Claude Code、Windsurf，它们共享同一份项目记忆。',
       },

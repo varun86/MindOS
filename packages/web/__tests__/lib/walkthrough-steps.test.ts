@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { walkthroughSteps } from '@/components/walkthrough/steps';
 
 describe('walkthrough/steps', () => {
-  it('defines exactly 3 steps', () => {
-    expect(walkthroughSteps).toHaveLength(3);
+  it('defines exactly 4 steps', () => {
+    expect(walkthroughSteps).toHaveLength(4);
   });
 
   it('each step has anchor and position', () => {
@@ -19,7 +19,14 @@ describe('walkthrough/steps', () => {
   });
 
   it('anchors match the value-driven walkthrough sequence', () => {
-    const expected = ['files-panel', 'ask-button', 'agents-panel'];
+    const expected = ['files-panel', 'ask-button', 'echo-panel', 'agents-panel'];
     expect(walkthroughSteps.map(s => s.anchor)).toEqual(expected);
+  });
+
+  it('includes Echo before multi-agent sharing', () => {
+    expect(walkthroughSteps[2]).toMatchObject({
+      anchor: 'echo-panel',
+      position: 'right',
+    });
   });
 });

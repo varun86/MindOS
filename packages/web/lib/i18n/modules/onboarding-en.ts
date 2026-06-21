@@ -262,6 +262,10 @@ export const onboardingEn = {
         body: 'MindOS reads your knowledge base automatically. Ask about your projects without restating the background every time.',
       },
       {
+        title: 'Echo: Remember the People',
+        body: 'Echo keeps people, relationships, preferences, and conversation memories close to the work, so context stays human, not just file-based.',
+      },
+      {
         title: 'Connect Any Agent',
         body: 'Link Cursor, Claude Code, or Windsurf via MCP — they all share the same project memory.',
       },

@@ -309,7 +309,7 @@ describe('POST /api/setup — config writing', () => {
       askedAI: true,
       agentPromptDone: true,
       nextStepIndex: 2,
-      walkthroughStep: 3,
+      walkthroughStep: 4,
       walkthroughDismissed: false,
     };
     mockSettings.setupPending = false;

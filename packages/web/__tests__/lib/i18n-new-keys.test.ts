@@ -132,8 +132,8 @@ describe('i18n walkthrough keys', () => {
     expect(w.exploreCta).toBeTruthy();
   });
 
-  it('defines exactly 3 steps', () => {
-    expect(w.steps).toHaveLength(3);
+  it('defines exactly 4 steps', () => {
+    expect(w.steps).toHaveLength(4);
   });
 
   it('each step has title and body', () => {
@@ -141,6 +141,16 @@ describe('i18n walkthrough keys', () => {
       expect(step.title).toBeTruthy();
       expect(step.body).toBeTruthy();
     }
+  });
+
+  it('keeps Echo framed around people context', async () => {
+    const { zh } = await import('@/lib/i18n/messages-zh');
+    expect(w.steps[2]?.title).toContain('Echo');
+    expect(w.steps[2]?.body.toLowerCase()).toContain('people');
+    expect(w.steps[2]?.body.toLowerCase()).toContain('relationships');
+    expect(zh.walkthrough.steps[2]?.title).toContain('回响');
+    expect(zh.walkthrough.steps[2]?.body).toContain('人');
+    expect(zh.walkthrough.steps[2]?.body).toContain('关系');
   });
 });
 
