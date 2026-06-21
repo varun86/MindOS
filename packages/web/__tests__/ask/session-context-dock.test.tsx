@@ -85,7 +85,7 @@ function mountDock({
 
 describe('SessionContextDock', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch unused in this test'))));
   });
 
   afterEach(() => {
@@ -106,9 +106,22 @@ describe('SessionContextDock', () => {
     act(() => root.unmount());
   });
 
-  it('adds and removes Spaces through the searchable chip picker', () => {
+  it('adds and removes Spaces returned by the list_spaces API', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        spaces: [
+          { name: 'Research', path: 'Research', fileCount: 3, description: 'Papers and notes' },
+        ],
+      }),
+    }));
+
     const onSetContextSelection = vi.fn(() => true);
     const { host, root } = mountDock({ onSetContextSelection });
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
 
     const toggle = host.querySelector('button[aria-label="Context"]') as HTMLButtonElement;
     act(() => {
@@ -120,22 +133,22 @@ describe('SessionContextDock', () => {
       addSpace.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(document.body.querySelector('[data-session-context-picker="spaces"]')?.textContent).not.toContain('术术');
+    expect(document.body.querySelector('[data-session-context-picker="spaces"]')?.textContent).not.toContain('术');
 
     const search = document.body.querySelector('input[aria-label="Search spaces"]') as HTMLInputElement;
     act(() => {
-      search.value = '术';
+      search.value = 'Research';
       search.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-    const shu = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.includes('术')) as HTMLButtonElement;
+    const research = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.includes('Research')) as HTMLButtonElement;
     act(() => {
-      shu.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      research.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
     expect(onSetContextSelection).toHaveBeenCalledWith(expect.objectContaining({
       spaces: expect.arrayContaining([
-        expect.objectContaining({ path: 'MIND_SHU', label: '术' }),
+        expect.objectContaining({ path: 'Research', label: 'Research', source: 'filesystem' }),
       ]),
     }));
 
@@ -146,6 +159,67 @@ describe('SessionContextDock', () => {
 
     expect(onSetContextSelection).toHaveBeenLastCalledWith(expect.objectContaining({
       spaces: [],
+    }));
+
+    act(() => root.unmount());
+  });
+
+  it('loads filesystem Spaces into the searchable picker', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        spaces: [
+          { name: 'Research', path: 'Research', fileCount: 3, description: 'Papers and notes' },
+          { name: 'Projects', path: 'Projects/', fileCount: 5, description: '' },
+        ],
+      }),
+    }));
+
+    const onSetContextSelection = vi.fn(() => true);
+    const { host, root } = mountDock({
+      session: sessionWithSelection(),
+      onSetContextSelection,
+    });
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    const toggle = host.querySelector('button[aria-label="Context"]') as HTMLButtonElement;
+    act(() => {
+      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const addSpace = document.body.querySelector('button[aria-label="Add Space"]') as HTMLButtonElement;
+    act(() => {
+      addSpace.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const pickerText = document.body.querySelector('[data-session-context-picker="spaces"]')?.textContent ?? '';
+    expect(pickerText).toContain('Research');
+    expect(pickerText).toContain('Projects');
+    expect(pickerText).not.toContain('道');
+    expect(pickerText).not.toContain('术');
+
+    const search = document.body.querySelector('input[aria-label="Search spaces"]') as HTMLInputElement;
+    act(() => {
+      search.value = 'Research';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const research = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.includes('Research')) as HTMLButtonElement;
+    act(() => {
+      research.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onSetContextSelection).toHaveBeenCalledWith(expect.objectContaining({
+      spaces: [
+        expect.objectContaining({
+          path: 'Research',
+          label: 'Research',
+          source: 'filesystem',
+        }),
+      ],
     }));
 
     act(() => root.unmount());

@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -106,12 +106,16 @@ type TrayPosition = {
   maxHeight: number;
 };
 
-const BASE_SPACE_CANDIDATES: ContextSelectableItem[] = [
-  { id: 'MIND_DAO', label: '道', icon: '道' },
-  { id: 'MIND_FA', label: '法', icon: '法' },
-  { id: 'MIND_SHU', label: '术', icon: '术' },
-  { id: 'MIND_QI', label: '器', icon: '器' },
-];
+type WorkspaceSpaceRecord = {
+  name?: string;
+  path: string;
+  fileCount?: number;
+  description?: string;
+};
+
+type SpaceCandidate = ContextSelectableItem & {
+  spaceSource?: ContextSpaceRef['source'];
+};
 
 const BASE_ASSISTANT_CANDIDATES: ContextSelectableItem[] = [
   { id: 'inbox-organizer', label: 'Inbox Organizer', icon: 'I' },
@@ -124,15 +128,6 @@ function shortPath(value: string | undefined, fallback: string): string {
   return parts.at(-1) ?? value;
 }
 
-function spaceToCandidate(space: ContextSpaceRef): ContextSelectableItem {
-  const label = contextChipLabel(space) || contextPathLabel(space.path);
-  return {
-    id: space.path,
-    label,
-    icon: space.icon || contextItemIcon(label),
-  };
-}
-
 function assistantToCandidate(assistant: ContextAssistantRef): ContextSelectableItem {
   const label = contextChipLabel(assistant) || assistant.id;
   return {
@@ -142,10 +137,37 @@ function assistantToCandidate(assistant: ContextAssistantRef): ContextSelectable
   };
 }
 
-function buildSpaceCandidates(selection: SessionContextSelection): ContextSelectableItem[] {
-  return selection.spaces
-    .map(spaceToCandidate)
-    .reduce(addUniqueContextItem, BASE_SPACE_CANDIDATES);
+function isWorkspaceSpaceRecord(value: unknown): value is WorkspaceSpaceRecord {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && typeof (value as { path?: unknown }).path === 'string',
+  );
+}
+
+function normalizeSpacePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/g, '').trim();
+}
+
+function workspaceSpaceToCandidate(space: WorkspaceSpaceRecord): SpaceCandidate | null {
+  const spacePath = normalizeSpacePath(space.path);
+  if (!spacePath) return null;
+  const label = space.name?.trim() || contextPathLabel(spacePath);
+  const description = space.description?.trim();
+  return {
+    id: spacePath,
+    label,
+    icon: contextItemIcon(label),
+    spaceSource: 'filesystem',
+    ...(description ? { description } : {}),
+  };
+}
+
+function buildSpaceCandidates(workspaceSpaces: WorkspaceSpaceRecord[]): SpaceCandidate[] {
+  const candidates = workspaceSpaces
+    .map(workspaceSpaceToCandidate)
+    .filter((item): item is SpaceCandidate => Boolean(item));
+  return candidates.reduce<SpaceCandidate[]>(addUniqueContextItem, []);
 }
 
 function buildAssistantCandidates(selection: SessionContextSelection): ContextSelectableItem[] {
@@ -154,14 +176,19 @@ function buildAssistantCandidates(selection: SessionContextSelection): ContextSe
     .reduce(addUniqueContextItem, BASE_ASSISTANT_CANDIDATES);
 }
 
-function addSpace(selection: SessionContextSelection, candidate: ContextSelectableItem): SessionContextSelection {
+function addSpace(selection: SessionContextSelection, candidate: SpaceCandidate): SessionContextSelection {
   const path = candidate.id.trim().replace(/\\/g, '/');
   if (!path) return selection;
   return normalizeSessionContextSelectionForClient({
     ...selection,
     spaces: [
       ...selection.spaces,
-      { path, label: candidate.label || contextPathLabel(path), icon: candidate.icon, source: 'manual' },
+      {
+        path,
+        label: candidate.label || contextPathLabel(path),
+        icon: candidate.icon,
+        source: candidate.spaceSource ?? 'manual',
+      },
     ],
   });
 }
@@ -199,6 +226,7 @@ export default function SessionContextDock({
   const [openPicker, setOpenPicker] = useState<PickerKind | null>(null);
   const [spaceQuery, setSpaceQuery] = useState('');
   const [assistantQuery, setAssistantQuery] = useState('');
+  const [workspaceSpaces, setWorkspaceSpaces] = useState<WorkspaceSpaceRecord[]>([]);
   const resolvedLabels = useMemo<SessionContextLabels>(() => ({
     ...DEFAULT_LABELS,
     ...labels,
@@ -216,8 +244,29 @@ export default function SessionContextDock({
   const workDirInputPlaceholder = !workDir || workDir.source === 'mind-root'
     ? resolvedLabels.mindRoot
     : resolvedLabels.workDirPlaceholder;
-  const spaceCandidates = useMemo(() => buildSpaceCandidates(selection), [selection]);
+  const spaceCandidates = useMemo(() => buildSpaceCandidates(workspaceSpaces), [workspaceSpaces]);
   const assistantCandidates = useMemo(() => buildAssistantCandidates(selection), [selection]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWorkspaceSpaces() {
+      try {
+        const response = await fetch('/api/file?op=list_spaces');
+        if (!response.ok) return;
+        const body = await response.json() as { spaces?: unknown };
+        if (cancelled || !Array.isArray(body.spaces)) return;
+        setWorkspaceSpaces(body.spaces.filter(isWorkspaceSpaceRecord));
+      } catch {
+        // Keep the built-in candidates available when the runtime cannot list spaces.
+      }
+    }
+
+    loadWorkspaceSpaces();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!expanded) return;
