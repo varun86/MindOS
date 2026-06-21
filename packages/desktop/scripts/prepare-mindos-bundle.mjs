@@ -25,6 +25,12 @@ export const BUILTIN_AGENT_EXTENSION_RUNTIME_DEPENDENCY_SEEDS = [
   'pi-web-access',
 ];
 
+export const PI_SCHEDULE_PROMPT_LEGACY_RUNTIME_DEPENDENCY_SEEDS = [
+  // pi-schedule-prompt@0.1.2 still declares the pre-rename package. Keep this
+  // as a packaging compatibility seed until the extension moves to @earendil.
+  '@mariozechner/pi-coding-agent',
+];
+
 export const IM_RUNTIME_DEPENDENCY_SEEDS = [
   '@larksuiteoapi/node-sdk',
   '@slack/web-api',
@@ -58,6 +64,7 @@ export const RUNTIME_DEPENDENCY_SEEDS = [
   'typebox',
   'yaml',
   ...BUILTIN_AGENT_EXTENSION_RUNTIME_DEPENDENCY_SEEDS,
+  ...PI_SCHEDULE_PROMPT_LEGACY_RUNTIME_DEPENDENCY_SEEDS,
   ...IM_RUNTIME_DEPENDENCY_SEEDS,
 ];
 

@@ -6,6 +6,7 @@ import {
   BUILTIN_AGENT_EXTENSION_RUNTIME_DEPENDENCY_SEEDS,
   IM_RUNTIME_DEPENDENCY_SEEDS,
   MINDOS_WEB_RUNTIME_EXTENSION_SOURCE_ENTRIES,
+  PI_SCHEDULE_PROMPT_LEGACY_RUNTIME_DEPENDENCY_SEEDS,
   copyAppForBundledRuntime,
   materializeStandaloneAssets,
   pruneClaudeAgentSdkNativePackages,
@@ -258,8 +259,16 @@ describe('materializeStandaloneAssets', () => {
 
   it('seeds the current PI coding agent package into runtime bundles', () => {
     expect(RUNTIME_DEPENDENCY_SEEDS).toContain('@earendil-works/pi-coding-agent');
-    expect(RUNTIME_DEPENDENCY_SEEDS).not.toContain('@mariozechner/pi-coding-agent');
     expect(BUILTIN_AGENT_EXTENSION_RUNTIME_DEPENDENCY_SEEDS).not.toContain('@mariozechner/pi-coding-agent');
+  });
+
+  it('seeds the legacy PI coding agent package required by pi-schedule-prompt', () => {
+    expect(PI_SCHEDULE_PROMPT_LEGACY_RUNTIME_DEPENDENCY_SEEDS).toEqual([
+      '@mariozechner/pi-coding-agent',
+    ]);
+    expect(RUNTIME_DEPENDENCY_SEEDS).toEqual(
+      expect.arrayContaining(PI_SCHEDULE_PROMPT_LEGACY_RUNTIME_DEPENDENCY_SEEDS),
+    );
   });
 
   it('materializes MindOS-owned runtime extension sources into standalone bundles', () => {
