@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MINDOS_CONTEXT_ASSISTANT_IDS,
+  getBuiltinAssistantMarkdownFiles,
   getAssistantMarkdownPath,
   getAssistantProfilePath,
   getAssistantPromptPath,
@@ -34,7 +35,21 @@ describe('mind-system assistants', () => {
     expect(getDefaultAssistantPrompt('inbox-organizer')).toContain('mode: subagent');
     expect(getDefaultAssistantPrompt('inbox-organizer')).toContain('# Inbox Organizer');
     expect(getDefaultAssistantPrompt('inbox-organizer')).not.toContain('assistantId:');
+    expect(getDefaultAssistantPrompt('echo-imprint')).toContain('permissionMode: read');
+    expect(getDefaultAssistantPrompt('echo-imprint')).toContain('# Echo Imprint');
+    expect(getDefaultAssistantPrompt('echo-practice')).toContain('# Echo Practice');
     expect(getDefaultAssistantPrompt('custom-helper')).toContain('version: 1');
     expect(getDefaultAssistantPrompt('custom-helper')).toContain('# Custom Helper');
+  });
+
+  it('includes Echo assistants in built-in assistant Markdown scaffolds', () => {
+    expect(getBuiltinAssistantMarkdownFiles().map((item) => item.assistantId)).toEqual([
+      'inbox-organizer',
+      'dreaming',
+      'echo-imprint',
+      'echo-threader',
+      'echo-insight',
+      'echo-practice',
+    ]);
   });
 });

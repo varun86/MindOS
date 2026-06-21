@@ -214,6 +214,39 @@ describe('POST /api/assistant-runs', () => {
     });
   });
 
+  it('delegates Echo assistant runs with read-only built-in prompts', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+
+    const response = await POST(new Request('http://localhost/api/assistant-runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        assistantId: 'echo-imprint',
+        messages: [{ role: 'user', content: '# 印迹\n\n## 今日事实\n\n写了一行。' }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(delegatedBody).toMatchObject({
+      assistantId: 'echo-imprint',
+      messages: [{ role: 'user', content: '# 印迹\n\n## 今日事实\n\n写了一行。' }],
+      permissionMode: 'read',
+    });
+    const delegatedContext = agentTurnPostMock.mock.calls[0]?.[1] as {
+      activeAssistant?: { id: string; name: string; instructions?: string; permissionMode?: string; maxPermissionMode?: string };
+    };
+    expect(delegatedContext.activeAssistant).toMatchObject({
+      id: 'echo-imprint',
+      name: 'Echo Imprint',
+      permissionMode: 'read',
+      maxPermissionMode: 'read',
+    });
+    expect(delegatedContext.activeAssistant?.instructions).toContain('Return Markdown only');
+    expect(delegatedContext.activeAssistant?.instructions).toContain('Do not invent');
+  });
+
   it('rejects nested runtime permission options before touching the agent turn runner', async () => {
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',

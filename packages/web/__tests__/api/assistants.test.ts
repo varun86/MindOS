@@ -178,6 +178,18 @@ Write a ranked reading queue.
 
     expect(dreaming.status, JSON.stringify(dreamingBody)).toBe(409);
     expect(dreamingBody.error).toContain('Built-in assistants');
+
+    const echoImprint = await POST(new Request('http://localhost/api/assistants', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'echo-imprint',
+        name: 'Echo Imprint Override',
+      }),
+    }));
+    const echoBody = await echoImprint.json();
+
+    expect(echoImprint.status, JSON.stringify(echoBody)).toBe(409);
+    expect(echoBody.error).toContain('Built-in assistants');
   }, ROUTE_TEST_TIMEOUT_MS);
 
   it('rejects deletion for built-in Assistants and deletes custom Assistants', async () => {
@@ -219,6 +231,11 @@ hidden: false
       body: JSON.stringify({ id: 'dreaming' }),
     }));
     expect(dreaming.status).toBe(403);
+    const echoImprint = await DELETE(new Request('http://localhost/api/assistants', {
+      method: 'DELETE',
+      body: JSON.stringify({ id: 'echo-imprint' }),
+    }));
+    expect(echoImprint.status).toBe(403);
 
     const custom = await DELETE(new Request('http://localhost/api/assistants', {
       method: 'DELETE',

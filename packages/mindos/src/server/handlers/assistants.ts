@@ -21,6 +21,10 @@ const ASSISTANT_PROFILE_VERSION = 1;
 const BUILTIN_ASSISTANT_IDS = new Set([
   'inbox-organizer',
   'dreaming',
+  'echo-imprint',
+  'echo-threader',
+  'echo-insight',
+  'echo-practice',
 ]);
 
 const DEFAULT_ASSISTANT_PROFILE = {

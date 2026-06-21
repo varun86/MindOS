@@ -6,7 +6,7 @@ import type { LocalAttachment, Message } from '@/lib/types';
 import { getMindRoot } from '@/lib/fs';
 import { buildAssistantAgentTurnRequestBody } from '@/lib/assistant-runner';
 import { DREAMING_ASSISTANT_ID, buildDreamingAssistantRunPrompt } from '@/lib/dreaming-assistant';
-import { isRegisteredAssistantRun } from '@/lib/assistant-runtime-registry';
+import { getAssistantPermissionMode, isRegisteredAssistantRun } from '@/lib/assistant-runtime-registry';
 import { getDefaultAssistantPrompt } from '@/lib/mind-system-assistants';
 import { handleRouteErrorSimple } from '@/lib/errors';
 import { runAgentTurnRequestBody } from '../agent/_lib/turn-runner';
@@ -182,7 +182,7 @@ function normalizeAssistantPermissionMode(
   value: unknown,
   assistantId: string,
 ): AgentTurnRequestBody['permissionMode'] {
-  if (value === undefined) return isRegisteredAssistantRun(assistantId) ? undefined : 'read';
+  if (value === undefined) return getAssistantPermissionMode(assistantId) ?? 'read';
   if (value === 'read' || value === 'ask' || value === 'auto' || value === 'full') return value;
   throw new AssistantRunError(400, 'INVALID_PERMISSION_MODE', 'permissionMode must be read, ask, auto, or full.');
 }
@@ -207,12 +207,13 @@ async function resolveActiveAssistantPrompt(assistantId: string): Promise<Mindos
   }
 
   if (isRegisteredAssistantRun(assistantId)) {
+    const permissionMode = getAssistantPermissionMode(assistantId) ?? 'read';
     return createMindosActiveAssistantPromptFromMarkdown({
       id: assistantId,
       markdown: getDefaultAssistantPrompt(assistantId),
       source: 'builtin-default',
       promptPath: `.mindos/assistants/${assistantId}.md`,
-      maxPermissionMode: 'ask',
+      maxPermissionMode: permissionMode,
     });
   }
 

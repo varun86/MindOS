@@ -1,13 +1,19 @@
 export type AssistantPermissionPolicyMode = 'read' | 'ask' | 'auto' | 'full';
-export type AssistantPermissionLevel = 'trusted-write';
+export type AssistantPermissionLevel = 'read-only' | 'trusted-write';
 
 export const ASSISTANT_RUN_REGISTRY = {
   'inbox-organizer': 'trusted-write',
   dreaming: 'trusted-write',
+  'echo-imprint': 'read-only',
+  'echo-threader': 'read-only',
+  'echo-insight': 'read-only',
+  'echo-practice': 'read-only',
 } as const satisfies Record<string, AssistantPermissionLevel>;
 
 export function assistantPermissionLevelToPolicyMode(permission: AssistantPermissionLevel): AssistantPermissionPolicyMode {
   switch (permission) {
+    case 'read-only':
+      return 'read';
     case 'trusted-write':
       return 'ask';
   }

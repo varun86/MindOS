@@ -64,12 +64,17 @@ describe('assistant runner utilities', () => {
     expect(resolveAssistantPermissionMode('inbox-organizer', 'read')).toBe('ask');
     expect(resolveAssistantPermissionMode('unknown-assistant', 'read')).toBe('read');
     expect(resolveAssistantPermissionMode('dreaming', 'read')).toBe('ask');
+    expect(resolveAssistantPermissionMode('echo-imprint', 'ask')).toBe('read');
     expect(isRegisteredAssistantRun('inbox-organizer')).toBe(true);
     expect(isRegisteredAssistantRun('dreaming')).toBe(true);
+    expect(isRegisteredAssistantRun('echo-insight')).toBe(true);
     expect(isRegisteredAssistantRun('unknown-assistant')).toBe(false);
+    expect(assistantPermissionLevelToPolicyMode('read-only')).toBe('read');
     expect(assistantPermissionLevelToPolicyMode('trusted-write')).toBe('ask');
     expect(getAssistantPermissionLevel('dreaming')).toBe('trusted-write');
     expect(getAssistantPermissionMode('dreaming')).toBe('ask');
+    expect(getAssistantPermissionLevel('echo-practice')).toBe('read-only');
+    expect(getAssistantPermissionMode('echo-practice')).toBe('read');
     expect(getAssistantPermissionLevel('unknown-assistant')).toBeUndefined();
   });
 

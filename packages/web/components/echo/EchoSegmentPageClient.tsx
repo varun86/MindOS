@@ -22,11 +22,17 @@ import {
   Target,
 } from 'lucide-react';
 import { ECHO_SEGMENT_HREF, type EchoSegment } from '@/lib/echo-segments';
-import { buildEchoInsightUserPrompt } from '@/lib/echo-insight-prompt';
+import {
+  buildEchoAssistantRunPrompt,
+  buildEchoRecentSessionSummaries,
+  getEchoAssistantIdForSegment,
+  type EchoPromptFact,
+} from '@/lib/echo-assistants';
 import type { Locale, Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
 import { cn } from '@/lib/utils';
 import { openAskModal } from '@/hooks/useAskModal';
+import { useSessions } from '@/lib/agent-session-store';
 import { ContentPageShell } from '@/components/shared/ContentPageShell';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EchoHero } from './EchoHero';
@@ -595,6 +601,7 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
   const title = segmentTitle(segment, echo);
   const lead = segmentLead(segment, p);
   const pageTitleId = 'echo-page-title';
+  const sessions = useSessions();
 
   const [dailyLine, setDailyLine] = useState('');
   const [growthIntent, setGrowthIntent] = useState('');
@@ -681,22 +688,86 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
     openAskModal(content, 'user');
   }, []);
 
-  const insightUserPrompt = useMemo(
-    () =>
-      buildEchoInsightUserPrompt({
-        locale: locale as Locale,
-        segment,
-        segmentTitle: title,
-        factsHeading: p.factsHeading,
-        emptyTitle: snapshot.title,
-        emptyBody: snapshot.body,
-        dailyLineLabel: p.dailyLineLabel,
-        dailyLine,
-        growthIntentLabel: p.growthIntentLabel,
-        growthIntent,
-      }),
-    [locale, segment, title, p.factsHeading, snapshot, p.dailyLineLabel, dailyLine, p.growthIntentLabel, growthIntent],
-  );
+  const echoAssistantId = getEchoAssistantIdForSegment(segment);
+  const recentSessions = useMemo(() => buildEchoRecentSessionSummaries(sessions), [sessions]);
+  const selectedThread = p.threadItems[selectedThreadIndex] ?? p.threadItems[0];
+  const echoAssistantPrompt = useMemo(() => {
+    if (!echoAssistantId || segment === 'overview') return '';
+    const facts: EchoPromptFact[] = [];
+
+    if (segment === 'imprint') {
+      facts.push(
+        { label: p.dailyLineLabel, value: dailyLine.trim() || p.dailyLinePlaceholder },
+        {
+          label: 'Visible log entries',
+          value: p.imprintLogEntries.map((entry) => `${entry.time} ${entry.title} - ${entry.body}`).join(' | '),
+        },
+      );
+      if (dailyEchoReport) {
+        facts.push(
+          { label: p.dailyReportTitle, value: dailyEchoReport.rawMarkdown },
+          { label: p.reportThemesTitle, value: dailyEchoReport.themes.map((theme) => theme.name).join(', ') },
+          { label: p.reportAlignmentTitle, value: dailyEchoReport.alignment.analysis },
+        );
+      }
+    }
+
+    if (segment === 'threads' && selectedThread) {
+      facts.push(
+        { label: p.threadsListTitle, value: p.threadItems.map((item) => item.title).join(', ') },
+        { label: 'Selected thread', value: selectedThread.title },
+        { label: 'Selected thread meta', value: selectedThread.meta },
+        { label: 'Selected thread tags', value: selectedThread.tags.join(', ') },
+        { label: 'Selected thread points', value: selectedThread.points.join(' | ') },
+        { label: 'Selected thread reflection', value: selectedThread.reflection },
+      );
+    }
+
+    if (segment === 'growth') {
+      facts.push(
+        { label: p.growthIntentLabel, value: growthIntent.trim() || p.growthIntentPlaceholder },
+        { label: p.growthMilestonesTitle, value: p.growthMilestones.map((item) => `${item.date} ${item.title}`).join(' | ') },
+        { label: p.growthHabitsTitle, value: p.growthHabits.map((habit) => `${habit.title} ${habit.value}/${habit.total}`).join(' | ') },
+      );
+    }
+
+    if (segment === 'practice') {
+      facts.push({
+        label: p.practiceExperimentsTitle,
+        value: p.practiceExperiments.map((experiment) => [
+          `${experiment.title} (${experiment.status})`,
+          `${p.practiceHypothesisLabel} ${experiment.hypothesis}`,
+          `${p.practiceActionLabel} ${experiment.action}`,
+          `${p.practiceCheckLabel} ${experiment.check}`,
+        ].join(' / ')).join(' | '),
+      });
+    }
+
+    return buildEchoAssistantRunPrompt({
+      locale: locale as Locale,
+      segment,
+      segmentTitle: title,
+      lead,
+      snapshotTitle: snapshot.title,
+      snapshotBody: snapshot.body,
+      facts,
+      recentSessions,
+    });
+  }, [
+    dailyEchoReport,
+    dailyLine,
+    echoAssistantId,
+    growthIntent,
+    lead,
+    locale,
+    p,
+    recentSessions,
+    segment,
+    selectedThread,
+    snapshot.body,
+    snapshot.title,
+    title,
+  ]);
 
   const headerActions = segment === 'imprint'
     ? (
@@ -782,7 +853,7 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
           <PracticePanel p={p} />
         )}
 
-        {(segment === 'threads' || segment === 'growth' || segment === 'practice') && (
+        {echoAssistantId && segment !== 'overview' && (
           <EchoInsightCollapsible
             title={p.insightTitle}
             showLabel={p.insightShow}
@@ -793,7 +864,8 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
             generatingLabel={p.insightGenerating}
             errorPrefix={p.insightErrorPrefix}
             retryLabel={p.insightRetry}
-            userPrompt={insightUserPrompt}
+            assistantId={echoAssistantId}
+            userPrompt={echoAssistantPrompt}
           />
         )}
       </div>

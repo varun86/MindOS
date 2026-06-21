@@ -625,6 +625,8 @@ hidden: true
 
       const createBuiltin = handleAssistantsPost({ id: 'dreaming', name: 'Override' }, { mindRoot: root });
       const deleteBuiltin = handleAssistantsDelete({ id: 'dreaming' }, { mindRoot: root });
+      const createEchoBuiltin = handleAssistantsPost({ id: 'echo-imprint', name: 'Override' }, { mindRoot: root });
+      const deleteEchoBuiltin = handleAssistantsDelete({ id: 'echo-imprint' }, { mindRoot: root });
       const deleteCustom = handleAssistantsDelete({ id: 'custom-research' }, { mindRoot: root });
       const listed = handleAssistantsGet({ mindRoot: root }).body as {
         assistants: Array<{ id: string }>;
@@ -633,6 +635,8 @@ hidden: true
       expect(custom.status).toBe(201);
       expect(createBuiltin.status).toBe(409);
       expect(deleteBuiltin.status).toBe(403);
+      expect(createEchoBuiltin.status).toBe(409);
+      expect(deleteEchoBuiltin.status).toBe(403);
       expect(deleteCustom.status).toBe(200);
       expect(listed.assistants.some((item) => item.id === 'dreaming')).toBe(true);
       expect(listed.assistants.some((item) => item.id === 'custom-research')).toBe(false);

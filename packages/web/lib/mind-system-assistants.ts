@@ -1,6 +1,10 @@
 import { getAssistantMarkdownPath } from './mind-system-assistant-paths';
 import { INBOX_ORGANIZER_ASSISTANT_ID, INBOX_ORGANIZER_DEFAULT_PROMPT } from './inbox-assistant';
 import { DREAMING_ASSISTANT_DEFAULT_PROMPT, DREAMING_ASSISTANT_ID } from './dreaming-assistant';
+import {
+  ECHO_ASSISTANT_DEFAULT_PROMPTS,
+  getBuiltinEchoAssistantMarkdownFiles,
+} from './echo-assistants';
 
 export {
   getAssistantMarkdownPath,
@@ -25,6 +29,7 @@ export interface MindosContextAssistantTemplate {
 const DEFAULT_ASSISTANT_PROMPTS: Record<string, string> = {
   [INBOX_ORGANIZER_ASSISTANT_ID]: INBOX_ORGANIZER_DEFAULT_PROMPT,
   [DREAMING_ASSISTANT_ID]: DREAMING_ASSISTANT_DEFAULT_PROMPT,
+  ...ECHO_ASSISTANT_DEFAULT_PROMPTS,
 };
 
 export function getMindosContextAssistants(): MindosContextAssistantTemplate[] {
@@ -78,6 +83,7 @@ export function getBuiltinAssistantMarkdownFiles(): Array<{ assistantId: string;
       path: getAssistantMarkdownPath(DREAMING_ASSISTANT_ID),
       content: DREAMING_ASSISTANT_DEFAULT_PROMPT,
     },
+    ...getBuiltinEchoAssistantMarkdownFiles(),
   ];
 }
 

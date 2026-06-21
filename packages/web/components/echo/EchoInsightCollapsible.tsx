@@ -4,7 +4,7 @@ import { type ComponentType, useCallback, useEffect, useId, useRef, useState } f
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
-import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
+import type { EchoAssistantId } from '@/lib/echo-assistants';
 import { useSettingsAiAvailable } from '@/hooks/useSettingsAiAvailable';
 import { useLocale } from '@/lib/stores/locale-store';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,9 @@ export function EchoInsightCollapsible({
   generatingLabel,
   errorPrefix,
   retryLabel,
+  assistantId,
   userPrompt,
+  maxSteps = 12,
 }: {
   title: string;
   showLabel: string;
@@ -43,7 +45,9 @@ export function EchoInsightCollapsible({
   generatingLabel: string;
   errorPrefix: string;
   retryLabel: string;
+  assistantId: EchoAssistantId;
   userPrompt: string;
+  maxSteps?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -83,12 +87,14 @@ export function EchoInsightCollapsible({
     setInsightMd('');
     setStreaming(true);
     try {
-      const res = await fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('echo-insight')), {
+      const res = await fetch('/api/assistant-runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          assistantId,
           messages: [{ role: 'user', content: userPrompt }],
-          maxSteps: 16,
+          permissionMode: 'read',
+          maxSteps,
         }),
         signal: ctrl.signal,
       });
@@ -120,7 +126,7 @@ export function EchoInsightCollapsible({
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [userPrompt]);
+  }, [assistantId, maxSteps, userPrompt]);
 
   const generateDisabled = aiLoading || !aiReady || streaming;
 

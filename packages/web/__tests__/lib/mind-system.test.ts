@@ -138,6 +138,7 @@ mindSpace:
       expect(fs.existsSync(path.join(mindRoot, 'MIND_DAO', 'INSTRUCTION.md'))).toBe(true);
       expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'inbox-organizer.md'))).toBe(true);
       expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'dreaming.md'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'assistants', 'echo-imprint.md'))).toBe(true);
       const receiptPath = path.join(mindRoot, '.mindos', 'setup', 'space-kits.json');
       expect(fs.existsSync(receiptPath)).toBe(false);
     } finally {
