@@ -169,6 +169,13 @@ export function getHomeClickPanel(_activeLeftPanel: PanelId | null): PanelId {
   return 'home';
 }
 
+export function getHomeClickSidebarExpanded(
+  pathname: string | null | undefined,
+  currentExpanded: boolean,
+): boolean {
+  return pathname === '/' ? true : currentExpanded;
+}
+
 export function recoverStaleCapturePanel(
   pathname: string | null | undefined,
   activePanel: PanelId | null,
@@ -210,4 +217,12 @@ export function getRailPanelClickDecision(
   }
 
   return { nextPanel: targetPanel, preventDefault: false };
+}
+
+export function getRoutePanelClickSidebarExpanded(
+  currentExpanded: boolean,
+  decision: RailPanelClickDecision,
+): boolean {
+  if (!decision.preventDefault) return currentExpanded;
+  return decision.nextPanel !== null;
 }

@@ -52,11 +52,13 @@ import {
   getActiveLeftPanel,
   getContentRoutePanel,
   getEffectivePanelMaximized,
+  getHomeClickSidebarExpanded,
   getHomeClickPanel,
   getPendingHomePanel,
   getPendingRoutePanel,
   getRailActivePanel,
   getRailPanelClickDecision,
+  getRoutePanelClickSidebarExpanded,
   getRouteControlledPanel,
   getTitlebarSidebarExpandPanel,
   isNeutralContentRoute,
@@ -430,7 +432,6 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
     if (!pendingHomeNav || pendingHomeNav.fromPathname === pathname) return;
     setPendingHomeNav(null);
     if (pathname === '/' && pendingHomeNav.panel) {
-      lp.handleSidebarExpandedChange(true);
       lp.setActivePanel(pendingHomeNav.panel);
     }
   }, [pathname, pendingHomeNav, lp]);
@@ -834,6 +835,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
 
   const handleHomeClick = useCallback(() => {
     const nextPanel = getHomeClickPanel(activeLeftPanel);
+    const nextExpanded = getHomeClickSidebarExpanded(pathname, lp.sidebarExpanded);
     flushSync(() => {
       exitAskMaximized();
       setSuppressedRoutePanel(null);
@@ -841,7 +843,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       setAgentDetailKey(null);
       setPendingNav(null);
       setPendingHomeNav(pathname !== '/' ? { fromPathname: pathname, panel: nextPanel } : null);
-      lp.handleSidebarExpandedChange(true);
+      lp.handleSidebarExpandedChange(nextExpanded);
       lp.setActivePanel(nextPanel);
     });
     if (pathname !== '/') {
@@ -864,7 +866,7 @@ export default function SidebarLayout({ fileTree, mindSystemSlots, children }: S
       smoothPush(ROUTE_PANEL_HREF[targetPanel]);
     }
     previousSearchPanelRef.current = null;
-    lp.handleSidebarExpandedChange(decision.nextPanel !== null);
+    lp.handleSidebarExpandedChange(getRoutePanelClickSidebarExpanded(lp.sidebarExpanded, decision));
     lp.setActivePanel(decision.nextPanel);
     if (targetPanel === 'agents') setAgentDetailKey(null);
   }, [activeLeftPanel, exitAskMaximized, lp, pathname, smoothPush]);

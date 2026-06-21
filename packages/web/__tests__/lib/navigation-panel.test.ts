@@ -3,11 +3,13 @@ import {
   getActiveLeftPanel,
   getContentRoutePanel,
   getEffectivePanelMaximized,
+  getHomeClickSidebarExpanded,
   getHomeClickPanel,
   getPendingHomePanel,
   getPendingRoutePanel,
   getRailActivePanel,
   getRailPanelClickDecision,
+  getRoutePanelClickSidebarExpanded,
   getRouteControlledPanel,
   getTitlebarSidebarExpandPanel,
   isStudioRoute,
@@ -221,6 +223,13 @@ describe('navigation panel route recovery', () => {
     }
   });
 
+  it('preserves the sidebar preference when the logo navigates home from another route', () => {
+    expect(getHomeClickSidebarExpanded('/agents', false)).toBe(false);
+    expect(getHomeClickSidebarExpanded('/agents', true)).toBe(true);
+    expect(getHomeClickSidebarExpanded('/view/Notes/example.md', false)).toBe(false);
+    expect(getHomeClickSidebarExpanded('/', false)).toBe(true);
+  });
+
   it('computes route-backed rail click behavior from one contract', () => {
     expect(getRailPanelClickDecision('/', 'files', 'files')).toEqual({
       nextPanel: 'files',
@@ -246,5 +255,33 @@ describe('navigation panel route recovery', () => {
       nextPanel: 'agents',
       preventDefault: false,
     });
+  });
+
+  it('keeps a collapsed sidebar collapsed while rail navigation changes routes', () => {
+    const crossRouteDecision = getRailPanelClickDecision('/capture', null, 'agents');
+
+    expect(crossRouteDecision).toEqual({
+      nextPanel: 'agents',
+      preventDefault: false,
+    });
+    expect(getRoutePanelClickSidebarExpanded(false, crossRouteDecision)).toBe(false);
+    expect(getRoutePanelClickSidebarExpanded(true, crossRouteDecision)).toBe(true);
+  });
+
+  it('uses same-route rail clicks as explicit panel open or close intents', () => {
+    const reopenCurrentAgentsDecision = getRailPanelClickDecision('/agents', null, 'agents');
+    const closeCurrentFilesDecision = getRailPanelClickDecision('/wiki', 'files', 'files');
+
+    expect(reopenCurrentAgentsDecision).toEqual({
+      nextPanel: 'agents',
+      preventDefault: true,
+    });
+    expect(getRoutePanelClickSidebarExpanded(false, reopenCurrentAgentsDecision)).toBe(true);
+
+    expect(closeCurrentFilesDecision).toEqual({
+      nextPanel: null,
+      preventDefault: true,
+    });
+    expect(getRoutePanelClickSidebarExpanded(true, closeCurrentFilesDecision)).toBe(false);
   });
 });
