@@ -24,6 +24,8 @@ import {
   writeRuntimeBinding,
 } from '@/lib/ask-run-store';
 import { getSessionSubmitContextSnapshot } from '@/lib/ask-session-store';
+import { openTab } from '@/lib/workspace-tabs';
+import { toast } from '@/lib/toast';
 
 export type LoadingPhase = 'connecting' | 'thinking' | 'streaming' | 'reconnecting';
 
@@ -41,6 +43,12 @@ function runtimeForAskRequest(runtime: AskRequestRuntime | null | undefined): As
     ...(runtime.binaryPath ? { binaryPath: runtime.binaryPath } : {}),
     ...(runtime.externalSessionId ? { externalSessionId: runtime.externalSessionId } : {}),
   };
+}
+
+function chatTabTitleFromDraft(text: string, fallback = 'Chat session'): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (!line) return fallback;
+  return line.length > 42 ? `${line.slice(0, 42)}...` : line;
 }
 
 export interface AskChatRefs {
@@ -84,7 +92,7 @@ interface UseAskChatOpts {
   activeSessionId: string | null;
   onFirstMessage?: () => void;
   refs: AskChatRefs;
-  errorLabels: { noResponse: string; stopped: string; concurrentLimit: string };
+  errorLabels: { noResponse: string; stopped: string; concurrentLimit: string; tabLimitReached: string };
   resetInputState: () => void;
   onRestoreInput?: (userMessage: Message) => void;
   onTransientError?: (message: string) => void;
@@ -226,6 +234,9 @@ export function useAskChat({
       ...(pendingAttachedFiles && { attachedFiles: pendingAttachedFiles }),
       ...(pendingUploadedNames.length > 0 && { uploadedFileNames: pendingUploadedNames }),
     }, runtimeForMessage);
+
+    const openedTab = openTab('chat', sessionId, chatTabTitleFromDraft(text), { pinned: true });
+    if (!openedTab) toast.error(errorLabels.tabLimitReached);
 
     // Concurrency cap: reject loudly (a silent drop here would feel like a
     // dead send button). The backend has its own per-agent/global caps whose
@@ -471,7 +482,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, providerOverride, modelOverride, permissionMode, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
+  }, [currentFile, providerOverride, modelOverride, permissionMode, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, errorLabels.tabLimitReached, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
 
   return {
     isLoading,

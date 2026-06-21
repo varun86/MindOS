@@ -10,9 +10,10 @@
  *   2. Watch the pathname: /view/<path> opens a doc tab, /chat/<id> opens a
  *      chat tab. Product Home stays a launcher action, not a workspace tab.
  *      Documents
- *      opened from ordinary routes are preview tabs by default; Home and chat
- *      sessions are kept tabs. A null return from openTab means the 50-tab cap
- *      was hit → limit toast, once per attempted key.
+ *      opened from ordinary routes are preview tabs by default; Home stays a
+ *      launcher. Chat sessions viewed from history are also preview tabs until
+ *      the user sends/runs/pins them. A null return from openTab means the
+ *      50-tab cap was hit → limit toast, once per attempted key.
  *   3. Mirror session titles into chat tabs (renameByKey no-ops on same title).
  *   4. Reconcile chat tabs against the server session list — but only after
  *      getSessionsLoaded(), so the pre-fetch empty list never mass-closes tabs.
@@ -36,7 +37,8 @@ import {
 } from '@/lib/workspace-tabs';
 import { getSessionsLoaded, refreshSessions, useSessions } from '@/lib/ask-session-store';
 import { useRunSummary } from '@/lib/ask-run-store';
-import type { ChatSession } from '@/lib/types';
+import { getSessionAgentRuntime } from '@/lib/ask-agent';
+import type { AgentRuntimeIdentity, ChatSession } from '@/lib/types';
 import { sessionTitle } from '@/hooks/useAskSession';
 import { toast } from '@/lib/toast';
 import { useLocale } from '@/lib/stores/locale-store';
@@ -98,6 +100,7 @@ export interface WorkspaceTabSyncState {
   activeTabId: string | null;
   running: ReadonlySet<string>;
   unread: ReadonlySet<string>;
+  sessionAgents: ReadonlyMap<string, AgentRuntimeIdentity | null>;
 }
 
 export function useWorkspaceTabSync(): WorkspaceTabSyncState {
@@ -131,7 +134,7 @@ export function useWorkspaceTabSync(): WorkspaceTabSyncState {
       const session = sessionsRef.current.find((s) => s.id === active.key);
       return session ? chatTabTitle(session, tRef.current.workspaceTabs) : tRef.current.workspaceTabs.chatTab;
     })();
-    const opened = openTab(active.kind, active.key, title, { pinned: active.kind !== 'doc' });
+    const opened = openTab(active.kind, active.key, title, { pinned: false });
     if (opened) {
       limitToastKeyRef.current = null;
       return;
@@ -151,6 +154,19 @@ export function useWorkspaceTabSync(): WorkspaceTabSyncState {
     for (const session of sessions) {
       renameByKey('chat', session.id, chatTabTitle(session, tRef.current.workspaceTabs));
     }
+    for (const sessionId of running) {
+      const session = sessions.find((s) => s.id === sessionId);
+      const opened = openTab(
+        'chat',
+        sessionId,
+        session ? chatTabTitle(session, tRef.current.workspaceTabs) : tRef.current.workspaceTabs.chatTab,
+      );
+      const attemptKey = tabId('chat', sessionId);
+      if (!opened && limitToastKeyRef.current !== attemptKey) {
+        limitToastKeyRef.current = attemptKey;
+        toast.error(tRef.current.workspaceTabs.tabLimitReached);
+      }
+    }
     if (getSessionsLoaded()) {
       reconcileChatTabs(new Set(sessions.map((s) => s.id)), running);
     }
@@ -161,5 +177,9 @@ export function useWorkspaceTabSync(): WorkspaceTabSyncState {
     return active ? tabId(active.kind, active.key) : null;
   }, [pathname]);
 
-  return { tabs, activeTabId, running, unread };
+  const sessionAgents = useMemo(() => {
+    return new Map(sessions.map((session) => [session.id, getSessionAgentRuntime(session)]));
+  }, [sessions]);
+
+  return { tabs, activeTabId, running, unread, sessionAgents };
 }

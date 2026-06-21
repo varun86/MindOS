@@ -52,6 +52,7 @@ vi.mock('@/lib/agent/stream-consumer', () => ({
 }));
 
 import { useAskChat, type AskChatRefs } from '@/hooks/useAskChat';
+import { toast } from '@/lib/toast';
 import {
   MAX_CONCURRENT_RUNS,
   getMessages,
@@ -63,6 +64,7 @@ import {
   resetAskRunStoreForTests,
   setActiveSession,
 } from '@/lib/ask-run-store';
+import { MAX_TABS, openTab, resetWorkspaceTabsForTests } from '@/lib/workspace-tabs';
 
 type ChatApi = ReturnType<typeof useAskChat>;
 
@@ -100,7 +102,12 @@ describe('concurrent chat sessions (useAskChat × ask-run-store)', () => {
       modelOverride: null,
       activeSessionId,
       refs,
-      errorLabels: { noResponse: 'no response', stopped: 'stopped', concurrentLimit: 'too many sessions' },
+      errorLabels: {
+        noResponse: 'no response',
+        stopped: 'stopped',
+        concurrentLimit: 'too many sessions',
+        tabLimitReached: 'too many tabs',
+      },
       resetInputState: () => { refs.inputValueRef.current = ''; },
       onRestoreInput: (msg) => restoredInputs.push(msg),
     });
@@ -135,6 +142,7 @@ describe('concurrent chat sessions (useAskChat × ask-run-store)', () => {
   beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     resetAskRunStoreForTests();
+    resetWorkspaceTabsForTests();
     harness.captured.length = 0;
     restoredInputs = [];
     refs = makeRefs('a');
@@ -150,6 +158,8 @@ describe('concurrent chat sessions (useAskChat × ask-run-store)', () => {
   afterEach(async () => {
     await act(async () => { root.unmount(); });
     host.remove();
+    resetWorkspaceTabsForTests();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -249,6 +259,18 @@ describe('concurrent chat sessions (useAskChat × ask-run-store)', () => {
     const dMessages = getMessages('d');
     expect(dMessages[0].content).toBe('one too many');
     expect(dMessages[1].content).toBe('__error__too many sessions');
+  });
+
+  it('warns when a sent message cannot promote the session because the tab strip is full', async () => {
+    const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '');
+    for (let i = 0; i < MAX_TABS; i++) {
+      openTab('doc', `note-${i}.md`, `Note ${i}`);
+    }
+
+    await submitText('overflow', 'keep this session visible');
+
+    expect(toastSpy).toHaveBeenCalledWith('too many tabs');
+    expect(getRun('overflow')).not.toBeNull();
   });
 
   it('writes runtime bindings using the submit-time snapshot, not the currently selected runtime', async () => {

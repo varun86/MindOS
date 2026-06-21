@@ -7,6 +7,11 @@ import {
   HOME_TAB_KEY,
   closeByKey,
   closeTab,
+  closeTabs,
+  closeTabsByKind,
+  closeTabsToLeft,
+  closeTabsToRight,
+  closeOtherTabs,
   getTabs,
   initWorkspaceTabs,
   keepTab,
@@ -112,6 +117,26 @@ describe('openTab', () => {
     ]);
   });
 
+  it('opens casual chat routes as replaceable preview tabs when requested', () => {
+    const first = openTab('chat', 's-a', 'Session A', { pinned: false });
+    const second = openTab('chat', 's-b', 'Session B', { pinned: false });
+
+    expect(first).toMatchObject({ id: 'chat:s-a', pinned: false });
+    expect(second).toMatchObject({ id: 'chat:s-b', pinned: false });
+    expect(getTabs()).toEqual([
+      { id: 'chat:s-b', kind: 'chat', key: 's-b', title: 'Session B', pinned: false },
+    ]);
+  });
+
+  it('uses one preview slot across documents and chat sessions', () => {
+    openTab('doc', 'notes/a.md', 'A', { pinned: false });
+    openTab('chat', 's-a', 'Session A', { pinned: false });
+
+    expect(getTabs()).toEqual([
+      { id: 'chat:s-a', kind: 'chat', key: 's-a', title: 'Session A', pinned: false },
+    ]);
+  });
+
   it('upgrades an existing preview when the same doc is opened as kept', () => {
     openTab('doc', 'notes/a.md', 'A', { pinned: false });
 
@@ -119,6 +144,15 @@ describe('openTab', () => {
 
     expect(kept).toEqual({ id: 'doc:notes/a.md', kind: 'doc', key: 'notes/a.md', title: 'A' });
     expect(getTabs()).toEqual([{ id: 'doc:notes/a.md', kind: 'doc', key: 'notes/a.md', title: 'A' }]);
+  });
+
+  it('upgrades an existing chat preview when the same session becomes kept', () => {
+    openTab('chat', 's-a', 'Session A', { pinned: false });
+
+    const kept = openTab('chat', 's-a', 'Session A');
+
+    expect(kept).toEqual({ id: 'chat:s-a', kind: 'chat', key: 's-a', title: 'Session A' });
+    expect(getTabs()).toEqual([{ id: 'chat:s-a', kind: 'chat', key: 's-a', title: 'Session A' }]);
   });
 });
 
@@ -233,6 +267,45 @@ describe('closeTab / closeByKey', () => {
     closeByKey('chat', 'missing');
 
     expect(getTabs()).toBe(before); // emit always allocates a new array; same ref ⇒ no emit
+  });
+});
+
+describe('batch close helpers', () => {
+  function seedMixed(): void {
+    openTab('doc', 'a.md', 'A');
+    openTab('chat', 's-1', 'S1');
+    openTab('doc', 'b.md', 'B');
+    openTab('chat', 's-2', 'S2');
+  }
+
+  it('closeTabs removes a set of ids in one state change', () => {
+    seedMixed();
+
+    closeTabs(['doc:a.md', 'chat:s-2', 'missing']);
+
+    expect(getTabs().map((t) => t.id)).toEqual(['chat:s-1', 'doc:b.md']);
+  });
+
+  it('closes tabs by kind', () => {
+    seedMixed();
+
+    closeTabsByKind('chat');
+
+    expect(getTabs().map((t) => t.id)).toEqual(['doc:a.md', 'doc:b.md']);
+  });
+
+  it('closes tabs to the left, to the right, and other tabs', () => {
+    seedMixed();
+
+    closeTabsToLeft('doc:b.md');
+    expect(getTabs().map((t) => t.id)).toEqual(['doc:b.md', 'chat:s-2']);
+
+    closeTabsToRight('doc:b.md');
+    expect(getTabs().map((t) => t.id)).toEqual(['doc:b.md']);
+
+    seedMixed();
+    closeOtherTabs('chat:s-1');
+    expect(getTabs().map((t) => t.id)).toEqual(['chat:s-1']);
   });
 });
 

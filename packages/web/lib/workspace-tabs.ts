@@ -144,9 +144,9 @@ export function getTabs(): WorkspaceTab[] {
 /**
  * Open (or focus) a tab. Dedup by (kind, key): an existing kept tab is
  * returned as-is, while opening an existing preview as kept upgrades it.
- * Doc previews are replaceable: opening a new preview reuses the existing
- * preview slot instead of polluting the working set. Returns null when the
- * 50-tab cap is hit and no preview slot can be reused.
+ * Previews are replaceable across documents and chat sessions: casual browsing
+ * should not pollute the durable working set. Returns null when the 50-tab cap
+ * is hit and no preview slot can be reused.
  */
 export function openTab(
   kind: WorkspaceTabKind,
@@ -159,7 +159,7 @@ export function openTab(
   if (kind === 'home') return null;
   const id = tabId(kind, key);
   const existing = tabs.find((t) => t.id === id);
-  const pinned = kind === 'chat' || options.pinned !== false;
+  const pinned = options.pinned !== false;
   if (existing) {
     if (pinned && existing.pinned === false) {
       const next = tabs.map((tab) => (tab.id === id ? { id, kind, key, title } : tab));
@@ -168,8 +168,8 @@ export function openTab(
     }
     return existing;
   }
-  if (!pinned && kind === 'doc') {
-    const previewIndex = tabs.findIndex((tab) => tab.kind === 'doc' && tab.pinned === false);
+  if (!pinned) {
+    const previewIndex = tabs.findIndex((tab) => tab.pinned === false);
     const previewTab: WorkspaceTab = { id, kind, key, title, pinned: false };
     if (previewIndex >= 0) {
       const next = [...tabs];
@@ -200,8 +200,37 @@ export function closeTab(id: string) {
   emit(tabs.filter((t) => t.id !== id));
 }
 
+export function closeTabs(ids: Iterable<string>) {
+  const targetIds = new Set(ids);
+  if (targetIds.size === 0) return;
+  const next = tabs.filter((t) => !targetIds.has(t.id));
+  if (next.length === tabs.length) return;
+  emit(next);
+}
+
 export function closeByKey(kind: WorkspaceTabKind, key: string) {
   closeTab(tabId(kind, key));
+}
+
+export function closeTabsByKind(kind: Exclude<WorkspaceTabKind, 'home'>) {
+  closeTabs(tabs.filter((t) => t.kind === kind).map((t) => t.id));
+}
+
+export function closeTabsToLeft(id: string) {
+  const index = tabs.findIndex((t) => t.id === id);
+  if (index <= 0) return;
+  closeTabs(tabs.slice(0, index).map((t) => t.id));
+}
+
+export function closeTabsToRight(id: string) {
+  const index = tabs.findIndex((t) => t.id === id);
+  if (index < 0 || index >= tabs.length - 1) return;
+  closeTabs(tabs.slice(index + 1).map((t) => t.id));
+}
+
+export function closeOtherTabs(id: string) {
+  if (!tabs.some((t) => t.id === id)) return;
+  closeTabs(tabs.filter((t) => t.id !== id).map((t) => t.id));
 }
 
 export function renameByKey(kind: WorkspaceTabKind, key: string, title: string) {

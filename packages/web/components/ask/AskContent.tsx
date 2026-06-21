@@ -414,7 +414,12 @@ export default function AskContent({ visible, currentFile, initialMessage, initi
     activeSessionId: session.activeSessionId,
     onFirstMessage,
     refs: chatRefs,
-    errorLabels: { noResponse: t.ask.errorNoResponse, stopped: t.ask.stopped, concurrentLimit: t.ask.concurrentLimit },
+    errorLabels: {
+      noResponse: t.ask.errorNoResponse,
+      stopped: t.ask.stopped,
+      concurrentLimit: t.ask.concurrentLimit,
+      tabLimitReached: t.workspaceTabs?.tabLimitReached ?? 'Tab limit reached (50). Close a tab to open another.',
+    },
     resetInputState,
     onRestoreInput: handleRestoreInput,
     onTransientError: setDropError,

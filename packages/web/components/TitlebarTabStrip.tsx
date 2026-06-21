@@ -6,12 +6,11 @@
  *
  * Visuals: 34px tabs sitting on the row's bottom edge, rounded-t-lg, active
  * tab bg-card with top/side borders; Home for the product start page, FileText
- * for docs, MessageSquare for chat sessions (same icon the session history
- * panel uses). Chat indicators come from useRunSummary: spinner while running,
- * amber dot when unread.
+ * for docs, and agent-runtime avatars for chat sessions. Chat indicators come
+ * from useRunSummary: spinner while running, amber dot when unread.
  *
  * Overflow: a ResizeObserver measures the strip container; visible count =
- * how many min-width (96px) tabs fit next to the ＋ button (plus the ⌄N
+ * how many min-width (76px) tabs fit next to the ＋ button (plus the ⌄N
  * trigger when not everything fits). Hidden tabs live in a SyncPopover-style
  * fixed menu (z-50, ESC + outside-click close), running/unread first.
  *
@@ -22,17 +21,18 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, FileText, Home as HomeIcon, Loader2, MessageSquare, Pin, Plus, X } from 'lucide-react';
-import { closeTab, keepTab, type WorkspaceTab } from '@/lib/workspace-tabs';
+import { ChevronDown, FileText, Home as HomeIcon, Loader2, Network, Pin, Plus, X } from 'lucide-react';
+import { closeTabs, keepTab, type WorkspaceTab } from '@/lib/workspace-tabs';
 import { tabHref, useWorkspaceTabSync } from '@/hooks/useWorkspaceTabSync';
 import { useLocale } from '@/lib/stores/locale-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import { StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
+import type { AgentRuntimeIdentity } from '@/lib/types';
 
 const NO_DRAG = { WebkitAppRegion: 'no-drag' } as React.CSSProperties;
 
 /** Geometry constants for the fit computation (px). */
-export const TAB_MIN_W = 96;
+export const TAB_MIN_W = 76;
 const HOME_LAUNCHER_W = 32; // Home button incl. its trailing gap
 const NEW_CHAT_W = 32; // ＋ button incl. its leading gap
 const OVERFLOW_W = 48; // ⌄N trigger incl. its leading gap
@@ -48,6 +48,31 @@ export function computeVisibleCount(containerWidth: number | null, tabCount: num
   if (tabCount * TAB_MIN_W <= availableWithoutOverflow) return tabCount;
   const available = availableWithoutOverflow - OVERFLOW_W;
   return Math.max(0, Math.min(tabCount, Math.floor(available / TAB_MIN_W)));
+}
+
+export interface VisibleTabRange {
+  start: number;
+  end: number;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function computeVisibleRange(
+  containerWidth: number | null,
+  tabCount: number,
+  activeIndex: number | null,
+): VisibleTabRange {
+  const count = computeVisibleCount(containerWidth, tabCount);
+  if (count >= tabCount) return { start: 0, end: tabCount };
+  if (count <= 0) return { start: tabCount, end: tabCount };
+  if (activeIndex === null || activeIndex < 0 || activeIndex >= tabCount) {
+    const start = Math.max(0, tabCount - count);
+    return { start, end: start + count };
+  }
+  const start = clamp(activeIndex - Math.floor((count - 1) / 2), 0, tabCount - count);
+  return { start, end: start + count };
 }
 
 interface IndicatorProps {
@@ -67,23 +92,79 @@ function TabIndicator({ tab, running, unread }: IndicatorProps) {
   return null;
 }
 
-function TabKindIcon({ kind, className = 'shrink-0' }: { kind: WorkspaceTab['kind']; className?: string }) {
-  if (kind === 'home') return <HomeIcon size={13} aria-hidden="true" className={className} />;
-  if (kind === 'doc') return <FileText size={13} aria-hidden="true" className={className} />;
-  return <MessageSquare size={13} aria-hidden="true" className={className} />;
+function knownAgentIconSrc(runtime: AgentRuntimeIdentity | null | undefined): string | null {
+  if (!runtime || runtime.kind === 'mindos') return '/agent-icons/mindos.svg';
+  if (runtime.kind === 'codex') return '/agent-icons/openai.svg';
+  if (runtime.kind === 'claude') return '/agent-icons/claude.svg';
+  const haystack = `${runtime.id} ${runtime.name}`.toLowerCase();
+  const candidates: Array<[string, string]> = [
+    ['gemini', '/agent-icons/gemini.svg'],
+    ['kimi', '/agent-icons/kimi-cli.png'],
+    ['cursor', '/agent-icons/cursor.svg'],
+    ['copilot', '/agent-icons/github-copilot.svg'],
+    ['qwen', '/agent-icons/qwen-code.svg'],
+    ['opencode', '/agent-icons/opencode.svg'],
+    ['openclaw', '/agent-icons/openclaw.svg'],
+    ['cline', '/agent-icons/cline.svg'],
+    ['windsurf', '/agent-icons/windsurf.svg'],
+    ['trae', '/agent-icons/trae.png'],
+    ['roo', '/agent-icons/roo.svg'],
+  ];
+  return candidates.find(([needle]) => haystack.includes(needle))?.[1] ?? null;
+}
+
+function TabAgentMark({
+  runtime,
+  className = 'shrink-0',
+}: {
+  runtime?: AgentRuntimeIdentity | null;
+  className?: string;
+}) {
+  const src = knownAgentIconSrc(runtime);
+  const runtimeKind = runtime?.kind ?? 'mindos';
+  const title = runtime?.name ?? 'MindOS';
+  const baseClass = `inline-flex h-4 w-4 items-center justify-center overflow-hidden rounded-md border border-border/60 bg-background/85 ${className}`;
+  if (src) {
+    return (
+      <span className={baseClass} title={title} data-titlebar-agent-kind={runtimeKind}>
+        <img src={src} alt="" aria-hidden="true" className="h-3 w-3 object-contain" />
+      </span>
+    );
+  }
+  return (
+    <span className={`${baseClass} text-[var(--tool-read)]`} title={title} data-titlebar-agent-kind={runtimeKind}>
+      <Network size={11} aria-hidden="true" />
+    </span>
+  );
+}
+
+function TabKindIcon({
+  tab,
+  runtime,
+  className = 'shrink-0',
+}: {
+  tab: WorkspaceTab;
+  runtime?: AgentRuntimeIdentity | null;
+  className?: string;
+}) {
+  if (tab.kind === 'home') return <HomeIcon size={13} aria-hidden="true" className={className} />;
+  if (tab.kind === 'doc') return <FileText size={13} aria-hidden="true" className={className} />;
+  return <TabAgentMark runtime={runtime} className={className} />;
 }
 
 export default function TitlebarTabStrip() {
-  const { tabs, activeTabId, running, unread } = useWorkspaceTabSync();
+  const { tabs, activeTabId, running, unread, sessionAgents } = useWorkspaceTabSync();
   const pathname = usePathname();
   const smoothPush = useSmoothRouterPush();
   const { t } = useLocale();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
   const [pendingRoute, setPendingRoute] = useState<{ href: string; tabId: string | null; fromPathname: string } | null>(null);
 
   useEffect(() => {
@@ -96,9 +177,16 @@ export default function TitlebarTabStrip() {
     return () => observer.disconnect();
   }, []);
 
-  const visibleCount = computeVisibleCount(containerWidth, tabs.length);
-  const visibleTabs = tabs.slice(0, visibleCount);
-  const hiddenTabs = tabs.slice(visibleCount);
+  // Place routes: no active tab → the working set renders dimmed but intact
+  // (indicators keep full opacity — a background run must stay noticeable).
+  const optimisticTabId = pendingRoute?.fromPathname === pathname ? pendingRoute.tabId : activeTabId;
+  const dimmed = optimisticTabId === null;
+  const homeLauncherActive = pathname === '/' || (pendingRoute?.fromPathname === pathname && pendingRoute.href === '/');
+  const activeTabIndex = optimisticTabId ? tabs.findIndex((tab) => tab.id === optimisticTabId) : null;
+  const visibleRange = computeVisibleRange(containerWidth, tabs.length, activeTabIndex);
+  const visibleTabs = tabs.slice(visibleRange.start, visibleRange.end);
+  const hiddenTabs = tabs.filter((_, index) => index < visibleRange.start || index >= visibleRange.end);
+  const tabIndexById = useMemo(() => new Map(tabs.map((tab, index) => [tab.id, index])), [tabs]);
 
   // Hidden tabs that demand attention surface first in the overflow menu.
   const hiddenSorted = useMemo(() => {
@@ -108,8 +196,13 @@ export default function TitlebarTabStrip() {
       if (unread.has(tab.key)) return 1;
       return 2;
     };
-    return [...hiddenTabs].sort((a, b) => score(a) - score(b));
-  }, [hiddenTabs, running, unread]);
+    return [...hiddenTabs].sort((a, b) => {
+      const byScore = score(a) - score(b);
+      if (byScore !== 0) return byScore;
+      return (tabIndexById.get(a.id) ?? 0) - (tabIndexById.get(b.id) ?? 0);
+    });
+  }, [hiddenTabs, running, unread, tabIndexById]);
+  const contextTab = contextMenu ? tabs.find((tab) => tab.id === contextMenu.tabId) ?? null : null;
 
   // Menu lifecycle: close when emptied, on ESC, and on outside click.
   useEffect(() => {
@@ -117,29 +210,33 @@ export default function TitlebarTabStrip() {
   }, [menuOpen, hiddenTabs.length]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !contextMenu) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         setMenuOpen(false);
+        setContextMenu(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [menuOpen]);
+  }, [menuOpen, contextMenu]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !contextMenu) return;
     const onMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target) || contextMenuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+      setContextMenu(null);
     };
     const timer = setTimeout(() => window.addEventListener('mousedown', onMouseDown), 0);
     return () => {
       clearTimeout(timer);
       window.removeEventListener('mousedown', onMouseDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, contextMenu]);
 
   useEffect(() => {
     setPendingRoute((pending) => (pending && pending.fromPathname !== pathname ? null : pending));
@@ -147,6 +244,7 @@ export default function TitlebarTabStrip() {
 
   const scheduleNavigation = useCallback((href: string, tabId: string | null) => {
     setMenuOpen(false);
+    setContextMenu(null);
     if (href === pathname) {
       setPendingRoute(null);
       return;
@@ -164,31 +262,64 @@ export default function TitlebarTabStrip() {
   }, [scheduleNavigation]);
 
   /** Close a tab; closing the ACTIVE one moves to the right neighbor, then left, then home. */
+  const handleCloseIds = useCallback((ids: Iterable<string>, preferredFallback?: WorkspaceTab | null) => {
+    const targetIds = new Set(ids);
+    if (targetIds.size === 0) return;
+    setMenuOpen(false);
+    setContextMenu(null);
+    const activeId = pendingRoute?.fromPathname === pathname ? pendingRoute.tabId : activeTabId;
+    const activeIndex = activeId ? tabs.findIndex((item) => item.id === activeId) : -1;
+    const fallback = preferredFallback && !targetIds.has(preferredFallback.id)
+      ? preferredFallback
+      : (
+          activeIndex >= 0
+            ? tabs.slice(activeIndex + 1).find((item) => !targetIds.has(item.id))
+              ?? [...tabs.slice(0, activeIndex)].reverse().find((item) => !targetIds.has(item.id))
+              ?? null
+            : null
+        );
+    closeTabs(targetIds);
+    if (activeId && targetIds.has(activeId)) {
+      scheduleNavigation(fallback ? tabHref(fallback) : '/', fallback?.id ?? null);
+    }
+  }, [tabs, activeTabId, pendingRoute, pathname, scheduleNavigation]);
+
   const handleClose = useCallback((tab: WorkspaceTab) => {
     if (tab.kind === 'home') return;
-    const index = tabs.findIndex((item) => item.id === tab.id);
-    const wasActive = tab.id === activeTabId;
-    closeTab(tab.id);
-    if (!wasActive) return;
-    const neighbor = (index >= 0 && tabs[index + 1]) || (index > 0 && tabs[index - 1]) || null;
-    scheduleNavigation(neighbor ? tabHref(neighbor) : '/', neighbor?.id ?? null);
-  }, [tabs, activeTabId, scheduleNavigation]);
+    handleCloseIds([tab.id]);
+  }, [handleCloseIds]);
 
-  // Place routes: no active tab → the working set renders dimmed but intact
-  // (indicators keep full opacity — a background run must stay noticeable).
-  const optimisticTabId = pendingRoute?.fromPathname === pathname ? pendingRoute.tabId : activeTabId;
-  const dimmed = optimisticTabId === null;
-  const homeLauncherActive = pathname === '/' || (pendingRoute?.fromPathname === pathname && pendingRoute.href === '/');
+  const handleCloseTabsToLeft = useCallback((tab: WorkspaceTab) => {
+    const index = tabs.findIndex((item) => item.id === tab.id);
+    if (index <= 0) return;
+    handleCloseIds(tabs.slice(0, index).map((item) => item.id), tab);
+  }, [tabs, handleCloseIds]);
+
+  const handleCloseTabsToRight = useCallback((tab: WorkspaceTab) => {
+    const index = tabs.findIndex((item) => item.id === tab.id);
+    if (index < 0 || index >= tabs.length - 1) return;
+    handleCloseIds(tabs.slice(index + 1).map((item) => item.id), tab);
+  }, [tabs, handleCloseIds]);
+
+  const handleCloseOtherTabs = useCallback((tab: WorkspaceTab) => {
+    handleCloseIds(tabs.filter((item) => item.id !== tab.id).map((item) => item.id), tab);
+  }, [tabs, handleCloseIds]);
+
+  const handleCloseKind = useCallback((kind: 'doc' | 'chat') => {
+    const ids = tabs.filter((tab) => tab.kind === kind).map((tab) => tab.id);
+    handleCloseIds(ids);
+  }, [tabs, handleCloseIds]);
 
   const renderTab = (tab: WorkspaceTab, index: number) => {
     const isActive = tab.id === optimisticTabId;
-    const isPreview = tab.kind === 'doc' && tab.pinned === false;
+    const isPreview = tab.pinned === false;
     const canClose = tab.kind !== 'home';
     const hasIndicator = tab.kind === 'chat' && (running.has(tab.key) || unread.has(tab.key));
     const previousTab = index > 0 ? visibleTabs[index - 1] : null;
     const showLeadingSeparator = Boolean(
-      previousTab && previousTab.id !== activeTabId && tab.id !== activeTabId,
+      previousTab && previousTab.id !== optimisticTabId && tab.id !== optimisticTabId,
     );
+    const runtime = tab.kind === 'chat' ? sessionAgents.get(tab.key) ?? null : null;
     return (
       <div
         key={tab.id}
@@ -219,7 +350,12 @@ export default function TitlebarTabStrip() {
             handleClose(tab);
           }
         }}
-        className={`group relative flex h-[34px] min-w-[96px] max-w-[180px] shrink cursor-pointer select-none items-center gap-1.5 self-end rounded-t-lg border-x border-t px-2.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenuOpen(false);
+          setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY });
+        }}
+        className={`group relative flex h-[34px] min-w-[76px] max-w-[184px] flex-1 shrink cursor-pointer select-none items-center gap-1.5 self-end rounded-t-lg border-x border-t px-2.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
           showLeadingSeparator
             ? "before:pointer-events-none before:absolute before:-left-0.5 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:rounded-full before:bg-border/60 before:content-['']"
             : ''
@@ -230,7 +366,7 @@ export default function TitlebarTabStrip() {
         }`}
       >
         <span className={`flex min-w-0 flex-1 items-center gap-1.5 ${dimmed ? 'opacity-60' : ''}`}>
-          <TabKindIcon kind={tab.kind} />
+          <TabKindIcon tab={tab} runtime={runtime} />
           <span className={`truncate ${isPreview ? 'italic' : ''}`}>{tab.title}</span>
         </span>
         <StableRowTrailingSlot
@@ -295,7 +431,7 @@ export default function TitlebarTabStrip() {
         <HomeIcon size={15} aria-hidden="true" />
       </button>
 
-      <div role="tablist" className="flex min-w-0 items-end gap-1">
+      <div role="tablist" className="flex min-w-0 flex-1 items-end gap-1">
         {visibleTabs.map(renderTab)}
       </div>
 
@@ -356,11 +492,11 @@ export default function TitlebarTabStrip() {
                 }}
                 className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <TabKindIcon kind={tab.kind} className="shrink-0 text-muted-foreground" />
+                <TabKindIcon tab={tab} runtime={tab.kind === 'chat' ? sessionAgents.get(tab.key) ?? null : null} className="shrink-0 text-muted-foreground" />
                 <span className={`truncate ${tab.pinned === false ? 'italic' : ''}`}>{tab.title}</span>
                 <TabIndicator tab={tab} running={running} unread={unread} />
               </button>
-              {tab.kind === 'doc' && tab.pinned === false && (
+              {tab.pinned === false && (
                 <button
                   type="button"
                   aria-label={t.workspaceTabs.keepTab}
@@ -383,6 +519,112 @@ export default function TitlebarTabStrip() {
               )}
             </div>
           ))}
+          <div className="mt-1 border-t border-border/70 px-1.5 py-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleCloseKind('doc')}
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t.workspaceTabs.closeFileTabs}
+              <span className="tabular-nums">{tabs.filter((tab) => tab.kind === 'doc').length}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => handleCloseKind('chat')}
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t.workspaceTabs.closeSessionTabs}
+              <span className="tabular-nums">{tabs.filter((tab) => tab.kind === 'chat').length}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {contextMenu && contextTab && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={t.workspaceTabs.tabActions}
+          className="fixed z-50 w-56 rounded-lg border border-border bg-background py-1 shadow-lg"
+          style={{
+            top: Math.max(8, Math.min(contextMenu.y, (typeof window === 'undefined' ? 0 : window.innerHeight) - 260)),
+            left: Math.max(8, Math.min(contextMenu.x, (typeof window === 'undefined' ? 0 : window.innerWidth) - 232)),
+            ...NO_DRAG,
+          }}
+        >
+          <div className="truncate px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            {contextTab.title}
+          </div>
+          {contextTab.pinned === false && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                keepTab(contextTab.id);
+                setContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Pin size={12} aria-hidden="true" />
+              {t.workspaceTabs.keepTab}
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleClose(contextTab)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X size={12} aria-hidden="true" />
+            {t.workspaceTabs.closeTab}
+          </button>
+          <div className="my-1 border-t border-border/70" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCloseTabsToLeft(contextTab)}
+            className="flex w-full items-center px-3 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={(tabIndexById.get(contextTab.id) ?? 0) <= 0}
+          >
+            {t.workspaceTabs.closeTabsToLeft}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCloseTabsToRight(contextTab)}
+            className="flex w-full items-center px-3 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={(tabIndexById.get(contextTab.id) ?? tabs.length - 1) >= tabs.length - 1}
+          >
+            {t.workspaceTabs.closeTabsToRight}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCloseOtherTabs(contextTab)}
+            className="flex w-full items-center px-3 py-1.5 text-left text-xs text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={tabs.length <= 1}
+          >
+            {t.workspaceTabs.closeOtherTabs}
+          </button>
+          <div className="my-1 border-t border-border/70" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCloseKind('doc')}
+            className="flex w-full items-center px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t.workspaceTabs.closeFileTabs}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCloseKind('chat')}
+            className="flex w-full items-center px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t.workspaceTabs.closeSessionTabs}
+          </button>
         </div>
       )}
     </div>

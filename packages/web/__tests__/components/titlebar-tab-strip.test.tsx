@@ -12,9 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-import TitlebarTabStrip, { computeVisibleCount, TAB_MIN_W } from '@/components/TitlebarTabStrip';
+import TitlebarTabStrip, { computeVisibleCount, computeVisibleRange, TAB_MIN_W } from '@/components/TitlebarTabStrip';
 import { parseActiveTab, tabHref } from '@/hooks/useWorkspaceTabSync';
-import { getTabs, initWorkspaceTabs, openTab, MAX_TABS } from '@/lib/workspace-tabs';
+import { getTabs, initWorkspaceTabs, keepTab, openTab, MAX_TABS } from '@/lib/workspace-tabs';
 import { getSessionsLoaded, renameSession } from '@/lib/ask-session-store';
 import { endRun, startRun } from '@/lib/ask-run-store';
 import type { ChatSession } from '@/lib/types';
@@ -63,9 +63,9 @@ function deferServerSessions(): (sessions: unknown[]) => void {
   return (sessions) => resolve(sessions);
 }
 
-function makeSession(id: string, title?: string, content = 'hello there'): ChatSession {
+function makeSession(id: string, title?: string, content = 'hello there', overrides: Partial<ChatSession> = {}): ChatSession {
   const ts = Date.now();
-  return { id, title, createdAt: ts, updatedAt: ts, messages: [{ role: 'user', content, timestamp: ts }] };
+  return { id, title, createdAt: ts, updatedAt: ts, messages: [{ role: 'user', content, timestamp: ts }], ...overrides };
 }
 
 // --- ResizeObserver stub -------------------------------------------------------
@@ -106,6 +106,9 @@ const findTab = (title: string) => tabEls().find((el) => el.getAttribute('title'
 const closeButtonOf = (tabEl: HTMLElement) => tabEl.querySelector<HTMLButtonElement>('button[aria-label="Close tab"]')!;
 const click = (el: Element) => act(() => {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+});
+const rightClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 40 }));
 });
 const flushSmoothNavigation = () => act(async () => {
   await new Promise<void>((resolve) => {
@@ -174,13 +177,24 @@ describe('computeVisibleCount', () => {
   });
 
   it('reserves room for the overflow trigger when tabs do not fit', () => {
-    // 300px: 300-64 = 236 < 5*96 → (236-48)/96 → 1 visible
-    expect(computeVisibleCount(300, 5)).toBe(1);
+    // 300px: 300-64 = 236 < 5*76 → (236-48)/76 → 2 visible
+    expect(computeVisibleCount(300, 5)).toBe(2);
   });
 
   it('never goes negative on tiny widths', () => {
     expect(computeVisibleCount(10, 5)).toBe(0);
     expect(computeVisibleCount(0, 0)).toBe(0);
+  });
+});
+
+describe('computeVisibleRange', () => {
+  it('keeps the latest tabs visible when no tab is active', () => {
+    expect(computeVisibleRange(300, 5, null)).toEqual({ start: 3, end: 5 });
+  });
+
+  it('keeps the active tab visible while favoring nearby context', () => {
+    expect(computeVisibleRange(300, 5, 4)).toEqual({ start: 3, end: 5 });
+    expect(computeVisibleRange(300, 5, 0)).toEqual({ start: 0, end: 2 });
   });
 });
 
@@ -211,7 +225,8 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
     deferServerSessions(); // keep reconcile out of this test
     await navigateTo('/chat/abc');
     expect(getTabs()).toHaveLength(1);
-    expect(getTabs()[0]).toMatchObject({ kind: 'chat', key: 'abc' });
+    expect(getTabs()[0]).toMatchObject({ kind: 'chat', key: 'abc', pinned: false });
+    expect(tabEls()[0].getAttribute('data-titlebar-tab-preview')).toBe('true');
 
     await navigateTo('/');
     await navigateTo('/chat/abc');
@@ -235,6 +250,19 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
     await click(keepButton);
 
     expect(getTabs()[0]).toMatchObject({ kind: 'doc', key: 'a/b.md' });
+    expect(getTabs()[0].pinned).toBeUndefined();
+    expect(tabEls()[0].getAttribute('data-titlebar-tab-preview')).toBeNull();
+  });
+
+  it('keeps a chat preview when the user pins it', async () => {
+    deferServerSessions();
+    await navigateTo('/chat/s-pin');
+    const tab = findTab('Chat session')!;
+    const keepButton = tab.querySelector<HTMLButtonElement>('button[aria-label="Keep tab"]')!;
+
+    await click(keepButton);
+
+    expect(getTabs()[0]).toMatchObject({ kind: 'chat', key: 's-pin' });
     expect(getTabs()[0].pinned).toBeUndefined();
     expect(tabEls()[0].getAttribute('data-titlebar-tab-preview')).toBeNull();
   });
@@ -344,6 +372,7 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
     const resolveSessions = deferServerSessions();
     await navigateTo('/chat/s1');
     expect(tabTitles()).toEqual(['Chat session']); // fallback before the list arrives
+    expect(tabEls()[0].getAttribute('data-titlebar-tab-preview')).toBe('true');
 
     await act(async () => {
       resolveSessions([makeSession('s1', 'Hello world')]);
@@ -372,6 +401,9 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
   it('keeps tabs intact when the sessions fetch never resolves', async () => {
     fetchResponder = () => new Promise(() => {}); // hangs forever
     await navigateTo('/chat/abc');
+    await act(async () => {
+      keepTab('chat:abc');
+    });
     await navigateTo('/view/a.md');
     await act(async () => {}); // extra flush — nothing should change
     expect(getTabs()).toHaveLength(2);
@@ -381,9 +413,12 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
   it('a running session evicted from the server list survives reconcile until its run ends', async () => {
     const resolveSessions = deferServerSessions();
     await navigateTo('/chat/run1');
+    expect(getTabs()[0]).toMatchObject({ kind: 'chat', key: 'run1', pinned: false });
     await act(async () => {
       startRun('run1', { controller: new AbortController(), runtimeSnapshot: null, reconnectMax: 0 });
     });
+    expect(getTabs()[0]).toMatchObject({ kind: 'chat', key: 'run1' });
+    expect(getTabs()[0].pinned).toBeUndefined();
 
     await act(async () => {
       resolveSessions([]); // evicted server-side, but the run keeps the tab alive
@@ -432,11 +467,11 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverStub);
     deferServerSessions();
     seedKeptDocTabs(['d1.md', 'd2.md', 'd3.md', 'd4.md']);
-    await navigateTo('/view/d1.md');
-    await navigateTo('/chat/c1');
+    openTab('chat', 'c1', 'Chat session');
     await act(async () => {
       startRun('c1', { controller: new AbortController(), runtimeSnapshot: null, reconnectMax: 0 });
     });
+    await navigateTo('/view/d1.md');
 
     // 332px: fixed Home/New Chat actions leave room for 2 tabs and an overflow menu.
     await act(async () => {
@@ -463,6 +498,78 @@ describe('TitlebarTabStrip (spec-titlebar-row Phase 2)', () => {
     await flushSmoothNavigation();
     expect(h.push).toHaveBeenCalledWith('/view/d3.md');
     expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('keeps the active latest tab visible instead of always reserving the oldest tabs', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    seedKeptDocTabs(['d1.md', 'd2.md', 'd3.md', 'd4.md']);
+    await navigateTo('/view/d4.md');
+
+    await act(async () => {
+      ResizeObserverStub.instances.forEach((ro) => ro.trigger(332));
+    });
+
+    expect(tabTitles()).toEqual(['d3.md', 'd4.md']);
+    const trigger = document.querySelector<HTMLButtonElement>('[data-overflow-trigger]')!;
+    expect(trigger.getAttribute('aria-label')).toBe('2 more tabs');
+  });
+
+  it('shows latest tabs on place routes when no workspace tab is active', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    seedKeptDocTabs(['d1.md', 'd2.md', 'd3.md', 'd4.md']);
+    await navigateTo('/capture');
+
+    await act(async () => {
+      ResizeObserverStub.instances.forEach((ro) => ro.trigger(332));
+    });
+
+    expect(tabTitles()).toEqual(['d3.md', 'd4.md']);
+  });
+
+  it('uses the session agent logo in chat tabs when runtime metadata is available', async () => {
+    const resolveSessions = deferServerSessions();
+    await navigateTo('/chat/codex-1');
+
+    await act(async () => {
+      resolveSessions([
+        makeSession('codex-1', 'Codex task', 'continue work', {
+          defaultAgentRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
+        }),
+      ]);
+    });
+
+    expect(document.querySelector('[data-titlebar-agent-kind="codex"] img[src="/agent-icons/openai.svg"]')).not.toBeNull();
+  });
+
+  it('right-click tab actions close tabs to the right', async () => {
+    seedKeptDocTabs(['a.md', 'b.md', 'c.md']);
+    await navigateTo('/view/b.md');
+
+    await rightClick(findTab('b.md')!);
+    const closeRight = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menu"] button'))
+      .find((button) => button.textContent?.trim() === 'Close tabs to the right')!;
+    expect(closeRight).toBeTruthy();
+
+    await click(closeRight);
+
+    expect(getTabs().map((tab) => tab.title)).toEqual(['a.md', 'b.md']);
+    expect(tabTitles()).toEqual(['a.md', 'b.md']);
+  });
+
+  it('right-click tab actions can close all session tabs without deleting file tabs', async () => {
+    seedKeptDocTabs(['a.md']);
+    openTab('chat', 's1', 'Session 1');
+    openTab('chat', 's2', 'Session 2');
+    await navigateTo('/view/a.md');
+
+    await rightClick(findTab('a.md')!);
+    const closeSessions = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menu"] button'))
+      .find((button) => button.textContent?.trim() === 'Close session tabs')!;
+    expect(closeSessions).toBeTruthy();
+
+    await click(closeSessions);
+
+    expect(getTabs()).toEqual([{ id: 'doc:a.md', kind: 'doc', key: 'a.md', title: 'a.md' }]);
   });
 
   it('closing a hidden tab from the overflow menu works without navigating', async () => {
