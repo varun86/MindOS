@@ -100,7 +100,7 @@ describe('ToolCallBlock native runtime rendering', () => {
       allowButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/ask/runtime-permission', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/agent/runtime-permission', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({
         runId: 'run-1',

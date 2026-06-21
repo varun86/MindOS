@@ -46,12 +46,12 @@ describe('streamChat', () => {
     vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest);
   });
 
-  it('sends JSON body and optional bearer token to /api/ask', () => {
+  it('sends JSON body and optional bearer token to the agent turn endpoint', () => {
     streamChat(
       'http://127.0.0.1:4567',
       {
         messages: [],
-        mode: 'chat',
+        sessionId: 'session-1',
         chatSessionId: 'session-1',
         selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       },
@@ -61,11 +61,10 @@ describe('streamChat', () => {
 
     const xhr = FakeXMLHttpRequest.instances[0];
     expect(xhr.method).toBe('POST');
-    expect(xhr.url).toBe('http://127.0.0.1:4567/api/ask');
+    expect(xhr.url).toBe('http://127.0.0.1:4567/api/agent/sessions/session-1/turns');
     expect(xhr.headers.Authorization).toBe('Bearer secret-token');
     expect(JSON.parse(xhr.body)).toEqual({
       messages: [],
-      mode: 'chat',
       chatSessionId: 'session-1',
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
     });
@@ -78,7 +77,7 @@ describe('streamChat', () => {
 
     streamChat(
       'http://127.0.0.1:4567',
-      {},
+      { sessionId: 'session-1' },
       { onEvent, onError, onComplete },
     );
 
@@ -99,7 +98,7 @@ describe('streamChat', () => {
 
     streamChat(
       'http://127.0.0.1:4567',
-      {},
+      { sessionId: 'session-1' },
       { onEvent, onError, onComplete },
     );
 

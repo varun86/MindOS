@@ -5,7 +5,7 @@
  * This implementation uses XMLHttpRequest with onprogress, which is
  * the only reliable way to get streaming data in React Native.
  *
- * MindOS /api/ask SSE format:
+ * MindOS agent turn SSE format:
  *   data:{"type":"text_delta","delta":"hello"}\n\n
  *   data:{"type":"done"}\n\n
  */
@@ -74,7 +74,7 @@ export interface StreamConsumerCallbacks {
 // ─── XMLHttpRequest-based SSE Stream ───────────────────────────
 
 /**
- * Stream SSE events from /api/ask using XMLHttpRequest.
+ * Stream SSE events from the agent session turn endpoint using XMLHttpRequest.
  * Returns a cancel function.
  */
 export function streamChat(
@@ -83,13 +83,22 @@ export function streamChat(
   callbacks: StreamConsumerCallbacks,
   options: { authToken?: string } = {},
 ): () => void {
+  const sessionId = typeof body.sessionId === 'string' && body.sessionId.trim()
+    ? body.sessionId.trim()
+    : '';
+  if (!sessionId) {
+    callbacks.onError(new Error('sessionId is required for agent turns'));
+    callbacks.onComplete();
+    return () => {};
+  }
+  const { sessionId: _sessionId, ...turnBody } = body;
   let isClosed = false;
   let completed = false;
   let processedLength = 0;
   let buffer = '';
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', `${baseUrl}/api/ask`);
+  xhr.open('POST', `${baseUrl}/api/agent/sessions/${encodeURIComponent(sessionId)}/turns`);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('Accept', 'text/event-stream');
   if (options.authToken) {
@@ -194,7 +203,7 @@ export function streamChat(
   xhr.timeout = 300_000;
 
   try {
-    xhr.send(JSON.stringify(body));
+    xhr.send(JSON.stringify(turnBody));
   } catch (e) {
     callbacks.onError(e instanceof Error ? e : new Error(String(e)));
     isClosed = true;

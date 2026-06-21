@@ -232,7 +232,10 @@ describe('AskContent input behavior while running', () => {
       }
     });
 
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/ask')).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      return /^\/api\/agent\/sessions\/[^/]+\/turns$/.test(href);
+    })).toBe(false);
 
     await act(async () => {
       root.unmount();

@@ -13,13 +13,12 @@ import { streamChat, MessageBuilder } from '@/lib/sse-client';
 import { mindosClient } from '@/lib/api-client';
 import { preserveAgentRunTimelineParts } from '@/lib/agent-run-timeline';
 import { useAgentRunTimeline } from '@/hooks/useAgentRunTimeline';
-import type { Message, AskMode, AgentRuntimeIdentity } from '@/lib/types';
+import type { Message, AgentRuntimeIdentity } from '@/lib/types';
 
 export interface UseChatWithSessionOptions {
   sessionId: string;
   initialMessages: Message[];
   initialMessagesLoaded?: boolean;
-  mode?: AskMode;
   selectedRuntime?: AgentRuntimeIdentity | null;
   onMessagesChange: (messages: Message[]) => void;
 }
@@ -30,7 +29,6 @@ export function useChatWithSession({
   sessionId,
   initialMessages,
   initialMessagesLoaded = true,
-  mode = 'chat',
   selectedRuntime = null,
   onMessagesChange,
 }: UseChatWithSessionOptions) {
@@ -135,7 +133,6 @@ export function useChatWithSession({
         baseUrl,
         {
           messages: nextHistory,
-          mode,
           sessionId,
           chatSessionId: sessionId,
           attachedFiles: attachedFilePaths,
@@ -196,7 +193,7 @@ export function useChatWithSession({
       );
       return true;
     },
-    [baseUrl, finishCurrentStream, initialMessagesLoaded, mode, selectedRuntime, sessionId],
+    [baseUrl, finishCurrentStream, initialMessagesLoaded, selectedRuntime, sessionId],
   );
 
   // --- Retry last failed message ---

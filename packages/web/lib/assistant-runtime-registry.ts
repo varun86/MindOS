@@ -1,5 +1,4 @@
 export type AssistantPermissionPolicyMode = 'read' | 'ask' | 'auto' | 'full';
-export type AssistantAskPermissionPolicyMode = AssistantPermissionPolicyMode;
 export type AssistantPermissionLevel = 'trusted-write';
 
 export const ASSISTANT_RUN_REGISTRY = {
@@ -24,10 +23,10 @@ export function getAssistantPermissionMode(assistantId: string | undefined): Ass
   return permission ? assistantPermissionLevelToPolicyMode(permission) : undefined;
 }
 
-export function resolveAssistantAskPermissionPolicyMode(
+export function resolveAssistantPermissionMode(
   assistantId: string | undefined,
-  fallback: AssistantAskPermissionPolicyMode,
-): AssistantAskPermissionPolicyMode {
+  fallback: AssistantPermissionPolicyMode,
+): AssistantPermissionPolicyMode {
   return getAssistantPermissionMode(assistantId) ?? fallback;
 }
 

@@ -84,7 +84,7 @@ describe('AskUserQuestionBlock', () => {
     });
 
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock).toHaveBeenCalledWith('/api/ask/user-question', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/agent/user-question', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     }));

@@ -31,10 +31,10 @@ import {
   runtimeKey,
 } from '@/lib/agent-runtime-companion';
 import { colors } from '@/lib/theme';
-import type { AgentRuntimeIdentity, AskMode, Message } from '@/lib/types';
+import type { AgentRuntimeIdentity, ComposerIntent, Message } from '@/lib/types';
 
 export default function ChatScreen() {
-  const [mode, setMode] = useState<AskMode>('chat');
+  const [composerIntent, setComposerIntent] = useState<ComposerIntent>('chat');
   const [inputText, setInputText] = useState('');
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
   const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
@@ -95,7 +95,6 @@ export default function ChatScreen() {
     sessionId: activeSessionId ?? '',
     initialMessages: currentMessages,
     initialMessagesLoaded: currentMessagesLoaded,
-    mode,
     selectedRuntime,
     onMessagesChange: handleMessagesChange,
   });
@@ -162,7 +161,7 @@ export default function ChatScreen() {
   const selectedRuntimeKey = runtimeKey(selectedRuntime);
   const selectedRuntimeOption = agentRuntimeState.options.find((option) => option.id === selectedRuntimeKey)
     ?? agentRuntimeState.options[0];
-  const composerPresentation = buildRuntimeComposerPresentation(selectedRuntimeOption, mode);
+  const composerPresentation = buildRuntimeComposerPresentation(selectedRuntimeOption, composerIntent);
 
   if (!sessionsLoaded || !currentMessagesLoaded) {
     return (
@@ -238,9 +237,9 @@ export default function ChatScreen() {
           onSend={handleSend}
           onCancel={cancel}
           isLoading={isStreaming}
-          mode={mode}
-          onModeChange={setMode}
-          agentModeEnabled={composerPresentation.agentModeEnabled}
+          composerIntent={composerIntent}
+          onComposerIntentChange={setComposerIntent}
+          hostActionsEnabled={composerPresentation.hostActionsEnabled}
           placeholder={composerPresentation.placeholder}
           modeHint={composerPresentation.modeHint}
           canSend={!isStreaming}

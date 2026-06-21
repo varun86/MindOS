@@ -156,7 +156,7 @@ describe('Claude Code permission prompt MCP config', () => {
       MINDOS_URL: 'https://mindos.example.com',
       MINDOS_WEB_PORT: '4567',
     }, () => {
-      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108/api/ask'))).toBe('http://127.0.0.1:9999');
+      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108/api/agent/sessions/test-session/turns'))).toBe('http://127.0.0.1:9999');
     });
   });
 
@@ -164,7 +164,7 @@ describe('Claude Code permission prompt MCP config', () => {
     withRuntimeBaseUrlEnv({
       MINDOS_URL: 'https://mindos.example.com',
     }, () => {
-      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:4567/api/ask'))).toBe('https://mindos.example.com');
+      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:4567/api/agent/sessions/test-session/turns'))).toBe('https://mindos.example.com');
     });
   });
 
@@ -172,19 +172,19 @@ describe('Claude Code permission prompt MCP config', () => {
     withRuntimeBaseUrlEnv({
       MINDOS_WEB_PORT: '4567',
     }, () => {
-      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:443/api/ask'))).toBe('http://127.0.0.1:4567');
+      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:443/api/agent/sessions/test-session/turns'))).toBe('http://127.0.0.1:4567');
     });
   });
 
   it('uses an http loopback URL when the request has a port', () => {
     withRuntimeBaseUrlEnv({}, () => {
-      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:4567/api/ask'))).toBe('http://127.0.0.1:4567');
+      expect(resolveRuntimePermissionBaseUrl(new Request('https://21.6.243.108:4567/api/agent/sessions/test-session/turns'))).toBe('http://127.0.0.1:4567');
     });
   });
 
   it('does not use an arbitrary external request origin for runtime callbacks', () => {
     withRuntimeBaseUrlEnv({}, () => {
-      expect(() => resolveRuntimePermissionBaseUrl(new Request('https://mindos.example.com/api/ask'))).toThrow(
+      expect(() => resolveRuntimePermissionBaseUrl(new Request('https://mindos.example.com/api/agent/sessions/test-session/turns'))).toThrow(
         'Claude Code permission callbacks require MINDOS_INTERNAL_URL',
       );
     });
@@ -290,7 +290,7 @@ describe('Claude Code permission prompt MCP config', () => {
   it('bridges permission tool calls from stdio MCP to the MindOS runtime permission API', async () => {
     let capturedBody: unknown;
     const bridge = await startBridgeServer(async (req, res) => {
-      expect(req.url).toBe('/api/ask/runtime-permission/request');
+      expect(req.url).toBe('/api/agent/runtime-permission/request');
       capturedBody = await readBody(req);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ decision: 'accept', cancelled: false }));
@@ -361,7 +361,7 @@ describe('Claude Code permission prompt MCP config', () => {
     process.env.AUTH_TOKEN = 'runtime-bridge-secret';
     let capturedAuthorization = '';
     const bridge = await startBridgeServer(async (req, res) => {
-      expect(req.url).toBe('/api/ask/runtime-permission/request');
+      expect(req.url).toBe('/api/agent/runtime-permission/request');
       capturedAuthorization = req.headers.authorization ?? '';
       await readBody(req);
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -415,7 +415,7 @@ describe('Claude Code permission prompt MCP config', () => {
   it('bridges AskUserQuestion tool calls from stdio MCP to the MindOS question API', async () => {
     let capturedBody: unknown;
     const bridge = await startBridgeServer(async (req, res) => {
-      expect(req.url).toBe('/api/ask/user-question/request');
+      expect(req.url).toBe('/api/agent/user-question/request');
       capturedBody = await readBody(req);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
@@ -497,7 +497,7 @@ describe('Claude Code permission prompt MCP config', () => {
   it('handles Claude Code AskUserQuestion permission prompts by returning answers in updatedInput', async () => {
     let capturedBody: unknown;
     const bridge = await startBridgeServer(async (req, res) => {
-      expect(req.url).toBe('/api/ask/user-question/request');
+      expect(req.url).toBe('/api/agent/user-question/request');
       capturedBody = await readBody(req);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({

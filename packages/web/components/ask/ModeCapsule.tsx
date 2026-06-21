@@ -3,36 +3,32 @@
 import { Shield, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import AskOptionCapsule, { type AskOptionCapsuleOption } from '@/components/ask/AskOptionCapsule';
 import { useLocale } from '@/lib/stores/locale-store';
-import type { AskPermissionLevel, NativeRuntimePermissionMode } from '@/lib/types';
+import type { AgentPermissionMode } from '@/lib/types';
 
 const STORAGE_KEY = 'mindos-permission-level.v1';
 
 interface ModeCapsuleProps {
-  mode: AskPermissionLevel;
-  onChange: (mode: AskPermissionLevel) => void;
+  mode: AgentPermissionMode;
+  onChange: (mode: AgentPermissionMode) => void;
   disabled?: boolean;
 }
 
-function isPermissionLevel(value: unknown): value is AskPermissionLevel {
+function isPermissionMode(value: unknown): value is AgentPermissionMode {
   return value === 'read' || value === 'ask' || value === 'auto' || value === 'full';
 }
 
-export function permissionLevelToNativeRuntimePermission(level: AskPermissionLevel): NativeRuntimePermissionMode {
-  return level;
-}
-
-export function getPersistedPermissionLevel(): AskPermissionLevel {
+export function getPersistedPermissionMode(): AgentPermissionMode {
   if (typeof window === 'undefined') return 'ask';
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (isPermissionLevel(stored)) return stored;
+    if (isPermissionMode(stored)) return stored;
   } catch {
     // localStorage unavailable; keep the in-memory default.
   }
   return 'ask';
 }
 
-export function persistPermissionLevel(mode: AskPermissionLevel): void {
+export function persistPermissionMode(mode: AgentPermissionMode): void {
   try {
     localStorage.setItem(STORAGE_KEY, mode);
   } catch {
@@ -40,7 +36,7 @@ export function persistPermissionLevel(mode: AskPermissionLevel): void {
   }
 }
 
-function permissionIcon(mode: AskPermissionLevel, size = 11) {
+function permissionIcon(mode: AgentPermissionMode, size = 11) {
   if (mode === 'read') return <Shield size={size} className="shrink-0" />;
   if (mode === 'ask') return <ShieldQuestion size={size} className="shrink-0" />;
   if (mode === 'auto') return <ShieldCheck size={size} className="shrink-0" />;
@@ -63,7 +59,7 @@ export default function ModeCapsule({ mode, onChange, disabled }: ModeCapsulePro
     fullDesc: zh ? '本地工具完全开放；仅在可信任务中使用。' : 'Unrestricted local tools. Use with care.',
   };
 
-  const options: Array<AskOptionCapsuleOption<AskPermissionLevel>> = [
+  const options: Array<AskOptionCapsuleOption<AgentPermissionMode>> = [
     { value: 'read', label: copy.read, description: copy.readDesc, icon: permissionIcon('read', 13) },
     { value: 'ask', label: copy.ask, description: copy.askDesc, icon: permissionIcon('ask', 13) },
     { value: 'auto', label: copy.auto, description: copy.autoDesc, icon: permissionIcon('auto', 13) },
@@ -83,7 +79,7 @@ export default function ModeCapsule({ mode, onChange, disabled }: ModeCapsulePro
       options={options}
       onChange={(next) => {
         onChange(next);
-        persistPermissionLevel(next);
+        persistPermissionMode(next);
       }}
       disabled={disabled}
       active={mode !== 'read'}

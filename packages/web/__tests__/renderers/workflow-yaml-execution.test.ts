@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // We test the prompt construction and skill fetching logic by importing
 // the execution module and mocking fetch.
 
-// The execution module uses fetch() for /api/skills and /api/ask.
+// The execution module uses fetch() for /api/skills and agent turns.
 // We mock fetch at the global level.
 
 const originalFetch = globalThis.fetch;
@@ -13,6 +13,10 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
     const url = typeof input === 'string' ? input : input.toString();
     return Promise.resolve(handler(url, init));
   }) as typeof fetch;
+}
+
+function isAgentTurnUrl(url: string): boolean {
+  return url.startsWith('/api/agent/sessions/') && url.endsWith('/turns');
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -54,7 +58,7 @@ describe('Workflow Execution — Skill Injection', () => {
       if (url === '/api/skills' && body.action === 'read') {
         return jsonResponse({ content: skillContent });
       }
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         capturedBodies.push(body.messages[0].content);
         return streamResponse(['0:"Done."\n']);
       }
@@ -94,7 +98,7 @@ describe('Workflow Execution — Skill Injection', () => {
         if (body.name === 'global-skill') return jsonResponse({ content: 'Global skill content' });
         return jsonResponse({ error: 'not found' }, 404);
       }
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         capturedBodies.push(body.messages[0].content);
         return streamResponse(['0:"OK"\n']);
       }
@@ -131,7 +135,7 @@ describe('Workflow Execution — Skill Injection', () => {
       if (url === '/api/skills') {
         return jsonResponse({ error: 'Skill not found' }, 404);
       }
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         capturedBodies.push(body.messages[0].content);
         return streamResponse(['0:"Done"\n']);
       }
@@ -163,7 +167,7 @@ describe('Workflow Execution — Skill Injection', () => {
 
     mockFetch((url, init) => {
       const body = init?.body ? JSON.parse(init.body as string) : {};
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         capturedBodies.push(body.messages[0].content);
         return streamResponse(['0:"Result"\n']);
       }
@@ -195,7 +199,7 @@ describe('Workflow Execution — Skill Injection', () => {
 
   it('throws streamed error events instead of swallowing them (error path)', async () => {
     mockFetch((url) => {
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         return streamResponse(['data:{"type":"error","message":"ACP agent failed"}\n\n']);
       }
       return jsonResponse({}, 404);
@@ -219,7 +223,7 @@ describe('Workflow Execution — Skill Injection', () => {
 
   it('handles SSE lines split across network chunks (boundary path)', async () => {
     mockFetch((url) => {
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         return streamResponse([
           'data:{"type":"text_delta",',
           '"delta":"Split"}\n\n',
@@ -255,7 +259,7 @@ describe('Workflow Execution — Skill Injection', () => {
         skillFetchCount++;
         return jsonResponse({ content: 'Cached skill' });
       }
-      if (url === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         return streamResponse(['0:"OK"\n']);
       }
       return jsonResponse({}, 404);

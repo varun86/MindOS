@@ -3,11 +3,11 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import type { LocalAttachment, Message } from '@/lib/types';
-import { buildAssistantAskRequestBody } from '@/lib/assistant-runner';
+import { buildAssistantAgentTurnRequestBody } from '@/lib/assistant-runner';
 import { DREAMING_ASSISTANT_ID, buildDreamingAssistantRunPrompt } from '@/lib/dreaming-assistant';
 import { isRegisteredAssistantRun } from '@/lib/assistant-runtime-registry';
 import { handleRouteErrorSimple } from '@/lib/errors';
-import { runAskRequestBody, type AskRouteRequestBody } from '../ask/runner';
+import { runAgentTurnRequestBody, type AgentTurnRequestBody } from '../agent/_lib/turn-runner';
 
 class AssistantRunError extends Error {
   constructor(
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     if (!assistantId) {
       throw new AssistantRunError(400, 'INVALID_ASSISTANT_ID', 'Invalid assistant id.');
     }
-    return runAskRequestBody(createAssistantAskBody(record, assistantId), {
+    return runAgentTurnRequestBody(createAssistantAgentTurnBody(record, assistantId), {
       headers: req.headers,
       signal: req.signal,
       request: req,
@@ -47,32 +47,34 @@ export async function POST(req: Request) {
   }
 }
 
-function createAssistantAskBody(
+function createAssistantAgentTurnBody(
   body: Record<string, unknown>,
   assistantId: string,
-): AskRouteRequestBody {
+): AgentTurnRequestBody {
   const messages = resolveAssistantMessages(body, assistantId);
   if (messages.length === 0) {
     throw new AssistantRunError(400, 'INVALID_MESSAGES', 'Assistant Runs require at least one message.');
   }
 
-  const askBody = buildAssistantAskRequestBody({
+  const agentTurnBody = buildAssistantAgentTurnRequestBody({
     assistantId,
     messages,
+    agentMode: normalizeAgentMode(body.agentMode),
+    permissionMode: normalizeAssistantPermissionMode(body.permissionMode, assistantId),
     uploadedFiles: normalizeUploadedFiles(body.uploadedFiles),
     maxSteps: normalizePositiveInteger(body.maxSteps) ?? defaultAssistantMaxSteps(assistantId),
     providerOverride: normalizeOptionalString(body.providerOverride),
     modelOverride: normalizeOptionalString(body.modelOverride),
-    runtimeOptions: normalizeAssistantRuntimeOptions(body.runtimeOptions, assistantId),
-  }) as AskRouteRequestBody;
+    runtimeOptions: normalizeAssistantRuntimeOptions(body.runtimeOptions),
+  }) as AgentTurnRequestBody;
 
-  return copyAskRouteContextFields(askBody, body);
+  return copyAgentTurnContextFields(agentTurnBody, body);
 }
 
-function copyAskRouteContextFields(
-  askBody: AskRouteRequestBody,
+function copyAgentTurnContextFields(
+  agentTurnBody: AgentTurnRequestBody,
   body: Record<string, unknown>,
-): AskRouteRequestBody {
+): AgentTurnRequestBody {
   const contextFields = [
     'currentFile',
     'attachedFiles',
@@ -83,12 +85,12 @@ function copyAskRouteContextFields(
     'contextSelection',
     'agentOptions',
     'chatSessionId',
-  ] as const satisfies ReadonlyArray<keyof AskRouteRequestBody>;
-  const target = askBody as Record<string, unknown>;
+  ] as const satisfies ReadonlyArray<keyof AgentTurnRequestBody>;
+  const target = agentTurnBody as Record<string, unknown>;
   for (const field of contextFields) {
     if (body[field] !== undefined) target[field] = body[field];
   }
-  return askBody;
+  return agentTurnBody;
 }
 
 function resolveAssistantMessages(
@@ -115,14 +117,38 @@ function defaultAssistantMaxSteps(assistantId: string): number | undefined {
 
 function normalizeAssistantRuntimeOptions(
   value: unknown,
-  assistantId: string,
 ): Record<string, unknown> | undefined {
   const runtimeOptions = objectBodyOrUndefined(value);
-  if (isRegisteredAssistantRun(assistantId)) return runtimeOptions;
-  return {
-    ...runtimeOptions,
-    permissionMode: 'read',
-  };
+  if (runtimeOptions?.permissionMode !== undefined) {
+    throw new AssistantRunError(
+      400,
+      'INVALID_RUNTIME_OPTIONS',
+      'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode.',
+    );
+  }
+  if (runtimeOptions?.agentMode !== undefined) {
+    throw new AssistantRunError(
+      400,
+      'INVALID_RUNTIME_OPTIONS',
+      'runtimeOptions.agentMode is no longer supported; use top-level agentMode.',
+    );
+  }
+  return runtimeOptions;
+}
+
+function normalizeAgentMode(value: unknown): AgentTurnRequestBody['agentMode'] {
+  if (value === undefined) return undefined;
+  if (value === 'default' || value === 'plan' || value === 'goal') return value;
+  throw new AssistantRunError(400, 'INVALID_AGENT_MODE', 'agentMode must be default, plan, or goal.');
+}
+
+function normalizeAssistantPermissionMode(
+  value: unknown,
+  assistantId: string,
+): AgentTurnRequestBody['permissionMode'] {
+  if (value === undefined) return isRegisteredAssistantRun(assistantId) ? undefined : 'read';
+  if (value === 'read' || value === 'ask' || value === 'auto' || value === 'full') return value;
+  throw new AssistantRunError(400, 'INVALID_PERMISSION_MODE', 'permissionMode must be read, ask, auto, or full.');
 }
 
 async function readJsonBody(req: Request): Promise<unknown> {

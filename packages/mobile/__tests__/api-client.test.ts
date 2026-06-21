@@ -233,7 +233,7 @@ describe('mindosClient auth', () => {
     })).resolves.toEqual({ ok: true });
 
     expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:4567/api/ask/runtime-permission',
+      'http://127.0.0.1:4567/api/agent/runtime-permission',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({

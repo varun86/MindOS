@@ -36,10 +36,11 @@ describe('legacy top-level source cleanup contract', () => {
   });
 
   it('does not keep live source references to deleted top-level app code', () => {
+    expect(existsSync(resolve(root, 'packages/web/app/api/ask/route.ts')), 'legacy /api/ask route should not exist').toBe(false);
     const sourceFiles = [
       'packages/web/lib/agent/skill-paths.ts',
       'packages/web/lib/agent/headless.ts',
-      'packages/web/app/api/ask/route.ts',
+      'packages/web/app/api/agent/_lib/turn-runner.ts',
       'packages/web/app/api/mcp/agents/route.ts',
       'packages/web/app/api/mcp/install/route.ts',
       'packages/web/app/api/agents/copy-skill/route.ts',

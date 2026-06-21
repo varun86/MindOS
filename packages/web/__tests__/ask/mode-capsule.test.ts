@@ -22,42 +22,28 @@ describe('Permission capsule persistence', () => {
   });
 
   it('defaults to ask-first permission when no stored value exists', async () => {
-    const { getPersistedPermissionLevel } = await import('@/components/ask/ModeCapsule');
-    expect(getPersistedPermissionLevel()).toBe('ask');
+    const { getPersistedPermissionMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionMode()).toBe('ask');
   });
 
-  it('returns stored permission level values', async () => {
+  it('returns stored permission mode values', async () => {
     store[STORAGE_KEY] = 'read';
-    const { getPersistedPermissionLevel } = await import('@/components/ask/ModeCapsule');
-    expect(getPersistedPermissionLevel()).toBe('read');
+    const { getPersistedPermissionMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionMode()).toBe('read');
   });
 
   it('falls back to ask permission for invalid stored values', async () => {
     store[STORAGE_KEY] = 'invalid';
-    const { getPersistedPermissionLevel } = await import('@/components/ask/ModeCapsule');
-    expect(getPersistedPermissionLevel()).toBe('ask');
+    const { getPersistedPermissionMode } = await import('@/components/ask/ModeCapsule');
+    expect(getPersistedPermissionMode()).toBe('ask');
   });
 
-  it('persists permission level without writing legacy ask-mode storage', async () => {
-    const { persistPermissionLevel } = await import('@/components/ask/ModeCapsule');
-    persistPermissionLevel('read');
+  it('persists permission mode without writing legacy ask-mode storage', async () => {
+    const { persistPermissionMode } = await import('@/components/ask/ModeCapsule');
+    persistPermissionMode('read');
     expect(store[STORAGE_KEY]).toBe('read');
 
-    persistPermissionLevel('full');
+    persistPermissionMode('full');
     expect(store[STORAGE_KEY]).toBe('full');
-  });
-});
-
-describe('Permission level mapping', () => {
-  it('keeps read permission as the native runtime product mode', async () => {
-    const { permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
-    expect(permissionLevelToNativeRuntimePermission('read')).toBe('read');
-  });
-
-  it('keeps ask, auto, and full as native runtime product modes', async () => {
-    const { permissionLevelToNativeRuntimePermission } = await import('@/components/ask/ModeCapsule');
-    for (const level of ['ask', 'auto', 'full'] as const) {
-      expect(permissionLevelToNativeRuntimePermission(level)).toBe(level);
-    }
   });
 });

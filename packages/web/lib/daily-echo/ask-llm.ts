@@ -1,21 +1,22 @@
 /**
- * Simple LLM text completion using /api/ask SSE stream.
+ * Simple LLM text completion using the agent turn SSE stream.
  *
  * Sends a prompt and collects the full text response.
  * Used by Daily Echo for structured JSON extraction.
  */
 
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
 
 /**
- * Send a prompt to /api/ask and return the full text response.
+ * Send a prompt to the agent turn endpoint and return the full text response.
  * Parses the SSE stream and returns the concatenated text.
  */
 export async function askLLMText(
   prompt: string,
   signal?: AbortSignal
 ): Promise<string> {
-  const res = await fetch('/api/ask', {
+  const res = await fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('daily-echo')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

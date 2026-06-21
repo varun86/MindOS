@@ -5,6 +5,8 @@ import type {
   MindosPiAgentRuntime,
   MindosPiAgentRuntimeOptions,
   MindosPiAgentRuntimeServices,
+} from '../../mindos-pi/session.js';
+import type {
   MindosUiAskMessage,
 } from '../../session/index.js';
 import { mindosRuntimeDescriptor } from '../descriptors.js';

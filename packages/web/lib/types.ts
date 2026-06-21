@@ -233,14 +233,14 @@ export interface LocalAttachment {
   };
 }
 
-/** Chat Panel permission preset shown in the composer controls. */
-export type AskPermissionLevel = 'read' | 'ask' | 'auto' | 'full';
+/** Per-turn agent behavior selected by the product layer. */
+export type AgentMode = 'default' | 'plan' | 'goal';
 
-export type NativeRuntimePermissionMode = AskPermissionLevel;
+/** Per-turn permission preset shown in the composer controls. */
+export type AgentPermissionMode = 'read' | 'ask' | 'auto' | 'full';
 export type NativeRuntimeEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface NativeRuntimeOptions {
-  permissionMode?: NativeRuntimePermissionMode;
   modelOverride?: string;
   reasoningEffort?: NativeRuntimeEffort;
 }

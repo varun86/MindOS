@@ -15,7 +15,7 @@ import {
   handleCodexThreadsGet,
   handleGit,
   handleGraph,
-  handleAskStream,
+  handleAgentTurnStream,
   handleAgentActivity,
   handleAgentActivityPost,
   handleAssistantsDelete,
@@ -126,9 +126,9 @@ describe('MindOS server contract: core, files, HTTP', () => {
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({
-      id: 'ask.stream',
+      id: 'agent.sessions.turns.create',
       method: 'POST',
-      path: '/api/ask',
+      path: '/api/agent/sessions/[sessionId]/turns',
       auth: 'required',
     });
     expect(contract.routes).toContainEqual({

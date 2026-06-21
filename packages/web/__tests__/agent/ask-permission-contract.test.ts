@@ -122,9 +122,9 @@ describe('MINDOS_SYSTEM_PROMPT', () => {
 // Permission type — compile-time contract
 // ---------------------------------------------------------------------------
 
-describe('AskPermissionLevel type', () => {
+describe('AgentPermissionMode type', () => {
   it('accepts valid permission values without an ask-mode wrapper', () => {
-    const validModes: Array<import('@/lib/types').AskPermissionLevel> = ['read', 'ask', 'auto', 'full'];
+    const validModes: Array<import('@/lib/types').AgentPermissionMode> = ['read', 'ask', 'auto', 'full'];
     expect(validModes).toHaveLength(4);
   });
 });

@@ -2,7 +2,7 @@
  * kbExtension — the registered tool set must come from the request's own
  * permission policy, not from module-level shared state.
  *
- * Two concurrent /api/ask requests with different permission policies used
+ * Two concurrent agent turn requests with different permission policies used
  * to race on setKbMode(): whichever request set the module-level policy last
  * decided the tools for BOTH reloads — a read request could get write tools
  * (privilege escalation) or an ask request could lose its tools.

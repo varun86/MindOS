@@ -103,7 +103,7 @@ import {
 import { handleMcpRestartPost } from './handlers/mcp-restart.js';
 import { handleMcpStatus, handleMcpTokenReveal, type MindosMcpStatusServices, type MindosMcpStatusSettings } from './handlers/mcp-status.js';
 import { handleRawFile } from './handlers/file-raw.js';
-import { handleAgentSessionTurnStream, handleAskStream } from './handlers/ask.js';
+import { handleAgentSessionTurnStream } from './handlers/agent-turn.js';
 import { handleRecentFiles } from './handlers/recent-files.js';
 import { handleSearch, type SearchRequestOptions } from './handlers/search.js';
 import { handleSearchPrewarm } from './handlers/search-prewarm.js';
@@ -176,7 +176,7 @@ export type MindosHttpServices = {
     updateServerDirectTools(server: string, directTools: boolean | string[]): void;
   };
   listSkills(): { disabledSkills?: string[]; skillRoots: MindosSkillRoot[] };
-  askStream(input: unknown): AsyncIterable<MindOSSSEvent>;
+  agentTurnStream(input: unknown): AsyncIterable<MindOSSSEvent>;
   createCodexClient?: CodexThreadManagerServices['createCodexClient'];
   documentExtraction?: ExtractPdfServices & ExtractDocxServices;
   channels?: MindosChannelServices;
@@ -258,10 +258,10 @@ export function createDefaultMindosHttpServices(options: DefaultMindosHttpServic
         settings: readRuntimeSettings(options),
       }),
     }),
-    askStream: async function* () {
+    agentTurnStream: async function* () {
       yield {
         type: 'error',
-        message: 'Product ask runtime is not configured. Start the Next adapter or inject an askStream service.',
+        message: 'Product agent turn runtime is not configured. Start the Next adapter or inject an agentTurnStream service.',
       };
     },
   };
@@ -791,16 +791,6 @@ async function handleRequest(
     if (agentSessionTurnRoute) {
       const body = await readJsonBody(req);
       const response = handleAgentSessionTurnStream(agentSessionTurnRoute.sessionId, body, services);
-      if (!response.ok) {
-        writeResponse(res, response);
-        return;
-      }
-      await writeSseResponse(res, response);
-      return;
-    }
-    if (route === 'POST /api/ask') {
-      const body = await readJsonBody(req);
-      const response = handleAskStream(body, services);
       if (!response.ok) {
         writeResponse(res, response);
         return;

@@ -3,7 +3,7 @@ import {
   createMindosPiAgentRuntime,
   type MindosPiAgentRuntimeOptions,
   type MindosPiAgentRuntimeServices,
-} from '../../session/index.js';
+} from './session.js';
 import { compactMindosPromptForTokenBudget } from '../prompt/index.js';
 
 // The pi SDK must never be imported statically here: webpack would inline a

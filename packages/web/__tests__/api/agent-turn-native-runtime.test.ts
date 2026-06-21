@@ -20,10 +20,11 @@ const mockResolveCommandPathCandidates = vi.fn();
 const mockCheckNativeRuntimeHealth = vi.fn();
 const mockRunMindosAgentRuntimeAskSession = vi.fn();
 const mockRunMindosAcpAskSession = vi.fn();
-const mockRunMindosPiAgentAskSession = vi.fn();
+const mockRunMindosPiAgentTurnSession = vi.fn();
 const mockCreateAcpSession = vi.fn();
 const mockCreateMindosAgentRuntime = vi.fn();
 const originalAgentTimeoutMs = process.env.MINDOS_AGENT_TIMEOUT_MS;
+const TEST_SESSION_ID = 'test-session';
 const RAW_CODEX_OPTIONAL_DEPENDENCY_STACK = [
   'file:///opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js:102',
   'throw new Error(`^ Error: Missing optional dependency @openai/codex-darwin-x64. Reinstall Codex: npm install -g @openai/codex@latest',
@@ -115,7 +116,14 @@ vi.mock('@geminilight/mindos/session', async (importOriginal) => {
   return {
     ...actual,
     runMindosAcpAskSession: mockRunMindosAcpAskSession,
-    runMindosPiAgentAskSession: mockRunMindosPiAgentAskSession,
+  };
+});
+
+vi.mock('@geminilight/mindos/agent/mindos-pi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@geminilight/mindos/agent/mindos-pi')>();
+  return {
+    ...actual,
+    runMindosPiAgentTurnSession: mockRunMindosPiAgentTurnSession,
   };
 });
 
@@ -130,15 +138,34 @@ vi.mock('@geminilight/mindos/agent/runtime/adapters/mindos', () => ({
   createMindosAgentRuntime: mockCreateMindosAgentRuntime,
 }));
 
-function askRequest(body: unknown): NextRequest {
-  return new NextRequest('http://localhost/api/ask', {
+function agentTurnRequest(body: unknown, sessionId = sessionIdFromBody(body)): NextRequest {
+  return new NextRequest(`http://localhost/api/agent/sessions/${encodeURIComponent(sessionId)}/turns`, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
   });
 }
 
-describe('/api/ask native runtime routing', () => {
+async function POST(req: NextRequest): Promise<Response> {
+  const route = await import('../../app/api/agent/sessions/[sessionId]/turns/route');
+  return route.POST(req, { params: { sessionId: sessionIdFromRequest(req) } });
+}
+
+function sessionIdFromBody(body: unknown): string {
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const sessionId = (body as { chatSessionId?: unknown }).chatSessionId;
+    if (typeof sessionId === 'string' && sessionId.trim()) return sessionId;
+  }
+  return TEST_SESSION_ID;
+}
+
+function sessionIdFromRequest(req: NextRequest): string {
+  const pathname = new URL(req.url).pathname;
+  const match = /^\/api\/agent\/sessions\/([^/]+)\/turns$/.exec(pathname);
+  return match?.[1] ? decodeURIComponent(match[1]) : TEST_SESSION_ID;
+}
+
+describe('/api/agent/sessions/:sessionId/turns native runtime routing', () => {
   beforeEach(() => {
     capturedNativeOptions = null;
     capturedAcpOptions = null;
@@ -150,7 +177,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockReset();
     mockRunMindosAgentRuntimeAskSession.mockReset();
     mockRunMindosAcpAskSession.mockReset();
-    mockRunMindosPiAgentAskSession.mockReset();
+    mockRunMindosPiAgentTurnSession.mockReset();
     mockCreateAcpSession.mockReset();
     mockCreateAcpSession.mockResolvedValue({ id: 'acp-session-1' });
     mockCreateMindosAgentRuntime.mockReset();
@@ -173,7 +200,7 @@ describe('/api/ask native runtime routing', () => {
       options.send({ type: 'done' });
       return {};
     });
-    mockRunMindosPiAgentAskSession.mockImplementation(async (options: {
+    mockRunMindosPiAgentTurnSession.mockImplementation(async (options: {
       send: (event: { type: string; delta?: string }) => void;
     }) => {
       options.send({ type: 'text_delta', delta: 'mindos ok' });
@@ -193,8 +220,7 @@ describe('/api/ask native runtime routing', () => {
   });
 
   it('rejects removed mode field before runtime routing', async () => {
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Organize these captures' }],
       mode: 'organize',
     }));
@@ -233,12 +259,11 @@ describe('/api/ask native runtime routing', () => {
       };
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Review the note' }],
       providerOverride: 'anthropic',
       modelOverride: 'claude-sonnet-4-20250514',
-      runtimeOptions: { permissionMode: 'read' },
+      permissionMode: 'read',
       agentOptions: { enableThinking: true, thinkingBudget: 8000 },
     }));
 
@@ -270,8 +295,7 @@ describe('/api/ask native runtime routing', () => {
     invalidateCache();
     const workDir = process.cwd();
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{
         role: 'user',
         content: 'Use the attached context',
@@ -303,10 +327,10 @@ describe('/api/ask native runtime routing', () => {
       },
       providerOverride: 'anthropic',
       modelOverride: 'claude-test',
+      permissionMode: 'read',
       runtimeOptions: {
         modelOverride: 'gpt-5.4-codex',
         reasoningEffort: 'high',
-        permissionMode: 'read',
       },
       chatSessionId: 'chat-native-1',
     }));
@@ -394,8 +418,7 @@ describe('/api/ask native runtime routing', () => {
       inputSummary: 'existing run',
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'try to move cwd' }],
       workDir: { source: 'manual', path: getTestMindRoot() },
       chatSessionId: 'chat-locked-workdir',
@@ -415,8 +438,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'resume a forged runtime session' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', externalSessionId: 'thr-crafted' },
       runtimeBinding: {
@@ -459,8 +481,7 @@ describe('/api/ask native runtime routing', () => {
       return { externalSessionId: 'claude-session-1' };
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
       chatSessionId: 'chat-native-activity',
@@ -499,11 +520,10 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Read the workspace only' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
-      runtimeOptions: { permissionMode: 'read' },
+      permissionMode: 'read',
     }));
 
     expect(res.status).toBe(200);
@@ -518,8 +538,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
     }));
@@ -540,8 +559,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Organize with full assistant access' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       assistantId: 'inbox-organizer',
@@ -559,11 +577,11 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Organize safely' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      runtimeOptions: { permissionMode: 'ask', modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
+      permissionMode: 'ask',
+      runtimeOptions: { modelOverride: 'gpt-5.4-codex', reasoningEffort: 'xhigh' },
       assistantId: 'inbox-organizer',
     }));
 
@@ -580,11 +598,10 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Preview without writes' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
-      runtimeOptions: { permissionMode: 'read' },
+      permissionMode: 'read',
       assistantId: 'inbox-organizer',
     }));
 
@@ -594,17 +611,16 @@ describe('/api/ask native runtime routing', () => {
     expect(capturedNativeOptions?.permissionMode).toBe('read');
   });
 
-  it('rejects invalid native runtime permission options', async () => {
+  it('rejects nested runtime permission options', async () => {
     mockResolveCommandPath.mockImplementation(async (command: string) => command === 'claude' ? '/usr/local/bin/claude' : null);
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
       runtimeOptions: {
-        permissionMode: 'write-everywhere',
+        permissionMode: 'read',
         modelOverride: 'claude-sonnet-4-20250514',
         reasoningEffort: 'xhigh',
       },
@@ -614,7 +630,7 @@ describe('/api/ask native runtime routing', () => {
     await expect(res.json()).resolves.toMatchObject({
       error: {
         code: 'INVALID_REQUEST',
-        message: 'runtimeOptions.permissionMode must be read, ask, auto, or full',
+        message: 'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode',
       },
     });
     expect(capturedNativeOptions).toBeNull();
@@ -625,8 +641,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Start fresh if old thread failed' }],
       selectedRuntime: {
         id: 'codex',
@@ -660,8 +675,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Do not resume a mismatched thread' }],
       selectedRuntime: {
         id: 'codex',
@@ -710,8 +724,7 @@ describe('/api/ask native runtime routing', () => {
       notInstalled: [],
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
     }));
@@ -733,8 +746,7 @@ describe('/api/ask native runtime routing', () => {
     });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
     }));
@@ -767,8 +779,7 @@ describe('/api/ask native runtime routing', () => {
     mockResolveCommandPath.mockImplementation(async () => new Promise(() => {}));
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const responsePromise = POST(askRequest({
+    const responsePromise = POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex even if detection is slow' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
     }));
@@ -793,8 +804,7 @@ describe('/api/ask native runtime routing', () => {
     mockResolveCommandPath.mockImplementation(async () => new Promise(() => {}));
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const responsePromise = POST(askRequest({
+    const responsePromise = POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex while detection is slow' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/tmp/fake-codex' },
     }));
@@ -818,8 +828,7 @@ describe('/api/ask native runtime routing', () => {
     mockResolveCommandPath.mockImplementation(async () => new Promise(() => {}));
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const responsePromise = POST(askRequest({
+    const responsePromise = POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude Code even if detection is slow' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude', binaryPath: '/tmp/fake-claude' },
     }));
@@ -845,8 +854,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude', binaryPath: '/tmp/fake-claude' },
     }));
@@ -868,8 +876,7 @@ describe('/api/ask native runtime routing', () => {
     mockCheckNativeRuntimeHealth.mockResolvedValue({ status: 'available' });
     mockDetectLocalAcpAgents.mockResolvedValue({ installed: [], notInstalled: [] });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex with timeout' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
     }));
@@ -888,8 +895,7 @@ describe('/api/ask native runtime routing', () => {
       throw new Error('native bridge exploded');
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
       chatSessionId: 'chat-native-throw',
@@ -923,8 +929,7 @@ describe('/api/ask native runtime routing', () => {
       return { error: new Error('native runtime returned failure'), externalSessionId: 'thr_failed' };
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Codex' }],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
       chatSessionId: 'chat-native-error',
@@ -963,8 +968,7 @@ describe('/api/ask native runtime routing', () => {
       return { error: timeoutError, externalSessionId: 'claude-timeout' };
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use Claude Code' }],
       selectedRuntime: { id: 'claude', name: 'Claude Code', kind: 'claude' },
       chatSessionId: 'chat-native-timeout',
@@ -990,8 +994,7 @@ describe('/api/ask native runtime routing', () => {
   });
 
   it('falls back to the legacy ACP selection when selectedRuntime is malformed', async () => {
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use the selected ACP agent' }],
       selectedRuntime: { id: 'broken-runtime' },
       selectedAcpAgent: { id: 'legacy-acp', name: 'Legacy ACP' },
@@ -1027,9 +1030,8 @@ describe('/api/ask native runtime routing', () => {
       return {};
     });
 
-    const { POST } = await import('../../app/api/ask/route');
     const workDir = process.cwd();
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Organize through ACP safely' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
       workDir: { source: 'manual', path: workDir, label: 'repo' },
@@ -1074,11 +1076,10 @@ describe('/api/ask native runtime routing', () => {
       return { error: new Error('acp crashed') };
     });
 
-    const { POST } = await import('../../app/api/ask/route');
-    const res = await POST(askRequest({
+    const res = await POST(agentTurnRequest({
       messages: [{ role: 'user', content: 'Use the selected ACP agent' }],
       selectedRuntime: { id: 'gemini', name: 'Gemini ACP', kind: 'acp' },
-      runtimeOptions: { permissionMode: 'read' },
+      permissionMode: 'read',
     }));
     const text = await res.text();
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { isAiConfiguredForAsk, type SettingsJsonForAi } from '@/lib/settings-ai-client';
+import { isAiConfiguredForAgentTurn, type SettingsJsonForAi } from '@/lib/settings-ai-client';
 
 export function useSettingsAiAvailable(): { ready: boolean; loading: boolean } {
   const [ready, setReady] = useState(false);
@@ -13,7 +13,7 @@ export function useSettingsAiAvailable(): { ready: boolean; loading: boolean } {
       fetch('/api/settings', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d: SettingsJsonForAi) => {
-          if (!cancelled) setReady(isAiConfiguredForAsk(d));
+          if (!cancelled) setReady(isAiConfiguredForAgentTurn(d));
         })
         .catch(() => {
           if (!cancelled) setReady(false);

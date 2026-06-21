@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Sparkles, RefreshCw, Clock, FileText } from 'lucide-react';
 import { encodePath } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
 import type { RendererContext } from '@/lib/renderers/registry';
 import { escapeHtml } from '../safe-html';
 
@@ -122,7 +123,7 @@ Please provide a concise daily briefing in this format:
 Be specific. Reference actual content from the files. Keep the total response under 300 words.`;
 
     try {
-      const res = await fetch('/api/ask', {
+      const res = await fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('summary')), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

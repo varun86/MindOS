@@ -343,7 +343,7 @@ class MindOSClient {
     requestId: string;
     decision: string;
   }): Promise<{ ok: true }> {
-    const res = await this.fetchWithTimeout('/api/ask/runtime-permission', {
+    const res = await this.fetchWithTimeout('/api/agent/runtime-permission', {
       method: 'POST',
       body: JSON.stringify(input),
       timeout: 15_000,

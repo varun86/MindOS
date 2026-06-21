@@ -25,7 +25,7 @@ import {
   checkClaudeRuntimeHealth,
   mergeCodexProviderAndLoginHealth,
   handleAgentSessionTurnStream,
-  handleAskStream,
+  handleAgentTurnStream,
   handleAgentRuntimesGet,
   handleStaticArtifact,
   handleSetupCheckPort,
@@ -48,7 +48,7 @@ function throwingAsyncIterable<T>(error: Error): AsyncIterable<T> {
   };
 }
 
-describe('MindOS server contract: runtime, ask stream, static web', () => {
+describe('MindOS server contract: runtime, agent turn stream, static web', () => {
   it('handles monitoring snapshots without Web dependencies', () => {
     const root = mkdtempSync(join(tmpdir(), 'mindos-monitoring-'));
     mkdirSync(join(root, 'Space'), { recursive: true });
@@ -970,9 +970,9 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     });
   });
 
-  it('validates ask stream requests and returns a product-owned SSE stream', async () => {
-    const invalid = handleAskStream({}, {
-      askStream: () => throwingAsyncIterable(new Error('should not stream invalid ask requests')),
+  it('validates agent turn stream requests and returns a product-owned SSE stream', async () => {
+    const invalid = handleAgentTurnStream({}, {
+      agentTurnStream: () => throwingAsyncIterable(new Error('should not stream invalid agent turn requests')),
     });
     expect(invalid).toMatchObject({
       ok: false,
@@ -980,11 +980,11 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       body: { error: 'messages must be an array' },
     });
 
-    const removedMode = handleAskStream({
+    const removedMode = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       mode: 'organize',
     }, {
-      askStream: () => throwingAsyncIterable(new Error('should not stream removed mode fields')),
+      agentTurnStream: () => throwingAsyncIterable(new Error('should not stream removed mode fields')),
     });
     expect(removedMode).toMatchObject({
       ok: false,
@@ -992,7 +992,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
       body: { error: 'mode is no longer supported' },
     });
 
-    const valid = handleAskStream({
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       attachedFiles: ['note.md', 123],
       selectedRuntime: { id: 'codex', name: 'Codex', kind: 'codex' },
@@ -1011,21 +1011,22 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         assistants: [{ id: 'ui-reviewer', name: 'UI Reviewer', kind: 'assistant' }],
         updatedAt: 789,
       },
-      runtimeOptions: { permissionMode: 'read', reasoningEffort: 'high', modelOverride: 'gpt-test' },
+      permissionMode: 'read',
+      runtimeOptions: { reasoningEffort: 'high', modelOverride: 'gpt-test' },
       chatSessionId: 'chat-context-1',
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield { type: 'status', message: `runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
         yield { type: 'status', message: `binding=${input.runtimeBinding?.kind}:${input.runtimeBinding?.externalSessionId}` };
-        yield { type: 'status', message: `context=${input.chatSessionId};cwd=${input.workDir?.path};spaces=${input.contextSelection?.spaces[0]?.path};permission=${input.runtimeOptions?.permissionMode}` };
+        yield { type: 'status', message: `context=${input.chatSessionId};cwd=${input.workDir?.path};spaces=${input.contextSelection?.spaces[0]?.path};permission=${input.permissionMode}` };
         yield { type: 'text_delta', delta: String(input.messages[0]?.content ?? '') };
         yield { type: 'done' };
       },
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1037,7 +1038,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     ]);
   });
 
-  it('normalizes agent session turn requests into ask stream input', async () => {
+  it('normalizes agent session turn requests into agent turn stream input', async () => {
     const valid = handleAgentSessionTurnStream('session-from-path', {
       chatSessionId: 'body-should-not-win',
       message: { text: 'hello from turn', skillName: 'research' },
@@ -1050,16 +1051,16 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         },
         attachedFiles: ['note.md', 123],
       },
+      permissionMode: 'read',
       options: {
-        permissionMode: 'read',
         reasoningEffort: 'high',
         modelOverride: 'gpt-test',
       },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield { type: 'status', message: `context=${input.chatSessionId};message=${input.messages[0]?.content};skill=${input.messages[0]?.skillName}` };
         yield { type: 'status', message: `runtime=${input.selectedRuntime?.kind}:${input.selectedRuntime?.id};cwd=${input.workDir?.path};space=${input.contextSelection?.spaces[0]?.path}` };
-        yield { type: 'status', message: `permission=${input.runtimeOptions?.permissionMode};effort=${input.runtimeOptions?.reasoningEffort};model=${input.runtimeOptions?.modelOverride}` };
+        yield { type: 'status', message: `permission=${input.permissionMode};effort=${input.runtimeOptions?.reasoningEffort};model=${input.runtimeOptions?.modelOverride}` };
         yield { type: 'done' };
       },
     });
@@ -1077,7 +1078,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
   });
 
   it('preserves context Space paths for the trusted Web resolver instead of rewriting them', async () => {
-    const valid = handleAskStream({
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       contextSelection: {
         version: 1,
@@ -1089,7 +1090,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         assistants: [],
       },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield {
           type: 'status',
           message: input.contextSelection?.spaces.map((space) => space.path).join('|') ?? '',
@@ -1098,7 +1099,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1107,17 +1108,17 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
   });
 
   it('normalizes legacy selected ACP agent into an ACP runtime selection', async () => {
-    const valid = handleAskStream({
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield { type: 'status', message: `${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
       },
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1125,8 +1126,8 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     ]);
   });
 
-  it('preserves native runtime external session ids in ask stream requests', async () => {
-    const valid = handleAskStream({
+  it('preserves native runtime external session ids in agent turn stream requests', async () => {
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'continue' }],
       selectedRuntime: {
         id: 'codex',
@@ -1135,7 +1136,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         externalSessionId: 'thr_123',
       },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield {
           type: 'status',
           message: `${input.selectedRuntime?.kind}:${input.selectedRuntime?.externalSessionId ?? 'missing'}`,
@@ -1144,7 +1145,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1153,18 +1154,18 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
   });
 
   it('falls back to legacy selected ACP agent when selectedRuntime is malformed', async () => {
-    const valid = handleAskStream({
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       selectedRuntime: { id: 'broken-runtime' },
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield { type: 'status', message: `${input.selectedRuntime?.kind}:${input.selectedRuntime?.id}` };
       },
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1173,12 +1174,12 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
   });
 
   it('honors an explicit null runtime selection over legacy ACP selection', async () => {
-    const valid = handleAskStream({
+    const valid = handleAgentTurnStream({
       messages: [{ role: 'user', content: 'hello' }],
       selectedRuntime: null,
       selectedAcpAgent: { id: 'claude', name: 'Claude Code' },
     }, {
-      askStream: async function* (input) {
+      agentTurnStream: async function* (input) {
         yield {
           type: 'status',
           message: input.selectedRuntime === null ? 'runtime:none' : 'runtime:unexpected',
@@ -1187,7 +1188,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     });
 
     expect(valid.ok).toBe(true);
-    if (!valid.ok) throw new Error('expected ask stream');
+    if (!valid.ok) throw new Error('expected agent turn stream');
     const events = [];
     for await (const event of valid.body) events.push(event);
     expect(events).toEqual([
@@ -1203,7 +1204,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
         ...createDefaultMindosHttpServices({
           readSettings: () => ({ mindRoot: mkdtempSync(join(tmpdir(), 'mindos-http-ask-')) }),
         }),
-        askStream: async function* (input) {
+        agentTurnStream: async function* (input) {
           const request = input as { messages?: Array<{ content?: string }> };
           yield { type: 'status', message: 'started' };
           yield { type: 'text_delta', delta: request.messages?.[0]?.content ?? '' };
@@ -1216,7 +1217,7 @@ describe('MindOS server contract: runtime, ask stream, static web', () => {
     if (!address || typeof address === 'string') throw new Error('expected TCP server address');
     const base = `http://127.0.0.1:${address.port}`;
     try {
-      const response = await fetch(`${base}/api/ask`, {
+      const response = await fetch(`${base}/api/agent/sessions/test-session/turns`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ messages: [{ role: 'user', content: 'hello' }] }),

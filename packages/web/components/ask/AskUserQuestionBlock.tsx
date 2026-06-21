@@ -164,7 +164,7 @@ export default function AskUserQuestionBlock({ part }: { part: ToolCallPart }) {
     setSubmitting(true);
     setLocalError('');
     try {
-      const response = await fetch('/api/ask/user-question', {
+      const response = await fetch('/api/agent/user-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cancelled

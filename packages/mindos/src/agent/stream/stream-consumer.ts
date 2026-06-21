@@ -7,7 +7,7 @@
  *
  * Parse the MindOS SSE stream into structured Message parts.
  *
- * MindOS SSE format (backend: the /api/ask route):
+ * MindOS SSE format (backend: the /api/agent/sessions/:sessionId/turns route):
  * - text_delta: { type, delta }
  * - thinking_delta: { type, delta } (Anthropic extended thinking)
  * - tool_start: { type, toolCallId, toolName, args }

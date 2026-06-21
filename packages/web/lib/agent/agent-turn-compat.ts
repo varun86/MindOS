@@ -1,4 +1,4 @@
-export function resolveAskCompatMode(input: {
+export function resolveAgentTurnCompatMode(input: {
   provider: string;
   baseUrl?: string;
   cachedMode?: string;

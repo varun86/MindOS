@@ -70,8 +70,11 @@ export type MindosUploadedFile = {
   dataBase64?: string;
 };
 
-export type MindosAskStreamRequest = {
+export type MindosAgentTurnRequest = {
+  sessionId: string;
   messages: Array<Record<string, unknown>>;
+  agentMode?: 'default' | 'plan' | 'goal';
+  permissionMode?: 'read' | 'ask' | 'auto' | 'full';
   currentFile?: string;
   attachedFiles?: string[];
   uploadedFiles?: MindosUploadedFile[];
@@ -79,6 +82,10 @@ export type MindosAskStreamRequest = {
   assistantId?: string;
   selectedRuntime?: MindosSelectedRuntime | null;
   selectedAcpAgent?: { id: string; name: string } | null;
+  runtimeOptions?: {
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+    modelOverride?: string;
+  };
   providerOverride?: string;
   modelOverride?: string;
 };
@@ -123,7 +130,7 @@ export type MindosClient = {
   settings(options?: Omit<MindosRequestOptions, 'method' | 'body'>): Promise<MindosSettings>;
   updateSettings(settings: MindosSettings, options?: Omit<MindosRequestOptions, 'method' | 'body'>): Promise<{ ok: true }>;
   mcpStatus(options?: Omit<MindosRequestOptions, 'method' | 'body'>): Promise<MindosMcpStatus>;
-  askStream(input: MindosAskStreamRequest, options?: Omit<MindosRequestOptions, 'method' | 'body'>): AsyncIterable<MindOSSSEvent>;
+  agentTurnStream(input: MindosAgentTurnRequest, options?: Omit<MindosRequestOptions, 'method' | 'body'>): AsyncIterable<MindOSSSEvent>;
 };
 
 export type MindosServerOptions = {
@@ -254,11 +261,13 @@ export function createMindosClient(config: MindosClientConfig = {}): MindosClien
     return parsed as T;
   }
 
-  function askStream(input: MindosAskStreamRequest, options: Omit<MindosRequestOptions, 'method' | 'body'> = {}) {
+  function agentTurnStream(input: MindosAgentTurnRequest, options: Omit<MindosRequestOptions, 'method' | 'body'> = {}) {
     return (async function* streamEvents() {
-      const url = new URL('/api/ask', `${baseUrl}/`);
+      const url = new URL(`/api/agent/sessions/${encodeURIComponent(input.sessionId)}/turns`, `${baseUrl}/`);
       const headers = mergeHeaders(config, options);
-      const body = createRequestBody(input, headers);
+      const turnInput: Omit<MindosAgentTurnRequest, 'sessionId'> = { ...input };
+      delete (turnInput as Partial<MindosAgentTurnRequest>).sessionId;
+      const body = createRequestBody(turnInput, headers);
       const res = await fetchImpl(url, {
         method: 'POST',
         headers,
@@ -273,7 +282,7 @@ export function createMindosClient(config: MindosClientConfig = {}): MindosClien
           body: parsed,
         });
       }
-      if (!res.body) throw new Error('MindOS ask stream response did not include a body');
+      if (!res.body) throw new Error('MindOS agent turn stream response did not include a body');
       yield* readSseEvents(res.body);
     })();
   }
@@ -320,8 +329,8 @@ export function createMindosClient(config: MindosClientConfig = {}): MindosClien
     mcpStatus(options) {
       return request<MindosMcpStatus>('/api/mcp/status', { ...options, method: 'GET' });
     },
-    askStream(input, options) {
-      return askStream(input, options);
+    agentTurnStream(input, options) {
+      return agentTurnStream(input, options);
     },
   };
 }

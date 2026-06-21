@@ -108,8 +108,8 @@ describe('next config warning hygiene', () => {
   it('keeps PI runtime packages out of Desktop startup route module imports', () => {
     const appRoot = resolve(__dirname, '..');
     const startupBoundaryFiles = [
-      'app/api/ask/route.ts',
-      'app/api/ask/runner.ts',
+      'app/api/agent/sessions/[sessionId]/turns/route.ts',
+      'app/api/agent/_lib/turn-runner.ts',
       'lib/agent/headless.ts',
       'app/api/mcp/agents/route.ts',
       'app/api/settings/list-models/route.ts',
@@ -138,7 +138,7 @@ describe('next config warning hygiene', () => {
       );
     }
 
-    expect(readFileSync(resolve(appRoot, 'app/api/ask/runner.ts'), 'utf-8')).toContain(
+    expect(readFileSync(resolve(appRoot, 'app/api/agent/_lib/turn-runner.ts'), 'utf-8')).toContain(
       "await import('@geminilight/mindos/agent/runtime/adapters/mindos')",
     );
     expect(readFileSync(resolve(appRoot, 'lib/agent/headless.ts'), 'utf-8')).toContain(
@@ -156,7 +156,7 @@ describe('next config warning hygiene', () => {
     expect(readFileSync(resolve(appRoot, 'lib/compile.ts'), 'utf-8')).toContain(
       "await import('@earendil-works/pi-ai')",
     );
-    expect(readFileSync(resolve(appRoot, 'app/api/ask/runner.ts'), 'utf-8')).toContain(
+    expect(readFileSync(resolve(appRoot, 'app/api/agent/_lib/turn-runner.ts'), 'utf-8')).toContain(
       "await import('@/lib/agent/mindos-pi-runtime-host')",
     );
     expect(readFileSync(resolve(appRoot, 'lib/agent/headless.ts'), 'utf-8')).toContain(

@@ -1,5 +1,5 @@
 /**
- * ChatInput — Message input field with send button, mode selector, and file attachments.
+ * ChatInput — Message input field with send button, intent selector, and file attachments.
  */
 
 import { useRef, useState } from 'react';
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, hairlineWidth, radius, spacing, typography } from '@/lib/theme';
-import type { AskMode } from '@/lib/types';
+import type { ComposerIntent } from '@/lib/types';
 
 interface ChatInputProps {
   value: string;
@@ -22,9 +22,9 @@ interface ChatInputProps {
   onCancel?: () => void;
   isLoading?: boolean;
   canSend?: boolean;
-  mode?: AskMode;
-  onModeChange?: (mode: AskMode) => void;
-  agentModeEnabled?: boolean;
+  composerIntent?: ComposerIntent;
+  onComposerIntentChange?: (intent: ComposerIntent) => void;
+  hostActionsEnabled?: boolean;
   placeholder?: string;
   modeHint?: string;
   attachedPaths?: string[];
@@ -39,9 +39,9 @@ export default function ChatInput({
   onCancel,
   isLoading = false,
   canSend = true,
-  mode = 'chat',
-  onModeChange,
-  agentModeEnabled = false,
+  composerIntent = 'chat',
+  onComposerIntentChange,
+  hostActionsEnabled = false,
   placeholder = 'Ask MindOS...',
   modeHint,
   attachedPaths = [],
@@ -63,27 +63,27 @@ export default function ChatInput({
 
   return (
     <View>
-      {agentModeEnabled ? (
+      {hostActionsEnabled ? (
         <View style={styles.modePanel}>
           <View style={styles.modeRow}>
-            {(['chat', 'agent'] as const).map((m) => {
-              const selected = mode === m;
+            {(['chat', 'act'] as const).map((intent) => {
+              const selected = composerIntent === intent;
               return (
                 <Pressable
-                  key={m}
+                  key={intent}
                   accessibilityRole="button"
                   accessibilityState={{ selected, disabled: isLoading }}
                   style={[styles.modeButton, selected && styles.modeButtonActive]}
-                  onPress={() => onModeChange?.(m)}
+                  onPress={() => onComposerIntentChange?.(intent)}
                   disabled={isLoading}
                 >
                   <Ionicons
-                    name={m === 'chat' ? 'chatbubble-outline' : 'flash-outline'}
+                    name={intent === 'chat' ? 'chatbubble-outline' : 'flash-outline'}
                     size={14}
                     color={selected ? colors.amber : colors.textSubtle}
                   />
                   <Text style={[styles.modeText, selected && styles.modeTextActive]}>
-                    {m === 'chat' ? 'Chat' : 'Agent'}
+                    {intent === 'chat' ? 'Chat' : 'Act'}
                   </Text>
                 </Pressable>
               );

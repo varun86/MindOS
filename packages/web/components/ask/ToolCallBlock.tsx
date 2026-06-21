@@ -452,7 +452,7 @@ function RuntimePermissionControls({ part }: { part: ToolCallPart }) {
     setSubmitting(decision);
     setError('');
     try {
-      const res = await fetch('/api/ask/runtime-permission', {
+      const res = await fetch('/api/agent/runtime-permission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

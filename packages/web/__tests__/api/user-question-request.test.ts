@@ -1,20 +1,20 @@
 import { NextRequest } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
-import { POST } from '@/app/api/ask/user-question/request/route';
+import { POST } from '@/app/api/agent/user-question/request/route';
 import {
   answerAskUserQuestion,
   runWithAskUserQuestionBridge,
 } from '@geminilight/mindos/agent/bridges/user-question-bridge';
 
 function postJson(body: Record<string, unknown>): NextRequest {
-  return new NextRequest('http://localhost/api/ask/user-question/request', {
+  return new NextRequest('http://localhost/api/agent/user-question/request', {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'Content-Type': 'application/json' },
   });
 }
 
-describe('/api/ask/user-question/request', () => {
+describe('/api/agent/user-question/request', () => {
   it('registers an external Claude Code question request and returns the UI answer', async () => {
     const send = vi.fn();
 

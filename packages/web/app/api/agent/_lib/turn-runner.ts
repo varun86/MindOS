@@ -4,23 +4,24 @@ import { getFileContent, getMindRoot, collectAllFiles } from '@/lib/fs';
 import { validateFileSize } from '@/lib/api-file-size-validation';
 import { truncate } from '@/lib/agent/tools';
 import type {
+  AgentMode,
+  AgentPermissionMode,
   AgentRuntimeIdentity,
   RuntimeSessionBinding,
   NativeRuntimeOptions,
-  NativeRuntimePermissionMode,
   NativeRuntimeEffort,
   SessionContextSelection,
   SessionWorkDir,
 } from '@/lib/types';
 import { readSettings, readBaseUrlCompat, writeBaseUrlCompat } from '@/lib/settings';
-import { resolveAssistantAskPermissionPolicyMode } from '@/lib/assistant-runtime-registry';
+import { resolveAssistantPermissionMode } from '@/lib/assistant-runtime-registry';
 import { checkNativeRuntimeHealth, detectLocalAcpAgents, resolveCommandPath, resolveCommandPathCandidates } from '@/lib/acp/detect-local';
 import { findUserOverride } from '@/lib/acp/agent-descriptors';
 import { en as i18nEn, zh as i18nZh } from '@/lib/i18n';
 import { MindOSError, apiError, ErrorCodes } from '@/lib/errors';
 import { performActiveRecall } from '@/lib/agent/active-recall';
 import { metrics } from '@/lib/metrics';
-import { resolveAskCompatMode } from '@/lib/agent/ask-compat';
+import { resolveAgentTurnCompatMode } from '@/lib/agent/agent-turn-compat';
 import { createSession, promptStream, cancelPrompt, closeSession } from '@/lib/acp/session';
 import { getProjectRoot } from '@/lib/project-root';
 import type { Message as FrontendMessage } from '@/lib/types';
@@ -36,8 +37,8 @@ import {
   resolveMindosAgentTimeoutMs,
   runMindosAcpAskSession,
   runMindosNonStreamingFallback,
-  runMindosPiAgentAskSession,
 } from '@geminilight/mindos/session';
+import { runMindosPiAgentTurnSession } from '@geminilight/mindos/agent/mindos-pi';
 import {
   appendMindosRuntimeAttachmentPathContext,
   buildAgentRuntimeEnv,
@@ -212,12 +213,6 @@ function isMindosRuntimeSelection(runtime: unknown): boolean {
 function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
-  const permissionMode = record.permissionMode === 'read'
-    || record.permissionMode === 'ask'
-    || record.permissionMode === 'auto'
-    || record.permissionMode === 'full'
-    ? record.permissionMode as NativeRuntimePermissionMode
-    : undefined;
   const reasoningEffort = record.reasoningEffort === 'low'
     || record.reasoningEffort === 'medium'
     || record.reasoningEffort === 'high'
@@ -228,7 +223,6 @@ function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
     ? record.modelOverride.trim()
     : undefined;
   return {
-    ...(permissionMode ? { permissionMode } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(modelOverride ? { modelOverride } : {}),
   };
@@ -237,20 +231,51 @@ function normalizeNativeRuntimeOptions(value: unknown): NativeRuntimeOptions {
 function validateNativeRuntimeOptions(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (
-    record.permissionMode !== undefined
-    && record.permissionMode !== 'read'
-    && record.permissionMode !== 'ask'
-    && record.permissionMode !== 'auto'
-    && record.permissionMode !== 'full'
-  ) {
+  if (record.permissionMode !== undefined) {
     return apiError(
       ErrorCodes.INVALID_REQUEST,
-      'runtimeOptions.permissionMode must be read, ask, auto, or full',
+      'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode',
+      400,
+    );
+  }
+  if (record.agentMode !== undefined) {
+    return apiError(
+      ErrorCodes.INVALID_REQUEST,
+      'runtimeOptions.agentMode is no longer supported; use top-level agentMode',
       400,
     );
   }
   return null;
+}
+
+function normalizeAgentMode(value: unknown): AgentMode | undefined {
+  return value === 'default' || value === 'plan' || value === 'goal'
+    ? value
+    : undefined;
+}
+
+function normalizeAgentPermissionMode(value: unknown): AgentPermissionMode | undefined {
+  return value === 'read' || value === 'ask' || value === 'auto' || value === 'full'
+    ? value
+    : undefined;
+}
+
+function validateAgentMode(value: unknown) {
+  if (value === undefined || normalizeAgentMode(value)) return null;
+  return apiError(
+    ErrorCodes.INVALID_REQUEST,
+    'agentMode must be default, plan, or goal',
+    400,
+  );
+}
+
+function validateAgentPermissionMode(value: unknown) {
+  if (value === undefined || normalizeAgentPermissionMode(value)) return null;
+  return apiError(
+    ErrorCodes.INVALID_REQUEST,
+    'permissionMode must be read, ask, auto, or full',
+    400,
+  );
 }
 
 function normalizeMindosAgentOptions(value: unknown): { enableThinking?: boolean; thinkingBudget?: number } {
@@ -324,17 +349,17 @@ async function recallMindosTurnKnowledge(input: {
       preferredPaths: input.sessionSpaces.map((space) => space.path),
     });
   } catch (error) {
-    console.warn('[ask] Active recall failed, continuing without:', error);
+    console.warn('[agent-turn] Active recall failed, continuing without:', error);
     return [];
   }
 }
 
 function permissionModeForRequest(
   assistantId: string | undefined,
-  runtimeOptions: NativeRuntimeOptions,
+  requestPermissionMode: AgentPermissionMode | undefined,
 ): MindosPermissionMode {
-  if (runtimeOptions.permissionMode) return runtimeOptions.permissionMode;
-  return resolveAssistantAskPermissionPolicyMode(
+  if (requestPermissionMode) return requestPermissionMode;
+  return resolveAssistantPermissionMode(
     assistantId,
     'ask',
   );
@@ -390,12 +415,12 @@ function runtimeBindingResumeState(
   };
 }
 
-function createAskSseResponse(
+function createAgentTurnSseResponse(
   runAgent: (send: (event: MindOSSSEvent) => void) => Promise<void>,
   fallbackErrorMessage: (error: unknown) => string = (error) => (
     error instanceof Error && error.message
       ? error.message
-      : 'MindOS ask stream failed unexpectedly.'
+      : 'MindOS agent turn stream failed unexpectedly.'
   ),
 ): Response {
   const encoder = new TextEncoder();
@@ -567,11 +592,15 @@ function dirnameOf(filePath?: string): string | null {
 // → @/lib/agent/non-streaming
 
 // ---------------------------------------------------------------------------
-// POST /api/ask
+// POST /api/agent/sessions/:sessionId/turns
 // ---------------------------------------------------------------------------
 
-export type AskRouteRequestBody = {
+export type AgentTurnRequestBody = {
   messages: FrontendMessage[];
+  /** Per-turn agent behavior. Behavior defaults to the normal agent loop. */
+  agentMode?: AgentMode;
+  /** Per-turn permission policy compiled by each runtime adapter. */
+  permissionMode?: AgentPermissionMode;
   currentFile?: string;
   attachedFiles?: string[];
   uploadedFiles?: Array<{
@@ -610,29 +639,29 @@ export type AgentSessionTurnRouteContext = {
   params?: Promise<{ sessionId?: string }> | { sessionId?: string };
 };
 
-export type AskRouteRequestContext = {
+export type AgentTurnRequestContext = {
   headers?: Headers;
   signal?: AbortSignal;
   request?: Request;
 };
 
-function resolveRuntimePermissionBaseUrlForAskContext(context: AskRouteRequestContext): string {
+function resolveRuntimePermissionBaseUrlForAgentTurnContext(context: AgentTurnRequestContext): string {
   if (context.request) return resolveRuntimePermissionBaseUrl(context.request);
   if (process.env.MINDOS_INTERNAL_URL || process.env.MINDOS_URL || process.env.MINDOS_WEB_PORT) {
     return resolveRuntimePermissionBaseUrl(new Request('http://127.0.0.1/'));
   }
-  throw new Error('Ask runner request context must include the original request for Claude Code permission callbacks.');
+  throw new Error('Agent turn runner request context must include the original request for Claude Code permission callbacks.');
 }
 
-export async function handleAskRouteRequest(req: Request) {
-  let body: AskRouteRequestBody;
+export async function handleAgentTurnRouteRequest(req: Request) {
+  let body: AgentTurnRequestBody;
   try {
-    body = await req.json() as AskRouteRequestBody;
+    body = await req.json() as AgentTurnRequestBody;
   } catch {
     return apiError(ErrorCodes.INVALID_REQUEST, 'Invalid JSON body', 400);
   }
 
-  return runAskRequestBody(body, {
+  return runAgentTurnRequestBody(body, {
     headers: req.headers,
     signal: req.signal,
     request: req,
@@ -655,10 +684,10 @@ export async function handleAgentSessionTurnRouteRequest(
     return apiError(ErrorCodes.INVALID_REQUEST, 'Invalid JSON body', 400);
   }
 
-  const body = normalizeAgentTurnAskBody(rawBody, sessionId);
+  const body = normalizeAgentSessionTurnBody(rawBody, sessionId);
   if (!body.ok) return apiError(ErrorCodes.INVALID_REQUEST, body.message, 400);
 
-  return runAskRequestBody(body.body, {
+  return runAgentTurnRequestBody(body.body, {
     headers: req.headers,
     signal: req.signal,
     request: req,
@@ -672,10 +701,10 @@ async function resolveAgentSessionRouteId(context: AgentSessionTurnRouteContext)
     : undefined;
 }
 
-export function normalizeAgentTurnAskBody(
+export function normalizeAgentSessionTurnBody(
   rawBody: unknown,
   sessionId: string,
-): { ok: true; body: AskRouteRequestBody } | { ok: false; message: string } {
+): { ok: true; body: AgentTurnRequestBody } | { ok: false; message: string } {
   if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
     return { ok: false, message: 'Invalid agent session turn request body' };
   }
@@ -684,11 +713,18 @@ export function normalizeAgentTurnAskBody(
   if ('mode' in record || 'mode' in (objectField(record, 'options') ?? {})) {
     return { ok: false, message: 'mode is no longer supported' };
   }
+  const options = objectField(record, 'options');
+  if (options?.agentMode !== undefined) {
+    return { ok: false, message: 'options.agentMode is no longer supported; use top-level agentMode' };
+  }
+  if (options?.permissionMode !== undefined) {
+    return { ok: false, message: 'options.permissionMode is no longer supported; use top-level permissionMode' };
+  }
   if (Array.isArray(record.messages)) {
     return {
       ok: true,
       body: {
-        ...(record as unknown as AskRouteRequestBody),
+        ...(record as unknown as AgentTurnRequestBody),
         chatSessionId: sessionId,
       },
     };
@@ -702,7 +738,6 @@ export function normalizeAgentTurnAskBody(
   }
 
   const context = objectField(record, 'context');
-  const options = objectField(record, 'options');
   const runtimeOptions = objectField(options, 'runtimeOptions') ?? pickRuntimeOptions(options) ?? record.runtimeOptions;
   const message: FrontendMessage = {
     role: 'user',
@@ -717,6 +752,8 @@ export function normalizeAgentTurnAskBody(
     body: {
       messages: [message],
       chatSessionId: sessionId,
+      ...(normalizeAgentMode(record.agentMode) ? { agentMode: normalizeAgentMode(record.agentMode) } : {}),
+      ...(normalizeAgentPermissionMode(record.permissionMode) ? { permissionMode: normalizeAgentPermissionMode(record.permissionMode) } : {}),
       ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
       ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
         ? { currentFile: stringField(context, 'currentFile') ?? stringField(record, 'currentFile') }
@@ -725,25 +762,25 @@ export function normalizeAgentTurnAskBody(
         ? { attachedFiles: stringArrayField(context, 'attachedFiles') ?? stringArrayField(record, 'attachedFiles') ?? [] }
         : {}),
       ...(arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')
-        ? { uploadedFiles: (arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')) as AskRouteRequestBody['uploadedFiles'] }
+        ? { uploadedFiles: (arrayField(context, 'uploadedFiles') ?? arrayField(record, 'uploadedFiles')) as AgentTurnRequestBody['uploadedFiles'] }
         : {}),
       ...(objectField(context, 'workDir') ?? objectField(record, 'workDir')
-        ? { workDir: (objectField(context, 'workDir') ?? objectField(record, 'workDir')) as AskRouteRequestBody['workDir'] }
+        ? { workDir: (objectField(context, 'workDir') ?? objectField(record, 'workDir')) as AgentTurnRequestBody['workDir'] }
         : {}),
       ...(objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')
-        ? { contextSelection: (objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')) as AskRouteRequestBody['contextSelection'] }
+        ? { contextSelection: (objectField(context, 'contextSelection') ?? objectField(context, 'selection') ?? objectField(record, 'contextSelection')) as AgentTurnRequestBody['contextSelection'] }
         : {}),
       ...(objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')
-        ? { selectedRuntime: (objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')) as AskRouteRequestBody['selectedRuntime'] }
+        ? { selectedRuntime: (objectField(record, 'runtime') ?? objectField(record, 'selectedRuntime')) as AgentTurnRequestBody['selectedRuntime'] }
         : {}),
       ...(objectField(record, 'runtimeBinding')
-        ? { runtimeBinding: objectField(record, 'runtimeBinding') as AskRouteRequestBody['runtimeBinding'] }
+        ? { runtimeBinding: objectField(record, 'runtimeBinding') as AgentTurnRequestBody['runtimeBinding'] }
         : {}),
       ...(runtimeOptions && typeof runtimeOptions === 'object' && !Array.isArray(runtimeOptions)
-        ? { runtimeOptions: runtimeOptions as AskRouteRequestBody['runtimeOptions'] }
+        ? { runtimeOptions: runtimeOptions as AgentTurnRequestBody['runtimeOptions'] }
         : {}),
       ...(objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')
-        ? { agentOptions: (objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')) as AskRouteRequestBody['agentOptions'] }
+        ? { agentOptions: (objectField(record, 'agentOptions') ?? objectField(options, 'agentOptions')) as AgentTurnRequestBody['agentOptions'] }
         : {}),
       ...(typeof record.maxSteps === 'number' && Number.isFinite(record.maxSteps) ? { maxSteps: record.maxSteps } : {}),
       ...(stringField(record, 'providerOverride') ? { providerOverride: stringField(record, 'providerOverride') } : {}),
@@ -777,15 +814,15 @@ function stringArrayField(record: Record<string, unknown> | undefined, key: stri
 function pickRuntimeOptions(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!record) return undefined;
   const runtimeOptions: Record<string, unknown> = {};
-  for (const key of ['permissionMode', 'reasoningEffort', 'modelOverride']) {
+  for (const key of ['reasoningEffort', 'modelOverride']) {
     if (record[key] !== undefined) runtimeOptions[key] = record[key];
   }
   return Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined;
 }
 
-export async function runAskRequestBody(
-  body: AskRouteRequestBody,
-  requestContext: AskRouteRequestContext = {},
+export async function runAgentTurnRequestBody(
+  body: AgentTurnRequestBody,
+  requestContext: AgentTurnRequestContext = {},
 ) {
   const requestHeaders = requestContext.headers ?? new Headers();
   const requestSignal = requestContext.signal ?? new AbortController().signal;
@@ -794,6 +831,12 @@ export async function runAskRequestBody(
   if (Object.prototype.hasOwnProperty.call(body as Record<string, unknown>, 'mode')) {
     return apiError(ErrorCodes.INVALID_REQUEST, 'mode is no longer supported', 400);
   }
+  const agentModeError = validateAgentMode(body.agentMode);
+  if (agentModeError) return agentModeError;
+  const permissionModeError = validateAgentPermissionMode(body.permissionMode);
+  if (permissionModeError) return permissionModeError;
+  const agentMode = normalizeAgentMode(body.agentMode) ?? 'default';
+  const requestPermissionModeInput = normalizeAgentPermissionMode(body.permissionMode);
   const mindosUiMessages = toMindosUiAskMessages(messages);
   const selectedNativeRuntime = nativeAgentRuntimeFromSelection(body.selectedRuntime, body.runtimeBinding);
   const legacySelectedAcpAgent = acpAgentFromLegacySelection(body.selectedAcpAgent);
@@ -806,7 +849,7 @@ export async function runAskRequestBody(
   if (nativeRuntimeOptionsError) return nativeRuntimeOptionsError;
   const nativeRuntimeOptions = normalizeNativeRuntimeOptions(body.runtimeOptions);
   const mindosAgentOptions = normalizeMindosAgentOptions(body.agentOptions);
-  const requestPermissionMode = permissionModeForRequest(assistantId, nativeRuntimeOptions);
+  const requestPermissionMode = permissionModeForRequest(assistantId, requestPermissionModeInput);
   const permissionPolicy = createMindosAgentPermissionPolicy(requestPermissionMode);
   const nativePermissionMode = requestPermissionMode;
   const chatSessionId = typeof body.chatSessionId === 'string' && body.chatSessionId.trim()
@@ -857,7 +900,7 @@ export async function runAskRequestBody(
 
   // Diagnostic: log attached files so silent failures are visible
   if (Array.isArray(attachedFiles) && attachedFiles.length > 0) {
-    console.log(`[ask] permission=${permissionPolicy.mode} attachedFiles=${JSON.stringify(attachedFiles)} currentFile=${currentFile ?? 'none'}`);
+    console.log(`[agent-turn] permission=${permissionPolicy.mode} attachedFiles=${JSON.stringify(attachedFiles)} currentFile=${currentFile ?? 'none'}`);
   }
 
   // Read agent config from settings
@@ -935,7 +978,7 @@ export async function runAskRequestBody(
     });
     const sessionContextMetadata = sessionContextRunMetadata(sessionContextSignature, includeSessionContext);
 
-    return createAskSseResponse((send) => runWithAgentRunContext({ chatSessionId }, async () => {
+    return createAgentTurnSseResponse((send) => runWithAgentRunContext({ chatSessionId }, async () => {
       const nativeRuntime = verifiedNativeRuntime;
       if (nativeRuntime) {
         const runtimeRunId = randomUUID();
@@ -948,6 +991,7 @@ export async function runAskRequestBody(
           permissionMode: nativePermissionMode,
           inputSummary: externalPrompt,
           metadata: {
+            agentMode,
             runtimeKind: nativeRuntime.kind,
             source: 'selected-native-runtime',
             permissionCompilation: {
@@ -999,7 +1043,7 @@ export async function runAskRequestBody(
                 ...(nativeRuntime.kind === 'claude' ? {
                   createClaudePermissionPrompt: () => createClaudePermissionPromptConfig({
                     runId: runtimeRunId,
-                    baseUrl: resolveRuntimePermissionBaseUrlForAskContext(requestContext),
+                    baseUrl: resolveRuntimePermissionBaseUrlForAgentTurnContext(requestContext),
                   }),
                 } : {}),
                 requestRuntimePermission: requestRuntimePermissionViaBridge,
@@ -1066,6 +1110,7 @@ export async function runAskRequestBody(
           permissionMode: permissionPolicy.permissionMode,
           inputSummary: externalPrompt,
           metadata: {
+            agentMode,
             source: 'selected-acp-runtime',
             phase: 'create_session',
             permissionCompilation: {
@@ -1168,7 +1213,7 @@ export async function runAskRequestBody(
     );
 
     console.log(
-      `[ask] SKILL skill=${skill.ok} (${skillInfo.path}), write-supplement=${skillWrite.ok}`
+      `[agent-turn] SKILL skill=${skill.ok} (${skillInfo.path}), write-supplement=${skillWrite.ok}`
     );
 
     const userSkillRules = readKnowledgeFile('.mindos/user-preferences.md');
@@ -1288,7 +1333,7 @@ export async function runAskRequestBody(
   let systemPrompt = systemPromptBase;
 
   // Log system prompt size for diagnosing context truncation issues (e.g. Ollama)
-  console.log(`[ask] systemPrompt=${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
+  console.log(`[agent-turn] systemPrompt=${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
 
   try {
     const {
@@ -1339,7 +1384,7 @@ export async function runAskRequestBody(
     const sessionContextMetadata = sessionContextRunMetadata(sessionContextSignature, includeSessionContext);
 
     // ── SSE Stream ──
-    return createAskSseResponse(async (send) => {
+    return createAgentTurnSseResponse(async (send) => {
       let outputSummary = '';
       const mainRun = startAgentRun({
         agentKind: 'mindos-main',
@@ -1350,6 +1395,7 @@ export async function runAskRequestBody(
         permissionMode: permissionPolicy.permissionMode,
         inputSummary: typeof lastUserContent === 'string' ? lastUserContent : JSON.stringify(lastUserContent),
         metadata: {
+          agentMode,
           sessionWorkDir: sessionContext.resolvedWorkDir.path,
           permissionCompilation: {
             requested: permissionPolicy.permissionMode,
@@ -1390,7 +1436,7 @@ export async function runAskRequestBody(
             // and go straight to the non-streaming fallback path.
             const compatCache = readBaseUrlCompat();
             const effectiveBaseUrlKey = baseUrl || 'default';
-            const compatMode = resolveAskCompatMode({
+            const compatMode = resolveAgentTurnCompatMode({
               provider,
               baseUrl,
               cachedMode: compatCache[effectiveBaseUrlKey],
@@ -1418,7 +1464,7 @@ export async function runAskRequestBody(
             await runWithAskUserQuestionBridge({
               runId: askRunId,
               send: (event) => sendWithLedger(event as unknown as MindOSSSEvent),
-            }, () => runMindosPiAgentAskSession({
+            }, () => runMindosPiAgentTurnSession({
               session: {
                 subscribe: (callback) => { session.subscribe(callback); },
                 prompt: async (prompt, options) => { await session.prompt(prompt, options as any); },
@@ -1440,11 +1486,11 @@ export async function runAskRequestBody(
               onToolExecution: () => metrics.recordToolExecution(),
               onTokens: (input, output) => metrics.recordTokens(input, output),
               onStep: (step, maxSteps) => {
-                if (process.env.NODE_ENV === 'development') console.log(`[ask] Step ${step}/${maxSteps}`);
+                if (process.env.NODE_ENV === 'development') console.log(`[agent-turn] Step ${step}/${maxSteps}`);
               },
               writeCompat: (key, mode) => {
                 writeBaseUrlCompat(key, mode);
-                console.log(`[ask] Proxy compat detected: ${key} → ${mode} (cached)`);
+                console.log(`[agent-turn] Proxy compat detected: ${key} → ${mode} (cached)`);
               },
             }));
           });
@@ -1465,7 +1511,7 @@ export async function runAskRequestBody(
       return err instanceof Error ? err.message : String(err);
     });
   } catch (err) {
-    console.error('[ask] Failed to initialize model:', err);
+    console.error('[agent-turn] Failed to initialize model:', err);
     if (err instanceof MindOSError) {
       return apiError(err.code, err.message);
     }

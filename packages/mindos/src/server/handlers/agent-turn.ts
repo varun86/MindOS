@@ -4,9 +4,11 @@ import {
 } from '../../session/index.js';
 import type { MindosPermissionMode } from '../../agent/permission/index.js';
 
-export type MindosAskMessage = Record<string, unknown>;
+export type MindosAgentTurnMessage = Record<string, unknown>;
 
 export type MindosAgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
+export type MindosAgentMode = 'default' | 'plan' | 'goal';
+export type MindosAgentPermissionMode = MindosPermissionMode;
 
 export type MindosSelectedRuntime = {
   id: string;
@@ -63,13 +65,14 @@ export type MindosSessionContextSelection = {
 };
 
 export type MindosNativeRuntimeOptions = {
-  permissionMode?: MindosPermissionMode;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   modelOverride?: string;
 };
 
-export type MindosAskStreamRequest = {
-  messages: MindosAskMessage[];
+export type MindosAgentTurnRequest = {
+  messages: MindosAgentTurnMessage[];
+  agentMode?: MindosAgentMode;
+  permissionMode?: MindosAgentPermissionMode;
   currentFile?: string;
   attachedFiles?: string[];
   uploadedFiles?: MindosUploadedFile[];
@@ -86,44 +89,44 @@ export type MindosAskStreamRequest = {
   modelOverride?: string;
 };
 
-export type AskStreamHandlerServices = {
-  askStream(input: MindosAskStreamRequest): AsyncIterable<MindOSSSEvent>;
+export type AgentTurnStreamHandlerServices = {
+  agentTurnStream(input: MindosAgentTurnRequest): AsyncIterable<MindOSSSEvent>;
 };
 
-export type AskStreamHandlerResult =
+export type AgentTurnStreamHandlerResult =
   | { ok: true; status: 200; headers: Record<string, string>; body: AsyncIterable<MindOSSSEvent> }
   | { ok: false; status: number; body: { error: string } };
 
-export function handleAskStream(
+export function handleAgentTurnStream(
   body: unknown,
-  services: AskStreamHandlerServices,
-): AskStreamHandlerResult {
-  const parsed = parseAskStreamRequest(body);
+  services: AgentTurnStreamHandlerServices,
+): AgentTurnStreamHandlerResult {
+  const parsed = parseAgentTurnRequest(body);
   if (!parsed.ok) return parsed;
 
   return {
     ok: true,
     status: 200,
     headers: MINDOS_SSE_HEADERS,
-    body: services.askStream(parsed.body),
+    body: services.agentTurnStream(parsed.body),
   };
 }
 
 export function handleAgentSessionTurnStream(
   sessionId: string,
   body: unknown,
-  services: AskStreamHandlerServices,
-): AskStreamHandlerResult {
+  services: AgentTurnStreamHandlerServices,
+): AgentTurnStreamHandlerResult {
   const normalized = normalizeAgentSessionTurnBody(sessionId, body);
   if (!normalized.ok) return normalized;
-  return handleAskStream(normalized.body, services);
+  return handleAgentTurnStream(normalized.body, services);
 }
 
-function parseAskStreamRequest(body: unknown):
-  | { ok: true; body: MindosAskStreamRequest }
+function parseAgentTurnRequest(body: unknown):
+  | { ok: true; body: MindosAgentTurnRequest }
   | { ok: false; status: number; body: { error: string } } {
   if (!body || typeof body !== 'object') {
-    return { ok: false, status: 400, body: { error: 'Invalid ask request body' } };
+    return { ok: false, status: 400, body: { error: 'Invalid agent turn request body' } };
   }
 
   const record = body as Record<string, unknown>;
@@ -134,6 +137,12 @@ function parseAskStreamRequest(body: unknown):
   if ('mode' in record) {
     return { ok: false, status: 400, body: { error: 'mode is no longer supported' } };
   }
+  if (record.agentMode !== undefined && !isMindosAgentMode(record.agentMode)) {
+    return { ok: false, status: 400, body: { error: 'agentMode must be default, plan, or goal' } };
+  }
+  if (record.permissionMode !== undefined && !isMindosPermissionMode(record.permissionMode)) {
+    return { ok: false, status: 400, body: { error: 'permissionMode must be read, ask, auto, or full' } };
+  }
 
   const selectedRuntime = normalizeSelectedRuntime(record);
   const runtimeBinding = normalizeRuntimeSessionBinding(record.runtimeBinding);
@@ -142,15 +151,18 @@ function parseAskStreamRequest(body: unknown):
   const runtimeOptionsRecord = record.runtimeOptions && typeof record.runtimeOptions === 'object' && !Array.isArray(record.runtimeOptions)
     ? record.runtimeOptions as Record<string, unknown>
     : undefined;
-  if (
-    runtimeOptionsRecord
-    && runtimeOptionsRecord.permissionMode !== undefined
-    && !isMindosPermissionMode(runtimeOptionsRecord.permissionMode)
-  ) {
+  if (runtimeOptionsRecord?.permissionMode !== undefined) {
     return {
       ok: false,
       status: 400,
-      body: { error: 'runtimeOptions.permissionMode must be read, ask, auto, or full' },
+      body: { error: 'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode' },
+    };
+  }
+  if (runtimeOptionsRecord?.agentMode !== undefined) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: 'runtimeOptions.agentMode is no longer supported; use top-level agentMode' },
     };
   }
   const runtimeOptions = normalizeNativeRuntimeOptions(record.runtimeOptions);
@@ -158,7 +170,9 @@ function parseAskStreamRequest(body: unknown):
   return {
     ok: true,
     body: {
-      messages: record.messages.filter((message): message is MindosAskMessage => !!message && typeof message === 'object') as MindosAskMessage[],
+      messages: record.messages.filter((message): message is MindosAgentTurnMessage => !!message && typeof message === 'object') as MindosAgentTurnMessage[],
+      ...(isMindosAgentMode(record.agentMode) ? { agentMode: record.agentMode } : {}),
+      ...(isMindosPermissionMode(record.permissionMode) ? { permissionMode: record.permissionMode } : {}),
       ...(typeof record.currentFile === 'string' ? { currentFile: record.currentFile } : {}),
       ...(Array.isArray(record.attachedFiles) ? { attachedFiles: record.attachedFiles.filter((item): item is string => typeof item === 'string') } : {}),
       ...(Array.isArray(record.uploadedFiles) ? { uploadedFiles: normalizeUploadedFiles(record.uploadedFiles) } : {}),
@@ -191,6 +205,13 @@ function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
   if ('mode' in record || 'mode' in (objectField(record, 'options') ?? {})) {
     return { ok: false, status: 400, body: { error: 'mode is no longer supported' } };
   }
+  const options = objectField(record, 'options');
+  if (options?.agentMode !== undefined) {
+    return { ok: false, status: 400, body: { error: 'options.agentMode is no longer supported; use top-level agentMode' } };
+  }
+  if (options?.permissionMode !== undefined) {
+    return { ok: false, status: 400, body: { error: 'options.permissionMode is no longer supported; use top-level permissionMode' } };
+  }
   if (Array.isArray(record.messages)) {
     return { ok: true, body: { ...record, chatSessionId: sessionId } };
   }
@@ -203,7 +224,6 @@ function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
   }
 
   const context = objectField(record, 'context');
-  const options = objectField(record, 'options');
   const runtimeOptions = objectField(options, 'runtimeOptions') ?? pickRuntimeOptions(options) ?? objectField(record, 'runtimeOptions');
   return {
     ok: true,
@@ -216,6 +236,8 @@ function normalizeAgentSessionTurnBody(sessionId: string, body: unknown):
         ...(stringField(message, 'skillName') ? { skillName: stringField(message, 'skillName') } : {}),
       }],
       chatSessionId: sessionId,
+      ...(isMindosAgentMode(record.agentMode) ? { agentMode: record.agentMode } : {}),
+      ...(isMindosPermissionMode(record.permissionMode) ? { permissionMode: record.permissionMode } : {}),
       ...(stringField(record, 'assistantId') ? { assistantId: stringField(record, 'assistantId') } : {}),
       ...(stringField(context, 'currentFile') ?? stringField(record, 'currentFile')
         ? { currentFile: stringField(context, 'currentFile') ?? stringField(record, 'currentFile') }
@@ -272,7 +294,7 @@ function stringArrayField(record: Record<string, unknown> | undefined, key: stri
 function pickRuntimeOptions(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!record) return undefined;
   const runtimeOptions: Record<string, unknown> = {};
-  for (const key of ['permissionMode', 'reasoningEffort', 'modelOverride']) {
+  for (const key of ['reasoningEffort', 'modelOverride']) {
     if (record[key] !== undefined) runtimeOptions[key] = record[key];
   }
   return Object.keys(runtimeOptions).length > 0 ? runtimeOptions : undefined;
@@ -366,15 +388,17 @@ function normalizeContextAssistantRef(value: unknown): MindosContextAssistantRef
 function normalizeNativeRuntimeOptions(value: unknown): MindosNativeRuntimeOptions | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
-  const permissionMode = isMindosPermissionMode(record.permissionMode) ? record.permissionMode : undefined;
   const reasoningEffort = isNativeReasoningEffort(record.reasoningEffort) ? record.reasoningEffort : undefined;
   const modelOverride = cleanString(record.modelOverride, 240);
-  if (!permissionMode && !reasoningEffort && !modelOverride) return undefined;
+  if (!reasoningEffort && !modelOverride) return undefined;
   return {
-    ...(permissionMode ? { permissionMode } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(modelOverride ? { modelOverride } : {}),
   };
+}
+
+function isMindosAgentMode(value: unknown): value is MindosAgentMode {
+  return value === 'default' || value === 'plan' || value === 'goal';
 }
 
 function isMindosPermissionMode(value: unknown): value is MindosPermissionMode {

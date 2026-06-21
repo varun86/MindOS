@@ -4,7 +4,7 @@ import type {
   AgentRuntimeKind,
   AgentRuntimeStatus,
   AgentRuntimesResponse,
-  AskMode,
+  ComposerIntent,
 } from './types';
 
 export type RuntimeCompanionTone = 'success' | 'warning' | 'error' | 'muted';
@@ -50,7 +50,7 @@ export interface RuntimeComposerPresentation {
   emptyTitle: string;
   emptySubtitle: string;
   modeHint: string;
-  agentModeEnabled: boolean;
+  hostActionsEnabled: boolean;
   suggestions: string[];
 }
 
@@ -199,25 +199,25 @@ export function compactRuntimeError(error: unknown): string {
 
 export function buildRuntimeComposerPresentation(
   option?: RuntimeCompanionOption | null,
-  mode: AskMode = 'chat',
+  intent: ComposerIntent = 'chat',
 ): RuntimeComposerPresentation {
   const runtime = option ?? toRuntimeOption(MINDOS_RUNTIME, MINDOS_RUNTIME);
   const kind = runtime.kind;
-  const agentModeEnabled = runtime.selectable;
+  const hostActionsEnabled = runtime.selectable;
   const target = compactRuntimeName(runtime.name, kind);
-  const suggestions = suggestionsForRuntime(kind, mode);
-  const emptyTitle = mode === 'agent'
+  const suggestions = suggestionsForRuntime(kind, intent);
+  const emptyTitle = intent === 'act'
     ? agentTitleForRuntime(kind, target)
     : `Ask ${target}`;
 
   return {
-    placeholder: mode === 'agent'
+    placeholder: intent === 'act'
       ? `Ask ${target} to act...`
       : `Ask ${target}...`,
     emptyTitle,
-    emptySubtitle: emptySubtitleForRuntime(kind, mode),
-    modeHint: modeHintForRuntime(kind, mode),
-    agentModeEnabled,
+    emptySubtitle: emptySubtitleForRuntime(kind, intent),
+    modeHint: modeHintForRuntime(kind, intent),
+    hostActionsEnabled,
     suggestions,
   };
 }
@@ -391,8 +391,8 @@ function agentTitleForRuntime(kind: AgentRuntimeKind, target: string): string {
   return `Run ${target}`;
 }
 
-function emptySubtitleForRuntime(kind: AgentRuntimeKind, mode: AskMode): string {
-  if (mode === 'chat') {
+function emptySubtitleForRuntime(kind: AgentRuntimeKind, intent: ComposerIntent): string {
+  if (intent === 'chat') {
     if (kind === 'mindos') return 'Read, search, and reason over your connected workspace.';
     if (kind === 'codex') return 'Route this conversation to the connected Codex host.';
     if (kind === 'claude') return 'Route this conversation to the connected Claude Code host.';
@@ -405,46 +405,46 @@ function emptySubtitleForRuntime(kind: AgentRuntimeKind, mode: AskMode): string 
   return 'Let the remote ACP runtime operate with its host-side tools.';
 }
 
-function modeHintForRuntime(kind: AgentRuntimeKind, mode: AskMode): string {
-  if (mode === 'chat') {
-    if (kind === 'mindos') return 'Chat mode uses read/search tools and avoids workspace edits.';
-    if (kind === 'codex') return 'Chat mode routes to Codex with the host permission profile kept conservative.';
-    if (kind === 'claude') return 'Chat mode routes to Claude Code with the host permission profile kept conservative.';
-    return 'Chat mode routes to the ACP runtime without escalating host permissions.';
+function modeHintForRuntime(kind: AgentRuntimeKind, intent: ComposerIntent): string {
+  if (intent === 'chat') {
+    if (kind === 'mindos') return 'Chat keeps to read/search tools and avoids workspace edits.';
+    if (kind === 'codex') return 'Chat routes to Codex with the host permission profile kept conservative.';
+    if (kind === 'claude') return 'Chat routes to Claude Code with the host permission profile kept conservative.';
+    return 'Chat routes to the ACP runtime without escalating host permissions.';
   }
 
   if (kind === 'mindos') {
-    return 'Agent mode can use MindOS tools, subagents, MCP, and KB writes on the connected host.';
+    return 'Act can use MindOS tools, subagents, MCP, and KB writes on the connected host.';
   }
   if (kind === 'codex') {
-    return 'Agent mode lets Codex use host-side coding tools. Mobile approval sheets need the pending-request bridge.';
+    return 'Act lets Codex use host-side coding tools. Mobile approval sheets need the pending-request bridge.';
   }
   if (kind === 'claude') {
-    return 'Agent mode lets Claude Code use host-side coding tools. Mobile approval sheets need the pending-request bridge.';
+    return 'Act lets Claude Code use host-side coding tools. Mobile approval sheets need the pending-request bridge.';
   }
-  return 'Agent mode lets the ACP runtime use its host-side capabilities; permission UX depends on that runtime.';
+  return 'Act lets the ACP runtime use its host-side capabilities; permission UX depends on that runtime.';
 }
 
-function suggestionsForRuntime(kind: AgentRuntimeKind, mode: AskMode): string[] {
+function suggestionsForRuntime(kind: AgentRuntimeKind, intent: ComposerIntent): string[] {
   if (kind === 'codex') {
-    return mode === 'agent'
+    return intent === 'act'
       ? ['Review the connected repo', 'Fix the failing test', 'Implement the next task', 'Summarize the diff']
       : ['Explain this code path', 'Review a proposed change', 'Plan a bug fix', 'Find risky files'];
   }
 
   if (kind === 'claude') {
-    return mode === 'agent'
+    return intent === 'act'
       ? ['Edit the connected workspace', 'Run a careful code review', 'Debug the current issue', 'Prepare a patch plan']
       : ['Explain the repository', 'Trace this behavior', 'Review the architecture', 'Summarize the session'];
   }
 
   if (kind === 'acp') {
-    return mode === 'agent'
+    return intent === 'act'
       ? ['Run the agent workflow', 'Inspect the connected project', 'Delegate this task', 'Report next actions']
       : ['Ask the remote agent', 'Summarize its context', 'Check available tools', 'Explain the next step'];
   }
 
-  return mode === 'agent'
+  return intent === 'act'
     ? ['Organize my notes', 'Use subagents to research', 'Create a follow-up plan', 'Update the workspace']
     : ['Summarize my recent notes', 'What did I write this week?', 'Find my TODO items', 'Help me brainstorm'];
 }

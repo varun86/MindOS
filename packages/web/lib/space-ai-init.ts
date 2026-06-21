@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api';
-import { isAiConfiguredForAsk, type SettingsJsonForAi } from '@/lib/settings-ai-client';
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
+import { isAiConfiguredForAgentTurn, type SettingsJsonForAi } from '@/lib/settings-ai-client';
 import { notifyFilesChanged } from '@/lib/files-changed';
 
 /**
@@ -8,7 +9,7 @@ import { notifyFilesChanged } from '@/lib/files-changed';
 export async function checkAiAvailable(providerOverride?: string | null): Promise<boolean> {
   try {
     const data = await apiFetch<SettingsJsonForAi>('/api/settings', { cache: 'no-store' });
-    return isAiConfiguredForAsk(data, providerOverride);
+    return isAiConfiguredForAgentTurn(data, providerOverride);
   } catch {
     return false;
   }
@@ -72,7 +73,7 @@ export function triggerSpaceAiInit(
     detail: { spaceName, spacePath, description, state: 'working' },
   }));
 
-  fetch('/api/ask', {
+  fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('space-init')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

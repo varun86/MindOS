@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  buildAssistantAskRequestBody,
+  buildAssistantAgentTurnRequestBody,
   buildAssistantRunPrompt,
   loadAssistantMarkdownPrompt,
 } from '@/lib/assistant-runner';
@@ -9,14 +9,16 @@ import {
   getAssistantPermissionLevel,
   getAssistantPermissionMode,
   isRegisteredAssistantRun,
-  resolveAssistantAskPermissionPolicyMode,
+  resolveAssistantPermissionMode,
 } from '@/lib/assistant-runtime-registry';
 
 describe('assistant runner utilities', () => {
-  it('builds a stable /api/ask body for assistant-backed runs', () => {
-    const body = buildAssistantAskRequestBody({
+  it('builds a stable agent turn body for assistant-backed runs', () => {
+    const body = buildAssistantAgentTurnRequestBody({
       assistantId: 'inbox-organizer',
       messages: [{ role: 'user', content: 'Organize this' }],
+      agentMode: 'default',
+      permissionMode: 'ask',
       uploadedFiles: [{ name: 'capture.md', content: 'source' }],
       maxSteps: 15,
       providerOverride: 'p_stepfun',
@@ -26,6 +28,8 @@ describe('assistant runner utilities', () => {
     expect(body).toEqual({
       assistantId: 'inbox-organizer',
       messages: [{ role: 'user', content: 'Organize this' }],
+      agentMode: 'default',
+      permissionMode: 'ask',
       uploadedFiles: [{ name: 'capture.md', content: 'source' }],
       maxSteps: 15,
       providerOverride: 'p_stepfun',
@@ -57,9 +61,9 @@ describe('assistant runner utilities', () => {
   });
 
   it('uses the assistant runtime registry only for assistant run permissions', () => {
-    expect(resolveAssistantAskPermissionPolicyMode('inbox-organizer', 'read')).toBe('ask');
-    expect(resolveAssistantAskPermissionPolicyMode('unknown-assistant', 'read')).toBe('read');
-    expect(resolveAssistantAskPermissionPolicyMode('dreaming', 'read')).toBe('ask');
+    expect(resolveAssistantPermissionMode('inbox-organizer', 'read')).toBe('ask');
+    expect(resolveAssistantPermissionMode('unknown-assistant', 'read')).toBe('read');
+    expect(resolveAssistantPermissionMode('dreaming', 'read')).toBe('ask');
     expect(isRegisteredAssistantRun('inbox-organizer')).toBe(true);
     expect(isRegisteredAssistantRun('dreaming')).toBe(true);
     expect(isRegisteredAssistantRun('unknown-assistant')).toBe(false);

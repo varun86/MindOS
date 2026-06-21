@@ -551,14 +551,14 @@ export {
 
 export {
   handleAgentSessionTurnStream,
-  handleAskStream,
-  type AskStreamHandlerResult,
-  type AskStreamHandlerServices,
+  handleAgentTurnStream,
+  type AgentTurnStreamHandlerResult,
+  type AgentTurnStreamHandlerServices,
   type MindosAgentRuntimeKind,
-  type MindosAskMessage,
-  type MindosAskStreamRequest,
+  type MindosAgentTurnMessage,
+  type MindosAgentTurnRequest,
   type MindosSelectedRuntime,
-} from './handlers/ask.js';
+} from './handlers/agent-turn.js';
 
 export {
   handleSettingsGet,

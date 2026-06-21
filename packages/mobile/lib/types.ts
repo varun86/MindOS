@@ -224,7 +224,7 @@ export interface Message {
   uploadedFileNames?: string[];
 }
 
-export type AskMode = 'chat' | 'agent';
+export type ComposerIntent = 'chat' | 'act';
 
 export type AgentRuntimeKind = 'mindos' | 'acp' | 'codex' | 'claude';
 export type AgentRuntimeStatus = 'available' | 'missing' | 'signed-out' | 'error';

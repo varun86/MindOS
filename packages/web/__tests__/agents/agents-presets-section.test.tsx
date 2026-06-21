@@ -138,12 +138,6 @@ function mockAssistantsFetch(
     if (href === '/api/file' && init?.method === 'POST') {
       return jsonResponse({ ok: true });
     }
-    if (href === '/api/ask' && init?.method === 'POST') {
-      return new Response('data: {"type":"text_delta","delta":"Run summary"}\n\ndata: [DONE]\n\n', {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }
     if (href === '/api/assistant-runs' && init?.method === 'POST') {
       return new Response('data: {"type":"text_delta","delta":"Run summary"}\n\ndata: [DONE]\n\n', {
         status: 200,
@@ -471,14 +465,15 @@ Write an updated morning brief.
       await flushEffects();
     });
 
-    const askCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/assistant-runs' && init?.method === 'POST');
-    expect(askCall).toBeTruthy();
-    const askBody = JSON.parse(askCall![1]!.body as string);
-    expect(askBody).not.toHaveProperty('mode');
-    expect(askBody.assistantId).toBe('research-scout');
-    expect(askBody.runtimeOptions).toEqual({ permissionMode: 'read' });
-    expect(askBody.messages[0].content).toContain('Research Scout');
-    expect(askBody.messages[0].content).toContain('read mode');
+    const assistantRunCall = fetchMock.mock.calls.find(([url, init]) => url === '/api/assistant-runs' && init?.method === 'POST');
+    expect(assistantRunCall).toBeTruthy();
+    const assistantRunBody = JSON.parse(assistantRunCall![1]!.body as string);
+    expect(assistantRunBody).not.toHaveProperty('mode');
+    expect(assistantRunBody.assistantId).toBe('research-scout');
+    expect(assistantRunBody.permissionMode).toBe('read');
+    expect(assistantRunBody).not.toHaveProperty('runtimeOptions');
+    expect(assistantRunBody.messages[0].content).toContain('Research Scout');
+    expect(assistantRunBody.messages[0].content).toContain('read mode');
     expect(host.textContent).toContain('Run summary');
 
     await act(async () => {
@@ -566,7 +561,6 @@ Review the local knowledge base for maintenance signals.
       assistantId: 'dreaming',
       trigger: 'manual',
     });
-    expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/ask' && init?.method === 'POST')).toBe(false);
     expect(host.textContent).toContain('Run summary');
 
     await act(async () => {

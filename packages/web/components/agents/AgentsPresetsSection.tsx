@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from '@/lib/toast';
-import { buildAssistantAskRequestBody } from '@/lib/assistant-runner';
+import { buildAssistantAgentTurnRequestBody } from '@/lib/assistant-runner';
 import { AgentSectionHeading } from './AgentsPrimitives';
 
 type MindosAssistantSource = 'builtin' | 'custom';
@@ -2044,9 +2044,9 @@ async function runAssistantRun(assistant: AssistantView): Promise<string> {
       assistantId: assistant.id,
       trigger: 'manual',
     }
-    : buildAssistantAskRequestBody({
+    : buildAssistantAgentTurnRequestBody({
       assistantId: assistant.id,
-      runtimeOptions: { permissionMode: 'read' },
+      permissionMode: 'read',
       messages: [{
         role: 'user',
         content: buildAssistantRunPrompt(assistant),

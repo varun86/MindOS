@@ -4,6 +4,7 @@ import { type ComponentType, useCallback, useEffect, useId, useRef, useState } f
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
 import { useSettingsAiAvailable } from '@/hooks/useSettingsAiAvailable';
 import { useLocale } from '@/lib/stores/locale-store';
 import { Button } from '@/components/ui/button';
@@ -82,7 +83,7 @@ export function EchoInsightCollapsible({
     setInsightMd('');
     setStreaming(true);
     try {
-      const res = await fetch('/api/ask', {
+      const res = await fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('echo-insight')), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

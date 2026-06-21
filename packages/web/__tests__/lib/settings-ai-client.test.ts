@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isAiConfiguredForAsk } from '@/lib/settings-ai-client';
+import { isAiConfiguredForAgentTurn } from '@/lib/settings-ai-client';
 
-describe('isAiConfiguredForAsk', () => {
+describe('isAiConfiguredForAgentTurn', () => {
   it('returns true when anthropic file key is set', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_anthro01',
           providers: [
@@ -19,7 +19,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('returns true when anthropic env override only', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_anthro01',
           providers: [
@@ -34,7 +34,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('returns false when anthropic selected but no key anywhere', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_anthro01',
           providers: [
@@ -49,7 +49,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('uses provider override instead of the active provider when provided', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_anthro01',
           providers: [
@@ -64,7 +64,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('returns true when openai provider and openai key set', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_openai01',
           providers: [
@@ -79,7 +79,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('returns true for openai env only', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           activeProvider: 'p_openai01',
           providers: [
@@ -94,7 +94,7 @@ describe('isAiConfiguredForAsk', () => {
 
   it('treats missing provider as first entry fallback (error path)', () => {
     expect(
-      isAiConfiguredForAsk({
+      isAiConfiguredForAgentTurn({
         ai: {
           providers: [
             { id: 'p_anthro01', name: 'Anthropic', protocol: 'anthropic', apiKey: '', model: 'claude-sonnet-4-6', baseUrl: '' },

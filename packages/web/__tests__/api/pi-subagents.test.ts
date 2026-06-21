@@ -196,7 +196,7 @@ describe('pi-subagents built-in extension', () => {
 
   describe('runtime extension loading (integration)', () => {
     it('DefaultResourceLoader loads pi-subagents and exposes subagent tools', async () => {
-      // This test mirrors the actual loading path used by /api/ask
+      // This test mirrors the actual loading path used by agent turns.
       const settingsManager = SettingsManager.inMemory();
       const piSubagentsPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'subagent-ledger-extension.ts');
 

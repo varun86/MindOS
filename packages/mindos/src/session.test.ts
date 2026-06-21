@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MINDOS_ASK_STREAM_EVENT_TYPES,
+  MINDOS_AGENT_TURN_STREAM_EVENT_TYPES,
   MINDOS_SSE_HEADERS,
   MINDOS_SESSION_STREAM_SCHEMA,
   createMindosAgentEventReducer,
@@ -28,13 +28,10 @@ import {
   mindosPiMessagesToOpenAI,
   parseMindosOpenAICompatResponse,
   reassembleMindosOpenAISse,
-  createMindosPiAgentRuntime,
   buildMindosExternalRuntimePrompt,
   runMindosAcpAskSession,
-  runMindosPiAgentAskSession,
   runMindosNonStreamingFallback,
   runMindosOpenAICompatFallback,
-  runMindosAskProxyFallback,
   runMindosAskWithRetry,
   safeParseMindosJsonObject,
   sanitizeToolArgs,
@@ -42,6 +39,11 @@ import {
   sleepMindos,
   toMindosAgentMessages,
 } from './session/index.js';
+import {
+  createMindosPiAgentRuntime,
+  runMindosPiAgentTurnProxyFallback,
+  runMindosPiAgentTurnSession,
+} from './agent/mindos-pi/index.js';
 
 describe('MindOS session event contract', () => {
   it('defines a versioned event stream schema', () => {
@@ -69,8 +71,8 @@ describe('MindOS session event contract', () => {
     });
   });
 
-  it('defines the ask SSE event contract and encodes data frames', () => {
-    expect(MINDOS_ASK_STREAM_EVENT_TYPES).toEqual([
+  it('defines the agent turn SSE event contract and encodes data frames', () => {
+    expect(MINDOS_AGENT_TURN_STREAM_EVENT_TYPES).toEqual([
       'text_delta',
       'thinking_delta',
       'agent_run_context',
@@ -527,7 +529,7 @@ describe('MindOS session event contract', () => {
     const events: Array<{ type: string; message?: string }> = [];
     let fallbackRuns = 0;
 
-    const handled = await runMindosAskProxyFallback({
+    const handled = await runMindosPiAgentTurnProxyFallback({
       phase: 'before-stream',
       provider: 'openai',
       baseUrl: 'https://proxy.example/v1',
@@ -554,7 +556,7 @@ describe('MindOS session event contract', () => {
     const events: Array<{ type: string; message?: string }> = [];
     let cachedKey = '';
 
-    const handled = await runMindosAskProxyFallback({
+    const handled = await runMindosPiAgentTurnProxyFallback({
       phase: 'after-stream',
       provider: 'openai',
       baseUrl: 'https://proxy.example/v1',
@@ -584,7 +586,7 @@ describe('MindOS session event contract', () => {
     const events: Array<{ type: string; message?: string }> = [];
     let fallbackRuns = 0;
 
-    const handled = await runMindosAskProxyFallback({
+    const handled = await runMindosPiAgentTurnProxyFallback({
       phase: 'after-stream',
       provider: 'anthropic',
       hasContent: false,
@@ -1193,7 +1195,7 @@ describe('MindOS session event contract', () => {
     let subscribed: ((event: unknown) => void) | undefined;
     let tokenUsage = '';
 
-    await runMindosPiAgentAskSession({
+    await runMindosPiAgentTurnSession({
       session: {
         subscribe: (callback) => { subscribed = callback; },
         prompt: async () => {
@@ -1232,7 +1234,7 @@ describe('MindOS session event contract', () => {
     const promptStarted = new Promise<void>((resolve) => { resolvePromptStarted = resolve; });
     const aborts: string[] = [];
 
-    const pending = runMindosPiAgentAskSession({
+    const pending = runMindosPiAgentTurnSession({
       session: {
         subscribe: () => {},
         prompt: async () => {
@@ -1269,7 +1271,7 @@ describe('MindOS session event contract', () => {
     let promptRuns = 0;
     let fallbackRuns = 0;
 
-    await runMindosPiAgentAskSession({
+    await runMindosPiAgentTurnSession({
       session: {
         subscribe: () => {},
         prompt: async () => { promptRuns += 1; },

@@ -1,5 +1,6 @@
 // Workflow step execution logic — fetches skills, resolves agents, constructs prompts, streams AI responses
 
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
 import type { WorkflowYaml, WorkflowStepRuntime } from './types';
 
 // ─── Skill Fetching ───────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ Be specific and actionable. Format in Markdown.`;
  * 1. Fetch referenced skill(s) content
  * 2. Resolve ACP agent (if step.agent is set)
  * 3. Build prompt with injected skill context
- * 4. Stream response from /api/ask (routed to ACP agent if resolved)
+ * 4. Stream response from the agent turn endpoint (routed to ACP agent if resolved)
  */
 export async function runStepWithAI(
   step: WorkflowStepRuntime,
@@ -164,7 +165,7 @@ export async function runStepWithAI(
   // 3. Build prompt
   const prompt = buildPrompt(step, workflow, skillContents);
 
-  // 4. Stream from /api/ask
+  // 4. Stream from the agent turn endpoint
   const body: Record<string, unknown> = {
     messages: [{ role: 'user', content: prompt }],
     currentFile: filePath,
@@ -173,7 +174,7 @@ export async function runStepWithAI(
     body.selectedAcpAgent = selectedAcpAgent;
   }
 
-  const res = await fetch('/api/ask', {
+  const res = await fetch(buildAgentTurnEndpoint(createTransientAgentSessionId('workflow')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

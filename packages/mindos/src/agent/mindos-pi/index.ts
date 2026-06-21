@@ -3,3 +3,4 @@ export * from './permission/index.js';
 export * from './prompt.js';
 export * from './resource-types.js';
 export * from './runtime.js';
+export * from './session.js';

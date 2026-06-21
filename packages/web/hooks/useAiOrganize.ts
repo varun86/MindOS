@@ -3,7 +3,8 @@
 import { useState, useCallback, useRef } from 'react';
 import type { LocalAttachment, Message } from '@/lib/types';
 import type { OrganizeSource } from '@/lib/organize-history';
-import { buildAssistantAskRequestBody } from '@/lib/assistant-runner';
+import { buildAssistantAgentTurnRequestBody } from '@/lib/assistant-runner';
+import { buildAgentTurnEndpoint, createTransientAgentSessionId } from '@/lib/agent-turn-endpoint';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,7 +46,7 @@ export interface AiOrganizeState {
 }
 
 // ---------------------------------------------------------------------------
-// SSE stream parser — extracts file operations from /api/ask stream
+// SSE stream parser — extracts file operations from agent turn streams
 // ---------------------------------------------------------------------------
 
 /**
@@ -243,9 +244,10 @@ export interface AiOrganizeRunOptions {
   providerOverride?: string | null;
   modelOverride?: string | null;
   assistantId?: string | null;
+  sessionId?: string | null;
 }
 
-function describeAskRequestError(status: number, message: string): string {
+function describeAgentTurnRequestError(status: number, message: string): string {
   const detail = message.trim() || `Request failed (${status})`;
   if (status === 401 || status === 403) {
     return `AI provider rejected the request (${status}). Check the selected API key/provider. ${detail}`;
@@ -316,7 +318,7 @@ export function useAiOrganize() {
     }));
 
     try {
-      const requestBody = buildAssistantAskRequestBody({
+      const requestBody = buildAssistantAgentTurnRequestBody({
         messages,
         uploadedFiles: truncatedFiles,
         maxSteps: 15,
@@ -325,7 +327,10 @@ export function useAiOrganize() {
         assistantId: options.assistantId,
       });
 
-      const endpoint = options.assistantId ? '/api/assistant-runs' : '/api/ask';
+      const transientSessionId = options.sessionId?.trim() || createTransientAgentSessionId('organize');
+      const endpoint = options.assistantId
+        ? '/api/assistant-runs'
+        : buildAgentTurnEndpoint(transientSessionId);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -341,7 +346,7 @@ export function useAiOrganize() {
           else if (typeof errBody?.error === 'object' && errBody.error?.message) errorMsg = errBody.error.message;
           else if (errBody?.message) errorMsg = errBody.message as string;
         } catch {}
-        throw new Error(describeAskRequestError(res.status, errorMsg));
+        throw new Error(describeAgentTurnRequestError(res.status, errorMsg));
       }
 
       if (!res.body) throw new Error('No response body');

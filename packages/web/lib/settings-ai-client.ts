@@ -1,5 +1,5 @@
 /**
- * Client-side mirror of "can /api/ask run?" using GET /api/settings payload.
+ * Client-side mirror of "can an agent turn run?" using GET /api/settings payload.
  * Must stay aligned with server `effectiveAiConfig()` provider + key resolution.
  */
 import { PROVIDER_PRESETS, isProviderId, getApiKeyEnvVar } from './agent/providers';
@@ -13,7 +13,7 @@ export type SettingsJsonForAi = {
   envOverrides?: Partial<Record<string, boolean>>;
 };
 
-export function isAiConfiguredForAsk(data: SettingsJsonForAi, providerOverride?: string | null): boolean {
+export function isAiConfiguredForAgentTurn(data: SettingsJsonForAi, providerOverride?: string | null): boolean {
   const providers = data.ai?.providers ?? [];
   const activeId = data.ai?.activeProvider;
   const env = data.envOverrides ?? {};

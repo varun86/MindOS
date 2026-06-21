@@ -1,4 +1,4 @@
-import type { LocalAttachment, Message } from './types';
+import type { AgentMode, AgentPermissionMode, LocalAttachment, Message } from './types';
 import { getAssistantMarkdownPath } from './mind-system-assistant-paths';
 
 export interface AssistantPromptLoadOptions {
@@ -16,9 +16,11 @@ export interface AssistantRunPromptOptions {
   rules?: string[];
 }
 
-export interface AssistantAskRequestOptions {
+export interface AssistantAgentTurnRequestOptions {
   assistantId?: string | null;
   messages: Message[];
+  agentMode?: AgentMode;
+  permissionMode?: AgentPermissionMode;
   uploadedFiles?: LocalAttachment[];
   maxSteps?: number;
   providerOverride?: string | null;
@@ -86,18 +88,22 @@ export function buildAssistantRunPrompt({
   return lines.join('\n').trimEnd();
 }
 
-export function buildAssistantAskRequestBody({
+export function buildAssistantAgentTurnRequestBody({
   assistantId,
   messages,
+  agentMode,
+  permissionMode,
   uploadedFiles,
   maxSteps,
   providerOverride,
   modelOverride,
   runtimeOptions,
-}: AssistantAskRequestOptions): Record<string, unknown> {
+}: AssistantAgentTurnRequestOptions): Record<string, unknown> {
   const body: Record<string, unknown> = {
     messages,
   };
+  if (agentMode) body.agentMode = agentMode;
+  if (permissionMode) body.permissionMode = permissionMode;
   if (uploadedFiles) body.uploadedFiles = uploadedFiles;
   if (typeof maxSteps === 'number') body.maxSteps = maxSteps;
   if (providerOverride) body.providerOverride = providerOverride;

@@ -24,12 +24,12 @@ describe('MindOS client SDK boundary', () => {
       fetch: fetchMock,
     });
 
-    const result = await client.post('/api/ask', { message: 'hello' });
+    const result = await client.post('/api/agent/sessions/test-session/turns', { message: 'hello' });
 
     expect(result).toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe('http://127.0.0.1:4567/api/ask');
+    expect(String(url)).toBe('http://127.0.0.1:4567/api/agent/sessions/test-session/turns');
     expect(init?.method).toBe('POST');
     expect(init?.body).toBe(JSON.stringify({ message: 'hello' }));
     const headers = new Headers(init?.headers);
@@ -115,7 +115,7 @@ describe('MindOS client SDK boundary', () => {
     expect(String(fetchMock.mock.calls[5]![0])).toBe('http://localhost:3456/api/mcp/status');
   });
 
-  it('streams ask events from SSE responses', async () => {
+  it('streams agent turn events from SSE responses', async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -133,7 +133,7 @@ describe('MindOS client SDK boundary', () => {
     const client = createMindosClient({ baseUrl: 'http://localhost:3456', fetch: fetchMock });
 
     const events = [];
-    for await (const event of client.askStream({ messages: [{ role: 'user', content: 'Hi' }] })) {
+    for await (const event of client.agentTurnStream({ sessionId: 'test-session', messages: [{ role: 'user', content: 'Hi' }] })) {
       events.push(event);
     }
 
@@ -141,8 +141,9 @@ describe('MindOS client SDK boundary', () => {
       { type: 'text_delta', delta: 'hello' },
       { type: 'done' },
     ]);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://localhost:3456/api/ask');
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://localhost:3456/api/agent/sessions/test-session/turns');
     expect(fetchMock.mock.calls[0]![1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]![1]?.body).toBe(JSON.stringify({ messages: [{ role: 'user', content: 'Hi' }] }));
   });
 });
 

@@ -167,15 +167,15 @@ describe('agent-runtime-companion', () => {
     )).toBeNull();
   });
 
-  it('builds a MindOS composer state with agent-mode operations available on the host', () => {
+  it('builds a MindOS composer state with host actions available', () => {
     const options = buildRuntimeCompanionOptions({
       runtimes: [{ id: 'mindos', name: 'MindOS Agent', kind: 'mindos', status: 'available' }],
     });
 
-    const presentation = buildRuntimeComposerPresentation(options[0], 'agent');
+    const presentation = buildRuntimeComposerPresentation(options[0], 'act');
 
     expect(presentation).toMatchObject({
-      agentModeEnabled: true,
+      hostActionsEnabled: true,
       placeholder: 'Ask MindOS to act...',
       emptyTitle: 'Run MindOS Agent',
     });
@@ -189,10 +189,10 @@ describe('agent-runtime-companion', () => {
     });
     const codex = options.find((item) => item.kind === 'codex');
 
-    const presentation = buildRuntimeComposerPresentation(codex, 'agent');
+    const presentation = buildRuntimeComposerPresentation(codex, 'act');
 
     expect(presentation).toMatchObject({
-      agentModeEnabled: true,
+      hostActionsEnabled: true,
       placeholder: 'Ask Codex to act...',
       emptyTitle: 'Run Codex on host',
     });
@@ -200,14 +200,14 @@ describe('agent-runtime-companion', () => {
     expect(presentation.modeHint).toContain('pending-request bridge');
   });
 
-  it('does not expose agent mode for a runtime option that cannot be selected', () => {
+  it('does not expose host actions for a runtime option that cannot be selected', () => {
     const options = buildRuntimeCompanionOptions({
       runtimes: [{ id: 'claude', name: 'Claude Code', kind: 'claude', status: 'missing' }],
     });
     const claude = options.find((item) => item.kind === 'claude');
 
-    expect(buildRuntimeComposerPresentation(claude, 'agent')).toMatchObject({
-      agentModeEnabled: false,
+    expect(buildRuntimeComposerPresentation(claude, 'act')).toMatchObject({
+      hostActionsEnabled: false,
       placeholder: 'Ask Claude Code to act...',
     });
   });

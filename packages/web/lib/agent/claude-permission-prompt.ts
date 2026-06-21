@@ -173,7 +173,7 @@ function extractReason(args) {
 async function requestDecision(args) {
   if (!baseUrl || !runId) return { decision: 'cancel', cancelled: true };
   const input = extractToolInput(args);
-  const response = await fetch(new URL('/api/ask/runtime-permission/request', baseUrl), {
+  const response = await fetch(new URL('/api/agent/runtime-permission/request', baseUrl), {
     method: 'POST',
     signal: AbortSignal.timeout(fetchTimeoutMs),
     headers: {
@@ -199,7 +199,7 @@ async function requestDecision(args) {
 
 async function requestUserQuestion(args, requestId) {
   if (!baseUrl || !runId) return { answers: [], cancelled: true, error: 'no_bridge' };
-  const response = await fetch(new URL('/api/ask/user-question/request', baseUrl), {
+  const response = await fetch(new URL('/api/agent/user-question/request', baseUrl), {
     method: 'POST',
     signal: AbortSignal.timeout(fetchTimeoutMs),
     headers: {

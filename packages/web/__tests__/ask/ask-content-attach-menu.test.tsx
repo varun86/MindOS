@@ -168,8 +168,7 @@ vi.mock('@/components/ask/ProviderModelCapsule', () => ({
 }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
-  getPersistedPermissionLevel: () => 'ask',
-  permissionLevelToNativeRuntimePermission: (level: string) => level,
+  getPersistedPermissionMode: () => 'ask',
 }));
 vi.mock('@/lib/utils', () => ({ cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ') }));
 

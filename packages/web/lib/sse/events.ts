@@ -1,5 +1,5 @@
 export {
-  MINDOS_ASK_STREAM_EVENT_TYPES,
+  MINDOS_AGENT_TURN_STREAM_EVENT_TYPES,
   MINDOS_SSE_HEADERS,
   encodeMindosSseEvent,
   getTextDelta,

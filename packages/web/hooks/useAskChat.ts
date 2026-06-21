@@ -1,11 +1,12 @@
 'use client';
 
 import { useRef, useCallback, useLayoutEffect } from 'react';
-import type { AgentIdentity, AgentRuntimeIdentity, Message, ImagePart, LocalAttachment, RuntimeSessionBinding, NativeRuntimeOptions } from '@/lib/types';
+import type { AgentIdentity, AgentPermissionMode, AgentRuntimeIdentity, Message, ImagePart, LocalAttachment, RuntimeSessionBinding, NativeRuntimeOptions } from '@/lib/types';
 import type { ProviderId } from '@/lib/agent/providers';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import { annotateMessageWithAgentRuntime, compactAgentRuntimeIdentity, getMatchingRuntimeSessionBinding, isRuntimeSessionBindingResumable } from '@/lib/ask-agent';
 import { isRetryableError, retryDelay, sleep } from '@/lib/agent/reconnect';
+import { buildAgentTurnEndpoint } from '@/lib/agent-turn-endpoint';
 import {
   MAX_CONCURRENT_RUNS,
   appendMessages as storeAppendMessages,
@@ -78,6 +79,7 @@ interface UseAskChatOpts {
   currentFile?: string;
   providerOverride: ProviderId | `p_${string}` | null;
   modelOverride: string | null;
+  permissionMode?: AgentPermissionMode;
   nativeRuntimeOptions?: NativeRuntimeOptions;
   activeSessionId: string | null;
   onFirstMessage?: () => void;
@@ -108,6 +110,7 @@ export function useAskChat({
   currentFile,
   providerOverride,
   modelOverride,
+  permissionMode = 'ask',
   nativeRuntimeOptions = {},
   activeSessionId,
   onFirstMessage,
@@ -275,7 +278,6 @@ export function useAskChat({
 
     const selectedRuntimeIsNative = selectedRuntimeBase?.kind === 'codex' || selectedRuntimeBase?.kind === 'claude';
     const compactRuntimeOptions: NativeRuntimeOptions = {
-      ...(nativeRuntimeOptions.permissionMode ? { permissionMode: nativeRuntimeOptions.permissionMode } : {}),
       ...(nativeRuntimeOptions.modelOverride?.trim() ? { modelOverride: nativeRuntimeOptions.modelOverride.trim() } : {}),
       ...(selectedRuntimeIsNative && nativeRuntimeOptions.reasoningEffort
         ? { reasoningEffort: nativeRuntimeOptions.reasoningEffort }
@@ -284,6 +286,8 @@ export function useAskChat({
     const sessionContextSnapshot = getSessionSubmitContextSnapshot(sessionId);
     const requestBody = JSON.stringify({
       messages: requestMessages,
+      agentMode: 'default',
+      permissionMode,
       currentFile,
       attachedFiles: refs.attachedFilesRef.current,
       uploadedFiles: upl.localAttachments
@@ -319,7 +323,7 @@ export function useAskChat({
     };
 
     const doFetch = async (): Promise<{ finalMessage: Message }> => {
-      const res = await fetch('/api/ask', {
+      const res = await fetch(buildAgentTurnEndpoint(sessionId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: requestBody,
@@ -467,7 +471,7 @@ export function useAskChat({
       endRun(sessionId);
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [currentFile, providerOverride, modelOverride, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
+  }, [currentFile, providerOverride, modelOverride, permissionMode, nativeRuntimeOptions, errorLabels.noResponse, errorLabels.stopped, errorLabels.concurrentLimit, onFirstMessage, refs, resetInputState, onRestoreInput, onTransientError]);
 
   return {
     isLoading,

@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/assistant-runs/route';
 
-const askPostMock = vi.hoisted(() => vi.fn());
+const agentTurnPostMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/app/api/ask/runner', () => ({
-  runAskRequestBody: askPostMock,
+vi.mock('@/app/api/agent/_lib/turn-runner', () => ({
+  runAgentTurnRequestBody: agentTurnPostMock,
 }));
 
 describe('POST /api/assistant-runs', () => {
   beforeEach(() => {
-    askPostMock.mockReset();
+    agentTurnPostMock.mockReset();
   });
 
-  it('delegates Inbox Organizer runs to the shared ask-backed streaming runner', async () => {
-    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+  it('delegates Inbox Organizer runs to the shared agent turn streaming runner', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
 
@@ -31,9 +31,9 @@ describe('POST /api/assistant-runs', () => {
       }),
     }));
 
-    expect(askPostMock).toHaveBeenCalledTimes(1);
-    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    const delegatedContext = askPostMock.mock.calls[0]?.[1] as { headers?: Headers; request?: Request; signal?: AbortSignal };
+    expect(agentTurnPostMock).toHaveBeenCalledTimes(1);
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const delegatedContext = agentTurnPostMock.mock.calls[0]?.[1] as { headers?: Headers; request?: Request; signal?: AbortSignal };
     expect(delegatedContext.headers?.get('accept-language')).toBe('zh-CN');
     expect(delegatedContext.request?.url).toBe('http://localhost/api/assistant-runs');
     expect(delegatedBody).toMatchObject({
@@ -48,7 +48,7 @@ describe('POST /api/assistant-runs', () => {
     await expect(response.text()).resolves.toContain('"type":"done"');
   });
 
-  it('rejects ask-backed assistant runs without messages before touching the ask runner', async () => {
+  it('rejects assistant runs without messages before touching the agent turn runner', async () => {
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',
       body: JSON.stringify({ assistantId: 'inbox-organizer' }),
@@ -59,11 +59,11 @@ describe('POST /api/assistant-runs', () => {
       ok: false,
       error: { code: 'INVALID_MESSAGES' },
     });
-    expect(askPostMock).not.toHaveBeenCalled();
+    expect(agentTurnPostMock).not.toHaveBeenCalled();
   });
 
-  it('normalizes ask-backed assistant bodies without leaking invalid raw fields', async () => {
-    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+  it('normalizes assistant bodies without leaking invalid raw fields', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
 
@@ -82,7 +82,7 @@ describe('POST /api/assistant-runs', () => {
       }),
     }));
 
-    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(delegatedBody).toMatchObject({
       assistantId: 'inbox-organizer',
       messages: [{ role: 'user', content: 'Organize this Inbox item.' }],
@@ -96,8 +96,8 @@ describe('POST /api/assistant-runs', () => {
     expect(delegatedBody).not.toHaveProperty('maxSteps');
   });
 
-  it('delegates Dreaming runs to the shared ask runner with the local dreaming tool instruction', async () => {
-    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"text_delta","delta":"Dreaming queued"}\n\n', {
+  it('delegates Dreaming runs to the shared agent turn runner with the local dreaming tool instruction', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"text_delta","delta":"Dreaming queued"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
 
@@ -109,8 +109,8 @@ describe('POST /api/assistant-runs', () => {
       }),
     }));
 
-    expect(askPostMock).toHaveBeenCalledTimes(1);
-    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(agentTurnPostMock).toHaveBeenCalledTimes(1);
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(delegatedBody).toMatchObject({
       assistantId: 'dreaming',
       maxSteps: 16,
@@ -125,8 +125,8 @@ describe('POST /api/assistant-runs', () => {
     expect(response.headers.get('content-type')).toContain('text/event-stream');
   });
 
-  it('passes Dreaming dry-run scope through the ask prompt instead of running a server branch', async () => {
-    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+  it('passes Dreaming dry-run scope through the agent turn prompt instead of running a server branch', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
 
@@ -142,7 +142,7 @@ describe('POST /api/assistant-runs', () => {
     }));
 
     expect(response.status).toBe(200);
-    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
     const messages = delegatedBody.messages as Array<{ content: string }>;
     expect(messages[0].content).toContain('space: Projects');
     expect(messages[0].content).toContain('writeArtifacts: false');
@@ -150,11 +150,32 @@ describe('POST /api/assistant-runs', () => {
     expect(messages[0].content).toContain('dryRun true');
   });
 
-  it('delegates custom assistant runs through ask with read permission', async () => {
-    askPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
+  it('delegates custom assistant runs through agent turns with top-level read permission', async () => {
+    agentTurnPostMock.mockResolvedValueOnce(new Response('data: {"type":"done"}\n\n', {
       headers: { 'content-type': 'text/event-stream' },
     }));
 
+    const response = await POST(new Request('http://localhost/api/assistant-runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        assistantId: 'daily-signal',
+        messages: [{ role: 'user', content: 'Run this assistant.' }],
+        permissionMode: 'read',
+        runtimeOptions: { reasoningEffort: 'high' },
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    const delegatedBody = agentTurnPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(delegatedBody).toMatchObject({
+      assistantId: 'daily-signal',
+      messages: [{ role: 'user', content: 'Run this assistant.' }],
+      permissionMode: 'read',
+      runtimeOptions: { reasoningEffort: 'high' },
+    });
+  });
+
+  it('rejects nested runtime permission options before touching the agent turn runner', async () => {
     const response = await POST(new Request('http://localhost/api/assistant-runs', {
       method: 'POST',
       body: JSON.stringify({
@@ -164,13 +185,15 @@ describe('POST /api/assistant-runs', () => {
       }),
     }));
 
-    expect(response.status).toBe(200);
-    const delegatedBody = askPostMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(delegatedBody).toMatchObject({
-      assistantId: 'daily-signal',
-      messages: [{ role: 'user', content: 'Run this assistant.' }],
-      runtimeOptions: { permissionMode: 'read', reasoningEffort: 'high' },
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'INVALID_RUNTIME_OPTIONS',
+        message: 'runtimeOptions.permissionMode is no longer supported; use top-level permissionMode.',
+      },
     });
+    expect(agentTurnPostMock).not.toHaveBeenCalled();
   });
 
   it('rejects unsafe assistant ids and spaces before starting a run', async () => {
@@ -193,6 +216,6 @@ describe('POST /api/assistant-runs', () => {
       ok: false,
       error: { code: 'INVALID_SPACE' },
     });
-    expect(askPostMock).not.toHaveBeenCalled();
+    expect(agentTurnPostMock).not.toHaveBeenCalled();
   });
 });

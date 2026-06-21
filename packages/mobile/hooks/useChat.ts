@@ -13,17 +13,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConnectionStore } from '@/lib/connection-store';
 import { streamChat, MessageBuilder } from '@/lib/sse-client';
 import { mindosClient } from '@/lib/api-client';
-import type { Message, AskMode, AgentRuntimeIdentity } from '@/lib/types';
+import type { Message, AgentRuntimeIdentity } from '@/lib/types';
 
 const CHAT_STORAGE_KEY = 'mindos_chat_messages';
 const SESSION_STORAGE_KEY = 'mindos_chat_session';
 
 export interface UseChatOptions {
-  mode?: AskMode;
   selectedRuntime?: AgentRuntimeIdentity | null;
 }
 
-export function useChat({ mode = 'chat', selectedRuntime = null }: UseChatOptions = {}) {
+export function useChat({ selectedRuntime = null }: UseChatOptions = {}) {
   const baseUrl = useConnectionStore((s) => s.serverUrl);
 
   const [sessionId, setSessionId] = useState('');
@@ -127,7 +126,6 @@ export function useChat({ mode = 'chat', selectedRuntime = null }: UseChatOption
         baseUrl,
         {
           messages: nextHistory,
-          mode,
           sessionId,
           chatSessionId: sessionId,
           attachedFiles: attachedFilePaths,
@@ -199,7 +197,7 @@ export function useChat({ mode = 'chat', selectedRuntime = null }: UseChatOption
       );
       return true;
     },
-    [baseUrl, finishCurrentStream, mode, selectedRuntime, sessionId],
+    [baseUrl, finishCurrentStream, selectedRuntime, sessionId],
   );
 
   // --- Retry last failed message ---

@@ -28,6 +28,10 @@ let mockNativeRuntimeDescriptors: unknown[] = [];
 let mockNativeLoadingByKind: Partial<Record<'codex' | 'claude', boolean>> = {};
 let mockNativeErrorByKind: Partial<Record<'codex' | 'claude', string | null>> = {};
 
+function isAgentTurnUrl(url: RequestInfo | URL): boolean {
+  return String(url).startsWith('/api/agent/sessions/') && String(url).endsWith('/turns');
+}
+
 const sessionWithClaude: ChatSession = {
   id: 's1',
   createdAt: 1,
@@ -336,8 +340,7 @@ vi.mock('@/components/ask/ProviderModelCapsule', () => ({
 }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
   default: () => null,
-  getPersistedPermissionLevel: () => 'ask',
-  permissionLevelToNativeRuntimePermission: (level: string) => level,
+  getPersistedPermissionMode: () => 'ask',
 }));
 vi.mock('@/lib/utils', () => ({ cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ') }));
 vi.mock('@/lib/agent/reconnect', () => ({
@@ -696,9 +699,9 @@ describe('AskContent ACP session binding', () => {
 
     expect(host.querySelector('[data-testid="runtime-switcher"]')?.textContent).toBe('Claude Code');
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toEqual({ id: 'claude-code', name: 'Claude Code' });
     expect(requestBody.selectedRuntime).toEqual({ id: 'claude-code', name: 'Claude Code', kind: 'acp' });
 
@@ -709,7 +712,7 @@ describe('AskContent ACP session binding', () => {
 
   it('restores the draft instead of locking the session when WorkDir validation fails before runtime start', async () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
-      if (String(url) === '/api/ask') {
+      if (isAgentTurnUrl(url)) {
         return {
           ok: false,
           status: 409,
@@ -812,9 +815,9 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toBeNull();
     expect(requestBody.providerOverride).toBe('openai');
@@ -872,17 +875,17 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
     expect(requestBody).not.toHaveProperty('providerOverride');
     expect(requestBody).not.toHaveProperty('modelOverride');
+    expect(requestBody.permissionMode).toBe('ask');
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'ask',
     });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
 
@@ -938,15 +941,15 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
+    expect(requestBody.permissionMode).toBe('ask');
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'xhigh',
-      permissionMode: 'ask',
     });
 
     await act(async () => {
@@ -1007,15 +1010,15 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'codex', name: 'Codex', kind: 'codex', binaryPath: '/usr/local/bin/codex' });
+    expect(requestBody.permissionMode).toBe('ask');
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'gpt-5.4-codex',
       reasoningEffort: 'high',
-      permissionMode: 'ask',
     });
 
     await act(async () => {
@@ -1068,17 +1071,17 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.selectedAcpAgent).toBeNull();
     expect(requestBody.selectedRuntime).toEqual({ id: 'claude', name: 'Claude Code', kind: 'claude' });
     expect(requestBody).not.toHaveProperty('providerOverride');
     expect(requestBody).not.toHaveProperty('modelOverride');
+    expect(requestBody.permissionMode).toBe('ask');
     expect(requestBody.runtimeOptions).toEqual({
       modelOverride: 'claude-sonnet-4-20250514',
       reasoningEffort: 'medium',
-      permissionMode: 'ask',
     });
     expect(mockSetSessionAgentRuntimeBinding).toHaveBeenCalledWith({ id: 'claude', name: 'Claude Code', kind: 'claude' });
 
@@ -1140,9 +1143,9 @@ describe('AskContent ACP session binding', () => {
     });
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const askCall = fetchMock.mock.calls.find(([url]) => url === '/api/ask');
-    expect(askCall).toBeTruthy();
-    const requestBody = JSON.parse(String((askCall?.[1] as RequestInit | undefined)?.body));
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
     expect(requestBody.runtimeBinding).toMatchObject({
       kind: 'codex-thread',
       runtime: 'codex',
@@ -1294,7 +1297,7 @@ describe('AskContent ACP session binding', () => {
       },
       { title: 'Runtime fix thread' },
     );
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/ask')).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(false);
     expect(host.querySelector('[data-testid="history-session-list"]')).toBeNull();
     expect(host.querySelector('[data-testid="runtime-switcher"]')?.textContent).toBe('Codex');
 
@@ -1391,7 +1394,7 @@ describe('AskContent ACP session binding', () => {
       },
       { title: 'Forked runtime fix' },
     );
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/ask')).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(false);
     expect(host.querySelector('[data-testid="history-session-list"]')).toBeNull();
     expect(host.querySelector('[data-testid="runtime-switcher"]')?.textContent).toBe('Codex');
 
@@ -1443,7 +1446,7 @@ describe('AskContent ACP session binding', () => {
       }
     });
 
-    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/ask', expect.anything());
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(false);
 
     await act(async () => {
       root.unmount();
@@ -1491,7 +1494,7 @@ describe('AskContent ACP session binding', () => {
       }
     });
 
-    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/ask', expect.anything());
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(false);
 
     await act(async () => {
       root.unmount();
@@ -1533,7 +1536,7 @@ describe('AskContent ACP session binding', () => {
       }
     });
 
-    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/ask', expect.anything());
+    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(false);
 
     await act(async () => {
       root.unmount();
@@ -1558,7 +1561,7 @@ describe('AskContent ACP session binding', () => {
       }
     });
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/ask')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => isAgentTurnUrl(url))).toBe(true);
 
     // Switching runtime while the *active* session runs is refused.
     const selectCodex = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Select Codex') as HTMLButtonElement;

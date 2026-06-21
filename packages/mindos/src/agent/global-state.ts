@@ -95,7 +95,7 @@ export const ASK_USER_QUESTION_BRIDGE_KEY = Symbol.for('mindos.askUserQuestionBr
 /**
  * Request-scoped KB permission policy storage (kb-extension.ts). The pi
  * DefaultResourceLoader imports the host's kb-extension entry file in its own
- * module graph, so the AsyncLocalStorage written by the /api/ask route and
+ * module graph, so the AsyncLocalStorage written by the /api/agent/sessions/:sessionId/turns route and
  * the one read during extension reload() only meet through this key. The key
  * string predates the consolidation — keep it stable.
  */

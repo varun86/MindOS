@@ -1,20 +1,20 @@
 import { NextRequest } from 'next/server';
 import { describe, expect, it, vi } from 'vitest';
-import { POST } from '@/app/api/ask/runtime-permission/request/route';
+import { POST } from '@/app/api/agent/runtime-permission/request/route';
 import {
   resolveRuntimePermission,
   runWithRuntimePermissionBridge,
 } from '@geminilight/mindos/agent/bridges/runtime-permission-bridge';
 
 function postJson(body: Record<string, unknown>): NextRequest {
-  return new NextRequest('http://localhost/api/ask/runtime-permission/request', {
+  return new NextRequest('http://localhost/api/agent/runtime-permission/request', {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'Content-Type': 'application/json' },
   });
 }
 
-describe('/api/ask/runtime-permission/request', () => {
+describe('/api/agent/runtime-permission/request', () => {
   it('registers an external Claude Code permission request and returns the UI decision', async () => {
     const send = vi.fn();
 
