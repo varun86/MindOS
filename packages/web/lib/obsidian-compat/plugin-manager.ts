@@ -23,6 +23,11 @@ import {
   scopePluginCss,
   type PluginStylesheetSnapshot,
 } from './stylesheet-host';
+import {
+  resolveCanonicalPluginManagerStatePath,
+  resolveInstalledObsidianPluginDir,
+  resolvePluginManagerStatePathsForRead,
+} from './plugin-paths';
 import type { PluginManifest, TFile } from './types';
 import type { EditorExtensionSummary, PluginMarkdownCodeBlockSnapshot, PluginMarkdownPostProcessorSnapshot, PluginMenuSnapshot, PluginModalSnapshot, PluginNoticeSnapshot, PluginViewSnapshot, RegisteredViewExtension, WorkspaceOpenRequest } from './runtime';
 import { resolveExistingSafe } from '@/lib/core/security';
@@ -225,8 +230,11 @@ export class PluginManager {
     }
 
     this.forgetEditorSessionsForPlugin(pluginId);
-    const pluginDir = resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}`);
-    fs.rmSync(pluginDir, { recursive: true, force: true });
+    const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+    if (!pluginLocation) {
+      throw new Error(`Unknown plugin: ${pluginId}`);
+    }
+    fs.rmSync(pluginLocation.pluginDir, { recursive: true, force: true });
     this.plugins.delete(pluginId);
     this.writeState();
   }
@@ -528,7 +536,8 @@ export class PluginManager {
     const loaded = this.loader.getLoadedPlugins().some((plugin) => plugin.manifest.id === manifest.id);
     let code = '';
     try {
-      const mainPath = resolveExistingSafe(this.mindRoot, `.plugins/${manifest.id}/main.js`);
+      const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, manifest.id);
+      const mainPath = pluginLocation ? path.join(pluginLocation.pluginDir, 'main.js') : '';
       code = fs.existsSync(mainPath) ? fs.readFileSync(mainPath, 'utf-8') : '';
     } catch {
       code = '';
@@ -706,7 +715,8 @@ export class PluginManager {
 
   private styleSheetSummaryFor(pluginId: string): Array<{ path: string; bytes: number }> {
     try {
-      const stylePath = resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}/styles.css`);
+      const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+      const stylePath = pluginLocation ? path.join(pluginLocation.pluginDir, 'styles.css') : '';
       if (!fs.existsSync(stylePath)) return [];
       const stat = fs.statSync(stylePath);
       if (!stat.isFile()) return [];
@@ -717,9 +727,10 @@ export class PluginManager {
   }
 
   private readStyleSheetFile(pluginId: string): { bytes: number; css: string } | null {
-    let stylePath: string;
+    let stylePath = '';
     try {
-      stylePath = resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}/styles.css`);
+      const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+      stylePath = pluginLocation ? path.join(pluginLocation.pluginDir, 'styles.css') : '';
     } catch {
       return null;
     }
@@ -742,7 +753,8 @@ export class PluginManager {
 
   private dataFileSummaryFor(pluginId: string): PluginDataFileSummary {
     try {
-      const dataPath = resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}/data.json`);
+      const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+      const dataPath = pluginLocation ? path.join(pluginLocation.pluginDir, 'data.json') : '';
       if (!fs.existsSync(dataPath)) return { exists: false, bytes: 0 };
       const stat = fs.statSync(dataPath);
       if (!stat.isFile()) return { exists: false, bytes: 0 };
@@ -764,9 +776,10 @@ export class PluginManager {
   }
 
   private communityOriginSummaryFor(pluginId: string): PluginCommunityOriginSummary | undefined {
-    let originPath: string;
+    let originPath = '';
     try {
-      originPath = resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}/obsidian-community.json`);
+      const pluginLocation = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+      originPath = pluginLocation ? path.join(pluginLocation.pluginDir, 'obsidian-community.json') : '';
     } catch {
       return undefined;
     }
@@ -857,26 +870,20 @@ export class PluginManager {
   }
 
   private readState(): PluginManagerState {
-    let stateFilePath: string;
-    try {
-      stateFilePath = resolveExistingSafe(this.mindRoot, '.plugins/.plugin-manager.json');
-    } catch {
-      return { ...EMPTY_STATE, enabled: {} };
+    const enabled: Record<string, boolean> = {};
+    for (const stateFilePath of resolvePluginManagerStatePathsForRead(this.mindRoot)) {
+      if (!fs.existsSync(stateFilePath)) {
+        continue;
+      }
+      try {
+        const raw = fs.readFileSync(stateFilePath, 'utf-8');
+        const parsed = JSON.parse(raw) as Partial<PluginManagerState>;
+        Object.assign(enabled, parsed.enabled ?? {});
+      } catch {
+        // Ignore malformed state files and keep any already-read state.
+      }
     }
-
-    if (!fs.existsSync(stateFilePath)) {
-      return { ...EMPTY_STATE, enabled: {} };
-    }
-
-    try {
-      const raw = fs.readFileSync(stateFilePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<PluginManagerState>;
-      return {
-        enabled: parsed.enabled ?? {},
-      };
-    } catch {
-      return { ...EMPTY_STATE, enabled: {} };
-    }
+    return { ...EMPTY_STATE, enabled };
   }
 
   private writeState(): void {
@@ -888,7 +895,7 @@ export class PluginManager {
     }
 
     try {
-      const stateFilePath = resolveExistingSafe(this.mindRoot, '.plugins/.plugin-manager.json');
+      const stateFilePath = resolveCanonicalPluginManagerStatePath(this.mindRoot);
       fs.mkdirSync(path.dirname(stateFilePath), { recursive: true });
       fs.writeFileSync(stateFilePath, JSON.stringify({ enabled }, null, 2), 'utf-8');
     } catch (err) {

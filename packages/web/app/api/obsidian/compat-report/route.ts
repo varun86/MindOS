@@ -12,6 +12,7 @@ import {
 } from '@/lib/obsidian-compat/import-policy';
 import { buildObsidianCapabilityCoverage, summarizeObsidianCapabilityCoverage } from '@/lib/obsidian-compat/capability-matrix';
 import { buildObsidianCommunitySurfacePreview } from '@/lib/obsidian-compat/community-support';
+import { OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH } from '@/lib/obsidian-compat/plugin-paths';
 import { expandSetupPathHome } from '@/app/api/setup/path-utils';
 
 function enrichPlugin(plugin: ScannedObsidianPlugin, hasEnabledList: boolean) {
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
           ? 'Source-enabled plugins that are ready or limited are selected by default. Review and blocked plugins stay unchecked.'
           : 'Ready and limited plugins are selected by default because this vault has no enabled plugin list. Review and blocked plugins stay unchecked.',
         sourceVaultUnchanged: true,
-        writesTo: '.plugins/<plugin-id>',
+        writesTo: `${OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH}/<plugin-id>`,
         writesConfig: 'obsidian-import.json',
         enableAfterImport: false,
       },

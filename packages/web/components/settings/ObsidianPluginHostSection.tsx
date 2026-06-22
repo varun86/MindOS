@@ -853,7 +853,7 @@ export function ObsidianPluginHostSection({
       <ConfirmDialog
         open={removeTarget !== null}
         title={removeTarget ? `Remove ${removeTarget.name}?` : 'Remove imported plugin?'}
-        message="This deletes only the MindOS .plugins copy. The source Obsidian vault and its plugin files are not changed."
+        message="This deletes only the MindOS plugin package copy. The source Obsidian vault and its plugin files are not changed."
         confirmLabel="Remove"
         cancelLabel="Cancel"
         onConfirm={() => { void confirmRemovePlugin(); }}

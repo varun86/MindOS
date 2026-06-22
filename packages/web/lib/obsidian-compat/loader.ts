@@ -1,6 +1,6 @@
 /**
  * Obsidian Plugin Compatibility - Plugin Loader
- * Scans .plugins/ directory, validates manifests, loads and executes plugins
+ * Scans MindOS Obsidian plugin directories, validates manifests, loads and executes plugins
  */
 
 import fs from 'fs';
@@ -24,7 +24,11 @@ import { createObsidianModule } from './shims/obsidian';
 import { AppShim } from './shims/app';
 import { createObsidianElement } from './shims/dom';
 import { PluginManifest } from './types';
-import { resolveExistingSafe } from '@/lib/core/security';
+import {
+  assertSafeObsidianPluginId,
+  resolveInstalledObsidianPluginDir,
+  resolveObsidianPluginRootsForRead,
+} from './plugin-paths';
 
 export interface LoadedPlugin {
   manifest: PluginManifest;
@@ -56,7 +60,7 @@ type PluginDocumentShim = {
 class CompatibilityHTMLElement {}
 
 /**
- * Plugin loader: scans .plugins/ directory and loads valid plugins
+ * Plugin loader: scans MindOS Obsidian plugin directories and loads valid plugins
  */
 export class PluginLoader {
   private plugins: Map<string, LoadedPlugin> = new Map();
@@ -67,40 +71,39 @@ export class PluginLoader {
   }
 
   private resolvePluginDir(pluginId: string): string {
-    if (!pluginId || pluginId.includes('..') || pluginId.includes('/') || pluginId.includes('\\')) {
-      throw new CompatError(`Plugin path escapes .plugins directory: ${pluginId}`, CompatErrorCodes.PLUGIN_NOT_FOUND, { pluginId });
-    }
     try {
-      return resolveExistingSafe(this.mindRoot, `.plugins/${pluginId}`);
+      assertSafeObsidianPluginId(pluginId);
     } catch {
-      throw new CompatError(`Plugin path escapes .plugins directory: ${pluginId}`, CompatErrorCodes.PLUGIN_NOT_FOUND, { pluginId });
+      throw new CompatError(`Plugin path escapes MindOS plugin directory: ${pluginId}`, CompatErrorCodes.PLUGIN_NOT_FOUND, { pluginId });
     }
+    const location = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+    if (!location) {
+      throw new CompatError(`Plugin not found: ${pluginId}`, CompatErrorCodes.PLUGIN_NOT_FOUND, { pluginId });
+    }
+    return location.pluginDir;
   }
 
   /**
-   * Scan .plugins/ directory and discover all plugins.
+   * Scan canonical .mindos/plugins plus legacy .plugins and discover all plugins.
    */
   discoverPlugins(): PluginManifest[] {
-    let pluginsDir: string;
-    try {
-      pluginsDir = resolveExistingSafe(this.mindRoot, '.plugins');
-    } catch {
-      return [];
-    }
-
-    if (!fs.existsSync(pluginsDir)) {
-      return [];
-    }
-
     const discovered: PluginManifest[] = [];
+    const seenPluginIds = new Set<string>();
 
-    try {
-      const entries = fs.readdirSync(pluginsDir);
+    for (const root of resolveObsidianPluginRootsForRead(this.mindRoot)) {
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(root.rootDir);
+      } catch (err) {
+        console.error(`[obsidian-compat] Failed to scan plugins directory: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
       for (const entry of entries) {
-        const pluginDir = path.join(pluginsDir, entry);
+        const pluginDir = path.join(root.rootDir, entry);
         const manifestPath = path.join(pluginDir, 'manifest.json');
 
-        if (!fs.statSync(pluginDir).isDirectory()) {
+        const pluginDirStats = fs.lstatSync(pluginDir);
+        if (pluginDirStats.isSymbolicLink() || !pluginDirStats.isDirectory()) {
           continue;
         }
 
@@ -117,6 +120,11 @@ export class PluginLoader {
             console.warn(`[obsidian-compat] Plugin directory "${entry}" does not match manifest id "${manifest.id}", skipping`);
             continue;
           }
+          if (seenPluginIds.has(manifest.id)) {
+            console.warn(`[obsidian-compat] Duplicate plugin "${manifest.id}" found in legacy plugins directory, using canonical package`);
+            continue;
+          }
+          seenPluginIds.add(manifest.id);
           discovered.push(manifest);
         } catch (err) {
           if (err instanceof ManifestError) {
@@ -126,8 +134,6 @@ export class PluginLoader {
           }
         }
       }
-    } catch (err) {
-      console.error(`[obsidian-compat] Failed to scan plugins directory: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     return discovered;

@@ -1,6 +1,6 @@
 /**
  * Obsidian Plugin Compatibility - Obsidian vault import scanner
- * Scans `.obsidian/plugins` and imports selected plugins into MindOS `.plugins`.
+ * Scans `.obsidian/plugins` and imports selected plugins into MindOS `.mindos/plugins`.
  */
 
 import fs from 'fs';
@@ -9,6 +9,11 @@ import { analyzePluginCompatibility, getCompatibilityLevel, type CompatibilityLe
 import { validateManifest } from './manifest';
 import type { PluginManifest } from './types';
 import { resolveExistingSafe, resolveSafe } from '@/lib/core/security';
+import {
+  hasInstalledObsidianPluginDir,
+  resolveCanonicalObsidianPluginDir,
+  resolveInstalledObsidianPluginDir,
+} from './plugin-paths';
 
 export interface ObsidianPluginHotkey {
   modifiers: string[];
@@ -258,8 +263,9 @@ function toImportedObsidianPluginConfig(pluginId: string, config: ObsidianVaultP
 
 export function readImportedObsidianPluginConfig(mindRoot: string, pluginId: string): ImportedObsidianPluginConfig | null {
   try {
-    const pluginDir = resolvePluginDir(mindRoot, '.plugins', pluginId);
-    const parsed = readJsonFile(pluginDir, 'obsidian-import.json');
+    const pluginLocation = resolveInstalledObsidianPluginDir(mindRoot, pluginId);
+    if (!pluginLocation) return null;
+    const parsed = readJsonFile(pluginLocation.pluginDir, 'obsidian-import.json');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null;
     }
@@ -365,12 +371,15 @@ export async function importObsidianPlugin(options: ImportObsidianPluginOptions)
     throw new Error(`Obsidian plugin manifest id does not match requested plugin: ${options.pluginId}`);
   }
 
+  if (hasInstalledObsidianPluginDir(options.targetMindRoot, options.pluginId)) {
+    throw new Error(`MindOS plugin is already installed: ${options.pluginId}`);
+  }
+
   let targetDir: string;
   try {
-    resolveExistingSafe(options.targetMindRoot, '.plugins');
-    targetDir = resolveExistingSafe(options.targetMindRoot, `.plugins/${options.pluginId}`);
+    targetDir = resolveCanonicalObsidianPluginDir(options.targetMindRoot, options.pluginId).pluginDir;
   } catch {
-    throw new Error(`Plugin target path escapes .plugins directory: ${options.pluginId}`);
+    throw new Error(`Plugin target path escapes MindOS plugin directory: ${options.pluginId}`);
   }
 
   fs.mkdirSync(targetDir, { recursive: true });

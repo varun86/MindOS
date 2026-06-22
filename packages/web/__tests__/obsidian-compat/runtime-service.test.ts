@@ -21,9 +21,9 @@ function writePlugin(pluginId: string, mainJs: string) {
 }
 
 function enablePlugin(...pluginIds: string[]) {
-  fs.mkdirSync(path.join(mindRoot, '.plugins'), { recursive: true });
+  fs.mkdirSync(path.join(mindRoot, '.mindos', 'plugins'), { recursive: true });
   fs.writeFileSync(
-    path.join(mindRoot, '.plugins', '.plugin-manager.json'),
+    path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'),
     JSON.stringify({ enabled: Object.fromEntries(pluginIds.map((pluginId) => [pluginId, true])) }, null, 2),
     'utf-8',
   );

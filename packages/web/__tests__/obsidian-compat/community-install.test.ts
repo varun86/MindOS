@@ -92,7 +92,7 @@ describe('Obsidian community plugin install helper', () => {
       now: () => new Date('2026-06-14T00:00:00.000Z'),
     });
 
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = path.join(mindRoot, '.mindos', 'plugins', 'quickadd');
     expect(result).toMatchObject({
       ok: true,
       plugin: {
@@ -116,7 +116,7 @@ describe('Obsidian community plugin install helper', () => {
     expect(fs.readFileSync(path.join(targetDir, 'main.js'), 'utf-8')).toContain('class QuickAdd');
     expect(fs.readFileSync(path.join(targetDir, 'styles.css'), 'utf-8')).toBe('.quickadd { display: block; }');
     expect(fs.existsSync(path.join(targetDir, 'data.json'))).toBe(false);
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'))).toBe(false);
     expect(readJson(path.join(targetDir, 'obsidian-community.json'))).toEqual({
       schemaVersion: 1,
       source: 'obsidian-community',
@@ -150,7 +150,7 @@ describe('Obsidian community plugin install helper', () => {
     })).rejects.toThrow('Community plugin install requires explicit confirmation.');
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(fs.existsSync(path.join(mindRoot, '.plugins'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins'))).toBe(false);
   });
 
   it('rejects existing plugin directories without overwriting local files', async () => {
@@ -184,7 +184,7 @@ describe('Obsidian community plugin install helper', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     })).rejects.toThrow('Requires unsupported runtime module: fs');
 
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'quickadd'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd'))).toBe(false);
   });
 
   it('rejects manifest id mismatches and leaves only no plugin target behind', async () => {
@@ -204,7 +204,7 @@ describe('Obsidian community plugin install helper', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     })).rejects.toThrow('Manifest id "other-id" does not match requested plugin id "quickadd".');
 
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'quickadd'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd'))).toBe(false);
   });
 
   it('cleans the staging directory when the final rename fails', async () => {
@@ -221,7 +221,7 @@ describe('Obsidian community plugin install helper', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     })).rejects.toThrow('rename failed');
 
-    const pluginsRoot = path.join(mindRoot, '.plugins');
+    const pluginsRoot = path.join(mindRoot, '.mindos', 'plugins');
     const entries = fs.existsSync(pluginsRoot) ? fs.readdirSync(pluginsRoot) : [];
     expect(entries.filter((entry) => entry.startsWith('.installing-quickadd-'))).toEqual([]);
     expect(fs.existsSync(path.join(pluginsRoot, 'quickadd'))).toBe(false);

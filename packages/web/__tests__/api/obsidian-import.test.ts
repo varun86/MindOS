@@ -78,7 +78,7 @@ describe('POST /api/obsidian/import', () => {
     });
     importObsidianPlugin.mockResolvedValue({
       pluginId: 'quickadd-like',
-      targetDir: '/tmp/mindRoot/.plugins/quickadd-like',
+      targetDir: '/tmp/mindRoot/.mindos/plugins/quickadd-like',
       copiedFiles: ['manifest.json', 'main.js', 'data.json', 'obsidian-import.json'],
       obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
     });
@@ -109,7 +109,7 @@ describe('POST /api/obsidian/import', () => {
     });
     expect(json.plugin.sourceDir).toBeUndefined();
     expect(json.imported.targetDir).toBeUndefined();
-    expect(json.imported.targetPath).toBe('.plugins/quickadd-like');
+    expect(json.imported.targetPath).toBe('.mindos/plugins/quickadd-like');
     expect(json.imported.copiedFiles).toEqual(['manifest.json', 'main.js', 'data.json', 'obsidian-import.json']);
     expect(importObsidianPlugin).toHaveBeenCalledTimes(1);
     expect(importObsidianPlugin).toHaveBeenCalledWith(expect.objectContaining({

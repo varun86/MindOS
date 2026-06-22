@@ -158,7 +158,7 @@ describe('/api/obsidian-plugins lifecycle', () => {
     expect(fs.existsSync(path.join(mindRoot, '.plugins', 'remove-api-plugin'))).toBe(false);
     expect(fs.existsSync(path.join(mindRoot, '.plugins', 'keep-api-plugin'))).toBe(true);
     expect(json.plugins.map((plugin: { id: string }) => plugin.id)).toEqual(['keep-api-plugin']);
-    const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'), 'utf-8'));
+    const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8'));
     expect(state.enabled).toEqual({});
   });
 

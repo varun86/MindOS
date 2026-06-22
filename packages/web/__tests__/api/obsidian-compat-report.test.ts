@@ -98,7 +98,7 @@ describe('GET /api/obsidian/compat-report', () => {
     });
     expect(json.migration).toMatchObject({
       sourceVaultUnchanged: true,
-      writesTo: '.plugins/<plugin-id>',
+      writesTo: '.mindos/plugins/<plugin-id>',
       enableAfterImport: false,
     });
     expect(json.plugins).toHaveLength(3);

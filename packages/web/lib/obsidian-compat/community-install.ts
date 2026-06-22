@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { ErrorCodes, MindOSError } from '@/lib/errors';
-import { resolveExistingSafe } from '@/lib/core/security';
 import { ManifestError, validateManifest } from './manifest';
 import {
   fetchObsidianCommunityPluginPackage,
@@ -11,6 +10,12 @@ import {
 } from './community-catalog';
 import { compareCommunityVersions, type CommunityVersionState } from './community-version';
 import type { CompatibilityLevel } from './compatibility-report';
+import {
+  hasInstalledObsidianPluginDir,
+  resolveCanonicalObsidianPluginDir,
+  resolveCanonicalObsidianPluginRoot,
+  resolveInstalledObsidianPluginDir,
+} from './plugin-paths';
 
 export interface InstallObsidianCommunityPluginOptions extends FetchObsidianCommunityPluginPackageOptions {
   pluginId: string;
@@ -142,10 +147,10 @@ export async function installObsidianCommunityPlugin(
     throw new MindOSError(ErrorCodes.INVALID_REQUEST, 'Missing target MindOS root.');
   }
 
-  const pluginsRoot = resolveExistingSafe(targetMindRoot, '.plugins');
-  const targetDir = resolveExistingSafe(targetMindRoot, `.plugins/${pluginId}`);
+  const pluginsRoot = resolveCanonicalObsidianPluginRoot(targetMindRoot).rootDir;
+  const targetDir = resolveCanonicalObsidianPluginDir(targetMindRoot, pluginId).pluginDir;
   assertPluginRootCanBeCreated(pluginsRoot);
-  if (pathExists(targetDir)) {
+  if (hasInstalledObsidianPluginDir(targetMindRoot, pluginId)) {
     throw new MindOSError(
       ErrorCodes.CONFLICT,
       `Obsidian plugin is already installed: ${pluginId}`,
@@ -229,8 +234,9 @@ export async function planObsidianCommunityPluginUpdate(
     throw new MindOSError(ErrorCodes.INVALID_REQUEST, 'Missing target MindOS root.');
   }
 
-  const targetDir = resolveExistingSafe(targetMindRoot, `.plugins/${pluginId}`);
-  if (!pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+  const targetLocation = resolveInstalledObsidianPluginDir(targetMindRoot, pluginId);
+  const targetDir = targetLocation?.pluginDir;
+  if (!targetDir || !pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
     throw new MindOSError(
       ErrorCodes.FILE_NOT_FOUND,
       `Obsidian plugin is not installed: ${pluginId}`,
@@ -297,9 +303,10 @@ export async function updateObsidianCommunityPlugin(
     throw new MindOSError(ErrorCodes.INVALID_REQUEST, 'Missing target MindOS root.');
   }
 
-  const pluginsRoot = resolveExistingSafe(targetMindRoot, '.plugins');
-  const targetDir = resolveExistingSafe(targetMindRoot, `.plugins/${pluginId}`);
-  if (!pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+  const targetLocation = resolveInstalledObsidianPluginDir(targetMindRoot, pluginId);
+  const pluginsRoot = targetLocation?.rootDir ?? resolveCanonicalObsidianPluginRoot(targetMindRoot).rootDir;
+  const targetDir = targetLocation?.pluginDir;
+  if (!targetDir || !pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
     throw new MindOSError(
       ErrorCodes.FILE_NOT_FOUND,
       `Obsidian plugin is not installed: ${pluginId}`,
@@ -435,7 +442,7 @@ function assertPluginRootCanBeCreated(pluginsRoot: string): void {
     return;
   }
   if (!fs.statSync(pluginsRoot).isDirectory()) {
-    throw new MindOSError(ErrorCodes.CONFLICT, 'MindOS .plugins exists but is not a directory.');
+    throw new MindOSError(ErrorCodes.CONFLICT, 'MindOS plugin directory exists but is not a directory.');
   }
 }
 

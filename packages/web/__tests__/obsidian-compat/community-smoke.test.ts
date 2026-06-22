@@ -211,10 +211,10 @@ Body #important with ![[image.png]]
       expect(action.noticeSnapshots?.[0]?.message).toBe('Community canary ran');
       expect(fs.readFileSync(path.join(mindRoot, 'Inbox/community-canary.md'), 'utf-8')).toContain('- run');
 
-      const data = readJsonFile<{ runs: number; lastHeading: string; sourceVault: string }>('.plugins/community-canary/data.json');
+      const data = readJsonFile<{ runs: number; lastHeading: string; sourceVault: string }>('.mindos/plugins/community-canary/data.json');
       expect(data).toMatchObject({ runs: 1, lastHeading: 'Community Canary', sourceVault: 'obsidian' });
       expect(readJsonFile<{ enabledInObsidian: boolean; hotkeyCount: number }>(
-        '.plugins/community-canary/obsidian-import.json',
+        '.mindos/plugins/community-canary/obsidian-import.json',
       )).toMatchObject({ enabledInObsidian: true, hotkeyCount: 1 });
 
       const codeBlocks = await manager.renderMarkdownCodeBlock('canary', 'hello');

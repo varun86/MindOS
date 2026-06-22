@@ -260,14 +260,14 @@ describe('PluginManager', () => {
     expect(fs.existsSync(path.join(mindRoot, '.plugins', 'remove-plugin'))).toBe(false);
     expect(manager.list().find((item) => item.id === 'remove-plugin')).toBeUndefined();
     expect(manager.getLoader().getLoadedPlugins()).toEqual([]);
-    const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'), 'utf-8'));
+    const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8'));
     expect(state.enabled).toEqual({});
 
     const fresh = new PluginManager(mindRoot);
     await expect(fresh.discover()).resolves.toEqual([]);
   });
 
-  it('does not uninstall through a symlinked plugin directory outside mindRoot', async () => {
+  it('does not discover or uninstall through a symlinked plugin directory outside mindRoot', async () => {
     const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-obsidian-uninstall-outside-'));
     try {
       const pluginsDir = path.join(mindRoot, '.plugins');
@@ -288,9 +288,9 @@ describe('PluginManager', () => {
 
       const manager = new PluginManager(mindRoot);
       const discovered = await manager.discover();
-      expect(discovered.map((plugin) => plugin.id)).toEqual(['linked-plugin']);
+      expect(discovered.map((plugin) => plugin.id)).toEqual([]);
 
-      await expect(manager.uninstall('linked-plugin')).rejects.toThrow(/access denied|symlink|validate real path/i);
+      await expect(manager.uninstall('linked-plugin')).rejects.toThrow(/unknown plugin/i);
       expect(fs.existsSync(path.join(outsidePluginDir, 'manifest.json'))).toBe(true);
     } finally {
       fs.rmSync(outsideRoot, { recursive: true, force: true });

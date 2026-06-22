@@ -15,6 +15,14 @@ const writePlugin = (pluginId: string, manifest: object, mainJs: string) => {
   return pluginDir;
 };
 
+const writeCanonicalPlugin = (pluginId: string, manifest: object, mainJs: string) => {
+  const pluginDir = path.join(mindRoot, '.mindos', 'plugins', pluginId);
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(pluginDir, 'main.js'), mainJs, 'utf-8');
+  return pluginDir;
+};
+
 describe('PluginLoader', () => {
   beforeEach(() => {
     mindRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-obsidian-loader-'));
@@ -78,6 +86,43 @@ describe('PluginLoader', () => {
     expect(loaded.manifest.id).toBe('hello-plugin');
     expect(commands).toHaveLength(1);
     expect(commands[0]?.fullId).toBe('obsidian:hello-plugin:hello');
+  });
+
+  it('prefers the canonical .mindos/plugins package over a legacy .plugins package with the same id', async () => {
+    writePlugin(
+      'duplicate-plugin',
+      { id: 'duplicate-plugin', name: 'Legacy Plugin', version: '1.0.0' },
+      `
+        const { Plugin } = require('obsidian');
+        module.exports = class LegacyPlugin extends Plugin {
+          onload() {
+            this.addCommand({ id: 'legacy', name: 'Legacy', callback: () => {} });
+          }
+        };
+      `,
+    );
+    writeCanonicalPlugin(
+      'duplicate-plugin',
+      { id: 'duplicate-plugin', name: 'Canonical Plugin', version: '2.0.0' },
+      `
+        const { Plugin } = require('obsidian');
+        module.exports = class CanonicalPlugin extends Plugin {
+          onload() {
+            this.addCommand({ id: 'canonical', name: 'Canonical', callback: () => {} });
+          }
+        };
+      `,
+    );
+
+    const loader = new PluginLoader(mindRoot);
+    const plugins = loader.discoverPlugins();
+    const loaded = await loader.loadPlugin('duplicate-plugin');
+
+    expect(plugins).toEqual([
+      expect.objectContaining({ id: 'duplicate-plugin', name: 'Canonical Plugin', version: '2.0.0' }),
+    ]);
+    expect(loaded.pluginDir).toBe(path.join(mindRoot, '.mindos', 'plugins', 'duplicate-plugin'));
+    expect(loader.getApp().getCommands().map((command) => command.id)).toEqual(['canonical']);
   });
 
   it('provides Obsidian-like globals for bundled community plugins', async () => {

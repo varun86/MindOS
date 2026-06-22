@@ -130,7 +130,7 @@ describe('obsidian import scanner', () => {
     expect(result.skipped.every((item) => typeof item.reason === 'string' && item.reason.length > 0)).toBe(true);
   });
 
-  it('imports an Obsidian plugin into MindOS .plugins and preserves data and styles', async () => {
+  it('imports an Obsidian plugin into MindOS .mindos/plugins and preserves data and styles', async () => {
     writeObsidianConfig('community-plugins.json', ['import-me']);
     writeObsidianConfig('hotkeys.json', { 'import-me:open': [{ modifiers: ['Mod'], key: 'I' }] });
     writeVaultPlugin(
@@ -145,7 +145,7 @@ describe('obsidian import scanner', () => {
       targetMindRoot: mindRoot,
     });
 
-    expect(imported.targetDir).toBe(path.join(mindRoot, '.plugins', 'import-me'));
+    expect(imported.targetDir).toBe(path.join(mindRoot, '.mindos', 'plugins', 'import-me'));
     expect(fs.existsSync(path.join(imported.targetDir, 'manifest.json'))).toBe(true);
     expect(fs.existsSync(path.join(imported.targetDir, 'main.js'))).toBe(true);
     expect(fs.existsSync(path.join(imported.targetDir, 'styles.css'))).toBe(true);
@@ -222,7 +222,7 @@ describe('obsidian import scanner', () => {
       pluginId: 'symlink-plugin',
       targetMindRoot: mindRoot,
     })).rejects.toThrow(/symlink|regular file/);
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'symlink-plugin', 'main.js'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'symlink-plugin', 'main.js'))).toBe(false);
   });
 
   it('reports missing required plugin files without leaking absolute paths', async () => {
@@ -243,13 +243,14 @@ describe('obsidian import scanner', () => {
     expect(result.skipped[0].reason).not.toContain(vaultRoot);
   });
 
-  it('rejects importing into a symlinked MindOS .plugins directory outside mindRoot', async () => {
+  it('rejects importing into a symlinked MindOS .mindos/plugins directory outside mindRoot', async () => {
     writeVaultPlugin(
       'import-me',
       `const { Plugin } = require('obsidian'); module.exports = class ImportMe extends Plugin {};`,
     );
     const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-obsidian-target-outside-'));
-    fs.symlinkSync(outsideRoot, path.join(mindRoot, '.plugins'), 'dir');
+    fs.mkdirSync(path.join(mindRoot, '.mindos'), { recursive: true });
+    fs.symlinkSync(outsideRoot, path.join(mindRoot, '.mindos', 'plugins'), 'dir');
 
     try {
       await expect(importObsidianPlugin({

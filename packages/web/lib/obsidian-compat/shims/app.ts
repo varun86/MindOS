@@ -14,6 +14,10 @@ import type { CommandExecutionContext } from '../command-registry';
 import fs from 'fs';
 import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
+import {
+  resolveCanonicalPluginLocalStoragePath,
+  resolvePluginLocalStoragePathsForRead,
+} from '../plugin-paths';
 
 /**
  * Minimal WorkspaceLeaf implementation. It records state but does not mount
@@ -356,23 +360,24 @@ export class AppShim implements App {
   }
 
   private getLocalStoragePath(): string {
-    return resolveExistingSafe(this.mindRoot, '.plugins/.local-storage.json');
+    return resolveCanonicalPluginLocalStoragePath(this.mindRoot);
   }
 
   private readLocalStorageStore(): Record<string, unknown> {
-    const filePath = this.getLocalStoragePath();
-    if (!fs.existsSync(filePath)) {
-      return {};
+    for (const filePath of resolvePluginLocalStoragePathsForRead(this.mindRoot)) {
+      if (!fs.existsSync(filePath)) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? parsed as Record<string, unknown>
+          : {};
+      } catch {
+        return {};
+      }
     }
-
-    try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed as Record<string, unknown>
-        : {};
-    } catch {
-      return {};
-    }
+    return {};
   }
 
   private writeLocalStorageStore(store: Record<string, unknown>): void {

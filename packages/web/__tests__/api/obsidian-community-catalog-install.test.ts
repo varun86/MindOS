@@ -102,7 +102,7 @@ describe('/api/obsidian/community-catalog/install', () => {
         },
         installed: {
           pluginId: 'quickadd',
-          targetDir: path.join(mindRoot, '.plugins', 'quickadd'),
+          targetDir: path.join(mindRoot, '.mindos', 'plugins', 'quickadd'),
           enabled: false,
           loaded: false,
           source: 'obsidian-community',
@@ -112,15 +112,15 @@ describe('/api/obsidian/community-catalog/install', () => {
         },
       });
       expect(fs.existsSync(path.join(ignoredRoot, '.plugins', 'quickadd'))).toBe(false);
-      expect(fs.existsSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'))).toBe(false);
-      expect(fs.existsSync(path.join(mindRoot, '.plugins', 'quickadd', 'obsidian-community.json'))).toBe(true);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'))).toBe(false);
+      expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'obsidian-community.json'))).toBe(true);
     } finally {
       fs.rmSync(ignoredRoot, { recursive: true, force: true });
     }
   });
 
   it('returns 409 for an already installed plugin and preserves the existing directory', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = path.join(mindRoot, '.mindos', 'plugins', 'quickadd');
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'local.txt'), 'keep', 'utf-8');
     const fetchMock = mockCommunityFetch();
@@ -156,7 +156,7 @@ describe('/api/obsidian/community-catalog/install', () => {
     expect(await res.json()).toEqual({
       error: 'Requires unsupported runtime module: fs',
     });
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'quickadd'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd'))).toBe(false);
   });
 
   it('returns 409 for manifest id mismatches and does not create the plugin target', async () => {
@@ -179,6 +179,6 @@ describe('/api/obsidian/community-catalog/install', () => {
     expect(await res.json()).toEqual({
       error: 'Manifest id "other-id" does not match requested plugin id "quickadd".',
     });
-    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'quickadd'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd'))).toBe(false);
   });
 });

@@ -392,7 +392,7 @@ export function ObsidianImportSection({
 
                 <div className="mt-3 grid gap-2 text-2xs text-muted-foreground sm:grid-cols-3">
                   <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
-                    Copy package files into <span className="font-mono text-foreground">{report.migration?.writesTo ?? '.plugins/<plugin-id>'}</span>.
+                    Copy package files into <span className="font-mono text-foreground">{report.migration?.writesTo ?? '.mindos/plugins/<plugin-id>'}</span>.
                   </div>
                   <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
                     Write <span className="font-mono text-foreground">{report.migration?.writesConfig ?? 'obsidian-import.json'}</span> with source state and hotkeys.

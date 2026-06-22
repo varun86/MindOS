@@ -6,6 +6,7 @@ import { importObsidianPlugin, scanObsidianVaultPlugins } from '@/lib/obsidian-c
 import { getObsidianImportSupport } from '@/lib/obsidian-compat/import-policy';
 import { buildObsidianCapabilityCoverage, summarizeObsidianCapabilityCoverage } from '@/lib/obsidian-compat/capability-matrix';
 import { buildObsidianCommunitySurfacePreview } from '@/lib/obsidian-compat/community-support';
+import { OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH } from '@/lib/obsidian-compat/plugin-paths';
 import { expandSetupPathHome } from '@/app/api/setup/path-utils';
 import { readSettings } from '@/lib/settings';
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       },
       imported: {
         ...publicImported,
-        targetPath: `.plugins/${imported.pluginId}`,
+        targetPath: `${OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH}/${imported.pluginId}`,
       },
       nextStep: {
         manageHref: '/settings?tab=plugins',
