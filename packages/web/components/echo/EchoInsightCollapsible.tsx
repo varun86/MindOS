@@ -1,9 +1,10 @@
 'use client';
 
 import { type ComponentType, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Check, Loader2, Save } from 'lucide-react';
 import { consumeUIMessageStream } from '@/lib/agent/stream-consumer';
 import type { EchoAssistantId } from '@/lib/echo-assistants';
+import type { EchoSavedItem, EchoStoredSegment } from '@/lib/echo-store';
 import { useSettingsAiAvailable } from '@/hooks/useSettingsAiAvailable';
 import { useLocale } from '@/lib/stores/locale-store';
 import { Button } from '@/components/ui/button';
@@ -26,24 +27,38 @@ export function EchoInsightCollapsible({
   generatingLabel,
   errorPrefix,
   retryLabel,
+  saveLabel,
+  savingLabel,
+  savedLabel,
+  saveErrorPrefix,
+  segment,
   assistantId,
   userPrompt,
   generateSignal = 0,
   maxSteps = 12,
+  onSaved,
 }: {
   noAiHint: string;
   generatingLabel: string;
   errorPrefix: string;
   retryLabel: string;
+  saveLabel: string;
+  savingLabel: string;
+  savedLabel: string;
+  saveErrorPrefix: string;
+  segment: EchoStoredSegment;
   assistantId: EchoAssistantId;
   userPrompt: string;
   generateSignal?: number;
   maxSteps?: number;
+  onSaved?: (item: EchoSavedItem) => void;
 }) {
   const [requested, setRequested] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [insightMd, setInsightMd] = useState('');
   const [err, setErr] = useState('');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveErr, setSaveErr] = useState('');
   const panelId = useId();
   const abortRef = useRef<AbortController | null>(null);
   const lastGenerateSignalRef = useRef(generateSignal);
@@ -70,6 +85,24 @@ export function EchoInsightCollapsible({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  const persistDraft = useCallback(async (markdown: string) => {
+    try {
+      const res = await fetch('/api/echo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          op: 'draft',
+          segment,
+          assistantId,
+          markdown,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (draftErr) {
+      console.warn('[EchoInsightCollapsible] Failed to persist Echo draft:', draftErr);
+    }
+  }, [assistantId, segment]);
+
   const runGenerate = useCallback(async () => {
     setRequested(true);
     if (aiLoading || !aiReady || streaming) return;
@@ -79,6 +112,8 @@ export function EchoInsightCollapsible({
     abortRef.current = ctrl;
     setErr('');
     setInsightMd('');
+    setSaveErr('');
+    setSaveState('idle');
     setStreaming(true);
     try {
       const res = await fetch('/api/assistant-runs', {
@@ -106,13 +141,18 @@ export function EchoInsightCollapsible({
 
       if (!res.body) throw new Error('No response body');
 
-      await consumeUIMessageStream(
+      const finalMessage = await consumeUIMessageStream(
         res.body,
         (msg) => {
           setInsightMd(msg.content ?? '');
         },
         ctrl.signal,
       );
+      const finalMarkdown = finalMessage.content ?? '';
+      if (finalMarkdown.trim()) {
+        setInsightMd(finalMarkdown);
+        await persistDraft(finalMarkdown);
+      }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return;
       setErr(e instanceof Error ? e.message : String(e));
@@ -120,7 +160,36 @@ export function EchoInsightCollapsible({
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [aiLoading, aiReady, assistantId, maxSteps, streaming, userPrompt]);
+  }, [aiLoading, aiReady, assistantId, maxSteps, persistDraft, streaming, userPrompt]);
+
+  const saveEcho = useCallback(async () => {
+    const markdown = insightMd.trim();
+    if (!markdown || streaming || saveState === 'saving' || saveState === 'saved') return;
+
+    setSaveState('saving');
+    setSaveErr('');
+    try {
+      const res = await fetch('/api/echo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          op: 'save',
+          segment,
+          assistantId,
+          markdown,
+        }),
+      });
+      const body = await res.json().catch(() => ({})) as { item?: EchoSavedItem; error?: string };
+      if (!res.ok || !body.item) {
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      setSaveState('saved');
+      onSaved?.(body.item);
+    } catch (saveError) {
+      setSaveState('idle');
+      setSaveErr(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  }, [assistantId, insightMd, onSaved, saveState, segment, streaming]);
 
   useEffect(() => {
     if (generateSignal === lastGenerateSignalRef.current) return;
@@ -166,19 +235,48 @@ export function EchoInsightCollapsible({
         </div>
       ) : null}
       {insightMd ? (
-        <div className={proseInsight}>
-          {InsightMarkdown ? (
-            <InsightMarkdown markdown={insightMd} />
-          ) : (
-            <p className="whitespace-pre-wrap">{insightMd}</p>
-          )}
-          {streaming ? (
-            <span
-              className="ml-0.5 inline-block h-3.5 w-1 animate-pulse rounded-sm bg-[var(--amber)] align-middle"
-              aria-hidden
-            />
+        <>
+          <div className={proseInsight}>
+            {InsightMarkdown ? (
+              <InsightMarkdown markdown={insightMd} />
+            ) : (
+              <p className="whitespace-pre-wrap">{insightMd}</p>
+            )}
+            {streaming ? (
+              <span
+                className="ml-0.5 inline-block h-3.5 w-1 animate-pulse rounded-sm bg-[var(--amber)] align-middle"
+                aria-hidden
+              />
+            ) : null}
+          </div>
+          {!streaming ? (
+            <div className="mt-5 flex flex-col gap-2 border-t border-border/45 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                type="button"
+                variant={saveState === 'saved' ? 'outline' : 'amber'}
+                size="sm"
+                onClick={saveEcho}
+                disabled={saveState === 'saving' || saveState === 'saved'}
+                aria-busy={saveState === 'saving'}
+                className="w-fit"
+              >
+                {saveState === 'saving' ? (
+                  <Loader2 size={14} className="animate-spin" aria-hidden />
+                ) : saveState === 'saved' ? (
+                  <Check size={14} aria-hidden />
+                ) : (
+                  <Save size={14} aria-hidden />
+                )}
+                {saveState === 'saving' ? savingLabel : saveState === 'saved' ? savedLabel : saveLabel}
+              </Button>
+              {saveErr ? (
+                <p className="font-sans text-xs text-error" role="alert">
+                  {saveErrorPrefix} {saveErr}
+                </p>
+              ) : null}
+            </div>
           ) : null}
-        </div>
+        </>
       ) : null}
     </section>
   );

@@ -63,6 +63,11 @@ describe('EchoInsightCollapsible', () => {
           generatingLabel="Generating"
           errorPrefix="Error:"
           retryLabel="Retry"
+          saveLabel="Save to Echo"
+          savingLabel="Saving"
+          savedLabel="Saved"
+          saveErrorPrefix="Save failed:"
+          segment="imprint"
           assistantId="echo-imprint"
           userPrompt="Visible Echo context"
           maxSteps={10}
@@ -83,6 +88,11 @@ describe('EchoInsightCollapsible', () => {
           generatingLabel="Generating"
           errorPrefix="Error:"
           retryLabel="Retry"
+          saveLabel="Save to Echo"
+          savingLabel="Saving"
+          savedLabel="Saved"
+          saveErrorPrefix="Save failed:"
+          segment="threads"
           assistantId="echo-threader"
           userPrompt="Visible thread context"
           generateSignal={0}
@@ -101,6 +111,11 @@ describe('EchoInsightCollapsible', () => {
           generatingLabel="Generating"
           errorPrefix="Error:"
           retryLabel="Retry"
+          saveLabel="Save to Echo"
+          savingLabel="Saving"
+          savedLabel="Saved"
+          saveErrorPrefix="Save failed:"
+          segment="threads"
           assistantId="echo-threader"
           userPrompt="Visible thread context"
           generateSignal={1}
@@ -119,8 +134,18 @@ describe('EchoInsightCollapsible', () => {
       maxSteps: 8,
       messages: [{ role: 'user', content: 'Visible thread context' }],
     });
-    expect(host.querySelector('button')).toBeNull();
+    expect(host.querySelector('button')?.textContent).toContain('Save to Echo');
     expect(host.textContent).not.toContain('Assistant draft');
     expect(host.textContent).toContain('Generated.');
+    expect(fetchMock).toHaveBeenCalledWith('/api/echo', expect.objectContaining({
+      method: 'POST',
+    }));
+    const echoCall = fetchMock.mock.calls.find(([url]) => url === '/api/echo');
+    expect(echoCall).toBeTruthy();
+    expect(JSON.parse(String(echoCall?.[1].body))).toMatchObject({
+      op: 'draft',
+      segment: 'threads',
+      assistantId: 'echo-threader',
+    });
   });
 });

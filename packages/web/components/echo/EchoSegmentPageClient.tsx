@@ -8,7 +8,6 @@ import {
   BookOpen,
   Bookmark,
   Check,
-  ChevronLeft,
   FlaskConical,
   Flag,
   Infinity,
@@ -18,7 +17,6 @@ import {
   NotebookText,
   Repeat2,
   Scale,
-  Sparkles,
   SunMedium,
   Target,
 } from 'lucide-react';
@@ -29,15 +27,17 @@ import {
   getEchoAssistantIdForSegment,
   type EchoPromptFact,
 } from '@/lib/echo-assistants';
+import type { EchoSavedItem, EchoSavedItemDetail } from '@/lib/echo-store';
 import type { Locale, Messages } from '@/lib/i18n';
 import { useLocale } from '@/lib/stores/locale-store';
 import { cn } from '@/lib/utils';
 import { openAskModal } from '@/hooks/useAskModal';
 import { useSessions } from '@/lib/agent-session-store';
 import { ContentPageShell } from '@/components/shared/ContentPageShell';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { EchoHero } from './EchoHero';
+import { Button } from '@/components/ui/button';
+import { EchoAssistantGenerateButton, EchoPageHeader } from './EchoSegmentPageHeader';
 import { EchoInsightCollapsible } from './EchoInsightCollapsible';
+import SavedEchoItemsPanel from './SavedEchoItemsPanel';
 import DailyEchoReportButton from './DailyEcho/DailyEchoReportButton';
 import DailyEchoReportDrawer from './DailyEcho/DailyEchoReportDrawer';
 import type { DailyEchoReport } from '@/lib/daily-echo/types';
@@ -94,19 +94,6 @@ function echoSnapshotCopy(segment: EchoSegment, p: EchoCopy): { title: string; b
   }
 }
 
-function echoAssistantGenerateLabel(segment: Exclude<EchoSegment, 'overview'>, p: EchoCopy): string {
-  switch (segment) {
-    case 'imprint':
-      return p.assistantGenerateImprint;
-    case 'threads':
-      return p.assistantGenerateThreads;
-    case 'growth':
-      return p.assistantGenerateGrowth;
-    case 'practice':
-      return p.assistantGeneratePractice;
-  }
-}
-
 const threadIcons = [
   <SunMedium key="sun" size={20} strokeWidth={1.7} />,
   <Target key="target" size={20} strokeWidth={1.7} />,
@@ -136,80 +123,6 @@ const echoPanelClass =
 
 const panelHeadingClass =
   'font-sans text-lg font-semibold leading-tight text-foreground';
-
-function BackToOverviewLink({ label, ariaLabel }: { label: string; ariaLabel: string }) {
-  return (
-    <Link
-      href={ECHO_SEGMENT_HREF.overview}
-      aria-label={ariaLabel}
-      className={cn(
-        buttonVariants({ variant: 'ghost', size: 'sm' }),
-        '-ml-2 w-fit text-muted-foreground',
-      )}
-    >
-      <ChevronLeft size={15} strokeWidth={1.8} aria-hidden />
-      {label}
-    </Link>
-  );
-}
-
-function EchoPageHeader({
-  p,
-  segment,
-  title,
-  lead,
-  titleId,
-  assistantAction,
-  actions,
-}: {
-  p: EchoCopy;
-  segment: EchoSegment;
-  title: string;
-  lead: string;
-  titleId: string;
-  assistantAction?: ReactNode;
-  actions?: ReactNode;
-}) {
-  return (
-    <EchoHero
-      pageTitle={title}
-      lead={lead}
-      titleId={titleId}
-      beforeTitle={segment === 'overview' ? undefined : (
-        <div className="flex flex-wrap items-center gap-2">
-          <BackToOverviewLink label={p.backToOverviewLabel} ariaLabel={p.backToOverviewAriaLabel} />
-          {assistantAction}
-        </div>
-      )}
-      actions={actions}
-    />
-  );
-}
-
-function EchoAssistantGenerateButton({
-  p,
-  segment,
-  onGenerate,
-}: {
-  p: EchoCopy;
-  segment: Exclude<EchoSegment, 'overview'>;
-  onGenerate: () => void;
-}) {
-  const label = echoAssistantGenerateLabel(segment, p);
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={onGenerate}
-      className="h-8 border-[var(--amber)]/25 bg-[var(--amber-subtle)]/35 px-3 text-xs text-[var(--amber-text)] hover:border-[var(--amber)]/35 hover:bg-[var(--amber-subtle)]/55"
-    >
-      <Sparkles size={14} aria-hidden />
-      {label}
-    </Button>
-  );
-}
 
 function OverviewPanel({
   p,
@@ -656,6 +569,13 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
   const [isDailyEchoOpen, setIsDailyEchoOpen] = useState(false);
   const [isDailyEchoGenerating, setIsDailyEchoGenerating] = useState(false);
   const [assistantGenerateSignal, setAssistantGenerateSignal] = useState(0);
+  const [savedEchoItems, setSavedEchoItems] = useState<EchoSavedItem[]>([]);
+  const [selectedEchoPath, setSelectedEchoPath] = useState<string | null>(null);
+  const [savedEchoDetail, setSavedEchoDetail] = useState<EchoSavedItemDetail | null>(null);
+  const [savedEchoLoading, setSavedEchoLoading] = useState(false);
+  const [savedEchoError, setSavedEchoError] = useState('');
+  const [savedEchoDetailLoading, setSavedEchoDetailLoading] = useState(false);
+  const [savedEchoDetailError, setSavedEchoDetailError] = useState('');
   const dailySavedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const growthSavedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -704,10 +624,6 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
     openAskModal(p.dailyAskPrefill(dailyLine), 'user');
   }, [dailyLine, p, persistDaily]);
 
-  const openSegmentAsk = useCallback(() => {
-    openAskModal(`${p.parent} / ${title}\n\n${lead}`, 'user');
-  }, [lead, p.parent, title]);
-
   const handleDailyEchoGenerated = useCallback((report: DailyEchoReport) => {
     setDailyEchoReport(report);
     setIsDailyEchoOpen(true);
@@ -737,6 +653,90 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
   const activeEchoSegment = segment === 'overview' ? null : segment;
   const recentSessions = useMemo(() => buildEchoRecentSessionSummaries(sessions), [sessions]);
   const selectedThread = p.threadItems[selectedThreadIndex] ?? p.threadItems[0];
+
+  useEffect(() => {
+    if (!activeEchoSegment) {
+      setSavedEchoItems([]);
+      setSelectedEchoPath(null);
+      setSavedEchoDetail(null);
+      setSavedEchoLoading(false);
+      setSavedEchoError('');
+      setSavedEchoDetailLoading(false);
+      setSavedEchoDetailError('');
+      return;
+    }
+
+    const ctrl = new AbortController();
+    setSavedEchoLoading(true);
+    setSavedEchoError('');
+
+    fetch(`/api/echo?segment=${activeEchoSegment}`, { signal: ctrl.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({})) as { items?: EchoSavedItem[]; error?: string };
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        setSavedEchoItems(Array.isArray(body.items) ? body.items : []);
+      })
+      .catch((loadError) => {
+        if (loadError instanceof Error && loadError.name === 'AbortError') return;
+        setSavedEchoError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setSavedEchoLoading(false);
+      });
+
+    return () => ctrl.abort();
+  }, [activeEchoSegment]);
+
+  useEffect(() => {
+    if (!activeEchoSegment || savedEchoItems.length === 0) {
+      setSelectedEchoPath(null);
+      return;
+    }
+
+    setSelectedEchoPath((current) => {
+      if (current && savedEchoItems.some((item) => item.path === current)) return current;
+      return savedEchoItems[0]?.path ?? null;
+    });
+  }, [activeEchoSegment, savedEchoItems]);
+
+  useEffect(() => {
+    if (!activeEchoSegment || !selectedEchoPath) {
+      setSavedEchoDetail(null);
+      setSavedEchoDetailLoading(false);
+      setSavedEchoDetailError('');
+      return;
+    }
+
+    const ctrl = new AbortController();
+    setSavedEchoDetailLoading(true);
+    setSavedEchoDetailError('');
+
+    fetch(`/api/echo?segment=${activeEchoSegment}&path=${encodeURIComponent(selectedEchoPath)}`, { signal: ctrl.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({})) as { item?: EchoSavedItemDetail; error?: string };
+        if (!res.ok || !body.item) throw new Error(body.error || `HTTP ${res.status}`);
+        setSavedEchoDetail(body.item);
+      })
+      .catch((loadError) => {
+        if (loadError instanceof Error && loadError.name === 'AbortError') return;
+        setSavedEchoDetail(null);
+        setSavedEchoDetailError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setSavedEchoDetailLoading(false);
+      });
+
+    return () => ctrl.abort();
+  }, [activeEchoSegment, selectedEchoPath]);
+
+  const handleEchoSaved = useCallback((item: EchoSavedItem) => {
+    setSavedEchoItems((current) => [
+      item,
+      ...current.filter((entry) => entry.path !== item.path),
+    ]);
+    setSelectedEchoPath(item.path);
+  }, []);
+
   const echoAssistantPrompt = useMemo(() => {
     if (!echoAssistantId || segment === 'overview') return '';
     const facts: EchoPromptFact[] = [];
@@ -819,32 +819,6 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
     setAssistantGenerateSignal((value) => value + 1);
   }, []);
 
-  const headerActions = segment === 'imprint'
-    ? (
-        <>
-          <DailyEchoReportButton
-            onGenerated={handleDailyEchoGenerated}
-            onError={(err) => console.error('[EchoImprint]', err)}
-            locale={{ t: p }}
-          />
-          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
-            {p.continueRecordLabel}
-          </Button>
-        </>
-      )
-    : segment === 'growth'
-      ? (
-          <Button type="button" variant="amber" size="xl" onClick={openSegmentAsk}>
-            {p.growthChatLabel}
-          </Button>
-        )
-      : segment === 'practice'
-        ? (
-            <Button type="button" variant="amber" size="xl" onClick={openSegmentAsk}>
-              {p.practiceChatLabel}
-            </Button>
-          )
-      : undefined;
   const assistantHeaderAction = activeEchoSegment
     ? (
         <EchoAssistantGenerateButton
@@ -854,6 +828,21 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
         />
       )
     : undefined;
+  const headerActions = segment === 'imprint'
+    ? (
+        <>
+          <DailyEchoReportButton
+            onGenerated={handleDailyEchoGenerated}
+            onError={(err) => console.error('[EchoImprint]', err)}
+            locale={{ t: p }}
+          />
+          {assistantHeaderAction}
+          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
+            {p.continueRecordLabel}
+          </Button>
+        </>
+      )
+    : assistantHeaderAction;
 
   return (
     <ContentPageShell
@@ -869,7 +858,6 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
           title={title}
           lead={lead}
           titleId={pageTitleId}
-          assistantAction={assistantHeaderAction}
           actions={headerActions}
         />
 
@@ -919,9 +907,29 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
             generatingLabel={p.insightGenerating}
             errorPrefix={p.insightErrorPrefix}
             retryLabel={p.insightRetry}
+            saveLabel={p.echoSaveLabel}
+            savingLabel={p.echoSavingLabel}
+            savedLabel={p.echoSavedLabel}
+            saveErrorPrefix={p.echoSaveErrorPrefix}
+            segment={segment}
             assistantId={echoAssistantId}
             userPrompt={echoAssistantPrompt}
             generateSignal={assistantGenerateSignal}
+            onSaved={handleEchoSaved}
+          />
+        )}
+
+        {activeEchoSegment && (
+          <SavedEchoItemsPanel
+            items={savedEchoItems}
+            selectedPath={selectedEchoPath}
+            onSelect={setSelectedEchoPath}
+            detail={savedEchoDetail}
+            loading={savedEchoLoading}
+            error={savedEchoError}
+            detailLoading={savedEchoDetailLoading}
+            detailError={savedEchoDetailError}
+            p={p}
           />
         )}
       </div>
