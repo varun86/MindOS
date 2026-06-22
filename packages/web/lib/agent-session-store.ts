@@ -25,6 +25,7 @@ import type {
   ChatSession,
   RuntimeSessionBinding,
   SessionContextSelection,
+  SessionModelSelection,
   SessionWorkDir,
 } from '@/lib/types';
 import {
@@ -42,6 +43,9 @@ import {
   normalizeSessionContextSelectionForClient,
   normalizeSessionWorkDirForClient,
 } from '@/lib/session-context';
+import {
+  normalizeSessionModelSelectionForClient,
+} from '@/lib/session-model-selection';
 import {
   clearUnread,
   getMessageWriteAt,
@@ -171,11 +175,17 @@ function withStoreMessages(session: ChatSession): ChatSession {
 }
 
 function normalizeSessionContextMetadata(session: ChatSession): ChatSession {
-  return {
+  const modelSelection = normalizeSessionModelSelectionForClient(session.modelSelection);
+  const normalized: ChatSession = {
     ...session,
     workDir: getEffectiveSessionWorkDir(session),
     contextSelection: getEffectiveSessionContextSelection(session),
   };
+  if (modelSelection) {
+    return { ...normalized, modelSelection };
+  }
+  const { modelSelection: _discardedModelSelection, ...withoutModelSelection } = normalized;
+  return withoutModelSelection;
 }
 
 function sortAndCap(list: ChatSession[]): ChatSession[] {
@@ -317,6 +327,11 @@ export function getSessionContextSelection(sessionId: string): SessionContextSel
   return session ? getEffectiveSessionContextSelection(session) : defaultSessionContextSelection();
 }
 
+export function getSessionModelSelection(sessionId: string): SessionModelSelection | undefined {
+  const session = sessions.find((s) => s.id === sessionId);
+  return normalizeSessionModelSelectionForClient(session?.modelSelection);
+}
+
 export function getSessionSubmitContextSnapshot(sessionId: string): {
   workDir: SessionWorkDir;
   contextSelection: SessionContextSelection;
@@ -360,6 +375,26 @@ export function setSessionContextSelection(sessionId: string, selection: unknown
     contextSelection: normalizeSessionContextSelectionForClient(selection, now),
     updatedAt: now,
   };
+  const next = [...sessions];
+  next[idx] = updated;
+  emitSessions(next);
+  if (shouldPersistSession(withStoreMessages(updated))) schedulePersist(sessionId);
+  return true;
+}
+
+export function setSessionModelSelection(sessionId: string, selection: unknown): boolean {
+  const idx = sessions.findIndex((s) => s.id === sessionId);
+  if (idx < 0) return false;
+  const now = Date.now();
+  const modelSelection = normalizeSessionModelSelectionForClient(selection, now);
+  const updated: ChatSession = {
+    ...sessions[idx],
+    updatedAt: now,
+    ...(modelSelection ? { modelSelection } : {}),
+  };
+  if (!modelSelection) {
+    delete updated.modelSelection;
+  }
   const next = [...sessions];
   next[idx] = updated;
   emitSessions(next);

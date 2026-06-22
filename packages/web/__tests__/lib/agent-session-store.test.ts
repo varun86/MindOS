@@ -15,6 +15,7 @@ import {
   createSessionEntry,
   deleteSession,
   getActiveSessionId,
+  getSessionModelSelection,
   getSessions,
   getSessionsLoaded,
   initSessions,
@@ -24,6 +25,7 @@ import {
   renameSession,
   resetAgentSessionStoreForTests,
   resetSession,
+  setSessionModelSelection,
   togglePinSession,
 } from '@/lib/agent-session-store';
 import {
@@ -279,6 +281,52 @@ describe('agent-session-store', () => {
 
       flushPersist('older');
       expect(lastPostPayload(byMethod).currentFile).toBe('notes/focus.md');
+    });
+
+    it('stores provider and model overrides as session metadata and persists them with the next flush', async () => {
+      const { byMethod } = installFetchMock([serverSession({ id: 's1' })]);
+      await initSessions({});
+
+      expect(setSessionModelSelection('s1', {
+        version: 1,
+        providerOverride: 'p_openai01',
+        modelOverride: 'gpt-5-mini',
+      })).toBe(true);
+
+      expect(getSessionModelSelection('s1')).toMatchObject({
+        version: 1,
+        providerOverride: 'p_openai01',
+        modelOverride: 'gpt-5-mini',
+      });
+
+      flushPersist('s1');
+      expect(lastPostPayload(byMethod).modelSelection).toMatchObject({
+        version: 1,
+        providerOverride: 'p_openai01',
+        modelOverride: 'gpt-5-mini',
+      });
+    });
+
+    it('clears invalid or empty model selections from session metadata', async () => {
+      installFetchMock([serverSession({
+        id: 's1',
+        modelSelection: {
+          version: 1,
+          providerOverride: 'not-a-provider',
+          modelOverride: '',
+        },
+      })]);
+      await initSessions({});
+
+      expect(getSessions().find((s) => s.id === 's1')?.modelSelection).toBeUndefined();
+
+      expect(setSessionModelSelection('s1', {
+        version: 1,
+        providerOverride: 'p_openai01',
+        modelOverride: 'gpt-5-mini',
+      })).toBe(true);
+      expect(setSessionModelSelection('s1', null)).toBe(true);
+      expect(getSessions().find((s) => s.id === 's1')?.modelSelection).toBeUndefined();
     });
   });
 

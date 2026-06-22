@@ -275,6 +275,15 @@ export interface SessionContextSelection {
   updatedAt?: number;
 }
 
+export interface SessionModelSelection {
+  version: 1;
+  /** Session-level MindOS provider override. Missing means inherit the global default provider. */
+  providerOverride?: string;
+  /** Session-level MindOS model override. Missing means use the provider's default model. */
+  modelOverride?: string;
+  updatedAt?: number;
+}
+
 export interface ChatSession {
   id: string;
   title?: string;
@@ -297,4 +306,6 @@ export interface ChatSession {
   workDir?: SessionWorkDir;
   /** Dynamic context hints for this chat session. */
   contextSelection?: SessionContextSelection;
+  /** Session-scoped MindOS provider/model choice restored when this chat becomes active. */
+  modelSelection?: SessionModelSelection;
 }

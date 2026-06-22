@@ -24,7 +24,6 @@ import AskComposerInput from '@/components/ask/AskComposerInput';
 import SessionContextDock from '@/components/ask/SessionContextDock';
 import ProviderModelCapsule, { getPersistedProviderModel } from '@/components/ask/ProviderModelCapsule';
 import NativeRuntimeOptionsCapsule, { getPersistedNativeRuntimeOptions, persistNativeRuntimeOptions } from '@/components/ask/NativeRuntimeOptionsCapsule';
-import type { ProviderId } from '@/lib/agent/providers';
 import { useAgentChat } from '@/hooks/useAgentChat';
 import { useAgentRunTimeline } from '@/hooks/useAgentRunTimeline';
 import {
@@ -47,6 +46,11 @@ import type { AcpAgentSelection } from '@/hooks/useAskModal';
 import { compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
 import type { CodexThreadListResponse, CodexThreadSummary, RuntimeSessionBinding } from '@/lib/types';
 import type { AskContextRequest } from '@/lib/ask-context-events';
+import {
+  getProviderModelFromSessionSelection,
+  toSessionModelSelection,
+  type ProviderSelection,
+} from '@/lib/session-model-selection';
 
 /** Stable empty array — a fresh [] literal per render would bust MessageList's memo */
 const EMPTY_SUGGESTIONS: ReadonlyArray<{ label: string; prompt: string }> = [];
@@ -171,7 +175,8 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
   const selectedAgentRuntimeRef = useRef(selectedAgentRuntime);
   const pendingOpenAgentRef = useRef<SelectedAgentRuntime | null>(null);
   const [permissionMode, setPermissionMode] = useState<AgentPermissionMode>('ask');
-  const [providerOverride, setProviderOverride] = useState<ProviderId | `p_${string}` | null>(null);
+  const [providerOverride, setProviderOverride] = useState<ProviderSelection>(null);
+  const providerOverrideRef = useRef<ProviderSelection>(null);
   const [modelOverride, setModelOverride] = useState<string | null>(null);
   const [nativeRuntimeOptions, setNativeRuntimeOptions] = useState<NativeRuntimeOptions>({});
 
@@ -186,14 +191,26 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
     }
   }, []);
 
+  const session = useAskSession(currentFile, projectId);
+
   useEffect(() => {
     setPermissionMode(getPersistedPermissionMode());
-    const persisted = getPersistedProviderModel();
-    setProviderOverride(persisted.provider);
-    setModelOverride(persisted.model);
   }, []);
 
-  const session = useAskSession(currentFile, projectId);
+  useEffect(() => {
+    const fromSession = getProviderModelFromSessionSelection(session.activeSession?.modelSelection);
+    const next = fromSession.provider || fromSession.model
+      ? fromSession
+      : getPersistedProviderModel();
+    providerOverrideRef.current = next.provider;
+    setProviderOverride(next.provider);
+    setModelOverride(next.model);
+  }, [
+    session.activeSessionId,
+    session.activeSession?.modelSelection?.providerOverride,
+    session.activeSession?.modelSelection?.modelOverride,
+    session.activeSession?.modelSelection?.updatedAt,
+  ]);
   const sessionRef = useRef(session);
   const uploadLabels = useMemo(() => ({ unsupportedType: t.fileImport?.unsupported }), [t]);
   const {
@@ -1064,10 +1081,23 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
     pendingAutoSubmitRef.current = true;
   }, []);
 
-  const handleProviderChange = useCallback((p: ProviderId | `p_${string}` | null) => {
+  const commitSessionModelSelection = useCallback((provider: ProviderSelection, model: string | null) => {
+    session.setSessionModelSelection(toSessionModelSelection(provider, model));
+  }, [session.setSessionModelSelection]);
+
+  const handleProviderChange = useCallback((p: ProviderSelection) => {
+    providerOverrideRef.current = p;
     setProviderOverride(p);
     setModelOverride(null);
-  }, []);
+    commitSessionModelSelection(p, null);
+  }, [commitSessionModelSelection]);
+
+  const handleModelChange = useCallback((model: string | null) => {
+    const provider = providerOverrideRef.current;
+    setModelOverride(model);
+    if (!model) return;
+    commitSessionModelSelection(provider, model);
+  }, [commitSessionModelSelection]);
 
   const handleNativeRuntimeOptionsChange = useCallback((next: NativeRuntimeOptions) => {
     setNativeRuntimeOptions(next);
@@ -1353,8 +1383,9 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
                 providerValue={providerOverride}
                 onProviderChange={handleProviderChange}
                 modelValue={modelOverride}
-                onModelChange={setModelOverride}
+                onModelChange={handleModelChange}
                 disabled={isLoading}
+                persistSelection={false}
               />
             )}
             {mounted && isNativeRuntime && selectedNativeRuntimeKind && (

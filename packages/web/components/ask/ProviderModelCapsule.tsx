@@ -10,10 +10,11 @@ import {
   isProviderId,
 } from '@/lib/agent/providers';
 import { type Provider, isProviderEntryId, findProvider } from '@/lib/custom-endpoints';
+import type { ProviderSelection } from '@/lib/session-model-selection';
 
 const STORAGE_KEY = 'mindos-provider-model';
 
-export type ProviderSelection = ProviderId | `p_${string}` | null;
+export type { ProviderSelection } from '@/lib/session-model-selection';
 
 interface ProviderModelCapsuleProps {
   providerValue: ProviderSelection;
@@ -22,6 +23,7 @@ interface ProviderModelCapsuleProps {
   onModelChange: (model: string | null) => void;
   disabled?: boolean;
   storageKey?: string;
+  persistSelection?: boolean;
   systemLabel?: string;
   emptyLabel?: string;
 }
@@ -72,7 +74,7 @@ function getConfiguredProviders(data: SettingsData): string[] {
 /* ── Component ── */
 
 export default function ProviderModelCapsule({
-  providerValue, onProviderChange, modelValue, onModelChange, disabled = false, storageKey = STORAGE_KEY, systemLabel, emptyLabel,
+  providerValue, onProviderChange, modelValue, onModelChange, disabled = false, storageKey = STORAGE_KEY, persistSelection = true, systemLabel, emptyLabel,
 }: ProviderModelCapsuleProps) {
   const { t, locale } = useLocale();
   const [open, setOpen] = useState(false);
@@ -148,9 +150,9 @@ export default function ProviderModelCapsule({
     if (providerValue && !configuredProviders.includes(providerValue)) {
       onProviderChange(null);
       onModelChange(null);
-      persistProviderModel(null, null, storageKey);
+      if (persistSelection) persistProviderModel(null, null, storageKey);
     }
-  }, [configuredProviders, onModelChange, onProviderChange, providerValue, settingsData, storageKey]);
+  }, [configuredProviders, onModelChange, onProviderChange, persistSelection, providerValue, settingsData, storageKey]);
 
   // Resolve active display
   const activeProvider = providerValue ?? defaultProvider;
@@ -362,16 +364,16 @@ export default function ProviderModelCapsule({
   const handleSelectProvider = useCallback((provider: ProviderSelection) => {
     onProviderChange(provider);
     onModelChange(null);
-    persistProviderModel(provider, null, storageKey);
+    if (persistSelection) persistProviderModel(provider, null, storageKey);
     setOpen(false); setHoveredProvider(null); setModelSearch('');
-  }, [onModelChange, onProviderChange, storageKey]);
+  }, [onModelChange, onProviderChange, persistSelection, storageKey]);
 
   const handleSelectModel = useCallback((provider: ProviderSelection, model: string) => {
     onProviderChange(provider);
     onModelChange(model);
-    persistProviderModel(provider, model, storageKey);
+    if (persistSelection) persistProviderModel(provider, model, storageKey);
     setOpen(false); setHoveredProvider(null); setModelSearch('');
-  }, [onModelChange, onProviderChange, storageKey]);
+  }, [onModelChange, onProviderChange, persistSelection, storageKey]);
 
   /* ── Filtered models ── */
   const filteredModels = useMemo(() => {

@@ -19,6 +19,7 @@ import type {
   ChatSession,
   RuntimeSessionBinding,
   SessionContextSelection,
+  SessionModelSelection,
   SessionWorkDir,
 } from '@/lib/types';
 import { setMessages as storeSetMessages, useSessionMessages } from '@/lib/agent-run-store';
@@ -33,6 +34,7 @@ import {
   renameSession as storeRenameSession,
   resetSession as storeResetSession,
   setSessionContextSelection as storeSetSessionContextSelection,
+  setSessionModelSelection as storeSetSessionModelSelection,
   setSessionAgentRuntimeBinding as storeSetSessionAgentRuntimeBinding,
   setSessionDefaultAcpAgent as storeSetSessionDefaultAcpAgent,
   setSessionWorkDir as storeSetSessionWorkDir,
@@ -109,6 +111,11 @@ export function useAskSession(currentFile?: string, projectId?: string) {
     return id ? storeSetSessionContextSelection(id, selection) : false;
   }, []);
 
+  const setSessionModelSelection = useCallback((selection: SessionModelSelection | null) => {
+    const id = getActiveSessionId();
+    return id ? storeSetSessionModelSelection(id, selection) : false;
+  }, []);
+
   const attachRuntimeSession = useCallback((
     runtime: AgentRuntimeIdentity,
     binding: {
@@ -159,6 +166,7 @@ export function useAskSession(currentFile?: string, projectId?: string) {
     setSessionAgentRuntimeBinding,
     setSessionWorkDir,
     setSessionContextSelection,
+    setSessionModelSelection,
     attachRuntimeSession,
     clearSessions,
     clearAllSessions,

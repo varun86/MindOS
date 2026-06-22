@@ -14,6 +14,7 @@ const mockSetSessionDefaultAcpAgent = vi.fn();
 const mockSetSessionAgentRuntimeBinding = vi.fn();
 const mockSetSessionWorkDir = vi.fn(() => true);
 const mockSetSessionContextSelection = vi.fn(() => true);
+const mockSetSessionModelSelection = vi.fn(() => true);
 const mockAttachRuntimeSession = vi.fn(() => true);
 const mockResetSession = vi.fn();
 const mockLoadSession = vi.fn();
@@ -130,6 +131,7 @@ vi.mock('@/hooks/useAskSession', () => ({
     setSessionAgentRuntimeBinding: mockSetSessionAgentRuntimeBinding,
     setSessionWorkDir: mockSetSessionWorkDir,
     setSessionContextSelection: mockSetSessionContextSelection,
+    setSessionModelSelection: mockSetSessionModelSelection,
     attachRuntimeSession: mockAttachRuntimeSession,
     resetSession: mockResetSession,
     loadSession: mockLoadSession,
@@ -335,7 +337,46 @@ vi.mock('@/components/ask/AgentSelectorCapsule', () => ({
   ),
 }));
 vi.mock('@/components/ask/ProviderModelCapsule', () => ({
-  default: () => null,
+  default: ({
+    providerValue,
+    modelValue,
+    onProviderChange,
+    onModelChange,
+    persistSelection,
+  }: {
+    providerValue: string | null;
+    modelValue: string | null;
+    onProviderChange: (provider: string | null) => void;
+    onModelChange: (model: string | null) => void;
+    persistSelection?: boolean;
+  }) => (
+    <div
+      data-testid="provider-model-capsule"
+      data-provider={providerValue ?? 'default'}
+      data-model={modelValue ?? 'default'}
+      data-persist-selection={String(persistSelection)}
+    >
+      <span data-testid="provider-model-value">{providerValue ?? 'default'}::{modelValue ?? 'default'}</span>
+      <button
+        type="button"
+        onClick={() => {
+          onProviderChange('p_session');
+          onModelChange('session-model');
+        }}
+      >
+        Pick Session Model
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onProviderChange(null);
+          onModelChange(null);
+        }}
+      >
+        Pick Default Model
+      </button>
+    </div>
+  ),
   getPersistedProviderModel: () => mockPersistedProviderModel,
 }));
 vi.mock('@/components/ask/ModeCapsule', () => ({
@@ -823,6 +864,91 @@ describe('ChatContent ACP session binding', () => {
     expect(requestBody.providerOverride).toBe('openai');
     expect(requestBody.modelOverride).toBe('gpt-test');
     expect(mockSetSessionDefaultAcpAgent).toHaveBeenLastCalledWith(null);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('keeps provider and model selection scoped to the active MindOS chat session', async () => {
+    mockPersistedProviderModel = { provider: 'p_global', model: 'global-model' };
+    const cheapSession: ChatSession = {
+      id: 's-cheap',
+      title: 'Cheap model chat',
+      createdAt: 1,
+      updatedAt: 10,
+      messages: [],
+      modelSelection: {
+        version: 1,
+        providerOverride: 'p_cheap',
+        modelOverride: 'cheap-model',
+        updatedAt: 10,
+      },
+    };
+    const defaultSession: ChatSession = {
+      id: 's-default',
+      title: 'Default chat',
+      createdAt: 2,
+      updatedAt: 20,
+      messages: [],
+    };
+    mockSessions = [cheapSession, defaultSession];
+    mockActiveSession = cheapSession;
+    mockActiveSessionId = cheapSession.id;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<ChatContent visible variant="panel" initialMessage="use session model" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="provider-model-value"]')?.textContent).toBe('p_cheap::cheap-model');
+    expect(host.querySelector('[data-testid="provider-model-capsule"]')?.getAttribute('data-persist-selection')).toBe('false');
+
+    mockActiveSession = defaultSession;
+    mockActiveSessionId = defaultSession.id;
+    await act(async () => {
+      root.render(<ChatContent visible variant="panel" initialMessage="use session model" />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="provider-model-value"]')?.textContent).toBe('p_global::global-model');
+
+    const pickSessionModel = Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'Pick Session Model') as HTMLButtonElement;
+    await act(async () => {
+      pickSessionModel.click();
+    });
+
+    expect(mockSetSessionModelSelection).toHaveBeenLastCalledWith({
+      version: 1,
+      providerOverride: 'p_session',
+      modelOverride: 'session-model',
+      updatedAt: expect.any(Number),
+    });
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const agentTurnCall = fetchMock.mock.calls.find(([url]) => isAgentTurnUrl(url));
+    expect(agentTurnCall).toBeTruthy();
+    const requestBody = JSON.parse(String((agentTurnCall?.[1] as RequestInit | undefined)?.body));
+    expect(requestBody.chatSessionId).toBe('s-default');
+    expect(requestBody.providerOverride).toBe('p_session');
+    expect(requestBody.modelOverride).toBe('session-model');
 
     await act(async () => {
       root.unmount();

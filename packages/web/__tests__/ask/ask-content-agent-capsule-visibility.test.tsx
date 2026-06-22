@@ -85,6 +85,7 @@ vi.mock('@/hooks/useAskSession', () => ({
     setSessionDefaultAcpAgent: vi.fn(),
     setSessionWorkDir: vi.fn(() => true),
     setSessionContextSelection: vi.fn(() => true),
+    setSessionModelSelection: vi.fn(() => true),
     resetSession: vi.fn(),
     loadSession: vi.fn(),
     deleteSession: vi.fn(),
