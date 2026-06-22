@@ -7,6 +7,7 @@ import type { LoadedPlugin } from '@/lib/obsidian-compat/loader';
 import type { PluginSettingItem, PluginSettingTab, SettingControl, SettingDefinitionItem } from '@/lib/obsidian-compat/types';
 import { createObsidianElement } from '@/lib/obsidian-compat/shims/dom';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type SettingAction = 'set-value' | 'click-button' | 'list-add' | 'list-delete' | 'list-reorder' | 'preview-render' | 'preview-page';
