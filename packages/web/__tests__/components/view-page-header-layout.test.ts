@@ -26,7 +26,8 @@ describe('ViewPageClient header layout', () => {
     expect(viewSource).toContain('className="view-header-actions flex items-center gap-1.5 md:gap-2 shrink-0"');
     expect(viewSource).toContain('className="view-header-breadcrumb min-w-0 flex-1 flex items-center gap-1.5"');
     expect(viewSource).toContain('const tocCollapsed = useSyncExternalStore(');
-    expect(viewSource).toContain('const hasMarkdownToc = isMarkdown && !showRenderer && (');
+    expect(viewSource).toContain('const markdownTocHeadings = useMemo(() => {');
+    expect(viewSource).toContain('const hasMarkdownToc = markdownTocHeadings.length >= 2;');
     expect(viewSource).toContain("'content-width markdown-view-frame markdown-view-frame--with-toc'");
     expect(viewSource).toContain("'content-width markdown-view-frame markdown-view-frame--toc-collapsed'");
     expect(viewSource).toContain('const shouldRenderToc = hasMarkdownToc;');

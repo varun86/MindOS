@@ -54,7 +54,7 @@ vi.mock('@/components/MarkdownEditor', () => ({
 vi.mock('@/components/EditorWrapper', () => ({ default: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/components/TableOfContents', () => ({
   default: () => <div />,
-  hasTableOfContents: () => false,
+  parseTableOfContentsHeadings: () => [],
   readTableOfContentsCollapsed: () => false,
   subscribeTableOfContentsCollapsed: () => () => {},
 }));

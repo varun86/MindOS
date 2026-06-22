@@ -14,7 +14,7 @@ import Breadcrumb from '@/components/Breadcrumb';
 import MarkdownEditor, { MdViewMode } from '@/components/MarkdownEditor';
 import EditorWrapper from '@/components/EditorWrapper';
 import TableOfContents, {
-  hasTableOfContents,
+  parseTableOfContentsHeadings,
   readTableOfContentsCollapsed,
   subscribeTableOfContentsCollapsed,
 } from '@/components/TableOfContents';
@@ -595,11 +595,15 @@ export default function ViewPageClient({
     readTableOfContentsCollapsed,
     () => false,
   );
-  const hasMarkdownToc = isMarkdown && !showRenderer && (
-    editing
-      ? mdViewMode !== 'source' && hasTableOfContents(editContent)
-      : hasTableOfContents(normalizedSavedMarkdown)
-  );
+  const markdownTocHeadings = useMemo(() => {
+    if (!fileBodyReady || !isMarkdown || showRenderer) return [];
+    if (editing) {
+      if (mdViewMode === 'source') return [];
+      return parseTableOfContentsHeadings(editContent);
+    }
+    return parseTableOfContentsHeadings(normalizedSavedMarkdown);
+  }, [editContent, editing, fileBodyReady, isMarkdown, mdViewMode, normalizedSavedMarkdown, showRenderer]);
+  const hasMarkdownToc = markdownTocHeadings.length >= 2;
   const markdownFrameClassName = hasMarkdownToc
     ? tocCollapsed
       ? 'content-width markdown-view-frame markdown-view-frame--toc-collapsed'
@@ -1003,7 +1007,7 @@ export default function ViewPageClient({
                     editorKey={filePath}
                   />
                 </div>
-                {shouldRenderEditingToc && <TableOfContents content={editContent} />}
+                {shouldRenderEditingToc && <TableOfContents headings={markdownTocHeadings} />}
               </div>
             )}
             {!editing && (
@@ -1013,7 +1017,7 @@ export default function ViewPageClient({
                   <MarkdownView content={normalizedSavedMarkdown} sourcePath={filePath} highlightLines={changedLines} onDismissHighlight={() => setChangedLines([])} emptyPlaceholder={t.view?.emptyNote} />
                   <Backlinks filePath={filePath} />
                 </div>
-                {shouldRenderToc && <TableOfContents content={normalizedSavedMarkdown} />}
+                {shouldRenderToc && <TableOfContents headings={markdownTocHeadings} />}
               </div>
             )}
           </>

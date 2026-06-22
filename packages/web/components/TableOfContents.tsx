@@ -6,15 +6,15 @@ import GithubSlugger from 'github-slugger';
 import { useLocale } from '@/lib/stores/locale-store';
 import { cn } from '@/lib/utils';
 
-interface Heading {
+export interface TableOfContentsHeading {
   id: string;
   text: string;
   level: number;
 }
 
-function parseHeadings(content: string): Heading[] {
+export function parseTableOfContentsHeadings(content: string): TableOfContentsHeading[] {
   const slugger = new GithubSlugger();
-  const headings: Heading[] = [];
+  const headings: TableOfContentsHeading[] = [];
   let inCodeBlock = false;
 
   for (let start = 0; start <= content.length;) {
@@ -56,7 +56,7 @@ function parseHeadings(content: string): Heading[] {
 }
 
 export function hasTableOfContents(content: string): boolean {
-  return parseHeadings(content).length >= 2;
+  return parseTableOfContentsHeadings(content).length >= 2;
 }
 
 const VIEW_HEADER_FALLBACK_H = 40;
@@ -114,7 +114,7 @@ function scrollOffset(): number {
  *
  * Instead, we find headings by scanning visible content containers in order.
  */
-function findHeadingElements(headings: Heading[]): (HTMLElement | null)[] {
+function findHeadingElements(headings: TableOfContentsHeading[]): (HTMLElement | null)[] {
   if (headings.length === 0) return [];
 
   // Check both .prose (View mode) and .ProseMirror (Edit mode) containers
@@ -150,21 +150,22 @@ function findHeadingElements(headings: Heading[]): (HTMLElement | null)[] {
   return headings.map(() => null);
 }
 
-function findHeadingElementById(heading: Heading | undefined): HTMLElement | null {
+function findHeadingElementById(heading: TableOfContentsHeading | undefined): HTMLElement | null {
   if (!heading?.id) return null;
   return document.getElementById(heading.id);
 }
 
 interface TableOfContentsProps {
-  content: string;
+  content?: string;
+  headings?: TableOfContentsHeading[];
 }
 
-export default function TableOfContents({ content }: TableOfContentsProps) {
+export default function TableOfContents({ content = '', headings: providedHeadings }: TableOfContentsProps) {
   const { t } = useLocale();
   const { headings, minLevel } = useMemo(() => {
-    const h = parseHeadings(content);
+    const h = providedHeadings ?? parseTableOfContentsHeadings(content);
     return { headings: h, minLevel: h.length > 0 ? Math.min(...h.map(x => x.level)) : 1 };
-  }, [content]);
+  }, [content, providedHeadings]);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [collapsed, setCollapsed] = useState(readTableOfContentsCollapsed);
 

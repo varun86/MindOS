@@ -58,7 +58,7 @@ vi.mock('@/components/Breadcrumb', () => ({ default: () => <div /> }));
 vi.mock('@/components/EditorWrapper', () => ({ default: () => <div /> }));
 vi.mock('@/components/TableOfContents', () => ({
   default: () => <div />,
-  hasTableOfContents: () => false,
+  parseTableOfContentsHeadings: () => [],
   readTableOfContentsCollapsed: () => false,
   subscribeTableOfContentsCollapsed: () => () => {},
 }));

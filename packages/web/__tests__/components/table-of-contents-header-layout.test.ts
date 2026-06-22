@@ -32,7 +32,8 @@ describe('TableOfContents header layout', () => {
     expect(source).toContain("export const TOC_COLLAPSED_EVENT = 'mindos:toc-collapsed-change';");
     expect(source).toContain('export function readTableOfContentsCollapsed(): boolean');
     expect(source).toContain('export function subscribeTableOfContentsCollapsed(callback: () => void): () => void');
-    expect(source).toContain('parseHeadings(content)');
+    expect(source).toContain('export function parseTableOfContentsHeadings(content: string)');
+    expect(source).toContain('const h = providedHeadings ?? parseTableOfContentsHeadings(content);');
     expect(source).toContain('const handleCollapsedToggle = useCallback(() => {');
     expect(source).toContain('onClick={handleCollapsedToggle}');
     expect(source).not.toContain('useLayoutEffect');
