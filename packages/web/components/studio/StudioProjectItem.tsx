@@ -43,9 +43,9 @@ function renderProjectIcon(project: StudioProject, size: number) {
   return <Icon size={size} aria-hidden="true" />;
 }
 
-function contextTokens(project: StudioProject, locale: string): Array<{
+function contextTokenGroups(project: StudioProject, locale: string): Array<{
   label: string;
-  value: string;
+  values: string[];
   icon: LucideIcon;
 }> {
   const spaces = getStudioProjectSpaceLabels(project, locale);
@@ -53,17 +53,17 @@ function contextTokens(project: StudioProject, locale: string): Array<{
   return [
     {
       label: locale === 'zh' ? '工作目录' : 'Work dir',
-      value: getStudioProjectWorkDirLabel(project, locale),
+      values: [getStudioProjectWorkDirLabel(project, locale)],
       icon: FolderOpen,
     },
     {
       label: locale === 'zh' ? '心智空间' : 'Mind Space',
-      value: spaces.length ? spaces.join(' / ') : localize(project.space, project.spaceZh, locale),
+      values: spaces.length ? spaces : [localize(project.space, project.spaceZh, locale)],
       icon: BookOpenText,
     },
     {
       label: locale === 'zh' ? 'AI 套件' : 'AI Kit',
-      value: assistants.length ? assistants.join(' / ') : (locale === 'zh' ? '基础助理' : firstKit(project)),
+      values: assistants.length ? assistants : [locale === 'zh' ? '基础助理' : firstKit(project)],
       icon: Blocks,
     },
   ];
@@ -80,28 +80,32 @@ export function StudioContextBraid({
 }) {
   return (
     <div data-studio-context-braid className={`flex min-w-0 flex-wrap items-center ${
-      density === 'compact' ? 'gap-x-2 gap-y-1 text-[11px]' : 'gap-x-2.5 gap-y-1.5 text-xs'
+      density === 'compact' ? 'gap-1.5 text-[11px]' : 'gap-2 text-xs'
     } text-muted-foreground`}>
-      {contextTokens(project, locale).map((token, index) => {
-        const Icon = token.icon;
-        return (
-          <span
-            key={token.label}
-            className={`inline-flex min-w-0 items-center gap-1.5 ${
-              index > 0 ? 'border-l border-border/70 pl-2.5' : ''
-            }`}
-          >
+      {contextTokenGroups(project, locale).flatMap((token) => (
+        token.values.filter(Boolean).map((value, index) => {
+          const Icon = token.icon;
+          return (
             <span
-              aria-label={token.label}
-              title={token.label}
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--amber)] transition-colors hover:bg-[var(--amber-subtle)]"
+              key={`${token.label}-${value}-${index}`}
+              data-studio-context-chip
+              className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border/50 bg-background/55 px-2 py-1 transition-colors hover:border-[var(--amber)]/40 hover:bg-[var(--amber-subtle)]"
+              title={`${token.label}: ${value}`}
             >
-              <Icon size={density === 'compact' ? 11 : 12} aria-hidden="true" />
+              <span
+                aria-label={token.label}
+                title={token.label}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[var(--amber)]"
+              >
+                <Icon size={density === 'compact' ? 11 : 12} aria-hidden="true" />
+              </span>
+              <span className={`${density === 'compact' ? 'max-w-[10rem]' : 'max-w-[14rem]'} min-w-0 truncate`}>
+                {value}
+              </span>
             </span>
-            <span className="max-w-[18rem] truncate">{token.value}</span>
-          </span>
-        );
-      })}
+          );
+        })
+      ))}
     </div>
   );
 }

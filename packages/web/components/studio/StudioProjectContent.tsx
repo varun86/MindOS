@@ -604,13 +604,13 @@ export default function StudioProjectContent({
 
         <section className="overflow-hidden rounded-xl border border-border/60 bg-card/45" aria-labelledby="studio-project-sessions">
           <div className="border-b border-border/60 px-4 py-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div data-studio-sessions-header className="grid gap-3">
               <div className="min-w-0">
-                <h2 id="studio-project-sessions" className="text-sm font-semibold text-foreground">{copy.historicalSessions}</h2>
-                <p className="mt-1 text-xs text-muted-foreground">{copy.sessionsHint}</p>
+                <h2 id="studio-project-sessions" className="whitespace-nowrap text-sm font-semibold text-foreground">{copy.historicalSessions}</h2>
+                <p className="mt-1 max-w-[42ch] text-xs text-muted-foreground">{copy.sessionsHint}</p>
               </div>
-              <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
-                <label className="relative min-w-0 flex-1 xl:w-72 xl:flex-none">
+              <div data-studio-sessions-toolbar className="flex w-full min-w-0 flex-wrap items-center gap-2">
+                <label className="relative min-w-[14rem] flex-[1_1_18rem]">
                   <span className="sr-only">{copy.searchSessions}</span>
                   <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <input
@@ -620,7 +620,7 @@ export default function StudioProjectContent({
                     className="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-[var(--amber)] focus-visible:ring-2 focus-visible:ring-ring/40"
                   />
                 </label>
-                <label className="relative sm:w-44">
+                <label className="relative min-w-[11rem] flex-[1_1_11rem] sm:flex-none">
                   <span className="sr-only">{copy.filterByAgent}</span>
                   <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <select
@@ -641,7 +641,7 @@ export default function StudioProjectContent({
                   nativeButton={false}
                   variant="outline"
                   size="lg"
-                  className="justify-center"
+                  className="flex-[1_1_11rem] justify-center sm:flex-none"
                 >
                   <MessageSquarePlus size={15} aria-hidden="true" />
                   {copy.newSession}

@@ -98,6 +98,15 @@ describe('Studio Project UI', () => {
     expect(view.host.querySelector('input[placeholder="Search title, artifact, or summary"]')).not.toBeNull();
     expect(view.host.querySelector('select')).not.toBeNull();
     expect(view.host.querySelector('[data-stable-row-trailing]')).not.toBeNull();
+    const sessionsHeader = view.host.querySelector('[data-studio-sessions-header]');
+    expect(sessionsHeader).not.toBeNull();
+    expect(sessionsHeader?.className).toContain('grid');
+    expect(sessionsHeader?.className).not.toContain('xl:flex-row');
+    const sessionsToolbar = view.host.querySelector('[data-studio-sessions-toolbar]');
+    expect(sessionsToolbar).not.toBeNull();
+    expect(sessionsToolbar?.className).toContain('flex-wrap');
+    const sessionsHeading = view.host.querySelector('#studio-project-sessions');
+    expect(sessionsHeading?.className).toContain('whitespace-nowrap');
     const sessionRow = view.host.querySelector('[data-studio-session-row]');
     const sessionRowClasses = sessionRow?.getAttribute('class')?.split(/\s+/) ?? [];
     expect(sessionRowClasses.some(className => className.startsWith('xl:grid-cols-'))).toBe(true);

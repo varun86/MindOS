@@ -105,6 +105,8 @@ describe('StudioContent', () => {
     expect(firstContext?.querySelector('[title="Work dir"]')).not.toBeNull();
     expect(firstContext?.querySelector('[title="Mind Space"]')).not.toBeNull();
     expect(firstContext?.querySelector('[title="AI Kit"]')).not.toBeNull();
+    expect(firstContext?.querySelectorAll('[data-studio-context-chip]').length).toBeGreaterThanOrEqual(3);
+    expect(firstContext?.querySelector('.border-l')).toBeNull();
   });
 
   it('switches Studio overview between grouped and stats views', async () => {
