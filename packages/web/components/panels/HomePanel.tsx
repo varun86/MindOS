@@ -418,6 +418,24 @@ export default function HomePanel({
               </div>
               <p className="text-sm text-foreground">{t.sidebar.homeEmptySessions}</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t.sidebar.homeEmptySessionsHint}</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode('files')}
+                  className="hit-target-box inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium text-foreground [--hit-target-border-width:1px] [--hit-target-border:var(--border)] [--hit-target-hover-bg:var(--muted)] [--hit-target-radius:var(--radius-md)]"
+                >
+                  <Brain size={13} aria-hidden="true" />
+                  {t.sidebar.homeMindFiles}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNewSession}
+                  className="hit-target-box inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium text-[var(--amber-foreground)] [--hit-target-bg:var(--amber)] [--hit-target-hover-bg:var(--amber)] [--hit-target-radius:var(--radius-md)]"
+                >
+                  <Plus size={13} aria-hidden="true" />
+                  {t.sidebar.homeNewSession}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-1">

@@ -95,6 +95,25 @@ describe('LoginPage', () => {
     expect(submitButton?.style.backgroundColor).toBe('var(--amber)');
   });
 
+  it('keeps the password field and visibility toggle separately named', async () => {
+    mockSearch = 'redirect=/wiki';
+    await renderLoginPage();
+
+    const passwordInput = host.querySelector<HTMLInputElement>('#password');
+    const toggle = host.querySelector<HTMLButtonElement>('button[aria-label="Show password"]');
+
+    expect(passwordInput).not.toBeNull();
+    expect(host.querySelector('label[for="password"]')?.textContent).toContain('Password');
+    expect(toggle).not.toBeNull();
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Password"]')).toBeNull();
+
+    await act(async () => {
+      toggle!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Hide password"]')).not.toBeNull();
+  });
+
   it('removes the default explanatory login copy', async () => {
     mockSearch = 'redirect=/wiki';
     await renderLoginPage();

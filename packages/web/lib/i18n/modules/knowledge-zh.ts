@@ -190,6 +190,7 @@ export const knowledgeZh = {
   inbox: {
     title: '收集箱',
     subtitle: '先保存零散材料，准备好时再审核。',
+    loading: '正在加载收集箱...',
     capturePageTitle: '收集箱',
     capturePageSubtitle: '粘贴、拖拽、保存。',
     reviewPageTitle: '审核队列',

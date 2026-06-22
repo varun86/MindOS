@@ -282,9 +282,39 @@ describe('AgentsSkillsSection agent links', () => {
     expect(text.slice(kiloIdx).split(copy.agentMindosSkills)[0]).not.toContain('todo-task-lookup');
   });
 
-  it('agents not present on this machine never appear as skill owners', () => {
+  it('shows a semantic loading state instead of empty counts while skills are still loading', () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/api/skills/matrix') return new Promise(() => {});
+      return Promise.resolve({ ok: true });
+    });
+
+    const mcp = makeMcp({ loading: true });
+    const { container } = renderSection(mcp);
+
+    expect(container.textContent).toContain(copy.loadingSkills);
+    expect(container.textContent).not.toContain(copy.summaryEnabled(0));
+    expect(container.textContent).not.toContain(copy.noSkillsMatchFilter);
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+  });
+
+  it('distinguishes no detected skills from a filtered empty result', async () => {
+    mockApiFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/skills/matrix') return { skills: [], agents: [], state: {}, cells: {} };
+      return { ok: true };
+    });
+
+    const mcp = makeMcp({ skills: [], agents: [] } as never);
+    const { container } = renderSection(mcp);
+    await flushEffects();
+
+    expect(container.textContent).toContain(copy.noSkillsYet);
+    expect(container.textContent).not.toContain(copy.noSkillsMatchFilter);
+  });
+
+  it('agents not present on this machine never appear as skill owners', async () => {
     const mcp = makeMcp();
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     const card = skillCardOf(container, 'todo-task-lookup');
     expect(findButtonByLabel(card, 'Remove Claude Code')).toBeTruthy();
@@ -295,6 +325,7 @@ describe('AgentsSkillsSection agent links', () => {
   it('removing a linked agent from a skill unlinks it through the unified write interface and refreshes', async () => {
     const mcp = makeMcp();
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     const card = skillCardOf(container, 'todo-task-lookup');
     click(findButtonByLabel(card, 'Remove Claude Code')!);
@@ -334,6 +365,7 @@ describe('AgentsSkillsSection agent links', () => {
     mockApiFetch.mockRejectedValue(new ApiError('refusing to delete', 409));
     const mcp = makeMcp();
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     const card = skillCardOf(container, 'todo-task-lookup');
     click(findButtonByLabel(card, 'Remove Claude Code')!);
@@ -346,6 +378,7 @@ describe('AgentsSkillsSection agent links', () => {
   it('adding an agent to a MindOS-managed skill links it through the unified write interface', async () => {
     const mcp = makeMcp();
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     const card = skillCardOf(container, 'todo-task-lookup');
     click(findButtonByLabel(card, copy.addAgentToSkill)!);
@@ -368,6 +401,7 @@ describe('AgentsSkillsSection agent links', () => {
       ],
     } as never);
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     const card = skillCardOf(container, 'todo-task-lookup');
     click(findButtonByLabel(card, copy.addAgentToSkill)!);
@@ -379,6 +413,7 @@ describe('AgentsSkillsSection agent links', () => {
   it('adding an agent to a native skill still goes through the copy-skill route with its source path', async () => {
     const mcp = makeMcp();
     const { container } = renderSection(mcp);
+    await flushEffects();
 
     // claude-native-helper exists only inside Claude Code's directory → kind 'native'.
     const card = skillCardOf(container, 'claude-native-helper');

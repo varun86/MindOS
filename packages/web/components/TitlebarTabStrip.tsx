@@ -27,6 +27,7 @@ import { tabHref, useWorkspaceTabSync } from '@/hooks/useWorkspaceTabSync';
 import { useLocale } from '@/lib/stores/locale-store';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import { StableRowTrailingSlot } from '@/components/shared/StableRowChrome';
+import { FLOATING_SURFACE_CLASS } from '@/components/shared/FloatingSurface';
 import type { AgentRuntimeIdentity } from '@/lib/types';
 
 const NO_DRAG = { WebkitAppRegion: 'no-drag' } as React.CSSProperties;
@@ -470,7 +471,7 @@ export default function TitlebarTabStrip() {
           ref={menuRef}
           role="menu"
           aria-label={t.workspaceTabs.overflowMenuTitle}
-          className="fixed z-50 w-64 rounded-lg border border-border bg-background py-1 shadow-lg"
+          className={`${FLOATING_SURFACE_CLASS} w-64 py-1`}
           style={{
             top: menuAnchor.bottom + 4,
             left: Math.max(8, Math.min(menuAnchor.left, (typeof window === 'undefined' ? 0 : window.innerWidth) - 264)),
@@ -547,7 +548,7 @@ export default function TitlebarTabStrip() {
           ref={contextMenuRef}
           role="menu"
           aria-label={t.workspaceTabs.tabActions}
-          className="fixed z-50 w-56 rounded-lg border border-border bg-background py-1 shadow-lg"
+          className={`${FLOATING_SURFACE_CLASS} w-56 py-1`}
           style={{
             top: Math.max(8, Math.min(contextMenu.y, (typeof window === 'undefined' ? 0 : window.innerHeight) - 260)),
             left: Math.max(8, Math.min(contextMenu.x, (typeof window === 'undefined' ? 0 : window.innerWidth) - 232)),

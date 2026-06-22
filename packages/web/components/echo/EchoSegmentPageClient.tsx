@@ -126,7 +126,7 @@ const echoPageClass =
   'echo-content-page min-h-full bg-background';
 
 const echoBodyClass =
-  'mx-auto flex w-full max-w-5xl flex-col gap-6';
+  'flex w-full flex-col gap-6';
 
 const echoSurfaceClass =
   'rounded-xl border border-border/60 bg-card/45 shadow-sm';

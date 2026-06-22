@@ -52,7 +52,7 @@ function contextTokens(project: StudioProject, locale: string): Array<{
   const assistants = getStudioProjectAssistantLabels(project);
   return [
     {
-      label: 'Work dir',
+      label: locale === 'zh' ? '工作目录' : 'Work dir',
       value: getStudioProjectWorkDirLabel(project, locale),
       icon: FolderOpen,
     },
@@ -62,8 +62,8 @@ function contextTokens(project: StudioProject, locale: string): Array<{
       icon: BookOpenText,
     },
     {
-      label: 'AI Kit',
-      value: assistants.length ? assistants.join(' / ') : firstKit(project),
+      label: locale === 'zh' ? 'AI 套件' : 'AI Kit',
+      value: assistants.length ? assistants.join(' / ') : (locale === 'zh' ? '基础助理' : firstKit(project)),
       icon: Blocks,
     },
   ];

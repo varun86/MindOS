@@ -55,6 +55,31 @@ describe('InboxView product shape', () => {
     }));
   });
 
+  it('shows a named loading state before the Inbox queue resolves', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
+    const InboxView = (await import('@/components/InboxView')).default;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<InboxView />);
+      await Promise.resolve();
+    });
+
+    const pageShell = host.querySelector('[data-content-page-shell="inbox"]');
+    expect(pageShell?.getAttribute('aria-busy')).toBe('true');
+    expect(pageShell?.className).toContain('workbench-content-page');
+    expect(host.textContent).toContain('Loading Inbox...');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Loading Inbox...');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
   it('opens as a quiet add surface with a scrollable Review queue preview', async () => {
     const InboxView = (await import('@/components/InboxView')).default;
 

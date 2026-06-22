@@ -4,7 +4,7 @@ export const navigationZh = {
   sidebar: {
     files: '心智',
     home: '首页',
-    homeAgentSessions: 'Agent Sessions',
+    homeAgentSessions: 'Agent 对话',
     homeMindFiles: '心智文件',
     homeEmptySessions: '暂无会话',
     homeEmptySessionsHint: '可以从首页开始一段对话。',
@@ -55,7 +55,7 @@ export const navigationZh = {
     builtInSpacesTitle: 'MindOS System',
     builtInSpacesDesc: '内置模块映射到本地目录。',
     builtInSpacesRoot: '道 / 法 / 术 / 器',
-    spacesTitle: 'Spaces',
+    spacesTitle: '空间',
     otherFilesTitle: '其他文件',
     sync: {
       synced: '已同步',

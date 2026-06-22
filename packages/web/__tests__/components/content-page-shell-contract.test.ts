@@ -18,7 +18,8 @@ describe('Content page shell contract', () => {
     expect(source).toContain("'echo-content-page");
     expect(source).toContain('className={echoPageClass}');
     expect(source).toContain('const echoBodyClass =');
-    expect(source).toContain('max-w-5xl');
+    expect(source).toContain("'flex w-full flex-col gap-6'");
+    expect(source).not.toContain('max-w-5xl');
     expect(source).not.toContain('EchoSegmentNav');
     expect(source).not.toContain('mx-auto max-w-3xl px-4 py-6');
     expect(source).not.toContain('bg-[radial-gradient');
@@ -45,5 +46,18 @@ describe('Content page shell contract', () => {
     expect(source).toContain("type ContentPageShellElement = 'div' | 'article' | 'section' | 'main'");
     expect(source).toContain('as: Component = ');
     expect(source).toContain('workbench-content-page');
+    expect(source).toContain('export function WorkbenchPageShell');
+    expect(source).toContain('export function ReadingPageShell');
+    expect(source).toContain('export function NarrowPageShell');
+    expect(source).toContain('export function LoadingPageShell');
+    expect(source).toContain('aria-busy={ariaBusy ?? true}');
+  });
+
+  it('keeps Studio on the workbench shell instead of a page-local width wrapper', () => {
+    const source = readSource('components/studio/StudioShell.tsx');
+
+    expect(source).toContain("import { WorkbenchPageShell } from '@/components/shared/ContentPageShell'");
+    expect(source).toContain('<WorkbenchPageShell');
+    expect(source).toContain('data-content-page-shell="studio"');
   });
 });

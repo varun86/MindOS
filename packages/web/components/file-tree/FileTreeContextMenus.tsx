@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useLayoutEffect, useState, useTransition } from 'react';
+import { useRef, useLayoutEffect, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { FileNode } from '@/lib/types';
@@ -16,6 +16,7 @@ import { toast } from '@/lib/toast';
 import { notifyFilesChanged } from '@/lib/files-changed';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
 import { requestAddAskContext } from '@/lib/ask-context-events';
+import { FLOATING_CARD_SURFACE_CLASS, useDismissableFloatingLayer } from '@/components/shared/FloatingSurface';
 
 async function copyPathToClipboard(path: string) {
   try { await navigator.clipboard.writeText(path); } catch { /* noop */ }
@@ -43,18 +44,7 @@ export function ContextMenuShell({ x, y, onClose, menuHeight, menuWidth = 220, a
   const menuRef = useRef<HTMLDivElement>(null);
   const [measuredHeight, setMeasuredHeight] = useState(menuHeight ?? 160);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
-    };
-    const keyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', keyHandler);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', keyHandler);
-    };
-  }, [onClose]);
+  useDismissableFloatingLayer({ enabled: true, refs: [menuRef], onClose });
 
   useLayoutEffect(() => {
     const nextHeight = menuRef.current?.offsetHeight;
@@ -77,7 +67,7 @@ export function ContextMenuShell({ x, y, onClose, menuHeight, menuWidth = 220, a
   const menu = (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-card border border-border rounded-lg shadow-lg py-1"
+      className={`${FLOATING_CARD_SURFACE_CLASS} py-1`}
       style={{ top: adjustedY, left: adjustedX, minWidth: menuWidth }}
     >
       {children}

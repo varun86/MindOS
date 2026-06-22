@@ -18,6 +18,18 @@ describe('Studio Chinese copy contract', () => {
     const source = files
       .map((file) => fs.readFileSync(path.resolve(process.cwd(), file), 'utf8'))
       .join('\n');
+    const extractZhCopy = (file: string) => {
+      const fileSource = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
+      const start = fileSource.indexOf('  zh: {');
+      const end = fileSource.indexOf('\n  },\n} as const;', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      return fileSource.slice(start, end);
+    };
+    const studioZhCopy = [
+      'components/studio/StudioContent.tsx',
+      'components/studio/StudioProjectContent.tsx',
+    ].map(extractZhCopy).join('\n');
 
     expect(source).toContain("title: '工作台'");
     expect(source).toContain("studio: '工作台'");
@@ -36,6 +48,15 @@ describe('Studio Chinese copy contract', () => {
     expect(source).toContain("title: '助理'");
     expect(source).toContain("organizationAgentTitle: '收集箱整理助理'");
     expect(source).toContain("description: '用于长期 AI 工作、复盘和成长的项目工作面。默认显示。'");
+    expect(source).toContain("workDirs: '工作目录'");
+    expect(source).toContain("aiKits: 'AI 套件'");
+    expect(source).toContain("review: '复盘'");
+    expect(source).toContain("kitLabel: 'AI 套件'");
+    expect(source).toContain("workAreaLabel: '工作目录'");
+    expect(source).toContain("kitPlaceholder: '研究套件'");
+    expect(source).toContain("kits: 'AI 套件'");
+    expect(source).toContain("directory: '工作目录'");
+    expect(source).toContain("review: '复盘队列'");
 
     expect(source).not.toContain('用四个内置空间整理你的知识。');
     expect(source).not.toContain("title: 'Studio',\n    overview: 'Overview',\n    newProject: '新建 Project'");
@@ -47,5 +68,13 @@ describe('Studio Chinese copy contract', () => {
     expect(source).not.toContain("addAssistant: '添加 Assistant'");
     expect(source).not.toContain("organizeToMindAction: '整理到 Mind'");
     expect(source).not.toContain("organizationAgentTitle: '收集箱整理助手'");
+    expect(studioZhCopy).not.toContain("workDirs: 'Work dirs'");
+    expect(studioZhCopy).not.toContain("aiKits: 'AI Kits'");
+    expect(studioZhCopy).not.toContain("kitLabel: 'AI Kit'");
+    expect(studioZhCopy).not.toContain("workAreaLabel: 'WorkDir'");
+    expect(studioZhCopy).not.toContain("kitPlaceholder: 'Research Kit'");
+    expect(studioZhCopy).not.toContain("kits: 'AI Kits'");
+    expect(studioZhCopy).not.toContain("directory: 'WorkDir'");
+    expect(studioZhCopy).not.toContain("review: 'Review queue'");
   });
 });

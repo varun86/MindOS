@@ -190,6 +190,7 @@ Read the assistant prompt at ${promptPath} first, then read this space's INSTRUC
   inbox: {
     title: 'Inbox',
     subtitle: 'Save loose material. Review it when ready.',
+    loading: 'Loading Inbox...',
     capturePageTitle: 'New capture',
     capturePageSubtitle: 'Paste, drop, save.',
     reviewPageTitle: 'Review queue',

@@ -296,6 +296,27 @@ describe('HomePanel', () => {
     window.removeEventListener('mindos:open-ask-panel', openAskPanel);
   });
 
+  it('offers Mind Files and New session actions when sessions are empty', async () => {
+    installFetchMock([]);
+    await renderHomePanel();
+
+    expect(host.textContent).toContain('No sessions yet');
+    const emptyFilesButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.trim() === 'Mind Files');
+    const emptyNewSessionButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.trim() === 'New session');
+
+    expect(emptyFilesButton).not.toBeNull();
+    expect(emptyNewSessionButton).not.toBeNull();
+
+    await act(async () => {
+      emptyFilesButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(host.querySelector('[data-home-mind-files]')).not.toBeNull();
+    expect(host.textContent).toContain('Notes');
+  });
+
   it('switches the Home sidebar header into Mind Files mode', async () => {
     installFetchMock([]);
     await renderHomePanel();

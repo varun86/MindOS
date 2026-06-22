@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { RefreshCw, CheckCircle2, XCircle, X } from 'lucide-react';
 import { DOT_COLORS } from '../SyncStatusBar';
 import { formatSyncError, getStatusLevel, getSyncLabel } from '@/lib/sync-ui';
@@ -8,6 +8,7 @@ import { useSyncAction } from '@/lib/sync-status-store';
 import { useLocale } from '@/lib/stores/locale-store';
 import type { SyncStatus } from '../settings/types';
 import { PrimaryButton } from '../settings/Primitives';
+import { FLOATING_SURFACE_CLASS, useDismissableFloatingLayer } from '@/components/shared/FloatingSurface';
 
 interface SyncPopoverProps {
   id?: string;
@@ -28,25 +29,12 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
   const syncT = t.sidebar?.sync as Record<string, unknown> | undefined;
   const { syncing, syncResult, syncError, syncNow } = useSyncAction(onSyncStatusRefresh, syncT);
 
-  // Close on ESC
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose, open]);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const id = setTimeout(() => window.addEventListener('mousedown', handler), 0);
-    return () => { clearTimeout(id); window.removeEventListener('mousedown', handler); };
-  }, [onClose, open]);
+  useDismissableFloatingLayer({
+    enabled: open,
+    refs: [ref],
+    onClose,
+    delayMouseDown: true,
+  });
 
   if (!open || !anchorRect) return null;
 
@@ -73,7 +61,7 @@ export default function SyncPopover({ id, open, onClose, anchorRect, railWidth, 
       ref={ref}
       role="dialog"
       aria-label={t.sidebar?.syncLabel ?? 'Sync'}
-      className="fixed z-50 w-[calc(100vw-16px)] max-w-[280px] border rounded-lg bg-background shadow-lg border-border animate-in fade-in slide-in-from-left-2 duration-150"
+      className={`${FLOATING_SURFACE_CLASS} w-[calc(100vw-16px)] max-w-[280px] animate-in fade-in slide-in-from-left-2 duration-150`}
       style={{
         top: popoverTop,
         left: popoverLeft,

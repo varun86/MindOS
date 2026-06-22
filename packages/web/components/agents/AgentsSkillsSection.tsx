@@ -67,6 +67,9 @@ export type SkillsSectionCopy = {
     statusDisabled: string;
     statusAttention: string;
     capabilityAll: string;
+    noSkillsYet: string;
+    loadingSkills: string;
+    loadSkillsFailed: string;
     bulkEnableFiltered: string;
     bulkDisableFiltered: string;
     bulkRunning: string;
@@ -164,7 +167,12 @@ export default function AgentsSkillsSection({
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [detailSkill, setDetailSkill] = useState<string | null>(null);
   // The (skill × agent) matrix tells managed links apart from agent-native dirs.
-  const { matrix, refreshMatrix } = useSkillMatrix();
+  const {
+    matrix,
+    loading: matrixLoading,
+    error: matrixError,
+    refreshMatrix,
+  } = useSkillMatrix();
   const deferredQuery = useDeferredValue(query);
 
   const handleRefresh = useCallback(async () => {
@@ -195,6 +203,7 @@ export default function AgentsSkillsSection({
     [unified, deferredQuery, source, status, capability],
   );
   const grouped = useMemo(() => groupUnifiedSkills(filtered), [filtered]);
+  const skillsLoading = mcp.loading || (matrixLoading && unified.length === 0);
 
   const capabilityOptions = useMemo(
     () => (['research', 'coding', 'docs', 'ops', 'memory'] as const).map((key) => ({ key, label: copy.groupLabels[key] })),
@@ -261,27 +270,36 @@ export default function AgentsSkillsSection({
       {/* Compact status strip */}
       <div className="rounded-xl border border-border/60 bg-gradient-to-r from-card to-card/80 p-3.5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" aria-hidden="true" />
-            {copy.summaryEnabled(enabledCount)}
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
-            {copy.summaryDisabled(disabledCount)}
-          </span>
-          {attentionCount > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-[var(--amber)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--amber)]" aria-hidden="true" />
-              {copy.summaryAttention(attentionCount)}
+          {skillsLoading ? (
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground" role="status" aria-live="polite">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--amber)] motion-safe:animate-pulse" aria-hidden="true" />
+              {copy.loadingSkills}
             </span>
-          )}
-          {nativeCount > 0 && (
+          ) : (
             <>
-              <span className="text-muted-foreground/40" aria-hidden="true">|</span>
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--amber)]" aria-hidden="true" />
-                {copy.summaryNative(nativeCount)}
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" aria-hidden="true" />
+                {copy.summaryEnabled(enabledCount)}
               </span>
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" aria-hidden="true" />
+                {copy.summaryDisabled(disabledCount)}
+              </span>
+              {attentionCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-[var(--amber)]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--amber)]" aria-hidden="true" />
+                  {copy.summaryAttention(attentionCount)}
+                </span>
+              )}
+              {nativeCount > 0 && (
+                <>
+                  <span className="text-muted-foreground/40" aria-hidden="true">|</span>
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--amber)]" aria-hidden="true" />
+                    {copy.summaryNative(nativeCount)}
+                  </span>
+                </>
+              )}
             </>
           )}
         </div>
@@ -316,7 +334,12 @@ export default function AgentsSkillsSection({
           onRefresh={handleRefresh}
           onOpenDetail={setDetailSkill}
           matrix={matrix}
+          loading={skillsLoading}
+          loadError={matrixError}
+          hasAnySkills={unified.length > 0}
         />
+      ) : skillsLoading ? (
+        <AgentsSkillsLoadingState message={copy.loadingSkills} />
       ) : (
         <ByAgentView
           copy={copy}
@@ -374,6 +397,9 @@ function BySkillView({
   onRefresh,
   onOpenDetail,
   matrix,
+  loading,
+  loadError,
+  hasAnySkills,
 }: {
   copy: SkillsSectionCopy;
   filtered: UnifiedSkillItem[];
@@ -393,6 +419,9 @@ function BySkillView({
   onRefresh: () => Promise<void>;
   onOpenDetail: (name: string) => void;
   matrix: SkillMatrix | null;
+  loading: boolean;
+  loadError: string | null;
+  hasAnySkills: boolean;
 }) {
   const [confirmAgentRemove, setConfirmAgentRemove] = useState<{ agentName: string; skillName: string } | null>(null);
   const [confirmSkillDelete, setConfirmSkillDelete] = useState<string | null>(null);
@@ -499,19 +528,27 @@ function BySkillView({
       <div className="flex flex-wrap items-center gap-2">
         <ActionButton
           onClick={() => void onBulkToggle(true)}
-          disabled={bulkRunning}
+          disabled={bulkRunning || loading}
           busy={bulkRunning}
           label={copy.bulkEnableFiltered}
         />
         <ActionButton
           onClick={() => void onBulkToggle(false)}
-          disabled={bulkRunning}
+          disabled={bulkRunning || loading}
           busy={false}
           label={copy.bulkDisableFiltered}
         />
-        <span className="text-2xs text-muted-foreground tabular-nums">{copy.resultCount(filtered.length)}</span>
+        <span className="text-2xs text-muted-foreground tabular-nums">
+          {loading ? copy.loadingSkills : copy.resultCount(filtered.length)}
+        </span>
         <BulkMessage message={bulkMessage} />
       </div>
+
+      {loadError && hasAnySkills && !loading && (
+        <div role="status" aria-live="polite" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {copy.loadSkillsFailed}
+        </div>
+      )}
 
       {hintMessage && (
         <div role="status" aria-live="polite" className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground animate-in fade-in duration-200">
@@ -520,8 +557,12 @@ function BySkillView({
       )}
 
       {/* Grouped unified skill list (virtualized) */}
-      {sortedGrouped.length === 0 ? (
-        <EmptyState message={copy.noSkillsMatchFilter} />
+      {loading ? (
+        <AgentsSkillsLoadingState message={copy.loadingSkills} />
+      ) : loadError && !hasAnySkills ? (
+        <EmptyState message={copy.loadSkillsFailed} />
+      ) : sortedGrouped.length === 0 ? (
+        <EmptyState message={hasAnySkills ? copy.noSkillsMatchFilter : copy.noSkillsYet} />
       ) : (
         <VirtualizedSkillList
           sortedGrouped={sortedGrouped}
@@ -569,6 +610,19 @@ function BySkillView({
         variant="destructive"
       />
     </>
+  );
+}
+
+function AgentsSkillsLoadingState({ message }: { message: string }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/30 p-5" role="status" aria-live="polite" aria-busy="true">
+      <p className="mb-4 text-sm text-muted-foreground">{message}</p>
+      <div className="space-y-2">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-12 rounded-lg bg-muted/40 motion-safe:animate-pulse" />
+        ))}
+      </div>
+    </div>
   );
 }
 

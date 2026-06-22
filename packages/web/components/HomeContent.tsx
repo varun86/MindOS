@@ -9,6 +9,7 @@ import GuideCard from './GuideCard';
 import ChatContent from '@/components/chat/ChatContent';
 import type { SpaceInfo } from '@/lib/space-records';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
+import { encodePath } from '@/lib/utils';
 
 interface RecentFile {
   path: string;
@@ -26,6 +27,7 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
   const smoothPush = useSmoothRouterPush();
   const [activeTab, setActiveTab] = useState(0);
   const [maximized, setMaximized] = useState(false);
+  const hasKnowledge = recent.length > 0 || (existingFiles?.length ?? 0) > 0 || (spaces?.length ?? 0) > 0;
 
   const toggleMaximize = useCallback(() => setMaximized(v => !v), []);
 
@@ -36,13 +38,14 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
 
   // Navigate to editor with right-side Ask panel open
   const handleDockToPanel = useCallback(() => {
-    const target = recent.length > 0 ? `/view/${recent[0].path}` : '/';
+    const firstPath = recent[0]?.path ?? existingFiles?.[0];
+    const target = firstPath ? `/view/${encodePath(firstPath)}` : '/';
     // Signal the already-mounted SidebarLayout to open the Ask panel
     window.dispatchEvent(new CustomEvent('mindos:open-ask-panel'));
     smoothPush(target);
-  }, [recent, smoothPush]);
+  }, [existingFiles, recent, smoothPush]);
 
-  if (recent.length === 0) {
+  if (!hasKnowledge) {
     return <OnboardingView />;
   }
 
@@ -64,7 +67,7 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
           {/* Guide Card */}
           <div className="flex-shrink-0 px-4 md:px-6 pt-4 pb-6">
             <div className="max-w-4xl mx-auto">
-              <GuideCard hasExistingFiles={recent.length > 0} />
+              <GuideCard hasExistingFiles={hasKnowledge} />
             </div>
           </div>
 

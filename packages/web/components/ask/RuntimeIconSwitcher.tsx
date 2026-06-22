@@ -7,6 +7,7 @@ import type { AgentRuntimeDescriptor, AgentRuntimeIdentity, AgentRuntimeStatus, 
 import type { NotInstalledAgent } from '@/hooks/useAcpDetection';
 import { useLocale } from '@/lib/stores/locale-store';
 import { compactRuntimeDisplayHints, compactRuntimeDisplayReason } from '@/lib/agent/runtime-error-display';
+import { FLOATING_SURFACE_CLASS } from '@/components/shared/FloatingSurface';
 
 interface RuntimeIconSwitcherProps {
   selectedRuntime: AgentRuntimeIdentity | null;
@@ -306,7 +307,7 @@ export default function RuntimeIconSwitcher({
       ref={dropdownRef}
       role="listbox"
       aria-label={p.acpSelectAgent ?? 'Select runtime'}
-      className="fixed z-50 isolate pointer-events-auto w-[min(340px,calc(100vw-24px))] rounded-xl border border-border bg-background py-1.5 shadow-xl shadow-foreground/10"
+      className={`${FLOATING_SURFACE_CLASS} isolate pointer-events-auto w-[min(340px,calc(100vw-24px))] py-1.5 shadow-xl shadow-foreground/10`}
       style={dropdownStyle}
     >
       <div className="flex items-center justify-between gap-2 px-3 pb-1.5 pt-1">

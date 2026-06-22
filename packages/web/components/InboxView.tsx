@@ -72,7 +72,7 @@ import {
 } from '@/components/inbox/InboxViewModel';
 import { InboxErrorBanner, InboxItemDetailsPanel, InboxProcessNav, HistoryRow } from '@/components/inbox/InboxViewDetails';
 import { InboxFileRow } from '@/components/inbox/InboxFileRow';
-import { ContentPageShell } from '@/components/shared/ContentPageShell';
+import { ContentPageShell, LoadingPageShell } from '@/components/shared/ContentPageShell';
 
 const HISTORY_VISIBLE = 5;
 const REVIEW_PREVIEW_VISIBLE = 5;
@@ -664,15 +664,18 @@ export default function InboxView() {
     return (
       <div className="flex flex-col min-h-[calc(100vh-var(--app-titlebar-h))]">
         <div className="flex-1">
-          <ContentPageShell className="inbox-content-page space-y-5" data-content-page-shell="inbox">
+          <LoadingPageShell className="inbox-content-page space-y-5" data-content-page-shell="inbox">
             <div className="max-w-2xl space-y-2">
+              <p className="text-sm font-medium text-foreground" role="status" aria-live="polite">
+                {t.inbox.loading}
+              </p>
               <div className="h-7 w-40 rounded bg-muted/55 animate-pulse" />
               <div className="h-4 w-64 rounded bg-muted/40 animate-pulse" />
             </div>
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-12 bg-muted/40 rounded-lg animate-pulse" />
             ))}
-          </ContentPageShell>
+          </LoadingPageShell>
         </div>
       </div>
     );
