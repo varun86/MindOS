@@ -14,6 +14,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createJiti } from 'jiti/static';
@@ -38,8 +39,15 @@ export {
 export const MINDOS_PI_CHILD_API_KEY_ENV = 'MINDOS_PI_CHILD_API_KEY';
 export const PI_CODING_AGENT_DIR_ENV = 'PI_CODING_AGENT_DIR';
 export const MINDOS_PI_CHILD_CLI_PATH_ENV = 'MINDOS_PI_CHILD_CLI_PATH';
+export const MINDOS_PI_CHILD_EXTENSION_PATHS_ENV = 'MINDOS_PI_CHILD_EXTENSION_PATHS';
 
 type JsonRecord = Record<string, unknown>;
+type ExtensionLoadResultLike = {
+  extensions?: Array<{
+    path?: unknown;
+    resolvedPath?: unknown;
+  }>;
+};
 
 export interface MindosPiChildModelConfig {
   provider: ProviderId;
@@ -54,10 +62,15 @@ interface MindosPiChildRuntimeConfig {
   binDir: string;
   piCliPath: string;
   nodePath: string;
+  bootstrapPath?: string;
+  inheritedExtensionPaths: string[];
   env: Record<string, string>;
   modelsJson: JsonRecord;
   settingsJson: JsonRecord;
 }
+
+const nodeRequire = createRequire(import.meta.url);
+const PI_SUBAGENT_CHILD_ENV = 'PI_SUBAGENT_CHILD';
 
 let activeEnvOverlay: {
   depth: number;
@@ -145,6 +158,86 @@ function resolveMindosPiCliPath(): string {
   );
 }
 
+function normalizeChildExtensionPath(rawPath: string): string | null {
+  const trimmed = rawPath.trim();
+  if (!trimmed || trimmed.startsWith('<')) return null;
+  try {
+    const decoded = trimmed.startsWith('file://') ? fileURLToPath(trimmed) : trimmed;
+    const absolute = path.isAbsolute(decoded) ? decoded : path.resolve(decoded);
+    return path.normalize(absolute);
+  } catch {
+    return null;
+  }
+}
+
+function normalizedPathKey(filePath: string): string {
+  return path.normalize(filePath).replace(/\\/g, '/').toLowerCase();
+}
+
+function isSubagentExtensionPath(filePath: string): boolean {
+  const normalized = normalizedPathKey(filePath);
+  return normalized.includes('/subagent-ledger-extension.')
+    || normalized.includes('/pi-subagents/src/extension/');
+}
+
+function isKbExtensionPath(filePath: string): boolean {
+  return normalizedPathKey(filePath).includes('/lib/agent/kb-extension.');
+}
+
+export function collectInheritedSubagentExtensionPaths(input: SubagentChildRuntimeInput): string[] {
+  const resourceLoader = input.ctx?.resourceLoader as {
+    getExtensions?: () => ExtensionLoadResultLike;
+  } | undefined;
+  if (typeof resourceLoader?.getExtensions !== 'function') return [];
+
+  const loaded = resourceLoader.getExtensions();
+  const inherited: string[] = [];
+  const seen = new Set<string>();
+
+  for (const extension of loaded.extensions ?? []) {
+    const rawPath = typeof extension.path === 'string' && extension.path.trim()
+      ? extension.path
+      : typeof extension.resolvedPath === 'string' && extension.resolvedPath.trim()
+        ? extension.resolvedPath
+        : '';
+    const extensionPath = normalizeChildExtensionPath(rawPath);
+    if (!extensionPath || isSubagentExtensionPath(extensionPath)) continue;
+
+    const key = normalizedPathKey(extensionPath);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    inherited.push(extensionPath);
+  }
+
+  return inherited;
+}
+
+function childBootstrapContent(webAppDir: string): string {
+  const jitiPath = nodeRequire.resolve('jiti');
+  const tsconfigPath = path.join(webAppDir, 'tsconfig.json');
+  const kbHostPath = path.join(webAppDir, 'lib', 'agent', 'kb-extension-host.ts');
+
+  return [
+    "import { createRequire } from 'node:module';",
+    'const require = createRequire(import.meta.url);',
+    `const { createJiti } = require(${JSON.stringify(jitiPath)});`,
+    'const jiti = createJiti(import.meta.url, {',
+    '  moduleCache: false,',
+    '  tryNative: false,',
+    `  alias: { '@': ${JSON.stringify(webAppDir)} },`,
+    `  tsconfigPaths: ${JSON.stringify(tsconfigPath)},`,
+    '});',
+    'try {',
+    `  const mod = await jiti.import(${JSON.stringify(kbHostPath)});`,
+    '  const register = mod?.registerWebKbExtensionHost ?? mod?.default?.registerWebKbExtensionHost;',
+    "  if (typeof register === 'function') register();",
+    '} catch {',
+    '  // Best effort: extension loading will report any remaining host error.',
+    '}',
+    '',
+  ].join('\n');
+}
+
 function createPathEnv(binDir: string): Record<string, string> {
   const inheritedPath = process.env.PATH ?? process.env.Path ?? '';
   const nextPath = inheritedPath ? `${binDir}${path.delimiter}${inheritedPath}` : binDir;
@@ -226,6 +319,7 @@ function enterProcessEnv(env: Record<string, string>): () => void {
 
 export function buildMindosPiChildRuntimeConfig(
   config: MindosPiChildModelConfig = resolveCurrentMindosPiChildModelConfig(),
+  inheritedExtensionPaths: string[] = [],
 ): MindosPiChildRuntimeConfig | null {
   if (!config.apiKey) return null;
 
@@ -271,16 +365,28 @@ export function buildMindosPiChildRuntimeConfig(
   const binDir = path.join(agentDir, 'bin');
   const piCliPath = resolveMindosPiCliPath();
   const nodePath = process.execPath;
+  const childExtensionPaths = [...new Set(inheritedExtensionPaths
+    .map((entry) => normalizeChildExtensionPath(entry))
+    .filter((entry): entry is string => Boolean(entry))
+    .filter((entry) => !isSubagentExtensionPath(entry)))];
+  const bootstrapPath = childExtensionPaths.some(isKbExtensionPath)
+    ? path.join(agentDir, 'mindos-pi-child-bootstrap.mjs')
+    : undefined;
 
   return {
     agentDir,
     binDir,
     piCliPath,
     nodePath,
+    inheritedExtensionPaths: childExtensionPaths,
+    bootstrapPath,
     env: {
       [PI_CODING_AGENT_DIR_ENV]: agentDir,
       [MINDOS_PI_CHILD_API_KEY_ENV]: config.apiKey,
       [MINDOS_PI_CHILD_CLI_PATH_ENV]: piCliPath,
+      ...(childExtensionPaths.length
+        ? { [MINDOS_PI_CHILD_EXTENSION_PATHS_ENV]: JSON.stringify(childExtensionPaths) }
+        : {}),
       ...createPathEnv(binDir),
     },
     modelsJson,
@@ -302,12 +408,62 @@ export function ensureMindosPiChildRuntimeDir(config: MindosPiChildRuntimeConfig
   }
   writeJsonFile(path.join(config.agentDir, 'models.json'), config.modelsJson);
   writeJsonFile(path.join(config.agentDir, 'settings.json'), config.settingsJson);
+  if (config.bootstrapPath) {
+    fs.writeFileSync(config.bootstrapPath, childBootstrapContent(currentWebAppDir()), { mode: 0o600 });
+  }
   const shimPath = path.join(config.binDir, 'pi-shim.cjs');
   const jsShim = [
     '#!/usr/bin/env node',
     "const { spawnSync } = require('child_process');",
     `const cliPath = ${JSON.stringify(config.piCliPath)};`,
-    "const result = spawnSync(process.execPath, [cliPath, ...process.argv.slice(2)], { stdio: 'inherit', env: process.env });",
+    `const inheritedExtensionPathsEnv = ${JSON.stringify(MINDOS_PI_CHILD_EXTENSION_PATHS_ENV)};`,
+    `const subagentChildEnv = ${JSON.stringify(PI_SUBAGENT_CHILD_ENV)};`,
+    `const bootstrapPath = ${JSON.stringify(config.bootstrapPath ?? '')};`,
+    'function parseInheritedExtensionPaths() {',
+    '  const raw = process.env[inheritedExtensionPathsEnv];',
+    '  if (!raw) return [];',
+    '  try {',
+    '    const parsed = JSON.parse(raw);',
+    "    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === 'string' && value.trim()) : [];",
+    '  } catch {',
+    '    return [];',
+    '  }',
+    '}',
+    'function hasArg(args, flag) {',
+    '  return args.includes(flag);',
+    '}',
+    'function promptArgIndex(args) {',
+    '  for (let index = args.length - 1; index >= 0; index -= 1) {',
+    '    const arg = args[index];',
+    "    if (typeof arg === 'string' && (arg.startsWith('Task:') || arg.startsWith('@'))) return index;",
+    '  }',
+    '  return args.length;',
+    '}',
+    'function withInheritedExtensions(args) {',
+    "  if (process.env[subagentChildEnv] !== '1') return args;",
+    "  if (hasArg(args, '--version') || hasArg(args, '-v') || hasArg(args, '-V') || hasArg(args, '--help') || hasArg(args, '-h')) return args;",
+    '  const inherited = parseInheritedExtensionPaths();',
+    '  if (inherited.length === 0) return args;',
+    '  const existing = new Set();',
+    '  for (let index = 0; index < args.length; index += 1) {',
+    "    if (args[index] === '--extension' && typeof args[index + 1] === 'string') existing.add(args[index + 1]);",
+    '  }',
+    '  const extensionArgs = [];',
+    '  for (const extPath of inherited) {',
+    '    if (existing.has(extPath)) continue;',
+    "    extensionArgs.push('--extension', extPath);",
+    '    existing.add(extPath);',
+    '  }',
+    '  if (extensionArgs.length === 0) return args;',
+    '  const insertAt = promptArgIndex(args);',
+    '  return [...args.slice(0, insertAt), ...extensionArgs, ...args.slice(insertAt)];',
+    '}',
+    'const originalArgs = process.argv.slice(2);',
+    'const piArgs = withInheritedExtensions(originalArgs);',
+    'const nodeArgs = [];',
+    "if (bootstrapPath && process.env[subagentChildEnv] === '1') nodeArgs.push('--import', bootstrapPath);",
+    'nodeArgs.push(cliPath, ...piArgs);',
+    "const result = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit', env: process.env });",
     'if (result.error) {',
     "  console.error(result.error.message || String(result.error));",
     '  process.exit(1);',
@@ -332,10 +488,13 @@ export function ensureMindosPiChildRuntimeDir(config: MindosPiChildRuntimeConfig
 }
 
 export async function withMindosSubagentChildRuntime<T>(
-  _input: SubagentChildRuntimeInput,
+  input: SubagentChildRuntimeInput,
   run: () => Promise<T>,
 ): Promise<T> {
-  const runtimeConfig = buildMindosPiChildRuntimeConfig();
+  const runtimeConfig = buildMindosPiChildRuntimeConfig(
+    undefined,
+    collectInheritedSubagentExtensionPaths(input),
+  );
   if (!runtimeConfig) return run();
 
   ensureMindosPiChildRuntimeDir(runtimeConfig);

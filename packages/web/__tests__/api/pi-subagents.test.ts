@@ -14,9 +14,11 @@ import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-codin
 import { resetAgentRunsForTest } from '@geminilight/mindos/agent/ledger/run-ledger';
 import {
   buildMindosPiChildRuntimeConfig,
+  collectInheritedSubagentExtensionPaths,
   ensureMindosPiChildRuntimeDir,
   MINDOS_PI_CHILD_CLI_PATH_ENV,
   MINDOS_PI_CHILD_API_KEY_ENV,
+  MINDOS_PI_CHILD_EXTENSION_PATHS_ENV,
   PI_CODING_AGENT_DIR_ENV,
 } from '../../lib/agent/subagent-ledger-extension';
 
@@ -385,6 +387,165 @@ describe('pi-subagents built-in extension', () => {
         },
       });
       expect(JSON.stringify(runtimeConfig!.modelsJson)).not.toContain('sk-test-secret');
+    });
+
+    it('inherits loaded parent extensions for child subagents while excluding subagents itself', () => {
+      const kbExtensionPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'kb-extension.ts');
+      const askExtensionPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'ask-user-question-bridge-extension.ts');
+      const webAccessPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-web-access', 'index.ts');
+      const subagentWrapperPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'subagent-ledger-extension.ts');
+      const upstreamSubagentPath = path.join(PROJECT_ROOT, 'node_modules', 'pi-subagents', 'src', 'extension', 'index.ts');
+
+      const inherited = collectInheritedSubagentExtensionPaths({
+        toolCallId: 'inherit-test',
+        params: { agent: 'researcher', task: 'check inherited tools' },
+        ctx: {
+          resourceLoader: {
+            getExtensions: () => ({
+              extensions: [
+                { path: kbExtensionPath },
+                { path: askExtensionPath },
+                { path: subagentWrapperPath },
+                { path: upstreamSubagentPath },
+                { path: kbExtensionPath },
+                { resolvedPath: webAccessPath },
+                { path: '<factory:test>' },
+              ],
+            }),
+          },
+        },
+      });
+
+      expect(inherited).toEqual([
+        path.normalize(kbExtensionPath),
+        path.normalize(askExtensionPath),
+        path.normalize(webAccessPath),
+      ]);
+    });
+
+    it('serializes inherited child extensions and prepares a KB host bootstrap when needed', () => {
+      const kbExtensionPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'kb-extension.ts');
+      const askExtensionPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'ask-user-question-bridge-extension.ts');
+      const subagentWrapperPath = path.join(PROJECT_ROOT, 'lib', 'agent', 'subagent-ledger-extension.ts');
+      const runtimeConfig = buildMindosPiChildRuntimeConfig({
+        provider: 'openai',
+        modelName: 'step-3.7-flash-inherited-runtime',
+        apiKey: 'sk-test-secret',
+        baseUrl: 'https://gateway.example/v1',
+        model: {
+          id: 'step-3.7-flash-inherited-runtime',
+          name: 'step-3.7-flash-inherited-runtime',
+          provider: 'openai',
+          api: 'openai-completions',
+          baseUrl: 'https://gateway.example/v1',
+        },
+      }, [kbExtensionPath, askExtensionPath, subagentWrapperPath, kbExtensionPath]);
+
+      expect(runtimeConfig).not.toBeNull();
+      try {
+        const expectedExtensions = [
+          path.normalize(kbExtensionPath),
+          path.normalize(askExtensionPath),
+        ];
+        expect(runtimeConfig!.inheritedExtensionPaths).toEqual(expectedExtensions);
+        expect(runtimeConfig!.env[MINDOS_PI_CHILD_EXTENSION_PATHS_ENV]).toBe(JSON.stringify(expectedExtensions));
+        expect(runtimeConfig!.bootstrapPath).toBe(path.join(runtimeConfig!.agentDir, 'mindos-pi-child-bootstrap.mjs'));
+
+        ensureMindosPiChildRuntimeDir(runtimeConfig!);
+        const bootstrapContent = fs.readFileSync(runtimeConfig!.bootstrapPath!, 'utf-8');
+        expect(bootstrapContent).toContain('registerWebKbExtensionHost');
+        expect(bootstrapContent).toContain('kb-extension-host.ts');
+        expect(bootstrapContent).not.toContain('sk-test-secret');
+
+        const bootstrapRun = spawnSync(process.execPath, [
+          '--import',
+          runtimeConfig!.bootstrapPath!,
+          '--input-type=module',
+          '-e',
+          [
+            "import { getMindosKbExtensionHost } from '@geminilight/mindos/agent/mindos-pi/extension/kb-extension';",
+            "import { createMindosAgentPermissionPolicy } from '@geminilight/mindos/agent/mindos-pi/permission';",
+            'const host = getMindosKbExtensionHost();',
+            "if (!host) { console.error('missing host'); process.exit(2); }",
+            "const tools = host.getToolsForPolicy(createMindosAgentPermissionPolicy('read'));",
+            "if (!tools.some((tool) => tool.name === 'read_file')) { console.error('missing read_file'); process.exit(3); }",
+            "console.log('ok');",
+          ].join('\n'),
+        ], {
+          cwd: PROJECT_ROOT,
+          encoding: 'utf-8',
+        });
+        expect(bootstrapRun.error).toBeUndefined();
+        expect(`${bootstrapRun.stdout}\n${bootstrapRun.stderr}`).toContain('ok');
+        expect(bootstrapRun.status).toBe(0);
+      } finally {
+        fs.rmSync(runtimeConfig!.agentDir, { recursive: true, force: true });
+      }
+    });
+
+    it('injects inherited extensions into real subagent pi invocations without affecting normal pi commands', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-pi-shim-capture-'));
+      const capturePath = path.join(tempDir, 'argv.json');
+      const fakeCliPath = path.join(tempDir, 'fake-pi-cli.cjs');
+      fs.writeFileSync(fakeCliPath, [
+        '#!/usr/bin/env node',
+        "const fs = require('fs');",
+        `fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), execArgv: process.execArgv }, null, 2));`,
+        "process.stdout.write('0.0.0\\n');",
+        '',
+      ].join('\n'), { mode: 0o700 });
+
+      const runtimeConfig = buildMindosPiChildRuntimeConfig({
+        provider: 'openai',
+        modelName: 'step-3.7-flash-shim-inherit',
+        apiKey: 'sk-test-secret',
+        baseUrl: 'https://gateway.example/v1',
+        model: {
+          id: 'step-3.7-flash-shim-inherit',
+          name: 'step-3.7-flash-shim-inherit',
+          provider: 'openai',
+          api: 'openai-completions',
+          baseUrl: 'https://gateway.example/v1',
+        },
+      }, ['/tmp/parent-a.ts', '/tmp/parent-b.ts']);
+
+      expect(runtimeConfig).not.toBeNull();
+      runtimeConfig!.piCliPath = fakeCliPath;
+      try {
+        ensureMindosPiChildRuntimeDir(runtimeConfig!);
+
+        const subagentRun = spawnSync('pi', ['--mode', 'json', '-p', '--extension', '/tmp/existing.ts', 'Task: hello'], {
+          env: { ...process.env, ...runtimeConfig!.env, PI_SUBAGENT_CHILD: '1' },
+          encoding: 'utf-8',
+        });
+        expect(subagentRun.error).toBeUndefined();
+        expect(subagentRun.status).toBe(0);
+        const subagentCapture = JSON.parse(fs.readFileSync(capturePath, 'utf-8'));
+        expect(subagentCapture.argv).toEqual([
+          '--mode',
+          'json',
+          '-p',
+          '--extension',
+          '/tmp/existing.ts',
+          '--extension',
+          path.normalize('/tmp/parent-a.ts'),
+          '--extension',
+          path.normalize('/tmp/parent-b.ts'),
+          'Task: hello',
+        ]);
+
+        const versionRun = spawnSync('pi', ['--version'], {
+          env: { ...process.env, ...runtimeConfig!.env },
+          encoding: 'utf-8',
+        });
+        expect(versionRun.error).toBeUndefined();
+        expect(versionRun.status).toBe(0);
+        const versionCapture = JSON.parse(fs.readFileSync(capturePath, 'utf-8'));
+        expect(versionCapture.argv).toEqual(['--version']);
+      } finally {
+        fs.rmSync(runtimeConfig!.agentDir, { recursive: true, force: true });
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it('writes an executable pi shim into the child runtime PATH', () => {
