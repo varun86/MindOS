@@ -25,6 +25,8 @@ import {
   handleWatcherEvent,
   flushWatcherChanges,
   stopFileWatcher,
+  peekTreeVersion,
+  peekContentVersion,
 } from '@/lib/fs';
 import { searchFiles } from '@/lib/core/search';
 import type { FileNode } from '@/lib/types';
@@ -64,10 +66,24 @@ describe('search index invalidation through the fs layer', () => {
   });
 
   it('reflects modified content after saveFileContent', () => {
+    const beforeTreeVersion = peekTreeVersion();
+    const beforeContentVersion = peekContentVersion();
     saveFileContent('notes/alpha.md', 'now about quokkamarsupial instead');
     expect(resultPaths(root, 'quokkamarsupial')).toContain('notes/alpha.md');
     // Old body token must no longer match.
     expect(resultPaths(root, 'alphabison')).not.toContain('notes/alpha.md');
+    expect(peekTreeVersion()).toBe(beforeTreeVersion);
+    expect(peekContentVersion()).toBeGreaterThan(beforeContentVersion);
+  });
+
+  it('bumps the tree version only for structural file operations', () => {
+    const beforeTreeVersion = peekTreeVersion();
+    const beforeContentVersion = peekContentVersion();
+
+    createFile('notes/tree-change.md', 'new structural document');
+
+    expect(peekTreeVersion()).toBeGreaterThan(beforeTreeVersion);
+    expect(peekContentVersion()).toBeGreaterThan(beforeContentVersion);
   });
 
   it('reflects appended content after appendToFile', () => {
@@ -146,11 +162,31 @@ describe('search index invalidation for external changes', () => {
   });
 
   it('picks up an externally modified file via watcher events', () => {
+    getFileTree(); // seed the watcher classifier with the known file set
+    const beforeTreeVersion = peekTreeVersion();
+    const beforeContentVersion = peekContentVersion();
+
     fs.writeFileSync(path.join(root, 'notes', 'alpha.md'), 'rewritten narwhalhorn text', 'utf-8');
     handleWatcherEvent(path.join('notes', 'alpha.md'));
     flushWatcherChanges();
     expect(resultPaths(root, 'narwhalhorn')).toContain('notes/alpha.md');
     expect(resultPaths(root, 'alphabison')).not.toContain('notes/alpha.md');
+    expect(peekTreeVersion()).toBe(beforeTreeVersion);
+    expect(peekContentVersion()).toBeGreaterThan(beforeContentVersion);
+  });
+
+  it('bumps the tree version for externally created files via watcher events', () => {
+    getFileTree(); // seed the watcher classifier with the known file set
+    const beforeTreeVersion = peekTreeVersion();
+    const beforeContentVersion = peekContentVersion();
+
+    fs.writeFileSync(path.join(root, 'external-created.md'), 'fresh watcher document', 'utf-8');
+    handleWatcherEvent('external-created.md');
+    flushWatcherChanges();
+
+    expect(treePaths(getFileTree())).toContain('external-created.md');
+    expect(peekTreeVersion()).toBeGreaterThan(beforeTreeVersion);
+    expect(peekContentVersion()).toBeGreaterThan(beforeContentVersion);
   });
 
   it('drops an externally deleted file via watcher events', () => {

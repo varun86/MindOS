@@ -90,16 +90,19 @@ interface FileTreeCache {
   tree: FileNode[];
   allFiles: string[];
   recentFiles: Array<{ path: string; mtime: number }>;
+  shapeSignature: string;
   fileSignature: string;
   timestamp: number;
 }
 
 let _cache: FileTreeCache | null = null;
+let _knownFilePaths: Set<string> | null = null;
 const CACHE_TTL_MS = 30_000; // 30 seconds (file watcher still invalidates immediately on changes)
 const WATCHER_BACKED_CACHE_TTL_MS = 5 * 60_000;
 const WATCHER_MISS_SWEEP_MS = 60_000;
 
 let _treeVersion = 0;
+let _contentVersion = 0;
 
 // Core-search invalidation goes through `core/search-index-bridge` — a
 // dependency-free module — so this file (imported by app/layout for the
@@ -129,9 +132,11 @@ function buildCache(root: string): FileTreeCache {
   ensureDefaultMindSystemUpgrade(root);
   const tree = buildFileTree(root);
   const allFiles: string[] = [];
+  const shapePaths: string[] = [];
   let directoryCount = 0;
   function collect(nodes: FileNode[]) {
     for (const n of nodes) {
+      shapePaths.push(`${n.type}:${n.path}`);
       if (n.type === 'file') {
         if (!isDefaultMindSystemScaffoldFile(root, n.path)) allFiles.push(n.path);
       }
@@ -144,7 +149,7 @@ function buildCache(root: string): FileTreeCache {
   collect(tree);
   const { fileSignature, recentFiles } = buildFileStats(root, allFiles);
   stop({ fileCount: allFiles.length, directoryCount });
-  return { tree, allFiles, recentFiles, fileSignature, timestamp: Date.now() };
+  return { tree, allFiles, recentFiles, shapeSignature: shapePaths.join('\n'), fileSignature, timestamp: Date.now() };
 }
 
 function buildFileStats(root: string, allFiles: string[]): {
@@ -167,33 +172,92 @@ function buildFileStats(root: string, allFiles: string[]): {
 
 function refreshExpiredCache(): FileTreeCache {
   const next = buildCache(getMindRoot());
-  if (_cache && _cache.fileSignature !== next.fileSignature) {
-    _treeVersion++;
-    _searchIndex = null;
-    invalidateSearchIndexLazy();
-    _linkIndex.invalidate();
+  if (_cache) {
+    const shapeChanged = _cache.shapeSignature !== next.shapeSignature;
+    const contentChanged = _cache.fileSignature !== next.fileSignature;
+    if (shapeChanged) _treeVersion++;
+    if (contentChanged) {
+      _contentVersion++;
+      _searchIndex = null;
+      invalidateSearchIndexLazy();
+      _linkIndex.invalidate();
+    }
   }
   _cache = next;
+  _knownFilePaths = new Set(next.allFiles);
   return _cache;
 }
 
-/** Monotonically increasing counter — bumped on every file mutation so the
- *  client can cheaply detect changes without rebuilding the full tree. */
+function rebuildCacheForVersionCheck(): FileTreeCache {
+  _cache = buildCache(getMindRoot());
+  _knownFilePaths = new Set(_cache.allFiles);
+  if (!_watcher) startFileWatcher();
+  return _cache;
+}
+
+function clearTreeCache(): void {
+  _cache = null;
+}
+
+function markTreeAndContentChanged(): void {
+  _treeVersion++;
+  _contentVersion++;
+  _searchIndex = null;
+}
+
+function markContentChanged(): void {
+  _contentVersion++;
+  _searchIndex = null;
+}
+
+function rememberKnownFile(filePath: string): void {
+  _knownFilePaths?.add(filePath);
+}
+
+function forgetKnownFile(filePath: string): void {
+  _knownFilePaths?.delete(filePath);
+}
+
+function forgetKnownFiles(): void {
+  _knownFilePaths = null;
+}
+
+function invalidateDerivedIndexes(): void {
+  _searchIndex = null;
+  invalidateSearchIndexLazy();
+  _linkIndex.invalidate();
+}
+
+/** Monotonically increasing tree-shape counter for sidebar/shell refreshes. */
 export function peekTreeVersion(): number {
   return _treeVersion;
 }
 
+/** Monotonically increasing content counter for link/search snapshots. */
+export function peekContentVersion(): number {
+  return _contentVersion;
+}
+
 export function getTreeVersion(): number {
   if (!_cache) {
-    // Cache was invalidated (by watcher or explicit invalidateCache) — rebuild.
-    // _treeVersion was already bumped by the invalidator, no need to bump again.
-    _cache = buildCache(getMindRoot());
+    // Cache was invalidated by an explicit operation — rebuild without bumping
+    // here because the invalidator already chose the correct version counter.
+    rebuildCacheForVersionCheck();
   } else if (shouldRefreshCacheForVersionCheck()) {
     // Periodic watcher-miss recovery: keep this on the lightweight version
     // endpoint, not on every page render that merely needs the current tree.
     refreshExpiredCache();
   }
   return _treeVersion;
+}
+
+export function getContentVersion(): number {
+  if (!_cache) {
+    rebuildCacheForVersionCheck();
+  } else if (shouldRefreshCacheForVersionCheck()) {
+    refreshExpiredCache();
+  }
+  return _contentVersion;
 }
 
 function isCacheValid(ttlMs = CACHE_TTL_MS): boolean {
@@ -225,11 +289,10 @@ export function getLinkIndex(): LinkIndex {
 
 /** Invalidate cache — call after any write/create/delete/rename operation */
 export function invalidateCache(): void {
-  _cache = null;
-  _searchIndex = null;
-  _treeVersion++;
-  invalidateSearchIndexLazy();
-  _linkIndex.invalidate();
+  clearTreeCache();
+  forgetKnownFiles();
+  markTreeAndContentChanged();
+  invalidateDerivedIndexes();
 }
 
 /**
@@ -238,9 +301,8 @@ export function invalidateCache(): void {
  * incrementally for just this file — O(tokens) instead of O(all-files).
  */
 function invalidateCacheForFile(filePath: string): void {
-  _cache = null;
-  _searchIndex = null;
-  _treeVersion++;
+  clearTreeCache();
+  markContentChanged();
   updateSearchIndexFileLazy(getMindRoot(), filePath);
   if (_linkIndex.isBuilt()) _linkIndex.updateFile(getMindRoot(), filePath);
 }
@@ -250,9 +312,9 @@ function invalidateCacheForFile(filePath: string): void {
  * Tree cache is cleared, search index gets incremental addFile.
  */
 function invalidateCacheForNewFile(filePath: string): void {
-  _cache = null;
-  _searchIndex = null;
-  _treeVersion++;
+  clearTreeCache();
+  rememberKnownFile(filePath);
+  markTreeAndContentChanged();
   addSearchIndexFileLazy(getMindRoot(), filePath);
   if (_linkIndex.isBuilt()) _linkIndex.updateFile(getMindRoot(), filePath);
 }
@@ -262,9 +324,9 @@ function invalidateCacheForNewFile(filePath: string): void {
  * Tree cache is cleared, search index gets incremental removeFile.
  */
 function invalidateCacheForDeletedFile(filePath: string): void {
-  _cache = null;
-  _searchIndex = null;
-  _treeVersion++;
+  clearTreeCache();
+  forgetKnownFile(filePath);
+  markTreeAndContentChanged();
   removeSearchIndexFileLazy(filePath);
   if (_linkIndex.isBuilt()) _linkIndex.removeFile(filePath);
 }
@@ -275,6 +337,7 @@ function ensureCache(): FileTreeCache {
     refreshExpiredCache();
   } else {
     _cache = buildCache(getMindRoot());
+    _knownFilePaths = new Set(_cache.allFiles);
   }
   // Lazily start the file watcher on first cache build
   if (!_watcher) startFileWatcher();
@@ -367,11 +430,16 @@ export function flushWatcherChanges(): void {
     return;
   }
 
-  // Tree cache is always stale after any event; search/link indexes are
-  // updated per file below.
-  _cache = null;
-  _searchIndex = null;
-  _treeVersion++;
+  const knownFiles = _knownFilePaths;
+  if (!knownFiles) {
+    // Without a previous file set we cannot safely distinguish a content
+    // edit from a create/delete, so fall back to the conservative full signal.
+    invalidateCache();
+    return;
+  }
+
+  let treeChanged = false;
+  let contentChanged = false;
 
   for (const rel of pending) {
     let stat: fs.Stats | null = null;
@@ -384,13 +452,33 @@ export function flushWatcherChanges(): void {
       return;
     }
     if (stat) {
-      updateSearchIndexFileLazy(root, rel);
+      if (!stat.isFile()) {
+        invalidateCache();
+        return;
+      }
+      if (knownFiles.has(rel)) {
+        contentChanged = true;
+        updateSearchIndexFileLazy(root, rel);
+      } else {
+        treeChanged = true;
+        knownFiles.add(rel);
+        addSearchIndexFileLazy(root, rel);
+      }
       if (_linkIndex.isBuilt()) _linkIndex.updateFile(root, rel);
-    } else {
+    } else if (knownFiles.has(rel)) {
+      treeChanged = true;
+      knownFiles.delete(rel);
       removeSearchIndexFileLazy(rel);
       if (_linkIndex.isBuilt()) _linkIndex.removeFile(rel);
     }
   }
+
+  if (!treeChanged && !contentChanged) return;
+
+  clearTreeCache();
+  if (treeChanged) _treeVersion++;
+  _contentVersion++;
+  _searchIndex = null;
 }
 
 /**

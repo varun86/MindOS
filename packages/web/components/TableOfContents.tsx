@@ -253,21 +253,12 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
 
   return (
     <aside
-      className={cn(
-        'hidden xl:flex min-w-0 flex-col z-app-sticky overflow-visible',
-        collapsed
-          ? 'absolute right-0 top-0 h-8 w-0'
-          : 'self-start sticky relative',
-      )}
+      className="hidden xl:flex min-w-0 flex-col z-app-sticky overflow-visible self-start sticky relative"
       data-markdown-toc-panel
       style={{
-        ...(collapsed
-          ? {}
-          : {
-              top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR} + 24px)`,
-              maxHeight: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR} - 48px)`,
-              width: NAV_W,
-            }),
+        top: `calc(var(--app-titlebar-h) + ${VIEW_HEADER_CSS_VAR} + 24px)`,
+        maxHeight: `calc(100vh - var(--app-titlebar-h) - ${VIEW_HEADER_CSS_VAR} - 48px)`,
+        width: NAV_W,
       }}
     >
       <button
@@ -275,9 +266,7 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
         onClick={handleCollapsedToggle}
         className={cn(
           'absolute top-0 z-10 flex h-8 items-center justify-center border border-border bg-background text-muted-foreground/60 transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          collapsed
-            ? 'right-0 w-7 rounded-md shadow-sm'
-            : '-left-5 w-5 rounded-l-md border-r-0',
+          '-left-5 w-5 rounded-l-md border-r-0 shadow-sm',
         )}
         title={collapsed ? t.view.tocExpand : t.view.tocCollapse}
         aria-label={collapsed ? t.view.tocExpand : t.view.tocCollapse}

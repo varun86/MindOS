@@ -11,17 +11,18 @@ describe('TableOfContents header layout', () => {
     expect(source).toContain('const VIEW_HEADER_FALLBACK_H = 40;');
     expect(source).toContain('data-markdown-toc-panel');
     expect(source).toContain('hidden xl:flex min-w-0 flex-col z-app-sticky overflow-visible');
-    expect(source).toContain("'self-start sticky relative'");
+    expect(source).toContain('self-start sticky relative');
     expect(source).toContain('data-markdown-toc-toggle');
-    expect(source).toContain("collapsed\n          ? 'absolute right-0 top-0 h-8 w-0'\n          : 'self-start sticky relative'");
-    expect(source).toContain("collapsed\n            ? 'right-0 w-7 rounded-md shadow-sm'\n            : '-left-5 w-5 rounded-l-md border-r-0'");
+    expect(source).not.toContain("'absolute right-0 top-0 h-8 w-0'");
+    expect(source).toContain("'-left-5 w-5 rounded-l-md border-r-0 shadow-sm'");
+    expect(source).not.toContain("'right-0 w-7 rounded-md shadow-sm'");
     expect(source).not.toContain('className="flex items-center h-[46px] px-4 border-l border-b border-border"');
     expect(source).not.toContain('className="flex h-9 shrink-0 items-center justify-end border-l border-border bg-background/95 pl-2 pr-2"');
     expect(source).not.toContain('className="hidden xl:flex fixed');
     expect(source).not.toContain('font-semibold uppercase tracking-wider');
   });
 
-  it('publishes collapse state so the Markdown grid can stop reserving an empty TOC lane', () => {
+  it('publishes collapse state without removing the reserved TOC lane', () => {
     const filePath = path.resolve(process.cwd(), 'components/TableOfContents.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
@@ -48,7 +49,7 @@ describe('TableOfContents header layout', () => {
 
     expect(source).toContain('data-markdown-toc-toggle');
     expect(source).toContain("'absolute top-0 z-10 flex h-8 items-center justify-center");
-    expect(source).toContain("'right-0 w-7 rounded-md shadow-sm'");
+    expect(source).toContain("'-left-5 w-5 rounded-l-md border-r-0 shadow-sm'");
     expect(source).toContain('aria-expanded={!collapsed}');
     expect(source).not.toContain('className="hidden xl:flex fixed');
     expect(source).not.toContain('right: `calc(var(--right-panel-width, 0px) + ${NAV_W}px)`');

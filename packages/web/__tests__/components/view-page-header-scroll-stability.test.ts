@@ -40,4 +40,14 @@ describe('ViewPageClient header scroll stability', () => {
       expect(headerLine).not.toMatch(/paddingRight:\s*['"].*1\.5rem.*['"]|paddingRight:\s*['"].*24px.*['"]/);
     }
   });
+
+  it('does not refresh the current view for content saves emitted by itself', () => {
+    const filePath = path.resolve(process.cwd(), 'app/view/[...path]/ViewPageClient.tsx');
+    const source = fs.readFileSync(filePath, 'utf8');
+
+    expect(source).toContain('const selfSavedPathsRef = useRef<Set<string>>(new Set());');
+    expect(source).toContain('const notifySelfSavedFile = useCallback((targetPath = filePath) => {');
+    expect(source).toContain('selfSavedPathsRef.current.add(targetPath);');
+    expect(source).toContain('if (paths && isPathAffected(paths, filePath) && selfSavedPathsRef.current.delete(filePath)) return;');
+  });
 });

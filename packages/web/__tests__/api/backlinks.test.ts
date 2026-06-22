@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
 import { seedFile } from '../setup';
 import { GET } from '../../app/api/backlinks/route';
-import { invalidateCache } from '../../lib/fs';
+import { invalidateCache, saveFileContent, peekTreeVersion } from '../../lib/fs';
 
 describe('GET /api/backlinks', () => {
   it('returns error when path is missing', async () => {
@@ -40,6 +40,24 @@ describe('GET /api/backlinks', () => {
     expect(results.length).toBeGreaterThanOrEqual(1);
     const paths = results.map((r: { filePath: string }) => r.filePath);
     expect(paths).toContain('linker.md');
+  });
+
+  it('refreshes the cached link snapshot after content-only edits', async () => {
+    seedFile('target.md', '# Target');
+    seedFile('source.md', 'No links yet');
+    invalidateCache();
+
+    const req = new NextRequest('http://localhost/api/backlinks?path=target.md');
+    const first = await GET(req);
+    await expect(first.json()).resolves.toEqual([]);
+
+    const treeVersionBeforeEdit = peekTreeVersion();
+    saveFileContent('source.md', 'See [[target]] for details');
+    expect(peekTreeVersion()).toBe(treeVersionBeforeEdit);
+
+    const second = await GET(req);
+    const results = await second.json();
+    expect(results.map((r: { filePath: string }) => r.filePath)).toContain('source.md');
   });
 
   it('returns empty when no backlinks exist', async () => {

@@ -205,6 +205,11 @@ export default function ViewPageClient({
     closeByKey('doc', oldPath);
     keepDocTab(newPath);
   }, [keepDocTab]);
+  const selfSavedPathsRef = useRef<Set<string>>(new Set());
+  const notifySelfSavedFile = useCallback((targetPath = filePath) => {
+    selfSavedPathsRef.current.add(targetPath);
+    notifyFilesChanged([targetPath]);
+  }, [filePath]);
 
   // Sync savedContent when server re-renders with new content (e.g. after router.refresh)
   const serverContentRef = useRef(content);
@@ -247,7 +252,7 @@ export default function ViewPageClient({
         await saveAction(cleanContent);
         if (!mountedRef.current) return;
         setSavedContent(cleanContent);
-        notifyFilesChanged([filePath]);
+        notifySelfSavedFile();
         setAutoSaveStatus('saved');
         setTimeout(() => {
           if (mountedRef.current) setAutoSaveStatus('idle');
@@ -261,7 +266,7 @@ export default function ViewPageClient({
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [editContent, savedContent, editing, isMarkdown, isDraft, saveAction, keepCurrentTab, filePath]);
+  }, [editContent, savedContent, editing, isMarkdown, isDraft, saveAction, keepCurrentTab, notifySelfSavedFile]);
   const [mdViewMode, setMdViewModeState] = useState<MdViewMode>(() => {
     return resolveMarkdownStartState(isBinaryFile, isMarkdown, initialEditing, content).mode;
   });
@@ -523,7 +528,7 @@ export default function ViewPageClient({
         keepCurrentTab();
         await saveAction(cleanContent);
         setSavedContent(cleanContent);
-        notifyFilesChanged([filePath]);
+        notifySelfSavedFile();
         // Markdown auto-save: Ctrl+S saves but stays in edit mode
         if (!isMarkdown) {
           setEditing(false);
@@ -534,15 +539,15 @@ export default function ViewPageClient({
         setSaveError(err instanceof Error ? err.message : 'Failed to save');
       }
     });
-  }, [isCsv, isDraft, isMarkdown, saveAction, editContent, keepCurrentTab, filePath]);
+  }, [isCsv, isDraft, isMarkdown, saveAction, editContent, keepCurrentTab, notifySelfSavedFile]);
 
   // Renderer's inline save — updates local savedContent without entering edit mode
   const handleRendererSave = useCallback(async (newContent: string) => {
     keepCurrentTab();
     await saveAction(newContent);
     setSavedContent(newContent);
-    notifyFilesChanged([filePath]);
-  }, [saveAction, keepCurrentTab, filePath]);
+    notifySelfSavedFile();
+  }, [saveAction, keepCurrentTab, notifySelfSavedFile]);
 
   const handleMarkdownModeSelect = useCallback((mode: 'wysiwyg' | 'preview' | 'source') => {
     setModeMenuOpen(false);
@@ -555,7 +560,7 @@ export default function ViewPageClient({
           if (clean !== savedContent) {
             keepCurrentTab();
             saveAction(clean)
-              .then(() => notifyFilesChanged([filePath]))
+              .then(() => notifySelfSavedFile())
               .catch(() => {});
           }
           setEditing(false);
@@ -574,7 +579,7 @@ export default function ViewPageClient({
         setEditing(true);
       }
     });
-  }, [editContent, editing, filePath, keepCurrentTab, saveAction, savedContent, setMdViewMode]);
+  }, [editContent, editing, keepCurrentTab, notifySelfSavedFile, saveAction, savedContent, setMdViewMode]);
 
   const markdownModeOptions = useMemo(() => ([
     { id: 'wysiwyg' as const, icon: <Pencil size={13} />, label: 'Edit' },
@@ -666,7 +671,8 @@ export default function ViewPageClient({
     // Coalesced (300ms) files-changed subscription: AI may write multiple
     // files in sequence. Skips the router.refresh() entirely when the event
     // declares paths and none of them are the file being viewed.
-    return subscribeFilesChanged(() => {
+    return subscribeFilesChanged((paths) => {
+      if (paths && isPathAffected(paths, filePath) && selfSavedPathsRef.current.delete(filePath)) return;
       if (editing) return;
       aiTriggeredRef.current = true;
       router.refresh();
@@ -1035,7 +1041,7 @@ export default function ViewPageClient({
                   await saveAction(c);
                   setEditContent(c);
                   setSavedContent(c);
-                  notifyFilesChanged([filePath]);
+                  notifySelfSavedFile();
                 }}
               />
             ) : (
