@@ -13,7 +13,7 @@ import { TAbstractFileImpl, TFileImpl, TFolderImpl, Vault } from './vault';
 import { createObsidianElement } from './dom';
 import { MarkdownRenderer } from './markdown-renderer';
 import { getActiveObsidianRuntimeHost } from '../runtime';
-import type { RequestUrlParam, RequestUrlResponse, RequestUrlResponsePromise, TFile, WorkspaceLeaf } from '../types';
+import type { RequestUrlParam, RequestUrlResponse, RequestUrlResponsePromise, SecretStorage, TFile, WorkspaceLeaf } from '../types';
 
 const REQUEST_URL_TIMEOUT_MS = 15_000;
 const REQUEST_URL_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
@@ -89,6 +89,27 @@ export function debounce<T extends unknown[]>(
   return debounced;
 }
 
+const coreIconIds = [
+  'alert-triangle',
+  'check',
+  'chevron-down',
+  'chevron-left',
+  'chevron-right',
+  'chevron-up',
+  'file',
+  'folder',
+  'info',
+  'link',
+  'list',
+  'pencil',
+  'plus',
+  'search',
+  'settings',
+  'star',
+  'trash',
+  'x',
+];
+
 const iconRegistry = new Map<string, string>();
 
 export function addIcon(iconId: string, svgContent: string): void {
@@ -97,6 +118,10 @@ export function addIcon(iconId: string, svgContent: string): void {
 
 export function getIcon(iconId: string): string | null {
   return iconRegistry.get(iconId) ?? null;
+}
+
+export function getIconIds(): string[] {
+  return Array.from(new Set([...coreIconIds, ...iconRegistry.keys()])).sort((a, b) => a.localeCompare(b, 'en'));
 }
 
 export function setIcon(parent: HTMLElement, iconId: string, size?: number): void {
@@ -485,9 +510,28 @@ export function moment(input?: string | number | Date) {
   };
 }
 
+let currentMomentLocale = 'en';
+
 moment.now = Date.now;
 moment.utc = moment;
 moment.unix = (seconds: number) => moment(seconds * 1000);
+moment.locale = (locale?: string): string => {
+  if (typeof locale === 'string' && locale.trim()) {
+    currentMomentLocale = locale.trim();
+  }
+  return currentMomentLocale;
+};
+moment.localeData = () => ({
+  firstDayOfWeek: () => 0,
+  longDateFormat: (token: string) => ({
+    L: 'YYYY-MM-DD',
+    LL: 'MMMM D, YYYY',
+    LLL: 'MMMM D, YYYY HH:mm',
+    LLLL: 'dddd, MMMM D, YYYY HH:mm',
+    LT: 'HH:mm',
+    LTS: 'HH:mm:ss',
+  })[token] ?? token,
+});
 
 export class MarkdownRenderChild extends Component {
   containerEl: HTMLElement;
@@ -560,6 +604,50 @@ export class AbstractInputSuggest<T> extends Component {
   close(): void {}
 }
 
+export interface EditorSuggestTriggerInfo {
+  start: unknown;
+  end: unknown;
+  query: string;
+}
+
+export class EditorSuggest<T> extends Component {
+  app: unknown;
+  context: unknown = null;
+  suggestions: T[] = [];
+  scope: Scope;
+
+  constructor(app: unknown) {
+    super();
+    this.app = app;
+    this.scope = new Scope();
+  }
+
+  onTrigger(cursor: unknown, editor: unknown, file: TFile | null): EditorSuggestTriggerInfo | null {
+    void cursor;
+    void editor;
+    void file;
+    return null;
+  }
+
+  getSuggestions(context: unknown): T[] | Promise<T[]> {
+    void context;
+    return [];
+  }
+
+  renderSuggestion(value: T, el: HTMLElement): void {
+    el.textContent = String(value);
+  }
+
+  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void {
+    void value;
+    void evt;
+  }
+
+  open(): void {}
+
+  close(): void {}
+}
+
 export class SettingGroup extends Component {
   containerEl: HTMLElement;
 
@@ -575,6 +663,8 @@ export class SecretComponent extends TextComponent {
     this.inputEl.setAttribute('type', 'password');
   }
 }
+
+export type { SecretStorage };
 
 export class WorkspaceLeafShimExport {
   getViewState() {
@@ -705,6 +795,57 @@ export const Keymap = {
   },
 };
 
+export interface ScopeKeyRegistration {
+  modifiers: string[];
+  key: string;
+  func: (evt: KeyboardEvent, ctx?: unknown) => unknown;
+}
+
+export class Scope {
+  keys: ScopeKeyRegistration[] = [];
+  parent: Scope | null = null;
+
+  constructor(parent?: Scope | null) {
+    this.parent = parent ?? null;
+  }
+
+  register(
+    modifiers: string[] | null | undefined,
+    key: string,
+    func: (evt: KeyboardEvent, ctx?: unknown) => unknown,
+  ): ScopeKeyRegistration {
+    const registration = {
+      modifiers: Array.isArray(modifiers) ? modifiers.map(String) : [],
+      key: String(key),
+      func,
+    };
+    this.keys.push(registration);
+    return registration;
+  }
+
+  unregister(registrationOrModifiers: ScopeKeyRegistration | string[], key?: string, func?: unknown): void {
+    if (isScopeKeyRegistration(registrationOrModifiers)) {
+      this.keys = this.keys.filter((item) => item !== registrationOrModifiers);
+      return;
+    }
+
+    const modifiers = Array.isArray(registrationOrModifiers)
+      ? registrationOrModifiers.map(String)
+      : [];
+    const normalizedKey = key === undefined ? undefined : String(key);
+    this.keys = this.keys.filter((item) => {
+      if (normalizedKey !== undefined && item.key !== normalizedKey) return true;
+      if (!sameStringArray(item.modifiers, modifiers)) return true;
+      if (func && item.func !== func) return true;
+      return false;
+    });
+  }
+
+  unregisterAll(): void {
+    this.keys = [];
+  }
+}
+
 export function parseFrontMatterAliases(frontmatter: Record<string, unknown> | null | undefined): string[] | null {
   const value = frontmatter?.aliases ?? frontmatter?.alias ?? frontmatter?.Aliases;
   if (Array.isArray(value)) {
@@ -736,16 +877,95 @@ export function getLanguage(): string {
 
 export const apiVersion = '1.7.2-mindos-compat';
 
-export function prepareFuzzySearch(query: string): (text: string) => { score: number; matches: unknown[] } | null {
+export type SearchMatch = [number, number] | { start: number; end: number };
+
+export interface SearchResult {
+  score: number;
+  matches: SearchMatch[];
+}
+
+export function prepareSimpleSearch(query: string): (text: string) => SearchResult | null {
   const normalizedQuery = query.trim().toLowerCase();
   return (text: string) => {
     if (!normalizedQuery) {
       return { score: 0, matches: [] };
     }
-    const normalizedText = text.toLowerCase();
+    const normalizedText = String(text).toLowerCase();
     const index = normalizedText.indexOf(normalizedQuery);
-    return index >= 0 ? { score: normalizedQuery.length / Math.max(text.length, 1), matches: [[index, index + normalizedQuery.length]] } : null;
+    return index >= 0
+      ? { score: normalizedQuery.length / Math.max(String(text).length, 1), matches: [[index, index + normalizedQuery.length]] }
+      : null;
   };
+}
+
+export function prepareFuzzySearch(query: string): (text: string) => SearchResult | null {
+  const normalizedQuery = query.trim().toLowerCase();
+  return (text: string) => {
+    if (!normalizedQuery) {
+      return { score: 0, matches: [] };
+    }
+    const normalizedText = String(text).toLowerCase();
+    const index = normalizedText.indexOf(normalizedQuery);
+    return index >= 0 ? { score: normalizedQuery.length / Math.max(String(text).length, 1), matches: [[index, index + normalizedQuery.length]] } : null;
+  };
+}
+
+export function renderMatches(el: HTMLElement, text: string, matches: SearchMatch[] | null | undefined, offset = 0): void {
+  const source = String(text);
+  const normalizedMatches = normalizeSearchMatches(matches, offset, source.length);
+  el.textContent = '';
+
+  if (normalizedMatches.length === 0) {
+    el.textContent = source;
+    return;
+  }
+
+  let cursor = 0;
+  for (const match of normalizedMatches) {
+    if (match.start > cursor) {
+      appendSearchText(el, source.slice(cursor, match.start), false);
+    }
+    appendSearchText(el, source.slice(match.start, match.end), true);
+    cursor = match.end;
+  }
+  if (cursor < source.length) {
+    appendSearchText(el, source.slice(cursor), false);
+  }
+}
+
+function isScopeKeyRegistration(value: unknown): value is ScopeKeyRegistration {
+  return Boolean(value)
+    && typeof value === 'object'
+    && Array.isArray((value as ScopeKeyRegistration).modifiers)
+    && typeof (value as ScopeKeyRegistration).key === 'string'
+    && typeof (value as ScopeKeyRegistration).func === 'function';
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function normalizeSearchMatches(matches: SearchMatch[] | null | undefined, offset: number, textLength: number): Array<{ start: number; end: number }> {
+  return (matches ?? [])
+    .map((match) => {
+      const rawStart = Array.isArray(match) ? match[0] : match.start;
+      const rawEnd = Array.isArray(match) ? match[1] : match.end;
+      const start = Math.max(0, Math.min(textLength, rawStart - offset));
+      const end = Math.max(start, Math.min(textLength, rawEnd - offset));
+      return { start, end };
+    })
+    .filter((match) => match.end > match.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+function appendSearchText(el: HTMLElement, text: string, highlighted: boolean): void {
+  if (!text) return;
+  const span = createObsidianElement('span');
+  span.textContent = text;
+  if (highlighted) {
+    span.classList.add('suggestion-highlight');
+  }
+  el.appendChild(span);
 }
 
 export function createObsidianModule() {
@@ -772,6 +992,7 @@ export function createObsidianModule() {
     debounce,
     addIcon,
     getIcon,
+    getIconIds,
     setIcon,
     setTooltip,
     requestUrl,
@@ -785,6 +1006,7 @@ export function createObsidianModule() {
     MarkdownView,
     FileView,
     AbstractInputSuggest,
+    EditorSuggest,
     SettingGroup,
     SecretComponent,
     WorkspaceLeaf: WorkspaceLeafShimExport,
@@ -794,10 +1016,13 @@ export function createObsidianModule() {
     SuggestModal,
     FuzzySuggestModal,
     Keymap,
+    Scope,
     parseFrontMatterAliases,
     parseFrontMatterTags,
     getLanguage,
     apiVersion,
+    prepareSimpleSearch,
     prepareFuzzySearch,
+    renderMatches,
   };
 }

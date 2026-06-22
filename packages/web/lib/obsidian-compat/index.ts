@@ -16,6 +16,7 @@ export { CommandRegistry } from './command-registry';
 export { Component } from './component';
 export { Events } from './events';
 export { ObsidianRuntimeHost } from './runtime';
+export { ObsidianSecretStorage, removeObsidianPluginSecrets } from './secret-storage';
 export { validateManifest, ManifestError } from './manifest';
 export {
   OBSIDIAN_COMMUNITY_PLUGINS_URL,
@@ -37,7 +38,7 @@ export {
   buildObsidianCommunitySurfacePreview,
 } from './community-support';
 export { CompatError, CompatErrorCodes } from './errors';
-export type { DataAdapter, IFileManager, ListedFiles, PluginManifest, Stat, TFile, TFolder, TAbstractFile, Command } from './types';
+export type { DataAdapter, IFileManager, ListedFiles, PluginManifest, SecretStorage, Stat, TFile, TFolder, TAbstractFile, Command } from './types';
 export type {
   BuildObsidianCommunityCatalogOptions,
   FetchedObsidianCommunityPluginPackage,

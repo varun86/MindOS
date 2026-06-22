@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { handleRouteErrorSimple } from '@/lib/errors';
-import { importObsidianPlugin, scanObsidianVaultPlugins } from '@/lib/obsidian-compat/obsidian-import';
+import { importObsidianPlugin, normalizeObsidianConfigDir, scanObsidianVaultPlugins } from '@/lib/obsidian-compat/obsidian-import';
 import { getObsidianImportSupport } from '@/lib/obsidian-compat/import-policy';
 import { buildObsidianCapabilityCoverage, summarizeObsidianCapabilityCoverage } from '@/lib/obsidian-compat/capability-matrix';
 import { buildObsidianCommunitySurfacePreview } from '@/lib/obsidian-compat/community-support';
@@ -21,15 +21,32 @@ export async function POST(req: NextRequest) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ ok: false, error: 'Missing vaultRoot or pluginId' }, { status: 400 });
     }
-    const { vaultRoot: rawVaultRoot, pluginId: rawPluginId } = body as { vaultRoot?: unknown; pluginId?: unknown };
+    const {
+      vaultRoot: rawVaultRoot,
+      pluginId: rawPluginId,
+      configDir: rawConfigDir,
+      obsidianConfigDir: rawObsidianConfigDir,
+    } = body as { vaultRoot?: unknown; pluginId?: unknown; configDir?: unknown; obsidianConfigDir?: unknown };
     if (typeof rawVaultRoot !== 'string' || typeof rawPluginId !== 'string' || !rawVaultRoot.trim() || !rawPluginId.trim()) {
       return NextResponse.json({ ok: false, error: 'Missing vaultRoot or pluginId' }, { status: 400 });
+    }
+    if (rawConfigDir !== undefined && typeof rawConfigDir !== 'string') {
+      return NextResponse.json({ ok: false, error: 'Invalid Obsidian config folder' }, { status: 400 });
+    }
+    if (rawObsidianConfigDir !== undefined && typeof rawObsidianConfigDir !== 'string') {
+      return NextResponse.json({ ok: false, error: 'Invalid Obsidian config folder' }, { status: 400 });
     }
 
     const pluginId = rawPluginId.trim();
     const vaultRoot = expandSetupPathHome(rawVaultRoot.trim());
+    let configDir: string;
+    try {
+      configDir = normalizeObsidianConfigDir(rawConfigDir ?? rawObsidianConfigDir);
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Invalid Obsidian config folder' }, { status: 400 });
+    }
     const settings = readSettings();
-    const result = await scanObsidianVaultPlugins(vaultRoot);
+    const result = await scanObsidianVaultPlugins(vaultRoot, { configDir });
     const plugin = result.plugins.find((item) => item.id === pluginId);
     if (!plugin) {
       return NextResponse.json({ ok: false, error: 'Plugin not found in Obsidian vault' }, { status: 404 });
@@ -43,6 +60,7 @@ export async function POST(req: NextRequest) {
       vaultRoot,
       pluginId,
       targetMindRoot: settings.mindRoot,
+      configDir,
     });
     const coverage = buildObsidianCapabilityCoverage(plugin.compatibility);
     const { sourceDir: _sourceDir, ...publicPlugin } = plugin;
@@ -68,6 +86,7 @@ export async function POST(req: NextRequest) {
       imported: {
         ...publicImported,
         targetPath: `${OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH}/${imported.pluginId}`,
+        sourceConfigDir: imported.obsidianConfig.sourceConfigDir,
       },
       nextStep: {
         manageHref: '/settings?tab=plugins',

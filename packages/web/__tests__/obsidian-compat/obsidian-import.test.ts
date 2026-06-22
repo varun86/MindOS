@@ -13,9 +13,9 @@ let mindRoot: string;
 const writeVaultPlugin = (
   pluginId: string,
   mainJs: string,
-  options?: { styles?: string; data?: object; manifest?: Record<string, unknown> },
+  options?: { styles?: string; data?: object; manifest?: Record<string, unknown>; configDir?: string },
 ) => {
-  const pluginDir = path.join(vaultRoot, '.obsidian', 'plugins', pluginId);
+  const pluginDir = path.join(vaultRoot, options?.configDir ?? '.obsidian', 'plugins', pluginId);
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(
     path.join(pluginDir, 'manifest.json'),
@@ -31,8 +31,8 @@ const writeVaultPlugin = (
   }
 };
 
-const writeObsidianConfig = (fileName: string, value: unknown) => {
-  const obsidianDir = path.join(vaultRoot, '.obsidian');
+const writeObsidianConfig = (fileName: string, value: unknown, configDir = '.obsidian') => {
+  const obsidianDir = path.join(vaultRoot, configDir);
   fs.mkdirSync(obsidianDir, { recursive: true });
   fs.writeFileSync(
     path.join(obsidianDir, fileName),
@@ -105,7 +105,41 @@ describe('obsidian import scanner', () => {
     expect(desktopOnly).toMatchObject({ compatibilityLevel: 'blocked' });
     expect(desktopOnly?.obsidianConfig).toMatchObject({ enabledInObsidian: false, hasEnabledList: true, hotkeyCount: 0 });
     expect(desktopOnly?.compatibility.nodeModules).toContain('electron');
-    expect(result.vault).toEqual({ pluginsDirFound: true, hasEnabledList: true });
+    expect(result.vault).toMatchObject({ pluginsDirFound: true, hasEnabledList: true, configDir: '.obsidian', pluginsRelativePath: '.obsidian/plugins' });
+  });
+
+  it('scans custom Obsidian config folders and reads their enabled list and hotkeys', async () => {
+    writeObsidianConfig('community-plugins.json', ['custom-plugin'], '.obsidian-mobile');
+    writeObsidianConfig('hotkeys.json', {
+      'custom-plugin:open': [{ modifiers: ['Mod'], key: 'M' }],
+    }, '.obsidian-mobile');
+    writeVaultPlugin(
+      'custom-plugin',
+      `const { Plugin } = require('obsidian'); module.exports = class CustomPlugin extends Plugin {};`,
+      { configDir: '.obsidian-mobile' },
+    );
+
+    const result = await scanObsidianVaultPlugins(vaultRoot, { configDir: '.obsidian-mobile' });
+
+    expect(result.vault).toMatchObject({
+      pluginsDirFound: true,
+      hasEnabledList: true,
+      configDir: '.obsidian-mobile',
+      pluginsRelativePath: '.obsidian-mobile/plugins',
+    });
+    expect(result.plugins).toHaveLength(1);
+    expect(result.plugins[0]).toMatchObject({
+      id: 'custom-plugin',
+      obsidianConfig: {
+        enabledInObsidian: true,
+        hasEnabledList: true,
+        hotkeyCount: 1,
+        hotkeys: [{
+          commandId: 'custom-plugin:open',
+          hotkeys: [{ modifiers: ['Mod'], key: 'M' }],
+        }],
+      },
+    });
   });
 
   it('skips invalid manifests and reports the reason', async () => {
@@ -154,6 +188,7 @@ describe('obsidian import scanner', () => {
       schemaVersion: 1,
       source: 'obsidian',
       pluginId: 'import-me',
+      sourceConfigDir: '.obsidian',
       enabledInObsidian: true,
       hasEnabledList: true,
       hotkeyCount: 1,
@@ -164,6 +199,37 @@ describe('obsidian import scanner', () => {
     });
     expect(imported.obsidianConfig.enabledInObsidian).toBe(true);
     expect(imported.copiedFiles).toEqual(['manifest.json', 'main.js', 'styles.css', 'data.json', 'obsidian-import.json']);
+  });
+
+  it('imports from a custom config folder and records its source config directory', async () => {
+    writeObsidianConfig('community-plugins.json', ['custom-import'], 'config/obsidian');
+    writeObsidianConfig('hotkeys.json', { 'custom-import:open': [{ modifiers: ['Mod'], key: 'U' }] }, 'config/obsidian');
+    writeVaultPlugin(
+      'custom-import',
+      `const { Plugin } = require('obsidian'); module.exports = class CustomImport extends Plugin {};`,
+      { configDir: 'config/obsidian' },
+    );
+
+    const imported = await importObsidianPlugin({
+      vaultRoot,
+      pluginId: 'custom-import',
+      targetMindRoot: mindRoot,
+      configDir: 'config/obsidian',
+    });
+
+    expect(imported.targetDir).toBe(path.join(mindRoot, '.mindos', 'plugins', 'custom-import'));
+    expect(imported.obsidianConfig).toMatchObject({
+      sourceConfigDir: 'config/obsidian',
+      enabledInObsidian: true,
+      hotkeyCount: 1,
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(imported.targetDir, 'obsidian-import.json'), 'utf-8'))).toMatchObject({
+      sourceConfigDir: 'config/obsidian',
+      hotkeys: [{
+        commandId: 'custom-import:open',
+        hotkeys: [{ modifiers: ['Mod'], key: 'U' }],
+      }],
+    });
   });
 
   it('skips plugin folders whose directory name does not match the manifest id', async () => {
@@ -272,5 +338,15 @@ describe('obsidian import scanner', () => {
         targetMindRoot: mindRoot,
       }),
     ).rejects.toThrow(/escapes/i);
+  });
+
+  it('rejects unsafe Obsidian config folder overrides', async () => {
+    await expect(scanObsidianVaultPlugins(vaultRoot, { configDir: '../outside' })).rejects.toThrow(/config folder escapes/i);
+    await expect(importObsidianPlugin({
+      vaultRoot,
+      pluginId: 'escape-config',
+      targetMindRoot: mindRoot,
+      configDir: '/tmp/.obsidian',
+    })).rejects.toThrow(/config folder must be relative/i);
   });
 });

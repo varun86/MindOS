@@ -17,7 +17,7 @@ async function importRoute() {
 
 function writeInstalledPlugin(pluginId: string, version = '1.0.0', options: { communityMetadata?: boolean } = {}) {
   const { communityMetadata = true } = options;
-  const pluginDir = path.join(mindRoot, '.plugins', pluginId);
+  const pluginDir = path.join(mindRoot, '.mindos', 'plugins', pluginId);
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(
     path.join(pluginDir, 'manifest.json'),
@@ -107,7 +107,7 @@ describe('/api/obsidian/community-catalog/update-plan', () => {
       },
       installed: {
         pluginId: 'quickadd',
-        targetDir: path.join(mindRoot, '.plugins', 'quickadd'),
+        targetDir: path.join(mindRoot, '.mindos', 'plugins', 'quickadd'),
         version: '1.0.0',
         hasCommunityMetadata: true,
       },
@@ -131,7 +131,7 @@ describe('/api/obsidian/community-catalog/update-plan', () => {
       expect.objectContaining({ path: 'styles.css', action: 'unchanged' }),
       expect.objectContaining({ path: 'obsidian-community.json', action: 'refresh', generated: true }),
     ]);
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local main');
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local main');
   });
 
   it('returns 404 when previewing a plugin that is not installed locally', async () => {
@@ -157,6 +157,6 @@ describe('/api/obsidian/community-catalog/update-plan', () => {
       error: 'Community plugin update requires Obsidian Community provenance for quickadd.',
     });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local main');
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local main');
   });
 });

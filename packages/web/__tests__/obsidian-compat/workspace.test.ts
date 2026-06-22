@@ -71,15 +71,23 @@ describe('Workspace shim', () => {
   it('iterates tracked leaves and filters leaves by view type', async () => {
     const file = await app.vault.create('notes/today.md', '# Today');
     const secondLeaf = app.workspace.getLeaf(true);
+    const rightLeaf = app.workspace.getRightLeaf(false);
+    const leftLeaf = app.workspace.getLeftLeaf(true);
     await secondLeaf.setViewState({ type: 'plugin-view', state: { id: 'sample' } });
+    await rightLeaf?.setViewState({ type: 'right-sidebar-view', state: { id: 'right' } });
+    await leftLeaf?.setViewState({ type: 'left-sidebar-view', state: { id: 'left' } });
 
     await app.withActiveFile(file, () => {
       const leaves: unknown[] = [];
       app.workspace.iterateRootLeaves((leaf) => leaves.push(leaf));
 
-      expect(leaves).toHaveLength(2);
+      expect(leaves).toHaveLength(4);
       expect(app.workspace.getLeavesOfType('markdown')).toEqual([app.workspace.activeLeaf]);
       expect(app.workspace.getLeavesOfType('plugin-view')).toEqual([secondLeaf]);
+      expect(app.workspace.getLeavesOfType('right-sidebar-view')).toEqual([rightLeaf]);
+      expect(app.workspace.getLeavesOfType('left-sidebar-view')).toEqual([leftLeaf]);
+      expect(app.workspace.getRightLeaf(false)).toBe(rightLeaf);
+      expect(app.workspace.getLeftLeaf(false)).toBe(leftLeaf);
     });
   });
 

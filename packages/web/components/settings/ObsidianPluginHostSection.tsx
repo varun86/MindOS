@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,7 +13,6 @@ import {
   Play,
   Power,
   RefreshCw,
-  Save,
   SlidersHorizontal,
   Terminal,
   Trash2,
@@ -21,13 +20,19 @@ import {
 import { apiFetch } from '@/lib/api';
 import { encodePath } from '@/lib/utils';
 import { getObsidianImportSupport, type ObsidianImportSupportKind } from '@/lib/obsidian-compat/import-policy';
+import type {
+  ObsidianCapabilitySupport,
+  ObsidianCapabilitySurfaceSummary,
+} from '@/lib/obsidian-compat/capability-matrix';
 import {
   choosePluginMenuItem,
   choosePluginModalSuggestion,
   firstPluginActionMenuSnapshot,
   firstPluginActionModalSnapshot,
   firstPluginActionTargetPath,
+  pluginEditorCommandContextForPathname,
   toastPluginActionNotices,
+  type PluginEditorCommandContext,
   type PluginActionResult,
   type PluginMenuSnapshot,
   type PluginModalSnapshot,
@@ -40,7 +45,7 @@ import {
 import { openTab } from '@/lib/workspace-tabs';
 import { notifyFilesChanged } from '@/lib/files-changed';
 import { useSmoothRouterPush } from '@/hooks/useSmoothRouterPush';
-import { Input, Select, SettingCard, Toggle } from './Primitives';
+import { SettingCard, Toggle } from './Primitives';
 import { ConfirmDialog } from '@/components/agents/AgentsPrimitives';
 import PluginActionMenuDialog from '@/components/plugins/PluginActionMenuDialog';
 import PluginActionModalDialog from '@/components/plugins/PluginActionModalDialog';
@@ -55,13 +60,22 @@ import {
   type ObsidianPluginSettingsResponse,
   type ObsidianPluginStatus,
   type ObsidianPluginsResponse,
-  type ObsidianSettingItem,
   type PluginLifecycleAction,
   type SettingAction,
   type SurfaceRoute,
   type SurfaceRouteState,
   type SurfaceRouteTarget,
 } from './ObsidianPluginHostModel';
+import {
+  DeclarativeSettingsCatalog,
+  SettingControl,
+  declarativePreviewKey,
+  hasInteractiveDeclarativeItems,
+  type DeclarativeActionTarget,
+  type DeclarativeListMutationTarget,
+  type DeclarativePreviewTarget,
+} from './ObsidianPluginHostSettingsControls';
+import type { ObsidianDeclarativeSettingPreview } from './ObsidianPluginHostModel';
 
 interface ObsidianPluginHostSectionProps {
   onOpenPluginEntries?: () => void;
@@ -93,6 +107,72 @@ const SUPPORT_META: Record<ObsidianImportSupportKind, { icon: typeof CheckCircle
     bg: 'color-mix(in srgb, var(--error) 12%, transparent)',
   },
 };
+
+const CAPABILITY_SUPPORT_ORDER: ObsidianCapabilitySupport[] = [
+  'full',
+  'limited',
+  'snapshot-only',
+  'catalog-only',
+  'request-only',
+  'unsupported',
+];
+
+const CAPABILITY_SUPPORT_LABEL: Record<ObsidianCapabilitySupport, string> = {
+  full: 'full',
+  limited: 'limited',
+  'snapshot-only': 'snapshot',
+  'catalog-only': 'catalog',
+  'request-only': 'request',
+  unsupported: 'unsupported',
+};
+
+const CAPABILITY_SURFACE_LABEL: Record<string, string> = {
+  commands: 'Commands',
+  settings: 'Settings',
+  entries: 'Entries',
+  views: 'Views',
+  document: 'Document',
+  styles: 'Styles',
+  editor: 'Editor catalog',
+  secret: 'Secrets',
+  vault: 'Vault',
+  metadata: 'Metadata',
+  workspace: 'Workspace',
+  network: 'Network',
+  core: 'Core',
+  unsupported: 'Unsupported',
+};
+
+function compactCoverageSummary(summary: Partial<Record<ObsidianCapabilitySupport, number>> | undefined): string {
+  const parts = CAPABILITY_SUPPORT_ORDER
+    .map((support) => {
+      const count = summary?.[support] ?? 0;
+      return count > 0 ? `${count} ${CAPABILITY_SUPPORT_LABEL[support]}` : '';
+    })
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : 'No Obsidian API usage detected';
+}
+
+function compactSurfaceSupport(summary: ObsidianCapabilitySurfaceSummary): string {
+  return CAPABILITY_SUPPORT_ORDER
+    .map((support) => {
+      const count = summary.supportSummary[support] ?? 0;
+      return count > 0 ? `${count} ${CAPABILITY_SUPPORT_LABEL[support]}` : '';
+    })
+    .filter(Boolean)
+    .join(' / ');
+}
+
+function surfaceApiPreview(summary: ObsidianCapabilitySurfaceSummary): string {
+  const firstApis = summary.apis.slice(0, 3).join(', ');
+  const remaining = summary.apis.length - 3;
+  return remaining > 0 ? `${firstApis}, +${remaining}` : firstApis;
+}
+
+function packageLocationLabel(plugin: ObsidianPluginStatus): string {
+  if (!plugin.packageLocation) return 'Package path unavailable';
+  return plugin.packageLocation.legacy ? 'Legacy package' : 'Canonical package';
+}
 
 function surfaceRouteStateLabel(state: SurfaceRouteState): string {
   if (state === 'mounted') return 'Mounted';
@@ -149,100 +229,8 @@ function SurfaceRouteCard({
   );
 }
 
-function settingValueAsString(value: unknown): string {
-  return value == null ? '' : String(value);
-}
-
 function notifyPluginSurfacesChanged() {
   notifyPluginsChanged();
-}
-
-function SettingControl({
-  item,
-  busy,
-  onAction,
-}: {
-  item: ObsidianSettingItem;
-  busy: boolean;
-  onAction: (action: SettingAction, value?: unknown) => void;
-}) {
-  const [draft, setDraft] = useState(settingValueAsString(item.value));
-
-  useEffect(() => {
-    setDraft(settingValueAsString(item.value));
-  }, [item.value]);
-
-  if (item.kind === 'toggle') {
-    return (
-      <Toggle
-        size="sm"
-        checked={item.value === true}
-        disabled={!item.canChange || item.disabled || busy}
-        title={item.value === true ? 'Disable setting' : 'Enable setting'}
-        onChange={(next) => onAction('set-value', next)}
-      />
-    );
-  }
-
-  if (item.kind === 'dropdown') {
-    return (
-      <Select
-        size="sm"
-        value={settingValueAsString(item.value)}
-        disabled={!item.canChange || item.disabled || busy}
-        onChange={(event) => onAction('set-value', event.target.value)}
-        className="min-w-32"
-      >
-        {(item.options ?? []).map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </Select>
-    );
-  }
-
-  if (item.kind === 'button') {
-    return (
-      <button
-        type="button"
-        disabled={!item.canClick || item.disabled || busy}
-        onClick={() => onAction('click-button')}
-        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          item.cta
-            ? 'bg-[var(--amber)] text-[var(--amber-foreground)]'
-            : 'border border-border bg-background text-foreground hover:bg-muted/60'
-        }`}
-      >
-        {busy ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-        {item.buttonText ?? 'Run'}
-      </button>
-    );
-  }
-
-  return (
-    <form
-      className="flex min-w-0 items-center gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onAction('set-value', draft);
-      }}
-    >
-      <Input
-        value={draft}
-        disabled={!item.canChange || item.disabled || busy}
-        placeholder={item.placeholder}
-        onChange={(event) => setDraft(event.target.value)}
-        className="h-8 min-w-32 py-1.5 text-xs"
-      />
-      <button
-        type="submit"
-        disabled={!item.canChange || item.disabled || busy || draft === settingValueAsString(item.value)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {busy ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-        Apply
-      </button>
-    </form>
-  );
 }
 
 export function ObsidianPluginHostSection({
@@ -268,10 +256,17 @@ export function ObsidianPluginHostSection({
   const [choosingMenuItemIndex, setChoosingMenuItemIndex] = useState<number | null>(null);
   const [menuChoiceError, setMenuChoiceError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ObsidianPluginStatus | null>(null);
+  const [migrateTarget, setMigrateTarget] = useState<ObsidianPluginStatus | null>(null);
+  const [declarativeActionTarget, setDeclarativeActionTarget] = useState<DeclarativeActionTarget | null>(null);
+  const [declarativeListMutationTarget, setDeclarativeListMutationTarget] = useState<DeclarativeListMutationTarget | null>(null);
+  const [declarativePreviewTarget, setDeclarativePreviewTarget] = useState<DeclarativePreviewTarget | null>(null);
+  const [declarativePreviews, setDeclarativePreviews] = useState<Record<string, ObsidianDeclarativeSettingPreview>>({});
   const [highlightedPluginId, setHighlightedPluginId] = useState<string | null>(null);
   const pluginRowsRef = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
+  const pathname = usePathname();
   const smoothPush = useSmoothRouterPush();
+  const pluginEditorContext = useMemo(() => pluginEditorCommandContextForPathname(pathname), [pathname]);
 
   const counts = useMemo(() => ({
     total: plugins.length,
@@ -399,7 +394,10 @@ export function ObsidianPluginHostSection({
     }
   }, [handlePluginActionResult]);
 
-  const runAction = useCallback(async (action: PluginLifecycleAction, options: { pluginId?: string; commandId?: string } = {}) => {
+  const runAction = useCallback(async (
+    action: PluginLifecycleAction,
+    options: { pluginId?: string; commandId?: string; editorContext?: PluginEditorCommandContext } = {},
+  ) => {
     const key = `${action}:${options.pluginId ?? options.commandId ?? 'all'}`;
     setBusyKey(key);
     setError('');
@@ -424,6 +422,7 @@ export function ObsidianPluginHostSection({
           delete next[options.pluginId!];
           return next;
         });
+        setDeclarativePreviews((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(`${options.pluginId}:`))));
       }
       if (action === 'uninstall' && options.pluginId) {
         const pluginId = options.pluginId;
@@ -438,6 +437,9 @@ export function ObsidianPluginHostSection({
           return next;
         });
       }
+      if (action === 'migrate-legacy') {
+        notifyPluginSurfacesChanged();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed.');
     } finally {
@@ -451,6 +453,13 @@ export function ObsidianPluginHostSection({
     setRemoveTarget(null);
     await runAction('uninstall', { pluginId });
   }, [removeTarget, runAction]);
+
+  const confirmMigratePlugin = useCallback(async () => {
+    if (!migrateTarget) return;
+    const pluginId = migrateTarget.id;
+    setMigrateTarget(null);
+    await runAction('migrate-legacy', { pluginId });
+  }, [migrateTarget, runAction]);
 
   const applySettingsResponse = useCallback((data: ObsidianPluginSettingsResponse) => {
     if (data.status) {
@@ -507,6 +516,141 @@ export function ObsidianPluginHostSection({
       setSettingsBusyKey(null);
     }
   }, [applySettingsResponse]);
+
+  const runDeclarativeSettingAction = useCallback(async (
+    pluginId: string,
+    tabIndex: number,
+    path: number[],
+    value: unknown,
+  ) => {
+    const key = `settings:${pluginId}:${tabIndex}:declarative:${path.join('.')}`;
+    setSettingsBusyKey(key);
+    setSettingsErrors((prev) => ({ ...prev, [pluginId]: '' }));
+    try {
+      const data = await apiFetch<ObsidianPluginSettingsResponse>('/api/obsidian-plugins/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set-value',
+          source: 'declarative',
+          pluginId,
+          tabIndex,
+          path,
+          value,
+        }),
+      });
+      applySettingsResponse(data);
+    } catch (err) {
+      setSettingsErrors((prev) => ({ ...prev, [pluginId]: err instanceof Error ? err.message : 'Failed to update declarative plugin settings.' }));
+    } finally {
+      setSettingsBusyKey(null);
+    }
+  }, [applySettingsResponse]);
+
+  const runDeclarativeConfirmedAction = useCallback(async (target: DeclarativeActionTarget) => {
+    const key = `settings:${target.pluginId}:${target.tabIndex}:declarative-action:${target.path.join('.')}`;
+    setSettingsBusyKey(key);
+    setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: '' }));
+    try {
+      const data = await apiFetch<ObsidianPluginSettingsResponse>('/api/obsidian-plugins/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'click-button',
+          source: 'declarative',
+          pluginId: target.pluginId,
+          tabIndex: target.tabIndex,
+          path: target.path,
+          confirmAction: true,
+        }),
+      });
+      applySettingsResponse(data);
+    } catch (err) {
+      setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: err instanceof Error ? err.message : 'Failed to run declarative plugin action.' }));
+    } finally {
+      setSettingsBusyKey(null);
+    }
+  }, [applySettingsResponse]);
+
+  const confirmDeclarativeAction = useCallback(async () => {
+    if (!declarativeActionTarget) return;
+    const target = declarativeActionTarget;
+    setDeclarativeActionTarget(null);
+    await runDeclarativeConfirmedAction(target);
+  }, [declarativeActionTarget, runDeclarativeConfirmedAction]);
+
+  const runDeclarativeListMutation = useCallback(async (target: DeclarativeListMutationTarget) => {
+    const indexSuffix = target.listItemIndex === undefined ? '' : `:${target.listItemIndex}${target.newIndex === undefined ? '' : `:${target.newIndex}`}`;
+    const key = `settings:${target.pluginId}:${target.tabIndex}:declarative-list:${target.action}:${target.path.join('.')}${indexSuffix}`;
+    setSettingsBusyKey(key);
+    setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: '' }));
+    try {
+      const data = await apiFetch<ObsidianPluginSettingsResponse>('/api/obsidian-plugins/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: target.action,
+          source: 'declarative',
+          pluginId: target.pluginId,
+          tabIndex: target.tabIndex,
+          path: target.path,
+          ...(target.listItemIndex === undefined ? {} : { listItemIndex: target.listItemIndex }),
+          ...(target.newIndex === undefined ? {} : { newIndex: target.newIndex }),
+          confirmAction: true,
+        }),
+      });
+      applySettingsResponse(data);
+    } catch (err) {
+      setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: err instanceof Error ? err.message : 'Failed to run declarative list mutation.' }));
+    } finally {
+      setSettingsBusyKey(null);
+    }
+  }, [applySettingsResponse]);
+
+  const confirmDeclarativeListMutation = useCallback(async () => {
+    if (!declarativeListMutationTarget) return;
+    const target = declarativeListMutationTarget;
+    setDeclarativeListMutationTarget(null);
+    await runDeclarativeListMutation(target);
+  }, [declarativeListMutationTarget, runDeclarativeListMutation]);
+
+  const runDeclarativePreview = useCallback(async (target: DeclarativePreviewTarget) => {
+    const key = `settings:${target.pluginId}:${target.tabIndex}:declarative-preview:${target.path.join('.')}`;
+    setSettingsBusyKey(key);
+    setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: '' }));
+    try {
+      const data = await apiFetch<ObsidianPluginSettingsResponse>('/api/obsidian-plugins/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: target.action,
+          source: 'declarative',
+          pluginId: target.pluginId,
+          tabIndex: target.tabIndex,
+          path: target.path,
+          confirmAction: true,
+        }),
+      });
+      applySettingsResponse(data);
+      if (data.preview) {
+        setDeclarativePreviews((prev) => ({
+          ...prev,
+          [declarativePreviewKey(target.pluginId, target.tabIndex, target.path)]: data.preview!,
+        }));
+      }
+    } catch (err) {
+      setSettingsErrors((prev) => ({ ...prev, [target.pluginId]: err instanceof Error ? err.message : 'Failed to preview declarative setting.' }));
+    } finally {
+      setSettingsBusyKey(null);
+    }
+  }, [applySettingsResponse]);
+
+  const confirmDeclarativePreview = useCallback(async () => {
+    if (!declarativePreviewTarget) return;
+    const target = declarativePreviewTarget;
+    setDeclarativePreviewTarget(null);
+    await runDeclarativePreview(target);
+  }, [declarativePreviewTarget, runDeclarativePreview]);
 
   const toggleExpanded = (pluginId: string) => {
     setExpanded((prev) => {
@@ -615,6 +759,7 @@ export function ObsidianPluginHostSection({
               const toggleKey = `${plugin.enabled ? 'disable' : 'enable'}:${plugin.id}`;
               const loadKey = `load:${plugin.id}`;
               const removeKey = `uninstall:${plugin.id}`;
+              const migrateKey = `migrate-legacy:${plugin.id}`;
               const surfaceRoutes = surfaceRouting(plugin);
               const isFocused = highlightedPluginId === plugin.id;
               return (
@@ -655,6 +800,11 @@ export function ObsidianPluginHostSection({
                               loaded
                             </span>
                           )}
+                          {plugin.packageLocation?.legacy && (
+                            <span className="rounded bg-[var(--amber-subtle)] px-1.5 py-0.5 font-mono text-2xs text-[var(--amber-text)]">
+                              legacy path
+                            </span>
+                          )}
                         </span>
                         <span className="mt-1 block text-xs text-muted-foreground">{compatibilityNote(plugin)}</span>
                         {plugin.lastError && (
@@ -679,6 +829,18 @@ export function ObsidianPluginHostSection({
                         {busyKey === loadKey ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
                         Load
                       </button>
+                      {plugin.packageLocation?.migrationAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => setMigrateTarget(plugin)}
+                          disabled={busyKey !== null}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="Move this package into .mindos/plugins"
+                        >
+                          {busyKey === migrateKey ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                          Migrate
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setRemoveTarget(plugin)}
@@ -700,6 +862,63 @@ export function ObsidianPluginHostSection({
                   {isExpanded && (
                     <div className="mt-3 ml-6 space-y-3 rounded-lg border border-border/60 bg-background/60 p-3">
                       <div className="text-xs text-muted-foreground">{runtimeSummary(plugin)}</div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Package</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className={`rounded border px-1.5 py-0.5 font-mono text-2xs ${
+                              plugin.packageLocation?.legacy
+                                ? 'border-[var(--amber)]/25 bg-[var(--amber-subtle)] text-[var(--amber-text)]'
+                                : 'border-success/30 bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-success'
+                            }`}
+                            >
+                              {packageLocationLabel(plugin)}
+                            </span>
+                            {plugin.packageLocation?.migrationAvailable && (
+                              <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                                migration available
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
+                            {plugin.packageLocation?.relativePath ?? '(unknown path)'}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Compatibility coverage</p>
+                          <p className="mt-1 font-mono text-2xs text-muted-foreground">
+                            {compactCoverageSummary(plugin.coverageSummary)}
+                          </p>
+                          <p className="mt-1 text-2xs text-muted-foreground/70">
+                            {plugin.coverage?.length ?? 0} detected API surface{(plugin.coverage?.length ?? 0) === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {(plugin.surfaceSummary?.length ?? 0) > 0 && (
+                        <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Detected MindOS surfaces</p>
+                            <span className="font-mono text-2xs text-muted-foreground">
+                              {plugin.surfaceSummary?.length ?? 0} surface{(plugin.surfaceSummary?.length ?? 0) === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(plugin.surfaceSummary ?? []).map((summary) => (
+                              <span
+                                key={summary.surface}
+                                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 font-mono text-2xs text-muted-foreground"
+                                title={`${surfaceApiPreview(summary)}${summary.routes.length ? ` | ${summary.routes.join(', ')}` : ''}`}
+                              >
+                                <span className="text-foreground">{CAPABILITY_SURFACE_LABEL[summary.surface] ?? summary.surface}</span>
+                                <span>{summary.apiCount}</span>
+                                <span className="text-muted-foreground/70">{compactSurfaceSupport(summary)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {surfaceRoutes.length > 0 && (
                         <div className="space-y-2">
@@ -736,16 +955,22 @@ export function ObsidianPluginHostSection({
                           <div className="flex flex-wrap gap-1.5">
                             {plugin.runtime.commandList.map((command) => {
                               const commandKey = `execute-command:${command.fullId}`;
-                              const executable = command.executable !== false;
+                              const hasEditorContext = Boolean(pluginEditorContext);
+                              const executable = command.executable !== false || (command.requiresEditor && hasEditorContext);
                               const commandTitle = executable
-                                ? plugin.loaded ? `Run ${command.name}` : 'Load the plugin before running commands'
+                                ? plugin.loaded ? command.requiresEditor && hasEditorContext ? `Run ${command.name} against the current Markdown file` : `Run ${command.name}` : 'Load the plugin before running commands'
                                 : command.availabilityReason ?? (command.requiresEditor ? 'Requires an active editor host' : 'Command is recorded but not currently executable');
                               return (
                                 <button
                                   key={command.fullId}
                                   type="button"
                                   onClick={() => {
-                                    if (executable) runAction('execute-command', { commandId: command.fullId });
+                                    if (executable) {
+                                      runAction('execute-command', {
+                                        commandId: command.fullId,
+                                        ...(pluginEditorContext ? { editorContext: pluginEditorContext } : {}),
+                                      });
+                                    }
                                   }}
                                   disabled={!executable || !plugin.loaded || busyKey !== null}
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -820,6 +1045,41 @@ export function ObsidianPluginHostSection({
                             )}
                           </div>
                         ))}
+
+                        {(settingsByPlugin[plugin.id]?.declarativeSettingTabs?.length ?? 0) > 0 && (
+                          <div className="space-y-2 rounded-lg border border-border/50 bg-card/50 p-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Declarative settings</p>
+                              <span className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-2xs text-muted-foreground">
+                                {hasInteractiveDeclarativeItems(settingsByPlugin[plugin.id]?.declarativeSettingTabs?.flatMap((tab) => tab.items) ?? [])
+                                  ? 'limited host'
+                                  : 'catalog-only'}
+                              </span>
+                            </div>
+                            {settingsByPlugin[plugin.id]?.declarativeSettingTabs?.map((tab, tabIndex) => (
+                              <div key={`${plugin.id}-declarative-tab-${tabIndex}`} className="space-y-2">
+                                {tab.error && (
+                                  <div className="flex items-start gap-2 text-xs text-[var(--error)]">
+                                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                                    <span>{tab.error}</span>
+                                  </div>
+                                )}
+                                <DeclarativeSettingsCatalog
+                                  items={tab.items}
+                                  pluginId={plugin.id}
+                                  pluginName={plugin.name}
+                                  tabIndex={tabIndex}
+                                  settingsBusyKey={settingsBusyKey}
+                                  previews={declarativePreviews}
+                                  onChange={runDeclarativeSettingAction}
+                                  onRunAction={setDeclarativeActionTarget}
+                                  onRunListMutation={setDeclarativeListMutationTarget}
+                                  onPreview={setDeclarativePreviewTarget}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -859,6 +1119,56 @@ export function ObsidianPluginHostSection({
         onConfirm={() => { void confirmRemovePlugin(); }}
         onCancel={() => setRemoveTarget(null)}
         variant="destructive"
+      />
+      <ConfirmDialog
+        open={migrateTarget !== null}
+        title={migrateTarget ? `Migrate ${migrateTarget.name}?` : 'Migrate legacy plugin?'}
+        message={migrateTarget?.packageLocation
+          ? `This copies ${migrateTarget.packageLocation.relativePath} into .mindos/plugins and removes the old legacy package after the copy succeeds.`
+          : 'This copies the legacy plugin package into .mindos/plugins and removes the old legacy package after the copy succeeds.'}
+        confirmLabel="Migrate"
+        cancelLabel="Cancel"
+        onConfirm={() => { void confirmMigratePlugin(); }}
+        onCancel={() => setMigrateTarget(null)}
+        variant="default"
+      />
+      <ConfirmDialog
+        open={declarativeActionTarget !== null}
+        title={declarativeActionTarget ? `Run ${declarativeActionTarget.label}?` : 'Run plugin settings action?'}
+        message={declarativeActionTarget
+          ? `${declarativeActionTarget.pluginName} will run this declarative settings action. It can update this plugin's settings through the limited host, but it does not receive native filesystem, Electron, or custom page access.`
+          : 'This runs a declarative plugin settings action through the limited host.'}
+        confirmLabel="Run"
+        cancelLabel="Cancel"
+        onConfirm={() => { void confirmDeclarativeAction(); }}
+        onCancel={() => setDeclarativeActionTarget(null)}
+        variant="default"
+      />
+      <ConfirmDialog
+        open={declarativeListMutationTarget !== null}
+        title={declarativeListMutationTarget
+          ? `${declarativeListMutationTarget.action === 'list-add' ? 'Add item to' : declarativeListMutationTarget.action === 'list-delete' ? 'Delete item from' : 'Reorder'} ${declarativeListMutationTarget.label}?`
+          : 'Run plugin list mutation?'}
+        message={declarativeListMutationTarget
+          ? `${declarativeListMutationTarget.pluginName} will run this declarative list mutation through the limited host. MindOS will roll back this plugin's settings data if the callback fails, but it does not grant native filesystem, Electron, custom page, or arbitrary DOM access.`
+          : 'This runs a declarative list mutation through the limited host.'}
+        confirmLabel={declarativeListMutationTarget?.action === 'list-delete' ? 'Delete' : 'Run'}
+        cancelLabel="Cancel"
+        onConfirm={() => { void confirmDeclarativeListMutation(); }}
+        onCancel={() => setDeclarativeListMutationTarget(null)}
+        variant={declarativeListMutationTarget?.action === 'list-delete' ? 'destructive' : 'default'}
+      />
+      <ConfirmDialog
+        open={declarativePreviewTarget !== null}
+        title={declarativePreviewTarget ? `Preview ${declarativePreviewTarget.label}?` : 'Preview declarative settings item?'}
+        message={declarativePreviewTarget
+          ? `${declarativePreviewTarget.pluginName} will run this declarative ${declarativePreviewTarget.action === 'preview-render' ? 'render' : 'page'} callback in the limited snapshot host. MindOS restores this plugin's settings data after the preview and does not mount plugin DOM, event listeners, native filesystem, or Electron access.`
+          : 'This previews a declarative settings item through the limited snapshot host.'}
+        confirmLabel="Preview"
+        cancelLabel="Cancel"
+        onConfirm={() => { void confirmDeclarativePreview(); }}
+        onCancel={() => setDeclarativePreviewTarget(null)}
+        variant="default"
       />
     </>
   );

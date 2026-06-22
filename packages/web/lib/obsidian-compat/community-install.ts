@@ -234,14 +234,8 @@ export async function planObsidianCommunityPluginUpdate(
     throw new MindOSError(ErrorCodes.INVALID_REQUEST, 'Missing target MindOS root.');
   }
 
-  const targetLocation = resolveInstalledObsidianPluginDir(targetMindRoot, pluginId);
-  const targetDir = targetLocation?.pluginDir;
-  if (!targetDir || !pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
-    throw new MindOSError(
-      ErrorCodes.FILE_NOT_FOUND,
-      `Obsidian plugin is not installed: ${pluginId}`,
-    );
-  }
+  const targetLocation = requireCanonicalInstalledPluginLocation(targetMindRoot, pluginId);
+  const targetDir = targetLocation.pluginDir;
 
   const localManifest = readInstalledManifest(targetDir, pluginId);
   readRequiredCommunityInstallMetadata(targetDir, pluginId, options.repo);
@@ -303,15 +297,9 @@ export async function updateObsidianCommunityPlugin(
     throw new MindOSError(ErrorCodes.INVALID_REQUEST, 'Missing target MindOS root.');
   }
 
-  const targetLocation = resolveInstalledObsidianPluginDir(targetMindRoot, pluginId);
-  const pluginsRoot = targetLocation?.rootDir ?? resolveCanonicalObsidianPluginRoot(targetMindRoot).rootDir;
-  const targetDir = targetLocation?.pluginDir;
-  if (!targetDir || !pathExists(targetDir) || !fs.statSync(targetDir).isDirectory()) {
-    throw new MindOSError(
-      ErrorCodes.FILE_NOT_FOUND,
-      `Obsidian plugin is not installed: ${pluginId}`,
-    );
-  }
+  const targetLocation = requireCanonicalInstalledPluginLocation(targetMindRoot, pluginId);
+  const pluginsRoot = targetLocation.rootDir;
+  const targetDir = targetLocation.pluginDir;
 
   const localManifest = readInstalledManifest(targetDir, pluginId);
   const existingMetadata = readRequiredCommunityInstallMetadata(targetDir, pluginId, options.repo);
@@ -435,6 +423,26 @@ function assertSafePluginId(pluginId: string): void {
     }
     throw err;
   }
+}
+
+function requireCanonicalInstalledPluginLocation(
+  targetMindRoot: string,
+  pluginId: string,
+): NonNullable<ReturnType<typeof resolveInstalledObsidianPluginDir>> {
+  const targetLocation = resolveInstalledObsidianPluginDir(targetMindRoot, pluginId);
+  if (!targetLocation || !pathExists(targetLocation.pluginDir) || !fs.statSync(targetLocation.pluginDir).isDirectory()) {
+    throw new MindOSError(
+      ErrorCodes.FILE_NOT_FOUND,
+      `Obsidian plugin is not installed: ${pluginId}`,
+    );
+  }
+  if (targetLocation.legacy) {
+    throw new MindOSError(
+      ErrorCodes.CONFLICT,
+      `Obsidian community plugin update requires canonical package location. Migrate .plugins/${pluginId} to .mindos/plugins/${pluginId} before updating.`,
+    );
+  }
+  return targetLocation;
 }
 
 function assertPluginRootCanBeCreated(pluginsRoot: string): void {

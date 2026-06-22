@@ -1,5 +1,6 @@
 import {
   FileText,
+  KeyRound,
   ListChecks,
   PanelRightOpen,
   Puzzle,
@@ -8,6 +9,11 @@ import {
   Terminal,
   type LucideIcon,
 } from 'lucide-react';
+import type {
+  ObsidianCapabilityCoverage,
+  ObsidianCapabilitySurfaceSummary,
+  ObsidianCapabilitySupport,
+} from '@/lib/obsidian-compat/capability-matrix';
 import { getObsidianImportSupport } from '@/lib/obsidian-compat/import-policy';
 import type { PluginActionResult } from '@/lib/plugins/client';
 
@@ -43,6 +49,14 @@ export interface ObsidianPluginRuntime {
     bytes: number;
     updatedAt?: string;
     validJson?: boolean;
+  };
+  secretStorage?: {
+    backend: string;
+    encrypted: boolean;
+    path: string;
+    keyPath: string;
+    pluginId: string;
+    secrets: number;
   };
   communityOrigin?: {
     source: 'obsidian-community';
@@ -90,6 +104,15 @@ export interface ObsidianPluginStatus {
     unsupportedApis?: string[];
     blockers: string[];
   };
+  coverage?: ObsidianCapabilityCoverage[];
+  coverageSummary?: Record<ObsidianCapabilitySupport, number>;
+  surfaceSummary?: ObsidianCapabilitySurfaceSummary[];
+  packageLocation?: {
+    relativePath: string;
+    rootRelativePath: string;
+    legacy: boolean;
+    migrationAvailable: boolean;
+  };
   runtime: ObsidianPluginRuntime;
   lastError?: string;
 }
@@ -120,6 +143,70 @@ export interface ObsidianSettingItem {
   canClick: boolean;
 }
 
+export interface ObsidianDeclarativeSettingControl {
+  type: string;
+  key?: string;
+  defaultValue?: unknown;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+  step?: number | 'any';
+  rows?: number;
+  includeRoot?: boolean;
+  hasValidate: boolean;
+  hasFilter: boolean;
+  disabledState: 'enabled' | 'disabled' | 'dynamic';
+}
+
+export interface ObsidianDeclarativeSettingItem {
+  path: number[];
+  kind: 'control' | 'action' | 'render' | 'empty' | 'group' | 'list' | 'page' | 'unknown';
+  type?: string;
+  name?: string;
+  heading?: string;
+  desc?: string;
+  aliases?: string[];
+  searchableState: 'searchable' | 'hidden' | 'dynamic';
+  visibleState: 'visible' | 'hidden' | 'dynamic';
+  control?: ObsidianDeclarativeSettingControl;
+  value?: unknown;
+  displayValue?: string;
+  status?: 'warning' | null | 'dynamic';
+  childCount?: number;
+  children?: ObsidianDeclarativeSettingItem[];
+  capabilities: {
+    canChange: boolean;
+    canRunAction: boolean;
+    canAddListItem?: boolean;
+    canDeleteListItem?: boolean;
+    canReorderListItems?: boolean;
+    canPreviewRender?: boolean;
+    canPreviewPage?: boolean;
+    hasCustomRender: boolean;
+    hasCustomPage: boolean;
+    hasListMutation: boolean;
+  };
+  warnings: string[];
+}
+
+export interface ObsidianDeclarativeSettingPreviewNode {
+  tag: string;
+  text?: string;
+  children?: ObsidianDeclarativeSettingPreviewNode[];
+}
+
+export interface ObsidianDeclarativeSettingPreview {
+  kind: 'render' | 'page';
+  path: number[];
+  label: string;
+  text?: string;
+  nodes?: ObsidianDeclarativeSettingPreviewNode[];
+  pageItems?: ObsidianDeclarativeSettingItem[];
+  cleanupCalled?: boolean;
+  warnings: string[];
+}
+
 export interface ObsidianPluginSettings {
   id: string;
   name: string;
@@ -128,6 +215,10 @@ export interface ObsidianPluginSettings {
     error?: string;
     items: ObsidianSettingItem[];
   }>;
+  declarativeSettingTabs?: Array<{
+    error?: string;
+    items: ObsidianDeclarativeSettingItem[];
+  }>;
 }
 
 export interface ObsidianPluginSettingsResponse {
@@ -135,10 +226,11 @@ export interface ObsidianPluginSettingsResponse {
   loadResult?: ObsidianPluginLoadResult;
   plugins: ObsidianPluginSettings[];
   status?: ObsidianPluginStatus[];
+  preview?: ObsidianDeclarativeSettingPreview;
 }
 
-export type PluginLifecycleAction = 'enable' | 'disable' | 'load' | 'load-enabled' | 'execute-command' | 'uninstall';
-export type SettingAction = 'set-value' | 'click-button';
+export type PluginLifecycleAction = 'enable' | 'disable' | 'load' | 'load-enabled' | 'execute-command' | 'uninstall' | 'migrate-legacy';
+export type SettingAction = 'set-value' | 'click-button' | 'list-add' | 'list-delete' | 'list-reorder' | 'preview-render' | 'preview-page';
 export type SurfaceRouteState = 'mounted' | 'catalog' | 'diagnostic';
 export type SurfaceRouteTarget = 'command-center' | 'plugin-entries' | 'plugin-views';
 
@@ -163,6 +255,7 @@ export function runtimeSummary(plugin: ObsidianPluginStatus): string {
     plugin.runtime.statusBarItems ? `${plugin.runtime.statusBarItems} status item${plugin.runtime.statusBarItems === 1 ? '' : 's'}` : '',
     plugin.runtime.communityOrigin ? plugin.runtime.communityOrigin.validJson === false ? 'invalid community source' : 'community source' : '',
     plugin.runtime.dataFile?.exists ? plugin.runtime.dataFile.validJson === false ? 'invalid data file' : 'stored data' : '',
+    plugin.runtime.secretStorage?.secrets ? `${plugin.runtime.secretStorage.secrets} encrypted secret${plugin.runtime.secretStorage.secrets === 1 ? '' : 's'}` : '',
     plugin.runtime.styleSheets ? `${plugin.runtime.styleSheets} stylesheet${plugin.runtime.styleSheets === 1 ? '' : 's'}` : '',
     plugin.runtime.editorExtensions ? `${plugin.runtime.editorExtensions} editor extension${plugin.runtime.editorExtensions === 1 ? '' : 's'}` : '',
   ].filter(Boolean);
@@ -323,6 +416,14 @@ export function surfaceRouting(plugin: ObsidianPluginStatus): SurfaceRoute[] {
       value: `data.json · ${formatBytes(plugin.runtime.dataFile.bytes)} · ${validJson ? 'valid JSON' : 'invalid JSON'}`,
       state: validJson ? 'mounted' : 'diagnostic',
       icon: FileText,
+    });
+  }
+  if (plugin.runtime.secretStorage?.secrets) {
+    routes.push({
+      label: 'Secrets',
+      value: `SecretStorage · ${plugin.runtime.secretStorage.secrets} encrypted ref${plugin.runtime.secretStorage.secrets === 1 ? '' : 's'}`,
+      state: plugin.runtime.secretStorage.encrypted ? 'mounted' : 'diagnostic',
+      icon: KeyRound,
     });
   }
   if (plugin.runtime.views > 0) {

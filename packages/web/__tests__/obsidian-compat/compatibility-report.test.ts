@@ -7,8 +7,12 @@ import {
 describe('compatibility report', () => {
   it('detects high-frequency Obsidian APIs and preserves host-boundary levels', () => {
     const report = analyzePluginCompatibility(`
-      const { Plugin, Notice, Modal, PluginSettingTab, Setting, MarkdownRenderer, parseYaml, stringifyYaml, debounce, addIcon, getIcon, setIcon, setTooltip } = require('obsidian');
+      const { Plugin, Notice, Modal, PluginSettingTab, Setting, SecretStorage, MarkdownRenderer, EditorSuggest, Scope, parseYaml, stringifyYaml, debounce, addIcon, getIcon, getIconIds, setIcon, setTooltip, prepareSimpleSearch, renderMatches } = require('obsidian');
       module.exports = class Example extends Plugin {
+        getSettingDefinitions() {
+          return [];
+        }
+
         async onload() {
           new Notice('loaded');
           debounce(() => {}, 100);
@@ -16,14 +20,25 @@ describe('compatibility report', () => {
           stringifyYaml({ title: 'Example' });
           addIcon('mindos-test', '<svg />');
           getIcon('mindos-test');
+          getIconIds();
           setIcon(document.createElement('span'), 'mindos-test');
           setTooltip(document.createElement('span'), 'Hint');
           this.addCommand({ id: 'test', name: 'Test', callback: () => {} });
+          this.app.commands.listCommands();
+          this.app.customCss.getSnippetPath('admonitions');
+          this.app.customCss.setCssEnabledStatus('admonitions', true);
+          this.app.customCss.readSnippets();
           this.registerMarkdownPostProcessor(() => {});
+          this.registerEditorSuggest(new EditorSuggest(this.app));
+          new Scope().register(['Mod'], 'k', () => {});
+          const simple = prepareSimpleSearch('head')('Heading');
+          renderMatches(document.createElement('span'), 'Heading', simple.matches);
           await MarkdownRenderer.renderMarkdown('# Heading', document.createElement('div'), 'notes/today.md');
           await this.app.vault.adapter.read('notes/today.md');
           await this.app.vault.process(this.app.vault.getFileByPath('notes/today.md'), (data) => data);
           this.app.vault.getResourcePath(this.app.vault.getFileByPath('assets/image.png'));
+          this.app.vault.getConfig('cssTheme');
+          this.app.vault.setConfig('cssTheme', 'Minimal');
           await this.app.vault.appendBinary(this.app.vault.getFileByPath('assets/blob.bin'), new ArrayBuffer(0));
           await this.app.vault.trash(this.app.vault.getFileByPath('notes/old.md'), true);
           await this.app.fileManager.processFrontMatter(this.app.vault.getFileByPath('notes/today.md'), () => {});
@@ -33,6 +48,11 @@ describe('compatibility report', () => {
           await this.app.fileManager.trashFile(this.app.vault.getFileByPath('notes/old.md'));
           this.app.workspace.getActiveViewOfType(MarkdownView);
           this.app.workspace.iterateAllLeaves(() => {});
+          this.app.workspace.iterateCodeMirrors(() => {});
+          window.CodeMirror.defineMode('ad-note', () => ({}));
+          window.CodeMirrorAdapter.commands.save = () => {};
+          this.app.workspace.getRightLeaf(false);
+          this.app.workspace.getLeftLeaf(true);
         }
       }
     `);
@@ -44,19 +64,33 @@ describe('compatibility report', () => {
         'Modal',
         'PluginSettingTab',
         'Setting',
+        'SecretStorage',
         'MarkdownRenderer',
+        'EditorSuggest',
+        'Scope',
         'parseYaml',
         'stringifyYaml',
         'debounce',
         'addIcon',
         'getIcon',
+        'getIconIds',
         'setIcon',
         'setTooltip',
         'addCommand',
+        'Commands.listCommands',
+        'CustomCss.getSnippetPath',
+        'CustomCss.setCssEnabledStatus',
+        'CustomCss.readSnippets',
+        'Plugin.getSettingDefinitions',
         'registerMarkdownPostProcessor',
+        'registerEditorSuggest',
+        'prepareSimpleSearch',
+        'renderMatches',
         'Vault.adapter',
         'Vault.process',
         'Vault.getResourcePath',
+        'Vault.getConfig',
+        'Vault.setConfig',
         'Vault.appendBinary',
         'Vault.trash',
         'FileManager.processFrontMatter',
@@ -66,6 +100,11 @@ describe('compatibility report', () => {
         'FileManager.trashFile',
         'Workspace.getActiveViewOfType',
         'Workspace.iterateAllLeaves',
+        'Workspace.iterateCodeMirrors',
+        'CodeMirror',
+        'CodeMirrorAdapter.commands',
+        'Workspace.getRightLeaf',
+        'Workspace.getLeftLeaf',
       ]),
     );
     expect(report.supportedApis).toEqual(expect.arrayContaining([
@@ -87,11 +126,31 @@ describe('compatibility report', () => {
       'FileManager.promptForDeletion',
       'Workspace.getActiveViewOfType',
       'Workspace.iterateAllLeaves',
+      'Workspace.iterateCodeMirrors',
       'addIcon',
       'getIcon',
+      'getIconIds',
       'setIcon',
       'setTooltip',
+      'SecretStorage',
+      'Plugin.getSettingDefinitions',
+      'EditorSuggest',
+      'Scope',
+      'registerEditorSuggest',
+      'prepareSimpleSearch',
+      'renderMatches',
+      'Commands.listCommands',
+      'CustomCss.getSnippetPath',
+      'CustomCss.setCssEnabledStatus',
+      'CustomCss.readSnippets',
+      'CodeMirror',
+      'CodeMirrorAdapter.commands',
+      'Vault.getConfig',
+      'Vault.setConfig',
+      'Workspace.getRightLeaf',
+      'Workspace.getLeftLeaf',
     ]));
+    expect(report.unsupportedApis).not.toContain('SecretStorage');
     expect(report.nodeModules).toEqual([]);
   });
 

@@ -77,7 +77,9 @@ export class Component extends Events {
   addChild<T extends LifecycleChild>(child: T): T {
     this.#children.add(child);
     if (this.#loaded) {
-      void child.load();
+      void child.load().catch((err) => {
+        console.error('[obsidian-compat] Component child load error:', err);
+      });
     }
     return child;
   }

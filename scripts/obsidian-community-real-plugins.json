@@ -7,6 +7,7 @@
       "name": "Style Settings",
       "repo": "mgmeyers/obsidian-style-settings",
       "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
       "requiredFiles": ["main.js", "manifest.json"],
       "optionalFiles": ["styles.css"]
     },
@@ -15,6 +16,7 @@
       "name": "QuickAdd",
       "repo": "chhoumann/quickadd",
       "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
       "requiredFiles": ["main.js", "manifest.json"],
       "optionalFiles": []
     },
@@ -23,6 +25,7 @@
       "name": "Tag Wrangler",
       "repo": "pjeby/tag-wrangler",
       "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
       "requiredFiles": ["main.js", "manifest.json"],
       "optionalFiles": []
     },
@@ -31,6 +34,115 @@
       "name": "Homepage",
       "repo": "mirnovov/obsidian-homepage",
       "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "templater-obsidian",
+      "name": "Templater",
+      "repo": "SilentVoid13/Templater",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-minimal-settings",
+      "name": "Minimal Theme Settings",
+      "repo": "kepano/obsidian-minimal-settings",
+      "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-linter",
+      "name": "Linter",
+      "repo": "platers/obsidian-linter",
+      "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "calendar-beta",
+      "name": "Calendar (Beta)",
+      "repo": "liamcain/obsidian-calendar-plugin",
+      "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-admonition",
+      "name": "Admonition",
+      "repo": "valentine195/obsidian-admonition",
+      "expectedCompatibilityLevel": "partial",
+      "expectedRuntimeOutcome": "loaded",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "dataview",
+      "name": "Dataview",
+      "repo": "blacksmithgu/obsidian-dataview",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-tasks-plugin",
+      "name": "Tasks",
+      "repo": "obsidian-tasks-group/obsidian-tasks",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-kanban",
+      "name": "Kanban",
+      "repo": "obsidian-community/obsidian-kanban",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-icon-folder",
+      "name": "Iconize",
+      "repo": "florianwoelki/obsidian-iconize",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "table-editor-obsidian",
+      "name": "Advanced Tables",
+      "repo": "tgrosinger/advanced-tables-obsidian",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "obsidian-outliner",
+      "name": "Outliner",
+      "repo": "vslinko/obsidian-outliner",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
+      "requiredFiles": ["main.js", "manifest.json"],
+      "optionalFiles": ["styles.css"]
+    },
+    {
+      "id": "editing-toolbar",
+      "name": "Editing Toolbar",
+      "repo": "pkm-er/obsidian-editing-toolbar",
+      "expectedCompatibilityLevel": "blocked",
+      "expectedRuntimeOutcome": "skipped",
       "requiredFiles": ["main.js", "manifest.json"],
       "optionalFiles": ["styles.css"]
     }

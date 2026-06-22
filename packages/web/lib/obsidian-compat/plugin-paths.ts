@@ -6,6 +6,8 @@ export const OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH = '.mindos/plugins';
 export const LEGACY_OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH = '.plugins';
 export const OBSIDIAN_PLUGIN_MANAGER_STATE_FILE = '.plugin-manager.json';
 export const OBSIDIAN_PLUGIN_LOCAL_STORAGE_FILE = '.local-storage.json';
+export const OBSIDIAN_PLUGIN_SECRET_STORAGE_FILE = '.secret-storage.json';
+export const OBSIDIAN_PLUGIN_SECRET_STORAGE_KEY_FILE = '.secret-storage.key';
 
 export interface ObsidianPluginRootLocation {
   rootDir: string;
@@ -123,6 +125,14 @@ export function resolvePluginLocalStoragePathsForRead(mindRoot: string): string[
     }
   }
   return paths;
+}
+
+export function resolveCanonicalPluginSecretStoragePath(mindRoot: string): string {
+  return path.join(resolveCanonicalObsidianPluginRoot(mindRoot).rootDir, OBSIDIAN_PLUGIN_SECRET_STORAGE_FILE);
+}
+
+export function resolveCanonicalPluginSecretStorageKeyPath(mindRoot: string): string {
+  return path.join(resolveCanonicalObsidianPluginRoot(mindRoot).rootDir, OBSIDIAN_PLUGIN_SECRET_STORAGE_KEY_FILE);
 }
 
 function pluginLocationFromRoot(mindRoot: string, root: ObsidianPluginRootLocation, pluginId: string): ObsidianPluginLocation {

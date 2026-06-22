@@ -39,7 +39,87 @@ describe('PluginManager', () => {
       enabled: false,
       loaded: false,
       compatibilityLevel: 'compatible',
+      packageLocation: {
+        relativePath: '.plugins/alpha-plugin',
+        rootRelativePath: '.plugins',
+        legacy: true,
+        migrationAvailable: true,
+      },
+      coverageSummary: {
+        full: expect.any(Number),
+      },
     });
+  });
+
+  it('migrates legacy plugin packages into the canonical MindOS plugin directory', async () => {
+    writePlugin('migrate-plugin', `const { Plugin } = require('obsidian'); module.exports = class MigratePlugin extends Plugin {};`);
+    fs.writeFileSync(
+      path.join(mindRoot, '.plugins', 'migrate-plugin', 'data.json'),
+      JSON.stringify({ value: 1 }, null, 2),
+      'utf-8',
+    );
+    fs.mkdirSync(path.join(mindRoot, '.plugins', 'migrate-plugin', 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(mindRoot, '.plugins', 'migrate-plugin', 'nested', 'extra.txt'), 'extra', 'utf-8');
+    fs.symlinkSync(
+      path.join(mindRoot, '.plugins', 'migrate-plugin', 'data.json'),
+      path.join(mindRoot, '.plugins', 'migrate-plugin', 'linked-data.json'),
+    );
+
+    const manager = new PluginManager(mindRoot);
+    await manager.discover();
+    await manager.enable('migrate-plugin');
+
+    const plan = manager.previewLegacyMigration('migrate-plugin');
+    expect(plan).toMatchObject({
+      pluginId: 'migrate-plugin',
+      canMigrate: true,
+      sourceRelativePath: '.plugins/migrate-plugin',
+      targetRelativePath: '.mindos/plugins/migrate-plugin',
+      skipped: [{ path: 'linked-data.json', reason: 'symlink skipped' }],
+    });
+    expect(plan.files).toEqual(expect.arrayContaining(['manifest.json', 'main.js', 'data.json', 'nested/extra.txt']));
+
+    const result = await manager.migrateLegacyPlugin('migrate-plugin');
+
+    expect(result.migrated).toBe(true);
+    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'migrate-plugin'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'migrate-plugin', 'manifest.json'))).toBe(true);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'migrate-plugin', 'nested', 'extra.txt'))).toBe(true);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'migrate-plugin', 'linked-data.json'))).toBe(false);
+    const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8'));
+    expect(state.enabled).toEqual({ 'migrate-plugin': true });
+    expect(manager.list()[0]).toMatchObject({
+      id: 'migrate-plugin',
+      enabled: true,
+      packageLocation: {
+        relativePath: '.mindos/plugins/migrate-plugin',
+        rootRelativePath: '.mindos/plugins',
+        legacy: false,
+        migrationAvailable: false,
+      },
+    });
+  });
+
+  it('refuses legacy migration when the canonical plugin package already exists', async () => {
+    writePlugin('conflict-plugin', `const { Plugin } = require('obsidian'); module.exports = class ConflictPlugin extends Plugin {};`);
+    const canonicalDir = path.join(mindRoot, '.mindos', 'plugins', 'conflict-plugin');
+    fs.mkdirSync(canonicalDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(canonicalDir, 'manifest.json'),
+      JSON.stringify({ id: 'conflict-plugin', name: 'conflict-plugin', version: '2.0.0' }, null, 2),
+      'utf-8',
+    );
+    fs.writeFileSync(path.join(canonicalDir, 'main.js'), 'module.exports = {};', 'utf-8');
+
+    const manager = new PluginManager(mindRoot);
+    await manager.discover();
+
+    expect(manager.previewLegacyMigration('conflict-plugin')).toMatchObject({
+      canMigrate: false,
+      conflictReason: 'Canonical plugin package already exists: .mindos/plugins/conflict-plugin',
+    });
+    await expect(manager.migrateLegacyPlugin('conflict-plugin')).rejects.toThrow(/already exists/);
+    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'conflict-plugin', 'manifest.json'))).toBe(true);
   });
 
   it('surfaces Obsidian Community origin metadata for installed packages', async () => {
@@ -242,7 +322,8 @@ describe('PluginManager', () => {
       `
         const { Plugin } = require('obsidian');
         module.exports = class RemovePlugin extends Plugin {
-          onload() {
+          async onload() {
+            await this.app.secretStorage.setSecret('api-key', 'remove-me-secret');
             this.addCommand({ id: 'run', name: 'Run', callback: () => {} });
           }
         };
@@ -254,10 +335,17 @@ describe('PluginManager', () => {
     await manager.enable('remove-plugin');
     await manager.loadEnabledPlugins();
     expect(manager.getLoader().getLoadedPlugins().map((loaded) => loaded.manifest.id)).toEqual(['remove-plugin']);
+    expect(manager.list().find((item) => item.id === 'remove-plugin')?.runtime.secretStorage).toMatchObject({
+      pluginId: 'remove-plugin',
+      secrets: 1,
+      encrypted: true,
+    });
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.secret-storage.json'), 'utf-8')).not.toContain('remove-me-secret');
 
     await manager.uninstall('remove-plugin');
 
     expect(fs.existsSync(path.join(mindRoot, '.plugins', 'remove-plugin'))).toBe(false);
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.secret-storage.json'), 'utf-8')).not.toContain('remove-plugin');
     expect(manager.list().find((item) => item.id === 'remove-plugin')).toBeUndefined();
     expect(manager.getLoader().getLoadedPlugins()).toEqual([]);
     const state = JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8'));

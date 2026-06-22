@@ -10,6 +10,13 @@ import { Events } from '../events';
 import { DataAdapter, DataWriteOptions, IVault, ListedFiles, Stat, TFile, TFolder, TAbstractFile } from '../types';
 
 const PRIVATE_VAULT_DIRS = new Set(['.mindos', '.obsidian', '.plugins']);
+const DEFAULT_VAULT_CONFIG: Record<string, unknown> = {
+  cssTheme: '',
+  theme: 'obsidian',
+  baseFontSize: 16,
+  accentColor: '',
+  translucency: false,
+};
 
 function normalizeVaultPath(input: string): string {
   return input
@@ -25,6 +32,14 @@ function isPrivateVaultPath(input: string): boolean {
   if (!normalizedPath) return false;
   const topLevelDir = normalizedPath.split('/')[0] ?? normalizedPath;
   return PRIVATE_VAULT_DIRS.has(topLevelDir);
+}
+
+function normalizeConfigKey(input: string): string {
+  const key = String(input ?? '').trim();
+  if (!key) {
+    throw new Error('Vault config key is required.');
+  }
+  return key;
 }
 
 function arrayBufferFromBuffer(buffer: Buffer): ArrayBuffer {
@@ -198,6 +213,7 @@ export class Vault extends Events implements IVault {
   adapter: DataAdapter;
   configDir = '.obsidian';
   private fileCache: Map<string, TFile> = new Map();
+  private readonly configValues = new Map<string, unknown>(Object.entries(DEFAULT_VAULT_CONFIG));
 
   constructor(private mindRoot: string) {
     super();
@@ -307,6 +323,17 @@ export class Vault extends Events implements IVault {
 
   getName(): string {
     return path.basename(this.mindRoot);
+  }
+
+  getConfig(key: string): unknown {
+    const normalizedKey = normalizeConfigKey(key);
+    return this.configValues.has(normalizedKey) ? this.configValues.get(normalizedKey) : null;
+  }
+
+  setConfig(key: string, value: unknown): void {
+    const normalizedKey = normalizeConfigKey(key);
+    this.configValues.set(normalizedKey, value);
+    this.trigger('config-changed', normalizedKey, value);
   }
 
   getAbstractFileByPath(filePath: string): TAbstractFile | null {

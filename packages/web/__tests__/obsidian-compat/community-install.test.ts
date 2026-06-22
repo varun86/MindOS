@@ -71,6 +71,14 @@ function writeCommunityMetadata(
   }), 'utf-8');
 }
 
+function canonicalPluginDir(pluginId = 'quickadd'): string {
+  return path.join(mindRoot, '.mindos', 'plugins', pluginId);
+}
+
+function legacyPluginDir(pluginId = 'quickadd'): string {
+  return path.join(mindRoot, '.plugins', pluginId);
+}
+
 describe('Obsidian community plugin install helper', () => {
   beforeEach(() => {
     mindRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mindos-obsidian-community-install-'));
@@ -228,7 +236,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('plans an installed community plugin update without writing local files', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -301,7 +309,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('does not mark a blocked remote package as updatable in update preview', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -339,8 +347,31 @@ describe('Obsidian community plugin install helper', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('requires legacy community plugins to migrate before update preview', async () => {
+    const targetDir = legacyPluginDir();
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
+      id: 'quickadd',
+      name: 'QuickAdd',
+      version: '1.0.0',
+    }), 'utf-8');
+    fs.writeFileSync(path.join(targetDir, 'main.js'), 'local main', 'utf-8');
+    writeCommunityMetadata(targetDir);
+    const fetchMock = createFetchMock({});
+
+    await expect(planObsidianCommunityPluginUpdate({
+      repo: 'owner/quickadd',
+      pluginId: 'quickadd',
+      targetMindRoot: mindRoot,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })).rejects.toThrow('Migrate .plugins/quickadd to .mindos/plugins/quickadd before updating.');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.readFileSync(path.join(targetDir, 'main.js'), 'utf-8')).toBe('local main');
+  });
+
   it('rejects update previews for local plugins without community provenance before fetching remote assets', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -362,7 +393,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('rejects update previews when community provenance belongs to another repo', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -384,7 +415,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('applies a confirmed community plugin update while preserving local plugin state', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -402,7 +433,7 @@ describe('Obsidian community plugin install helper', () => {
     fs.symlinkSync(path.join(mindRoot, 'outside-secret.txt'), path.join(targetDir, 'cache', 'outside-link.txt'));
     writeCommunityMetadata(targetDir);
     fs.writeFileSync(
-      path.join(mindRoot, '.plugins', '.plugin-manager.json'),
+      path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'),
       JSON.stringify({ enabled: { quickadd: true } }),
       'utf-8',
     );
@@ -457,7 +488,7 @@ describe('Obsidian community plugin install helper', () => {
     expect(fs.readFileSync(path.join(targetDir, 'cache', 'state.json'), 'utf-8')).toBe('{"cached":true}');
     expect(fs.existsSync(path.join(targetDir, 'outside-link.txt'))).toBe(false);
     expect(fs.existsSync(path.join(targetDir, 'cache', 'outside-link.txt'))).toBe(false);
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'), 'utf-8')).toBe(JSON.stringify({ enabled: { quickadd: true } }));
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8')).toBe(JSON.stringify({ enabled: { quickadd: true } }));
     expect(readJson(path.join(targetDir, 'obsidian-community.json'))).toMatchObject({
       schemaVersion: 1,
       source: 'obsidian-community',
@@ -470,12 +501,12 @@ describe('Obsidian community plugin install helper', () => {
       installBlockedReasons: [],
       packageDigest: expectPackageDigest(false),
     });
-    expect(fs.readdirSync(path.join(mindRoot, '.plugins')).filter((entry) => entry.startsWith('.updating-quickadd-'))).toEqual([]);
-    expect(fs.readdirSync(path.join(mindRoot, '.plugins')).filter((entry) => entry.startsWith('.previous-quickadd-'))).toEqual([]);
+    expect(fs.readdirSync(path.join(mindRoot, '.mindos', 'plugins')).filter((entry) => entry.startsWith('.updating-quickadd-'))).toEqual([]);
+    expect(fs.readdirSync(path.join(mindRoot, '.mindos', 'plugins')).filter((entry) => entry.startsWith('.previous-quickadd-'))).toEqual([]);
   });
 
   it('requires explicit confirmation before applying a community plugin update', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -499,7 +530,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('rejects stale update previews without writing local files', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -523,7 +554,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('rejects update previews when package content changes without a version change', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -558,7 +589,7 @@ describe('Obsidian community plugin install helper', () => {
   });
 
   it('rolls back the local plugin directory when update publish fails', async () => {
-    const targetDir = path.join(mindRoot, '.plugins', 'quickadd');
+    const targetDir = canonicalPluginDir();
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'manifest.json'), JSON.stringify({
       id: 'quickadd',
@@ -590,7 +621,7 @@ describe('Obsidian community plugin install helper', () => {
     expect(JSON.parse(fs.readFileSync(path.join(targetDir, 'manifest.json'), 'utf-8'))).toMatchObject({
       version: '1.0.0',
     });
-    expect(fs.readdirSync(path.join(mindRoot, '.plugins')).filter((entry) => entry.startsWith('.updating-quickadd-'))).toEqual([]);
-    expect(fs.readdirSync(path.join(mindRoot, '.plugins')).filter((entry) => entry.startsWith('.previous-quickadd-'))).toEqual([]);
+    expect(fs.readdirSync(path.join(mindRoot, '.mindos', 'plugins')).filter((entry) => entry.startsWith('.updating-quickadd-'))).toEqual([]);
+    expect(fs.readdirSync(path.join(mindRoot, '.mindos', 'plugins')).filter((entry) => entry.startsWith('.previous-quickadd-'))).toEqual([]);
   });
 });

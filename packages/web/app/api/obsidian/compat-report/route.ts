@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { handleRouteErrorSimple } from '@/lib/errors';
 import {
+  normalizeObsidianConfigDir,
   scanObsidianVaultPlugins,
   type ScannedObsidianPlugin,
 } from '@/lib/obsidian-compat/obsidian-import';
@@ -10,7 +11,11 @@ import {
   getObsidianImportSupport,
   type ObsidianImportSupportKind,
 } from '@/lib/obsidian-compat/import-policy';
-import { buildObsidianCapabilityCoverage, summarizeObsidianCapabilityCoverage } from '@/lib/obsidian-compat/capability-matrix';
+import {
+  buildObsidianCapabilityCoverage,
+  summarizeObsidianCapabilityCoverage,
+  summarizeObsidianCapabilitySurfaces,
+} from '@/lib/obsidian-compat/capability-matrix';
 import { buildObsidianCommunitySurfacePreview } from '@/lib/obsidian-compat/community-support';
 import { OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH } from '@/lib/obsidian-compat/plugin-paths';
 import { expandSetupPathHome } from '@/app/api/setup/path-utils';
@@ -34,6 +39,7 @@ function enrichPlugin(plugin: ScannedObsidianPlugin, hasEnabledList: boolean) {
     support,
     coverage,
     coverageSummary: summarizeObsidianCapabilityCoverage(coverage),
+    surfaceSummary: summarizeObsidianCapabilitySurfaces(coverage),
     surfacePreview,
     migrationPlan: {
       copiedFiles: [
@@ -64,7 +70,14 @@ export async function GET(req: NextRequest) {
     }
 
     const vaultRoot = expandSetupPathHome(vaultRootParam.trim());
-    const result = await scanObsidianVaultPlugins(vaultRoot);
+    const rawConfigDir = req.nextUrl.searchParams.get('configDir') ?? req.nextUrl.searchParams.get('obsidianConfigDir') ?? undefined;
+    let configDir: string;
+    try {
+      configDir = normalizeObsidianConfigDir(rawConfigDir ?? undefined);
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Invalid Obsidian config folder' }, { status: 400 });
+    }
+    const result = await scanObsidianVaultPlugins(vaultRoot, { configDir });
     const hasEnabledList = result.vault.hasEnabledList;
     const plugins = result.plugins.map((plugin) => enrichPlugin(plugin, hasEnabledList));
     const supportCounts = plugins.reduce<Record<ObsidianImportSupportKind, number>>((counts, plugin) => {
@@ -91,12 +104,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       vaultRoot,
+      configDir: result.vault.configDir,
+      sourcePluginsPath: result.vault.pluginsRelativePath,
       summary,
       migration: {
         defaultSelectionPolicy: hasEnabledList
           ? 'Source-enabled plugins that are ready or limited are selected by default. Review and blocked plugins stay unchecked.'
           : 'Ready and limited plugins are selected by default because this vault has no enabled plugin list. Review and blocked plugins stay unchecked.',
         sourceVaultUnchanged: true,
+        sourcePluginsPath: result.vault.pluginsRelativePath,
         writesTo: `${OBSIDIAN_PLUGIN_ROOT_RELATIVE_PATH}/<plugin-id>`,
         writesConfig: 'obsidian-import.json',
         enableAfterImport: false,

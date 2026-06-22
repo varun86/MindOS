@@ -9,8 +9,9 @@ import { FileManagerShim } from './file-manager';
 import { CommandRegistry } from '../command-registry';
 import { Events } from '../events';
 import { ObsidianRuntimeHost } from '../runtime';
-import type { App, Command, Editor, IFileManager, IMetadataCache, MarkdownView, TFile, Workspace, WorkspaceLeaf } from '../types';
+import type { App, Command, Editor, IFileManager, IMetadataCache, MarkdownView, SecretStorage, TFile, Workspace, WorkspaceLeaf } from '../types';
 import type { CommandExecutionContext } from '../command-registry';
+import { ObsidianSecretStorage, type ObsidianSecretStorageSummary } from '../secret-storage';
 import fs from 'fs';
 import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
@@ -137,6 +138,8 @@ class WorkspaceShim extends Events implements Workspace {
   activeEditor: MarkdownView | null = null;
   layoutReady = true;
   private readonly leaves: WorkspaceLeaf[] = [];
+  private readonly leftLeaves: WorkspaceLeaf[] = [];
+  private readonly rightLeaves: WorkspaceLeaf[] = [];
   private activeFile: TFile | null = null;
 
   constructor(
@@ -199,6 +202,14 @@ class WorkspaceShim extends Events implements Workspace {
     return this.activeLeaf;
   }
 
+  getLeftLeaf(split?: boolean): WorkspaceLeaf | null {
+    return this.getSidebarLeaf(this.leftLeaves, split);
+  }
+
+  getRightLeaf(split?: boolean): WorkspaceLeaf | null {
+    return this.getSidebarLeaf(this.rightLeaves, split);
+  }
+
   getLeavesOfType(viewType: string): WorkspaceLeaf[] {
     return this.leaves.filter((leaf) => leaf.getViewState().type === viewType);
   }
@@ -211,6 +222,14 @@ class WorkspaceShim extends Events implements Workspace {
 
   iterateAllLeaves(callback: (leaf: WorkspaceLeaf) => any): void {
     this.iterateRootLeaves(callback);
+  }
+
+  iterateCodeMirrors(callback: (codeMirror: { getOption(key: string): unknown; setOption(key: string, value: unknown): void }) => any): void {
+    void callback;
+    this.host.warn({
+      code: 'workspace-codemirror-iteration-recorded-only',
+      message: 'Workspace.iterateCodeMirrors() is recorded as a no-op until MindOS exposes a browser editor plugin host.',
+    });
   }
 
   registerHoverLinkSource(source: string, options: unknown): void {
@@ -238,6 +257,16 @@ class WorkspaceShim extends Events implements Workspace {
       message: 'Workspace.changeLayout() is recorded as a no-op in MindOS Phase 1.',
     });
   }
+
+  private getSidebarLeaf(collection: WorkspaceLeaf[], split?: boolean): WorkspaceLeaf {
+    if (split || collection.length === 0) {
+      const leaf = new WorkspaceLeafShim(this.app, this.host);
+      collection.push(leaf);
+      this.leaves.push(leaf);
+      return leaf;
+    }
+    return collection[0]!;
+  }
 }
 
 /**
@@ -247,7 +276,10 @@ export class AppShim implements App {
   vault: Vault;
   metadataCache: IMetadataCache;
   fileManager: IFileManager;
+  secretStorage: SecretStorage;
   workspace: Workspace;
+  commands: App['commands'];
+  customCss: App['customCss'];
   plugins: NonNullable<App['plugins']>;
   internalPlugins: { plugins: Record<string, unknown>; getPluginById: (pluginId: string) => unknown };
   foldManager: { load: () => unknown; save: () => void };
@@ -266,8 +298,15 @@ export class AppShim implements App {
     this.vault = new Vault(mindRoot);
     this.metadataCache = new MetadataCacheShim(mindRoot, this.vault);
     this.fileManager = new FileManagerShim(this);
+    this.secretStorage = new ObsidianSecretStorage(
+      mindRoot,
+      () => this.runtimeHost.getCurrentPluginId(),
+      (warning) => this.runtimeHost.warn(warning),
+    );
     this.workspace = new WorkspaceShim(this, this.runtimeHost);
     this.commandRegistry = new CommandRegistry();
+    this.commands = this.createCommandsShim();
+    this.customCss = this.createCustomCssShim();
     this.plugins = {
       plugins: {},
       enabledPlugins: new Set(),
@@ -340,12 +379,64 @@ export class AppShim implements App {
     return this.runtimeHost;
   }
 
+  getSecretStorageSummary(pluginId: string): ObsidianSecretStorageSummary {
+    return (this.secretStorage as ObsidianSecretStorage).getSummary(pluginId);
+  }
+
   readFileContentSync(file: TFile): string {
     try {
       return fs.readFileSync(resolveExistingSafe(this.mindRoot, file.path), 'utf-8');
     } catch {
       return '';
     }
+  }
+
+  private createCommandsShim(): App['commands'] {
+    const app = this;
+    return {
+      get commands() {
+        return Object.fromEntries(app.commandRegistry.list().map((command) => [command.fullId, command]));
+      },
+      listCommands: () => app.commandRegistry.list(),
+      findCommand: (id: string) => app.findCommand(id),
+      executeCommandById: async (id: string) => {
+        const command = app.findCommand(id);
+        if (!command) {
+          throw new Error(`Command not found: ${id}`);
+        }
+        await app.executeCommand(command.fullId);
+      },
+    };
+  }
+
+  private findCommand(id: string) {
+    return this.commandRegistry.list().find((command) => command.fullId === id || command.id === id);
+  }
+
+  private createCustomCssShim(): App['customCss'] {
+    return {
+      getSnippetPath: (snippet: string) => {
+        const normalized = String(snippet || 'snippet')
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter(Boolean)
+          .join('-')
+          .replace(/\.css$/i, '');
+        return `.mindos/snippets/${normalized || 'snippet'}.css`;
+      },
+      setCssEnabledStatus: (snippet: string, enabled: boolean) => {
+        this.runtimeHost.warn({
+          code: 'custom-css-status-recorded-only',
+          message: `Custom CSS snippet "${snippet}" was ${enabled ? 'enabled' : 'disabled'} in the compatibility host; MindOS records this without mutating Obsidian CSS settings.`,
+        });
+      },
+      readSnippets: () => {
+        this.runtimeHost.warn({
+          code: 'custom-css-read-snippets-recorded-only',
+          message: 'Custom CSS snippet reload was recorded as a no-op in the MindOS compatibility host.',
+        });
+      },
+    };
   }
 
   async withActiveFile<T>(file: TFile | null, callback: () => Promise<T> | T): Promise<T> {

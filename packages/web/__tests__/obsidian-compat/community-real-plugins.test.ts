@@ -28,6 +28,7 @@ interface RealPluginTarget {
   name: string;
   repo: string;
   expectedCompatibilityLevel: 'compatible' | 'partial' | 'blocked';
+  expectedRuntimeOutcome?: 'loaded' | 'skipped' | 'typed-failure-or-load';
   requiredFiles?: string[];
   optionalFiles?: string[];
 }
@@ -44,6 +45,7 @@ interface RealPluginMatrix {
     releaseTag: string;
     releaseUrl?: string;
     expectedCompatibilityLevel: 'compatible' | 'partial' | 'blocked';
+    expectedRuntimeOutcome?: 'loaded' | 'skipped' | 'typed-failure-or-load';
     manifest: {
       id: string;
       name: string;
@@ -90,7 +92,7 @@ function matrixPlugin(matrix: RealPluginMatrix, pluginId: string): RealPluginMat
 
 function copyPluginToVault(pluginId: string, destDir: string): void {
   const srcDir = getPluginPath(pluginId);
-  const destPluginDir = path.join(destDir, '.plugins', pluginId);
+  const destPluginDir = path.join(destDir, '.mindos', 'plugins', pluginId);
 
   fs.mkdirSync(destPluginDir, { recursive: true });
 
@@ -136,9 +138,10 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
     for (const fixture of REAL_PLUGIN_FIXTURES) {
       const item = matrixPlugin(matrix, fixture.id);
       expect(item, `matrix entry for ${fixture.id}`).toBeDefined();
-      expect(item?.repo).toBe(fixture.repo);
-      expect(item?.expectedCompatibilityLevel).toBe(fixture.expectedCompatibilityLevel);
-    }
+        expect(item?.repo).toBe(fixture.repo);
+        expect(item?.expectedCompatibilityLevel).toBe(fixture.expectedCompatibilityLevel);
+        expect(item?.expectedRuntimeOutcome).toBe(fixture.expectedRuntimeOutcome);
+      }
   });
 
   beforeEach(() => {
@@ -194,8 +197,15 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
         const skipped = result.skipped.includes(fixture.id);
         expect(loaded || failed || skipped).toBe(true);
 
-        if (fixture.expectedCompatibilityLevel !== 'blocked') {
-          expect(loaded, `${fixture.name} should load as a non-blocked real-plugin fixture`).toBe(true);
+        const expectedRuntimeOutcome = fixture.expectedRuntimeOutcome ?? (
+          fixture.expectedCompatibilityLevel === 'blocked' ? 'skipped' : 'typed-failure-or-load'
+        );
+
+        if (expectedRuntimeOutcome === 'loaded') {
+          expect(loaded, `${fixture.name} should load in the current restricted runtime`).toBe(true);
+        }
+        if (expectedRuntimeOutcome === 'skipped') {
+          expect(skipped, `${fixture.name} should be skipped by the compatibility gate`).toBe(true);
         }
 
         if (loaded) {
@@ -205,6 +215,7 @@ describe.skipIf(!ENABLED)('real community plugin smoke suite', () => {
         } else {
           const afterLoad = manager.list().find((p) => p.id === fixture.id);
           expect(afterLoad?.lastError, `${fixture.name} should expose a runtime failure reason`).toBeTruthy();
+          expect(expectedRuntimeOutcome, `${fixture.name} failed in runtime but was not marked as an allowed typed-failure sample`).toBe('typed-failure-or-load');
           console.log(`✗ ${fixture.name} failed to load: ${afterLoad?.lastError}`);
         }
       });

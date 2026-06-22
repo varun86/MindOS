@@ -33,6 +33,12 @@ const createAppStub = () => {
     vault: {} as App['vault'],
     metadataCache: {} as App['metadataCache'],
     workspace: {} as App['workspace'],
+    fileManager: {} as App['fileManager'],
+    secretStorage: {
+      setSecret: vi.fn(),
+      getSecret: vi.fn(),
+      listSecrets: vi.fn(),
+    },
     isDarkMode: () => false,
     loadLocalStorage: () => null,
     saveLocalStorage: () => {},

@@ -14,6 +14,7 @@ export type ObsidianCapabilitySurface =
   | 'document'
   | 'styles'
   | 'editor'
+  | 'secret'
   | 'vault'
   | 'metadata'
   | 'workspace'
@@ -43,6 +44,43 @@ export interface ObsidianCapabilityCoverage {
   host: string;
   route?: string;
   notes: string;
+}
+
+export interface ObsidianCapabilitySurfaceSummary {
+  surface: ObsidianCapabilitySurface;
+  apiCount: number;
+  supportSummary: Record<ObsidianCapabilitySupport, number>;
+  apis: string[];
+  hosts: string[];
+  routes: string[];
+}
+
+const SURFACE_ORDER: ObsidianCapabilitySurface[] = [
+  'commands',
+  'settings',
+  'views',
+  'document',
+  'network',
+  'secret',
+  'editor',
+  'vault',
+  'metadata',
+  'workspace',
+  'entries',
+  'styles',
+  'core',
+  'unsupported',
+];
+
+function emptySupportSummary(): Record<ObsidianCapabilitySupport, number> {
+  return {
+    full: 0,
+    limited: 0,
+    'snapshot-only': 0,
+    'catalog-only': 0,
+    'request-only': 0,
+    unsupported: 0,
+  };
 }
 
 export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
@@ -194,7 +232,25 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     host: 'Plugin settings host',
     route: '/api/obsidian-plugins/settings',
     tests: ['obsidian-compat/integration.test.ts'],
-    notes: 'Secret input UI is represented as a masked compatibility control; native Obsidian SecretStorage is not exposed.',
+    notes: 'Secret input UI is represented as a masked compatibility control; SecretStorage handles persisted secret values.',
+  },
+  {
+    api: 'SecretStorage',
+    surface: 'secret',
+    support: 'limited',
+    host: 'MindOS plugin secret vault',
+    route: '/api/obsidian-plugins',
+    tests: ['obsidian-compat/secret-storage.test.ts', 'obsidian-compat/loader.test.ts'],
+    notes: 'SecretStorage uses a plugin-scoped encrypted local file backend; Desktop keychain/native broker remains a future hardening step.',
+  },
+  {
+    api: 'Plugin.getSettingDefinitions',
+    surface: 'settings',
+    support: 'catalog-only',
+    host: 'Plugin settings host',
+    route: '/api/obsidian-plugins/settings',
+    tests: ['api/obsidian-plugins.settings.test.ts', 'settings/obsidian-plugin-host-section.test.tsx'],
+    notes: 'Declarative settings definitions are detected and serialized as a read-only settings catalog; editable declarative controls/actions remain behind a future settings host gate.',
   },
   {
     api: 'addCommand',
@@ -213,6 +269,15 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     route: '/api/obsidian-plugins',
     tests: ['obsidian-compat/runtime-host.test.ts'],
     notes: 'Commands can be removed from the local registry.',
+  },
+  {
+    api: 'Commands.listCommands',
+    surface: 'commands',
+    support: 'limited',
+    host: 'Command Center',
+    route: '/api/obsidian-plugins',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Plugins can enumerate commands registered in the MindOS command registry; native Obsidian core commands are not synthesized.',
   },
   {
     api: 'addSettingTab',
@@ -322,6 +387,14 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     notes: 'Registered icon content is available to compatibility code without global icon injection.',
   },
   {
+    api: 'getIconIds',
+    surface: 'core',
+    support: 'limited',
+    host: 'Obsidian module shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Icon id enumeration returns MindOS known icon ids plus plugin-registered ids.',
+  },
+  {
     api: 'setIcon',
     surface: 'core',
     support: 'limited',
@@ -360,6 +433,14 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     host: 'Obsidian module shim',
     tests: ['obsidian-compat/integration.test.ts'],
     notes: 'Modifier-key helpers are provided for common command and menu guards.',
+  },
+  {
+    api: 'Scope',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor suggest catalog',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Key scope registrations are kept in-memory for plugin compatibility; MindOS does not attach them to global editor keyboard handling.',
   },
   {
     api: 'parseFrontMatterAliases',
@@ -402,6 +483,62 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     notes: 'Fuzzy search falls back to a deterministic substring matcher.',
   },
   {
+    api: 'prepareSimpleSearch',
+    surface: 'core',
+    support: 'limited',
+    host: 'Obsidian module shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Simple search uses the same deterministic substring matcher as the compatibility fuzzy search helper.',
+  },
+  {
+    api: 'renderMatches',
+    surface: 'document',
+    support: 'snapshot-only',
+    host: 'Obsidian module shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Search matches are rendered into safe compatibility elements with static highlight spans.',
+  },
+  {
+    api: 'CustomCss.getSnippetPath',
+    surface: 'styles',
+    support: 'limited',
+    host: 'Custom CSS compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Snippet paths are redirected to a MindOS-controlled compatibility directory instead of Obsidian CSS settings.',
+  },
+  {
+    api: 'CustomCss.setCssEnabledStatus',
+    surface: 'styles',
+    support: 'catalog-only',
+    host: 'Custom CSS compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Snippet enable/disable requests are recorded as compatibility warnings and do not mutate Obsidian appearance settings.',
+  },
+  {
+    api: 'CustomCss.readSnippets',
+    surface: 'styles',
+    support: 'catalog-only',
+    host: 'Custom CSS compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Snippet reload requests are recorded as no-ops until MindOS exposes a browser style host.',
+  },
+  {
+    api: 'CodeMirror',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Global CodeMirror mode registration is kept in a local compatibility map; live editor integration remains gated.',
+  },
+  {
+    api: 'CodeMirrorAdapter.commands',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'CodeMirrorAdapter command overrides are recorded in a local command map without patching a live editor.',
+  },
+  {
     api: 'AbstractInputSuggest',
     surface: 'entries',
     support: 'snapshot-only',
@@ -409,6 +546,15 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     route: '/api/obsidian-plugins',
     tests: ['obsidian-compat/integration.test.ts'],
     notes: 'Input suggest classes can be constructed; suggestion rendering is exposed through compatibility snapshots when invoked.',
+  },
+  {
+    api: 'EditorSuggest',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor suggest catalog',
+    route: '/api/obsidian-plugins',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'EditorSuggest can be extended and registered, but live cursor-triggered editor integration remains behind the editor suggest host gate.',
   },
   {
     api: 'View',
@@ -540,6 +686,22 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     host: 'Vault shim',
     tests: ['obsidian-compat/vault.test.ts'],
     notes: 'Resource paths use the MindOS vault URL scheme.',
+  },
+  {
+    api: 'Vault.getConfig',
+    surface: 'vault',
+    support: 'limited',
+    host: 'Vault shim',
+    tests: ['obsidian-compat/vault.test.ts'],
+    notes: 'Returns a compatibility config map for common theme/editor settings without reading private .obsidian internals.',
+  },
+  {
+    api: 'Vault.setConfig',
+    surface: 'vault',
+    support: 'limited',
+    host: 'Vault shim',
+    tests: ['obsidian-compat/vault.test.ts'],
+    notes: 'Updates the in-memory compatibility config map and emits a config-changed event; it does not mutate .obsidian config files.',
   },
   {
     api: 'Vault.delete',
@@ -783,6 +945,14 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     notes: 'Leaves are compatibility catalog entries, not native layout leaves.',
   },
   {
+    api: 'Workspace.iterateCodeMirrors',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor compatibility shim',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'CodeMirror iteration is a no-op compatibility hook until MindOS exposes a browser editor plugin host.',
+  },
+  {
     api: 'Workspace.getLeaf',
     surface: 'views',
     support: 'limited',
@@ -790,6 +960,24 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     route: '/plugins/views',
     tests: ['obsidian-compat/workspace.test.ts'],
     notes: 'Leaves are compatibility hosts for snapshots and text output.',
+  },
+  {
+    api: 'Workspace.getLeftLeaf',
+    surface: 'views',
+    support: 'limited',
+    host: 'Plugin view host',
+    route: '/plugins/views',
+    tests: ['obsidian-compat/workspace.test.ts'],
+    notes: 'Left sidebar leaves are compatibility snapshot hosts, not native Obsidian sidebar panes.',
+  },
+  {
+    api: 'Workspace.getRightLeaf',
+    surface: 'views',
+    support: 'limited',
+    host: 'Plugin view host',
+    route: '/plugins/views',
+    tests: ['obsidian-compat/workspace.test.ts'],
+    notes: 'Right sidebar leaves are compatibility snapshot hosts, not native Obsidian sidebar panes.',
   },
   {
     api: 'Workspace.getLeavesOfType',
@@ -890,6 +1078,14 @@ export const OBSIDIAN_CAPABILITY_MATRIX: ObsidianCapabilityRow[] = [
     notes: 'Editor extensions are recorded for review; MindOS does not mount CodeMirror extensions into every editor.',
   },
   {
+    api: 'registerEditorSuggest',
+    surface: 'editor',
+    support: 'catalog-only',
+    host: 'Editor suggest catalog',
+    tests: ['obsidian-compat/integration.test.ts'],
+    notes: 'Editor suggestions are recorded for diagnostics; MindOS does not attach them to live editor cursor events until the browser editor suggest host exists.',
+  },
+  {
     api: 'request',
     surface: 'network',
     support: 'limited',
@@ -969,12 +1165,47 @@ export function summarizeObsidianCapabilityCoverage(
   return coverage.reduce<Record<ObsidianCapabilitySupport, number>>((summary, item) => {
     summary[item.support] += 1;
     return summary;
-  }, {
-    full: 0,
-    limited: 0,
-    'snapshot-only': 0,
-    'catalog-only': 0,
-    'request-only': 0,
-    unsupported: 0,
-  });
+  }, emptySupportSummary());
+}
+
+export function summarizeObsidianCapabilitySurfaces(
+  coverage: ObsidianCapabilityCoverage[],
+): ObsidianCapabilitySurfaceSummary[] {
+  const bySurface = new Map<ObsidianCapabilitySurface, ObsidianCapabilitySurfaceSummary>();
+
+  for (const item of coverage) {
+    const summary = bySurface.get(item.surface) ?? {
+      surface: item.surface,
+      apiCount: 0,
+      supportSummary: emptySupportSummary(),
+      apis: [],
+      hosts: [],
+      routes: [],
+    };
+    summary.apiCount += 1;
+    summary.supportSummary[item.support] += 1;
+    summary.apis.push(item.api);
+    if (!summary.hosts.includes(item.host)) {
+      summary.hosts.push(item.host);
+    }
+    if (item.route && !summary.routes.includes(item.route)) {
+      summary.routes.push(item.route);
+    }
+    bySurface.set(item.surface, summary);
+  }
+
+  return Array.from(bySurface.values())
+    .map((summary) => ({
+      ...summary,
+      apis: summary.apis.sort((a, b) => a.localeCompare(b, 'en')),
+      hosts: summary.hosts.sort((a, b) => a.localeCompare(b, 'en')),
+      routes: summary.routes.sort((a, b) => a.localeCompare(b, 'en')),
+    }))
+    .sort((a, b) => {
+      const orderA = SURFACE_ORDER.indexOf(a.surface);
+      const orderB = SURFACE_ORDER.indexOf(b.surface);
+      return (orderA === -1 ? Number.MAX_SAFE_INTEGER : orderA)
+        - (orderB === -1 ? Number.MAX_SAFE_INTEGER : orderB)
+        || a.surface.localeCompare(b.surface, 'en');
+    });
 }

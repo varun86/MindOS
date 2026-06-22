@@ -1,22 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { POST } from '../../app/api/obsidian/import/route';
 
-const importObsidianPlugin = vi.fn();
-const scanObsidianVaultPlugins = vi.fn();
-const testState = vi.hoisted(() => ({ mindRoot: '/tmp/mindRoot' }));
+const mockedObsidianImport = vi.hoisted(() => {
+  const normalizeObsidianConfigDir = (configDir?: string) => {
+    const raw = (configDir ?? '.obsidian').trim();
+    if (!raw) return '.obsidian';
+    const normalized = raw.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalized || normalized === '.') return '.obsidian';
+    if (normalized.startsWith('/') || normalized.includes('//')) {
+      throw new Error(`Obsidian config folder must be relative to the vault: ${configDir}`);
+    }
+    if (normalized.split('/').some((part) => !part || part === '.' || part === '..')) {
+      throw new Error(`Obsidian config folder escapes the vault: ${configDir}`);
+    }
+    return normalized;
+  };
 
-vi.mock('@/lib/obsidian-compat/obsidian-import', () => ({
+  return {
+    importObsidianPlugin: vi.fn(),
+    normalizeObsidianConfigDir,
+    scanObsidianVaultPlugins: vi.fn(),
+    testState: { mindRoot: '/tmp/mindRoot' },
+  };
+});
+
+const {
   importObsidianPlugin,
   scanObsidianVaultPlugins,
+  testState,
+} = mockedObsidianImport;
+
+vi.mock('@/lib/obsidian-compat/obsidian-import', () => ({
+  importObsidianPlugin: mockedObsidianImport.importObsidianPlugin,
+  normalizeObsidianConfigDir: mockedObsidianImport.normalizeObsidianConfigDir,
+  scanObsidianVaultPlugins: mockedObsidianImport.scanObsidianVaultPlugins,
 }));
 
 vi.mock('@/lib/settings', () => ({
-  readSettings: () => ({ mindRoot: testState.mindRoot }),
+  readSettings: () => ({ mindRoot: mockedObsidianImport.testState.mindRoot }),
 }));
-
-async function importRoute() {
-  return import('../../app/api/obsidian/import/route');
-}
 
 describe('POST /api/obsidian/import', () => {
   beforeEach(() => {
@@ -25,7 +48,6 @@ describe('POST /api/obsidian/import', () => {
   });
 
   it('rejects missing vaultRoot or pluginId', async () => {
-    const { POST } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',
       body: JSON.stringify({ vaultRoot: '~/vault' }),
@@ -38,7 +60,6 @@ describe('POST /api/obsidian/import', () => {
   });
 
   it('rejects malformed body values', async () => {
-    const { POST } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',
       body: JSON.stringify({ vaultRoot: 1, pluginId: 'quickadd-like' }),
@@ -74,16 +95,15 @@ describe('POST /api/obsidian/import', () => {
         },
       ],
       skipped: [],
-      vault: { pluginsDirFound: true, hasEnabledList: true },
+      vault: { pluginsDirFound: true, hasEnabledList: true, configDir: '.obsidian', pluginsRelativePath: '.obsidian/plugins' },
     });
     importObsidianPlugin.mockResolvedValue({
       pluginId: 'quickadd-like',
       targetDir: '/tmp/mindRoot/.mindos/plugins/quickadd-like',
       copiedFiles: ['manifest.json', 'main.js', 'data.json', 'obsidian-import.json'],
-      obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
+      obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0, sourceConfigDir: '.obsidian' },
     });
 
-    const { POST } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',
       body: JSON.stringify({ vaultRoot: '~/vault', pluginId: 'quickadd-like', targetMindRoot: '/tmp/ignoredRoot' }),
@@ -110,16 +130,85 @@ describe('POST /api/obsidian/import', () => {
     expect(json.plugin.sourceDir).toBeUndefined();
     expect(json.imported.targetDir).toBeUndefined();
     expect(json.imported.targetPath).toBe('.mindos/plugins/quickadd-like');
+    expect(json.imported.sourceConfigDir).toBe('.obsidian');
     expect(json.imported.copiedFiles).toEqual(['manifest.json', 'main.js', 'data.json', 'obsidian-import.json']);
     expect(importObsidianPlugin).toHaveBeenCalledTimes(1);
     expect(importObsidianPlugin).toHaveBeenCalledWith(expect.objectContaining({
       pluginId: 'quickadd-like',
       targetMindRoot: '/tmp/mindRoot',
+      configDir: '.obsidian',
     }));
     expect(importObsidianPlugin).not.toHaveBeenCalledWith(expect.objectContaining({
       targetMindRoot: '/tmp/ignoredRoot',
     }));
     expect(scanObsidianVaultPlugins).toHaveBeenCalledTimes(1);
+    expect(scanObsidianVaultPlugins).toHaveBeenCalledWith(expect.any(String), { configDir: '.obsidian' });
+  });
+
+  it('imports with a custom Obsidian config folder override', async () => {
+    scanObsidianVaultPlugins.mockResolvedValue({
+      plugins: [
+        {
+          id: 'mobile-plugin',
+          manifest: { id: 'mobile-plugin', name: 'Mobile Plugin', version: '1.0.0' },
+          sourceDir: '/tmp/vault/.obsidian-mobile/plugins/mobile-plugin',
+          compatibilityLevel: 'compatible',
+          compatibility: {
+            obsidianApis: ['Plugin'],
+            moduleImports: [],
+            nodeModules: [],
+            unsupportedModules: [],
+            supportedApis: ['Plugin'],
+            partialApis: [],
+            unsupportedApis: [],
+            blockers: [],
+          },
+          hasStyles: false,
+          hasData: false,
+          obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0 },
+        },
+      ],
+      skipped: [],
+      vault: { pluginsDirFound: true, hasEnabledList: true, configDir: '.obsidian-mobile', pluginsRelativePath: '.obsidian-mobile/plugins' },
+    });
+    importObsidianPlugin.mockResolvedValue({
+      pluginId: 'mobile-plugin',
+      targetDir: '/tmp/mindRoot/.mindos/plugins/mobile-plugin',
+      copiedFiles: ['manifest.json', 'main.js', 'obsidian-import.json'],
+      obsidianConfig: { enabledInObsidian: true, hasEnabledList: true, hotkeys: [], hotkeyCount: 0, sourceConfigDir: '.obsidian-mobile' },
+    });
+
+    const req = new NextRequest('http://localhost/api/obsidian/import', {
+      method: 'POST',
+      body: JSON.stringify({ vaultRoot: '~/vault', pluginId: 'mobile-plugin', configDir: '.obsidian-mobile' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.imported.sourceConfigDir).toBe('.obsidian-mobile');
+    expect(scanObsidianVaultPlugins).toHaveBeenCalledWith(expect.any(String), { configDir: '.obsidian-mobile' });
+    expect(importObsidianPlugin).toHaveBeenCalledWith(expect.objectContaining({
+      pluginId: 'mobile-plugin',
+      configDir: '.obsidian-mobile',
+    }));
+  });
+
+  it('rejects unsafe Obsidian config folder overrides', async () => {
+    const req = new NextRequest('http://localhost/api/obsidian/import', {
+      method: 'POST',
+      body: JSON.stringify({ vaultRoot: '~/vault', pluginId: 'quickadd-like', configDir: '../outside' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: 'Obsidian config folder escapes the vault: ../outside' });
+    expect(scanObsidianVaultPlugins).not.toHaveBeenCalled();
+    expect(importObsidianPlugin).not.toHaveBeenCalled();
   });
 
   it('rejects blocked plugins at the import API boundary', async () => {
@@ -146,10 +235,9 @@ describe('POST /api/obsidian/import', () => {
         },
       ],
       skipped: [],
-      vault: { pluginsDirFound: true, hasEnabledList: true },
+      vault: { pluginsDirFound: true, hasEnabledList: true, configDir: '.obsidian', pluginsRelativePath: '.obsidian/plugins' },
     });
 
-    const { POST } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',
       body: JSON.stringify({ vaultRoot: '~/vault', pluginId: 'desktop-only-like' }),
@@ -163,8 +251,7 @@ describe('POST /api/obsidian/import', () => {
   });
 
   it('returns 404 when plugin is not found in the scanned vault', async () => {
-    scanObsidianVaultPlugins.mockResolvedValue({ plugins: [], skipped: [], vault: { pluginsDirFound: true, hasEnabledList: false } });
-    const { POST } = await importRoute();
+    scanObsidianVaultPlugins.mockResolvedValue({ plugins: [], skipped: [], vault: { pluginsDirFound: true, hasEnabledList: false, configDir: '.obsidian', pluginsRelativePath: '.obsidian/plugins' } });
     const req = new NextRequest('http://localhost/api/obsidian/import', {
       method: 'POST',
       body: JSON.stringify({ vaultRoot: '~/vault', pluginId: 'missing-plugin' }),

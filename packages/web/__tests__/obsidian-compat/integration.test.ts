@@ -70,13 +70,18 @@ describe('obsidian compat integration', () => {
               hasMarkdownRenderChild: typeof obsidian.MarkdownRenderChild === 'function',
               hasMarkdownRenderer: typeof obsidian.MarkdownRenderer?.renderMarkdown === 'function',
               hasFuzzySuggestModal: typeof obsidian.FuzzySuggestModal === 'function',
+              hasEditorSuggest: typeof obsidian.EditorSuggest === 'function',
+              hasScope: typeof obsidian.Scope === 'function',
               hasFileSystemAdapter: typeof obsidian.FileSystemAdapter === 'function',
               hasDebounce: typeof obsidian.debounce === 'function',
               hasParseYaml: typeof obsidian.parseYaml === 'function',
               hasStringifyYaml: typeof obsidian.stringifyYaml === 'function',
+              hasPrepareSimpleSearch: typeof obsidian.prepareSimpleSearch === 'function',
+              hasRenderMatches: typeof obsidian.renderMatches === 'function',
               hasSetIcon: typeof obsidian.setIcon === 'function',
               hasAddIcon: typeof obsidian.addIcon === 'function',
               hasGetIcon: typeof obsidian.getIcon === 'function',
+              hasGetIconIds: typeof obsidian.getIconIds === 'function',
               hasSetTooltip: typeof obsidian.setTooltip === 'function',
               hasVaultAdapter: typeof this.app.vault.adapter?.read === 'function',
               hasFileManager: typeof this.app.fileManager?.processFrontMatter === 'function',
@@ -106,13 +111,18 @@ describe('obsidian compat integration', () => {
       hasMarkdownRenderChild: true,
       hasMarkdownRenderer: true,
       hasFuzzySuggestModal: true,
+      hasEditorSuggest: true,
+      hasScope: true,
       hasFileSystemAdapter: true,
       hasDebounce: true,
       hasParseYaml: true,
       hasStringifyYaml: true,
+      hasPrepareSimpleSearch: true,
+      hasRenderMatches: true,
       hasSetIcon: true,
       hasAddIcon: true,
       hasGetIcon: true,
+      hasGetIconIds: true,
       hasSetTooltip: true,
       hasVaultAdapter: true,
       hasFileManager: true,
@@ -125,11 +135,22 @@ describe('obsidian compat integration', () => {
     writePlugin(
       'utility-plugin',
       `
-        const { Plugin, Modal, FileSystemAdapter, debounce, parseYaml, stringifyYaml, addIcon, getIcon, setIcon, setTooltip } = require('obsidian');
+        const { Plugin, Modal, FileSystemAdapter, Scope, debounce, parseYaml, stringifyYaml, addIcon, getIcon, getIconIds, setIcon, setTooltip, moment, prepareSimpleSearch, renderMatches } = require('obsidian');
         module.exports = class UtilityPlugin extends Plugin {
           onload() {
             const modal = new Modal(this.app);
             const button = modal.contentEl.createEl('button');
+            const matchEl = document.createEl('div');
+            const simpleSearchResult = prepareSimpleSearch('theme')('minimal theme settings');
+            renderMatches(matchEl, 'minimal theme settings', simpleSearchResult.matches);
+            const scope = new Scope();
+            const registration = scope.register(['Mod'], 'k', () => {});
+            scope.unregister(registration);
+            const themeMarker = document.createEl('div', { cls: 'minimal-theme theme-dark' });
+            document.body.appendChild(themeMarker);
+            document.body.setCssProps({ 'text-normal': '#222', '--background-primary': '#fff' });
+            document.body.setCssStyles({ color: 'red', 'font-size': '16px' });
+            const removedCssProp = document.body.style.removeProperty('--background-primary');
             addIcon('mindos-test', '<svg><path /></svg>');
             setIcon(button, 'mindos-test', 16);
             setTooltip(button, 'Run action');
@@ -144,9 +165,26 @@ describe('obsidian compat integration', () => {
               parsed: parseYaml('title: Hello\\ncount: 2\\n'),
               yaml: stringifyYaml({ ready: true }).trim(),
               icon: getIcon('mindos-test'),
+              iconIds: getIconIds(),
               iconAttr: button.getAttribute('data-obsidian-icon'),
               iconSize: button.getAttribute('data-obsidian-icon-size'),
               tooltip: button.getAttribute('title'),
+              previousLocale: moment.locale(),
+              nextLocale: moment.locale('zh-cn'),
+              currentLocale: moment.locale(),
+              localeData: moment.localeData().longDateFormat('L'),
+              simpleSearchScore: simpleSearchResult.score,
+              renderedMatchText: Array.from(matchEl.children).map((child) => child.textContent).join('') || matchEl.textContent,
+              renderedHighlight: matchEl.querySelector('.suggestion-highlight')?.textContent,
+              scopeKeysAfterUnregister: scope.keys.length,
+              classLookupCount: document.getElementsByClassName('minimal-theme').length,
+              compoundClassLookupCount: document.getElementsByClassName('minimal-theme theme-dark').length,
+              queryLookupMatches: document.querySelector('.minimal-theme') === themeMarker,
+              cssProp: document.body.style.getPropertyValue('--text-normal'),
+              removedCssProp,
+              removedCssPropAfter: document.body.style.getPropertyValue('--background-primary'),
+              cssStyle: document.body.style.color,
+              cssHyphenStyle: document.body.style.getPropertyValue('font-size'),
               callsBeforeTimer: calls,
               readCalls: () => calls,
               cancel: debounced.cancel,
@@ -165,9 +203,26 @@ describe('obsidian compat integration', () => {
       expect(check.parsed).toEqual({ title: 'Hello', count: 2 });
       expect(check.yaml).toContain('ready: true');
       expect(check.icon).toBe('<svg><path /></svg>');
+      expect(check.iconIds).toEqual(expect.arrayContaining(['mindos-test', 'settings']));
       expect(check.iconAttr).toBe('mindos-test');
       expect(check.iconSize).toBe('16');
       expect(check.tooltip).toBe('Run action');
+      expect(check.previousLocale).toBe('en');
+      expect(check.nextLocale).toBe('zh-cn');
+      expect(check.currentLocale).toBe('zh-cn');
+      expect(check.localeData).toBe('YYYY-MM-DD');
+      expect(check.simpleSearchScore).toBeGreaterThan(0);
+      expect(check.renderedMatchText).toBe('minimal theme settings');
+      expect(check.renderedHighlight).toBe('theme');
+      expect(check.scopeKeysAfterUnregister).toBe(0);
+      expect(check.classLookupCount).toBe(1);
+      expect(check.compoundClassLookupCount).toBe(1);
+      expect(check.queryLookupMatches).toBe(true);
+      expect(check.cssProp).toBe('#222');
+      expect(check.removedCssProp).toBe('#fff');
+      expect(check.removedCssPropAfter).toBe('');
+      expect(check.cssStyle).toBe('red');
+      expect(check.cssHyphenStyle).toBe('16px');
       expect(check.callsBeforeTimer).toBe(0);
 
       vi.advanceTimersByTime(24);
@@ -178,6 +233,132 @@ describe('obsidian compat integration', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('records EditorSuggest registrations as catalog-only editor capabilities', async () => {
+    writePlugin(
+      'editor-suggest-plugin',
+      `
+        const { Plugin, EditorSuggest } = require('obsidian');
+        class ExampleSuggest extends EditorSuggest {
+          onTrigger(cursor, editor, file) {
+            return { start: cursor, end: cursor, query: 'mind' };
+          }
+          getSuggestions(context) {
+            return ['MindOS'];
+          }
+          renderSuggestion(value, el) {
+            el.setText(value);
+          }
+          selectSuggestion(value, evt) {
+            this.selected = value;
+          }
+        }
+        module.exports = class EditorSuggestPlugin extends Plugin {
+          onload() {
+            this.suggest = new ExampleSuggest(this.app);
+            this.registerEditorSuggest(this.suggest);
+          }
+        };
+      `,
+    );
+
+    const loader = new PluginLoader(mindRoot);
+    await loader.loadPlugin('editor-suggest-plugin');
+
+    const host = loader.getApp().getRuntimeHost();
+    expect(host.getEditorSuggests()).toEqual([
+      expect.objectContaining({
+        pluginId: 'editor-suggest-plugin',
+        summary: expect.objectContaining({
+          constructorName: 'ExampleSuggest',
+          hasOnTrigger: true,
+          hasGetSuggestions: true,
+          hasRenderSuggestion: true,
+          hasSelectSuggestion: true,
+          mountStatus: 'catalog-only',
+          autoMount: false,
+        }),
+      }),
+    ]);
+    expect(host.getWarnings()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pluginId: 'editor-suggest-plugin',
+        code: 'editor-suggest-recorded-only',
+      }),
+    ]));
+  });
+
+  it('exposes registered commands through the Obsidian app.commands facade', async () => {
+    writePlugin(
+      'commands-facade-plugin',
+      `
+        const { Plugin } = require('obsidian');
+        module.exports = class CommandsFacadePlugin extends Plugin {
+          onload() {
+            this.addCommand({ id: 'hello', name: 'Hello command', callback: () => {} });
+            this.commandCheck = {
+              names: this.app.commands.listCommands().map((command) => command.name),
+              ids: Object.keys(this.app.commands.commands),
+              found: this.app.commands.findCommand('hello')?.name,
+            };
+          }
+        };
+      `,
+    );
+
+    const loader = new PluginLoader(mindRoot);
+    const loaded = await loader.loadPlugin('commands-facade-plugin');
+
+    expect((loaded.instance as any).commandCheck).toEqual({
+      names: ['Hello command'],
+      ids: ['obsidian:commands-facade-plugin:hello'],
+      found: 'Hello command',
+    });
+  });
+
+  it('provides safe custom CSS and CodeMirror compatibility globals', async () => {
+    writePlugin(
+      'style-compat-plugin',
+      `
+        const { Plugin } = require('obsidian');
+        module.exports = class StyleCompatPlugin extends Plugin {
+          onload() {
+            window.CodeMirror.defineMode('ad-note', () => ({ token: () => null }));
+            CodeMirrorAdapter.commands.save = () => 'saved';
+            const style = activeDocument.head.createEl('style', { attr: { id: 'style-compat' } });
+            style.sheet.insertRule('.callout { color: red; }', 0);
+            activeDocument.head.appendChild(style);
+            this.app.customCss.setCssEnabledStatus('admonitions', true);
+            this.app.customCss.readSnippets();
+            this.app.workspace.iterateCodeMirrors(() => {
+              this.iteratedCodeMirrors = true;
+            });
+            style.detach();
+            this.styleCheck = {
+              snippetPath: this.app.customCss.getSnippetPath('admonitions'),
+              modeRegistered: Boolean(window.CodeMirror.modes['ad-note']),
+              adapterCommand: typeof CodeMirrorAdapter.commands.save,
+              cssRules: style.sheet.cssRules.length,
+              detached: activeDocument.head.querySelector('#style-compat') === null,
+              iteratedCodeMirrors: this.iteratedCodeMirrors === true,
+            };
+          }
+        };
+      `,
+    );
+
+    const loader = new PluginLoader(mindRoot);
+    const loaded = await loader.loadPlugin('style-compat-plugin');
+
+    expect((loaded.instance as any).styleCheck).toEqual({
+      snippetPath: '.mindos/snippets/admonitions.css',
+      modeRegistered: true,
+      adapterCommand: 'function',
+      cssRules: 1,
+      detached: true,
+      iteratedCodeMirrors: false,
+    });
   });
 
   it('extracts frontmatter tags and links through metadata cache', async () => {

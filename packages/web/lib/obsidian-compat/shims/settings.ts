@@ -4,7 +4,7 @@
  */
 
 import { Component } from '../component';
-import type { App, PluginSettingTab as IPluginSettingTab, PluginSettingItem } from '../types';
+import type { App, PluginSettingTab as IPluginSettingTab, PluginSettingItem, SettingDefinitionItem } from '../types';
 import { createObsidianElement, ensureObsidianElement, type ObsidianElement } from './dom';
 
 function isPluginSettingItem(target: PluginSettingItem | HTMLElement): target is PluginSettingItem {
@@ -197,6 +197,7 @@ export class PluginSettingTab extends Component implements IPluginSettingTab {
   app: App;
   containerEl: ObsidianElement;
   items: PluginSettingItem[] = [];
+  settingItems: SettingDefinitionItem[] = [];
   plugin?: unknown;
 
   constructor(app: App, plugin?: unknown) {
@@ -207,11 +208,53 @@ export class PluginSettingTab extends Component implements IPluginSettingTab {
     this.containerEl.__obsidianSettingItems = this.items;
   }
 
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [];
+  }
+
+  update(): void {
+    const definitions = this.getSettingDefinitions();
+    this.settingItems = Array.isArray(definitions) ? definitions : [];
+  }
+
+  getControlValue(key: string): unknown {
+    const settings = settingsRecordFor(this.plugin);
+    return settings ? settings[key] : undefined;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = ensureSettingsRecordFor(this.plugin);
+    settings[key] = value;
+    const plugin = this.plugin as { saveData?: (data: unknown) => Promise<void> | void } | undefined;
+    if (typeof plugin?.saveData === 'function') {
+      await plugin.saveData(settings);
+    }
+  }
+
+  refreshDomState(): void {}
+
   display(): void {}
 
   addItem(item: PluginSettingItem): void {
     this.items.push(item);
   }
+}
+
+function settingsRecordFor(plugin: unknown): Record<string, unknown> | null {
+  if (!plugin || typeof plugin !== 'object') return null;
+  const settings = (plugin as { settings?: unknown }).settings;
+  return settings && typeof settings === 'object' && !Array.isArray(settings)
+    ? settings as Record<string, unknown>
+    : null;
+}
+
+function ensureSettingsRecordFor(plugin: unknown): Record<string, unknown> {
+  if (!plugin || typeof plugin !== 'object') return {};
+  const target = plugin as { settings?: unknown };
+  if (!target.settings || typeof target.settings !== 'object' || Array.isArray(target.settings)) {
+    target.settings = {};
+  }
+  return target.settings as Record<string, unknown>;
 }
 
 export class Setting {

@@ -176,6 +176,21 @@ describe('Vault', () => {
     expect(markdownFiles[0]?.path).toBe('notes/one.md');
   });
 
+  it('exposes Obsidian-style vault config without reading private .obsidian files', async () => {
+    fs.mkdirSync(path.join(mindRoot, '.obsidian'), { recursive: true });
+    fs.writeFileSync(path.join(mindRoot, '.obsidian', 'app.json'), '{"cssTheme":"private-theme"}', 'utf-8');
+
+    expect(vault.getConfig('cssTheme')).toBe('');
+    expect(vault.getConfig('unknown')).toBeNull();
+
+    vault.setConfig('cssTheme', 'Minimal');
+    vault.setConfig('baseFontSize', 18);
+
+    expect(vault.getConfig('cssTheme')).toBe('Minimal');
+    expect(vault.getConfig('baseFontSize')).toBe(18);
+    expect(fs.readFileSync(path.join(mindRoot, '.obsidian', 'app.json'), 'utf-8')).toBe('{"cssTheme":"private-theme"}');
+  });
+
   it('skips private plugin and Obsidian config files when listing vault files', async () => {
     await vault.create('notes/one.md', 'one');
     fs.mkdirSync(path.join(mindRoot, '.plugins', 'sample-plugin'), { recursive: true });

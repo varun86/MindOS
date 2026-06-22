@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
+  pathname: '/settings/plugins',
   toastInfo: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock('@/lib/api', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
+  usePathname: () => mocks.pathname,
   useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }),
 }));
 
@@ -47,6 +49,15 @@ function plugin(overrides: Record<string, unknown> = {}) {
       partialApis: [],
       unsupportedApis: [],
       blockers: [],
+    },
+    coverage: [],
+    coverageSummary: { full: 2, limited: 0, 'snapshot-only': 0, 'catalog-only': 0, 'request-only': 0, unsupported: 0 },
+    surfaceSummary: [],
+    packageLocation: {
+      relativePath: '.mindos/plugins/quickadd-like',
+      rootRelativePath: '.mindos/plugins',
+      legacy: false,
+      migrationAvailable: false,
     },
     runtime: {
       commands: 0,
@@ -115,6 +126,7 @@ async function cleanup(root: Root, host: HTMLElement) {
 describe('ObsidianPluginHostSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.pathname = '/settings/plugins';
   });
 
   it('loads imported plugin status and enables a plugin through the lifecycle API', async () => {
@@ -143,6 +155,109 @@ describe('ObsidianPluginHostSection', () => {
     });
 
     expect(host.textContent).toContain('1 enabled');
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+
+    await cleanup(root, host);
+  });
+
+  it('shows package location and migrates legacy packages through the lifecycle API', async () => {
+    let migrated = false;
+    mocks.apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/obsidian-plugins' && !init?.method) {
+        return {
+          ok: true,
+          plugins: [
+            plugin({
+              packageLocation: migrated
+                ? {
+                  relativePath: '.mindos/plugins/quickadd-like',
+                  rootRelativePath: '.mindos/plugins',
+                  legacy: false,
+                  migrationAvailable: false,
+                }
+                : {
+                  relativePath: '.plugins/quickadd-like',
+                  rootRelativePath: '.plugins',
+                  legacy: true,
+                  migrationAvailable: true,
+              },
+              coverage: [{ api: 'Notice', surface: 'entries', support: 'snapshot-only', host: 'Plugin entries dock', notes: 'snapshot' }],
+              coverageSummary: { full: 2, limited: 0, 'snapshot-only': 1, 'catalog-only': 0, 'request-only': 0, unsupported: 0 },
+              surfaceSummary: [{
+                surface: 'entries',
+                apiCount: 1,
+                supportSummary: { full: 0, limited: 0, 'snapshot-only': 1, 'catalog-only': 0, 'request-only': 0, unsupported: 0 },
+                apis: ['Notice'],
+                hosts: ['Plugin entries dock'],
+                routes: ['/api/obsidian-plugins'],
+              }],
+            }),
+          ],
+        };
+      }
+      if (url === '/api/obsidian-plugins' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({ action: 'migrate-legacy', pluginId: 'quickadd-like' });
+        migrated = true;
+        return {
+          ok: true,
+          result: {
+            migrated: true,
+            sourceRelativePath: '.plugins/quickadd-like',
+            targetRelativePath: '.mindos/plugins/quickadd-like',
+          },
+          plugins: [
+            plugin({
+              packageLocation: {
+                relativePath: '.mindos/plugins/quickadd-like',
+                rootRelativePath: '.mindos/plugins',
+                legacy: false,
+                migrationAvailable: false,
+              },
+              coverageSummary: { full: 2, limited: 0, 'snapshot-only': 1, 'catalog-only': 0, 'request-only': 0, unsupported: 0 },
+            }),
+          ],
+        };
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const { host, root } = await renderSection();
+
+    expect(host.textContent).toContain('legacy path');
+    const row = host.querySelector('[data-obsidian-plugin-row="quickadd-like"]') as HTMLElement;
+    const expandButton = row.querySelector('button') as HTMLButtonElement;
+    await act(async () => {
+      expandButton.click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Legacy package');
+    expect(host.textContent).toContain('.plugins/quickadd-like');
+    expect(host.textContent).toContain('2 full / 1 snapshot');
+    expect(host.textContent).toContain('1 detected API surface');
+    expect(host.textContent).toContain('Detected MindOS surfaces');
+    expect(host.textContent).toContain('Entries');
+    expect(host.textContent).toContain('1 snapshot');
+
+    const migrateButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Migrate')) as HTMLButtonElement;
+    await act(async () => {
+      migrateButton.click();
+      await Promise.resolve();
+    });
+
+    const confirmButton = Array.from(portalRoot().querySelectorAll('button'))
+      .filter((button) => button.textContent?.trim() === 'Migrate')
+      .pop() as HTMLButtonElement;
+    await act(async () => {
+      confirmButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Canonical package');
+    expect(host.textContent).toContain('.mindos/plugins/quickadd-like');
+    expect(host.textContent).not.toContain('legacy path');
     expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
 
     await cleanup(root, host);
@@ -217,6 +332,97 @@ describe('ObsidianPluginHostSection', () => {
 
     const commandButton = Array.from(host.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Quick Capture')) as HTMLButtonElement;
+
+    await act(async () => {
+      commandButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+
+    await cleanup(root, host);
+  });
+
+  it('runs editor commands from the expanded row with the current Markdown file context', async () => {
+    mocks.pathname = '/view/notes/current.md';
+    mocks.apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/obsidian-plugins' && !init?.method) {
+        return {
+          ok: true,
+          plugins: [
+            plugin({
+              enabled: true,
+              loaded: true,
+              runtime: runtime({
+                commands: 1,
+                commandList: [{
+                  id: 'append',
+                  fullId: 'obsidian:quickadd-like:append',
+                  name: 'Append current note',
+                  executable: false,
+                  requiresEditor: true,
+                  callbackType: 'editor-callback',
+                  availabilityReason: 'Requires an active editor host',
+                }],
+              }),
+            }),
+          ],
+        };
+      }
+      if (url === '/api/obsidian-plugins' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          action: 'execute-command',
+          commandId: 'obsidian:quickadd-like:append',
+          editorContext: { sourcePath: 'notes/current.md' },
+        });
+        return {
+          ok: true,
+          result: {
+            workspaceOpenRequests: [],
+            modalSnapshots: [],
+            menuSnapshots: [],
+            editorUpdates: [{ sourcePath: 'notes/current.md', changed: true }],
+          },
+          plugins: [
+            plugin({
+              enabled: true,
+              loaded: true,
+              runtime: runtime({
+                commands: 1,
+                commandList: [{
+                  id: 'append',
+                  fullId: 'obsidian:quickadd-like:append',
+                  name: 'Append current note',
+                  executable: false,
+                  requiresEditor: true,
+                  callbackType: 'editor-callback',
+                }],
+              }),
+            }),
+          ],
+        };
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const { host, root } = await renderSection();
+    const row = host.querySelector('[data-obsidian-plugin-row="quickadd-like"]') as HTMLElement;
+    const expandButton = row.querySelector('button') as HTMLButtonElement;
+
+    await act(async () => {
+      expandButton.click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Append current note');
+    expect(host.textContent).toContain('Editor');
+
+    const commandButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Append current note')) as HTMLButtonElement;
+
+    expect(commandButton.disabled).toBe(false);
+    expect(commandButton.title).toBe('Run Append current note against the current Markdown file');
 
     await act(async () => {
       commandButton.click();
@@ -737,6 +943,532 @@ describe('ObsidianPluginHostSection', () => {
     });
 
     expect(mocks.apiFetch).toHaveBeenCalledTimes(3);
+
+    await cleanup(root, host);
+  });
+
+  it('shows and updates declarative settings controls returned by the settings API', async () => {
+    const loadedPlugin = plugin({
+      enabled: true,
+      loaded: true,
+      runtime: runtime({ settingTabs: 1 }),
+    });
+
+    mocks.apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/obsidian-plugins' && !init?.method) {
+        return { ok: true, plugins: [loadedPlugin] };
+      }
+      if (url === '/api/obsidian-plugins/settings' && !init?.method) {
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [{
+            id: 'quickadd-like',
+            name: 'QuickAdd Like',
+            version: '1.0.0',
+            settingTabs: [{ items: [] }],
+            declarativeSettingTabs: [{
+              items: [{
+                path: [0],
+                kind: 'group',
+                type: 'group',
+                heading: 'Capture',
+                searchableState: 'searchable',
+                visibleState: 'visible',
+                childCount: 2,
+                capabilities: {
+                  canChange: false,
+                  canRunAction: false,
+                  hasCustomRender: false,
+                  hasCustomPage: false,
+                  hasListMutation: false,
+                },
+                warnings: [],
+                children: [
+                  {
+                    path: [0, 0],
+                    kind: 'control',
+                    name: 'Enabled',
+                    searchableState: 'searchable',
+                    visibleState: 'visible',
+                    control: {
+                      type: 'toggle',
+                      key: 'enabled',
+                      hasValidate: false,
+                      hasFilter: false,
+                      disabledState: 'enabled',
+                    },
+                    value: true,
+                    capabilities: {
+                      canChange: true,
+                      canRunAction: false,
+                      hasCustomRender: false,
+                      hasCustomPage: false,
+                      hasListMutation: false,
+                    },
+                    warnings: [],
+                  },
+                  {
+                    path: [0, 1],
+                    kind: 'action',
+                    name: 'Reset',
+                    searchableState: 'searchable',
+                    visibleState: 'visible',
+                    capabilities: {
+                      canChange: false,
+                      canRunAction: true,
+                      hasCustomRender: false,
+                      hasCustomPage: false,
+                      hasListMutation: false,
+                    },
+                    warnings: ['Action callbacks require explicit confirmation before execution.'],
+                  },
+                ],
+              }],
+            }],
+          }],
+        };
+      }
+      if (url === '/api/obsidian-plugins/settings' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        const isAction = body.action === 'click-button';
+        expect(body).toEqual(isAction
+          ? {
+            action: 'click-button',
+            source: 'declarative',
+            pluginId: 'quickadd-like',
+            tabIndex: 0,
+            path: [0, 1],
+            confirmAction: true,
+          }
+          : {
+            action: 'set-value',
+            source: 'declarative',
+            pluginId: 'quickadd-like',
+            tabIndex: 0,
+            path: [0, 0],
+            value: false,
+          });
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [{
+            id: 'quickadd-like',
+            name: 'QuickAdd Like',
+            version: '1.0.0',
+            settingTabs: [{ items: [] }],
+            declarativeSettingTabs: [{
+              items: [{
+                path: [0],
+                kind: 'group',
+                type: 'group',
+                heading: 'Capture',
+                searchableState: 'searchable',
+                visibleState: 'visible',
+                childCount: 2,
+                capabilities: {
+                  canChange: false,
+                  canRunAction: false,
+                  hasCustomRender: false,
+                  hasCustomPage: false,
+                  hasListMutation: false,
+                },
+                warnings: [],
+                children: [{
+                  path: [0, 0],
+                  kind: 'control',
+                  name: 'Enabled',
+                  searchableState: 'searchable',
+                  visibleState: 'visible',
+                  control: {
+                    type: 'toggle',
+                    key: 'enabled',
+                    hasValidate: false,
+                    hasFilter: false,
+                    disabledState: 'enabled',
+                  },
+                  value: false,
+                  capabilities: {
+                    canChange: true,
+                    canRunAction: false,
+                    hasCustomRender: false,
+                    hasCustomPage: false,
+                    hasListMutation: false,
+                  },
+                  warnings: [],
+                },
+                {
+                  path: [0, 1],
+                  kind: 'action',
+                  name: 'Reset',
+                  searchableState: 'searchable',
+                  visibleState: 'visible',
+                  capabilities: {
+                    canChange: false,
+                    canRunAction: true,
+                    hasCustomRender: false,
+                    hasCustomPage: false,
+                    hasListMutation: false,
+                  },
+                  warnings: ['Action callbacks require explicit confirmation before execution.'],
+                }],
+              }],
+            }],
+          }],
+        };
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const { host, root } = await renderSection();
+    const row = host.querySelector('[data-obsidian-plugin-row="quickadd-like"]') as HTMLElement;
+    const expandButton = row.querySelector('button') as HTMLButtonElement;
+
+    await act(async () => {
+      expandButton.click();
+      await Promise.resolve();
+    });
+
+    const loadSettingsButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Load settings')) as HTMLButtonElement;
+
+    await act(async () => {
+      loadSettingsButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Declarative settings');
+    expect(host.textContent).toContain('limited host');
+    expect(host.textContent).toContain('Capture');
+    expect(host.textContent).toContain('Enabled');
+    expect(host.textContent).toContain('key: enabled');
+    expect(host.textContent).toContain('value: true');
+    expect(host.textContent).toContain('Action callbacks require explicit confirmation before execution.');
+
+    const switches = host.querySelectorAll('button[role="switch"]');
+    const declarativeToggle = switches[1] as HTMLButtonElement;
+
+    await act(async () => {
+      declarativeToggle.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(3);
+    expect(host.textContent).toContain('value: false');
+
+    const runResetButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.trim() === 'Run') as HTMLButtonElement;
+
+    await act(async () => {
+      runResetButton.click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Run Reset?');
+    expect(host.textContent).toContain('QuickAdd Like will run this declarative settings action.');
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(3);
+
+    const confirmRunButton = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent?.trim() === 'Run')
+      .at(-1) as HTMLButtonElement;
+
+    await act(async () => {
+      confirmRunButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(4);
+
+    await cleanup(root, host);
+  });
+
+  it('confirms declarative list mutations before posting to the settings API', async () => {
+    const loadedPlugin = plugin({
+      enabled: true,
+      loaded: true,
+      runtime: runtime({ settingTabs: 1 }),
+    });
+
+    mocks.apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/obsidian-plugins' && !init?.method) {
+        return { ok: true, plugins: [loadedPlugin] };
+      }
+      if (url === '/api/obsidian-plugins/settings' && !init?.method) {
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [{
+            id: 'quickadd-like',
+            name: 'QuickAdd Like',
+            version: '1.0.0',
+            settingTabs: [{ items: [] }],
+            declarativeSettingTabs: [{
+              items: [{
+                path: [0],
+                kind: 'list',
+                type: 'list',
+                heading: 'Choices',
+                searchableState: 'searchable',
+                visibleState: 'visible',
+                childCount: 2,
+                capabilities: {
+                  canChange: false,
+                  canRunAction: false,
+                  canAddListItem: true,
+                  canDeleteListItem: true,
+                  canReorderListItems: true,
+                  hasCustomRender: false,
+                  hasCustomPage: false,
+                  hasListMutation: true,
+                },
+                warnings: ['List mutations require explicit confirmation and roll back plugin data on callback failure.'],
+                children: [
+                  {
+                    path: [0, 0],
+                    kind: 'empty',
+                    name: 'A',
+                    searchableState: 'searchable',
+                    visibleState: 'visible',
+                    capabilities: {
+                      canChange: false,
+                      canRunAction: false,
+                      hasCustomRender: false,
+                      hasCustomPage: false,
+                      hasListMutation: false,
+                    },
+                    warnings: [],
+                  },
+                  {
+                    path: [0, 1],
+                    kind: 'empty',
+                    name: 'B',
+                    searchableState: 'searchable',
+                    visibleState: 'visible',
+                    capabilities: {
+                      canChange: false,
+                      canRunAction: false,
+                      hasCustomRender: false,
+                      hasCustomPage: false,
+                      hasListMutation: false,
+                    },
+                    warnings: [],
+                  },
+                ],
+              }],
+            }],
+          }],
+        };
+      }
+      if (url === '/api/obsidian-plugins/settings' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          action: 'list-add',
+          source: 'declarative',
+          pluginId: 'quickadd-like',
+          tabIndex: 0,
+          path: [0],
+          confirmAction: true,
+        });
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [{
+            id: 'quickadd-like',
+            name: 'QuickAdd Like',
+            version: '1.0.0',
+            settingTabs: [{ items: [] }],
+            declarativeSettingTabs: [{ items: [] }],
+          }],
+        };
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const { host, root } = await renderSection();
+    const row = host.querySelector('[data-obsidian-plugin-row="quickadd-like"]') as HTMLElement;
+    const expandButton = row.querySelector('button') as HTMLButtonElement;
+
+    await act(async () => {
+      expandButton.click();
+      await Promise.resolve();
+    });
+
+    const loadSettingsButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Load settings')) as HTMLButtonElement;
+
+    await act(async () => {
+      loadSettingsButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Choices');
+    expect(host.textContent).toContain('Add');
+    expect(host.textContent).toContain('Move first down');
+    expect(host.textContent).toContain('Delete last');
+    expect(host.textContent).toContain('List mutations require explicit confirmation');
+
+    const addButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.trim() === 'Add') as HTMLButtonElement;
+
+    await act(async () => {
+      addButton.click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Add item to Choices?');
+    expect(host.textContent).toContain('QuickAdd Like will run this declarative list mutation');
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+
+    const confirmButton = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent?.trim() === 'Run')
+      .at(-1) as HTMLButtonElement;
+
+    await act(async () => {
+      confirmButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(3);
+
+    await cleanup(root, host);
+  });
+
+  it('confirms declarative render previews and displays the snapshot result', async () => {
+    const loadedPlugin = plugin({
+      enabled: true,
+      loaded: true,
+      runtime: runtime({ settingTabs: 1 }),
+    });
+    const settingsPayload = {
+      id: 'quickadd-like',
+      name: 'QuickAdd Like',
+      version: '1.0.0',
+      settingTabs: [{ items: [] }],
+      declarativeSettingTabs: [{
+        items: [{
+          path: [0],
+          kind: 'render',
+          name: 'Rendered help',
+          searchableState: 'searchable',
+          visibleState: 'visible',
+          capabilities: {
+            canChange: false,
+            canRunAction: false,
+            canAddListItem: false,
+            canDeleteListItem: false,
+            canReorderListItems: false,
+            canPreviewRender: true,
+            canPreviewPage: false,
+            hasCustomRender: true,
+            hasCustomPage: false,
+            hasListMutation: false,
+          },
+          warnings: ['Custom render callbacks can be previewed only as safe snapshots after explicit confirmation; plugin DOM/events are not mounted.'],
+        }],
+      }],
+    };
+
+    mocks.apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/obsidian-plugins' && !init?.method) {
+        return { ok: true, plugins: [loadedPlugin] };
+      }
+      if (url === '/api/obsidian-plugins/settings' && !init?.method) {
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [settingsPayload],
+        };
+      }
+      if (url === '/api/obsidian-plugins/settings' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          action: 'preview-render',
+          source: 'declarative',
+          pluginId: 'quickadd-like',
+          tabIndex: 0,
+          path: [0],
+          confirmAction: true,
+        });
+        return {
+          ok: true,
+          loadResult: { loaded: ['quickadd-like'], failed: [], skipped: [] },
+          status: [loadedPlugin],
+          plugins: [settingsPayload],
+          preview: {
+            kind: 'render',
+            path: [0],
+            label: 'Rendered help',
+            text: 'Rendered snapshot',
+            nodes: [{
+              tag: 'div',
+              text: 'Rendered snapshot',
+              children: [{ tag: 'p', text: 'Rendered snapshot' }],
+            }],
+            cleanupCalled: true,
+            warnings: ['Static snapshot only; plugin DOM nodes, event listeners, and arbitrary browser access are not mounted.'],
+          },
+        };
+      }
+      throw new Error(`Unexpected apiFetch call: ${url}`);
+    });
+
+    const { host, root } = await renderSection();
+    const row = host.querySelector('[data-obsidian-plugin-row="quickadd-like"]') as HTMLElement;
+    const expandButton = row.querySelector('button') as HTMLButtonElement;
+
+    await act(async () => {
+      expandButton.click();
+      await Promise.resolve();
+    });
+
+    const loadSettingsButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Load settings')) as HTMLButtonElement;
+
+    await act(async () => {
+      loadSettingsButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Rendered help');
+    expect(host.textContent).toContain('Preview');
+    expect(host.textContent).toContain('Custom render callbacks can be previewed only as safe snapshots');
+
+    const previewButton = Array.from(host.querySelectorAll('button'))
+      .find((button) => button.textContent?.trim() === 'Preview') as HTMLButtonElement;
+
+    await act(async () => {
+      previewButton.click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Preview Rendered help?');
+    expect(host.textContent).toContain('QuickAdd Like will run this declarative render callback in the limited snapshot host.');
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+
+    const confirmButton = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent?.trim() === 'Preview')
+      .at(-1) as HTMLButtonElement;
+
+    await act(async () => {
+      confirmButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(3);
+    expect(host.textContent).toContain('Snapshot preview');
+    expect(host.textContent).toContain('Rendered snapshot');
+    expect(host.textContent).toContain('cleanup called');
+    expect(host.textContent).toContain('Static snapshot only; plugin DOM nodes, event listeners, and arbitrary browser access are not mounted.');
 
     await cleanup(root, host);
   });

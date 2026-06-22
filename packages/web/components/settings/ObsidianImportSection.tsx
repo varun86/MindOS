@@ -69,6 +69,8 @@ interface SkippedPlugin {
 interface CompatReport {
   ok: boolean;
   vaultRoot: string;
+  configDir?: string;
+  sourcePluginsPath?: string;
   summary: {
     total: number;
     compatible: number;
@@ -85,6 +87,7 @@ interface CompatReport {
   migration?: {
     defaultSelectionPolicy: string;
     sourceVaultUnchanged: boolean;
+    sourcePluginsPath?: string;
     writesTo: string;
     writesConfig: string;
     enableAfterImport: boolean;
@@ -152,6 +155,7 @@ function surfaceLabel(surface: ObsidianCommunitySurfacePreview['id']): string {
     editor: 'Editor',
     vault: 'Vault',
     network: 'Network',
+    secret: 'Secrets',
   }[surface] ?? surface;
 }
 
@@ -192,6 +196,7 @@ export function ObsidianImportSection({
 }) {
   const [expanded, setExpanded] = useState(initialExpanded);
   const [vaultPath, setVaultPath] = useState('');
+  const [configDir, setConfigDir] = useState('.obsidian');
   const [scanState, setScanState] = useState<ScanState>('idle');
   const [scanError, setScanError] = useState('');
   const [report, setReport] = useState<CompatReport | null>(null);
@@ -230,7 +235,10 @@ export function ObsidianImportSection({
     setImportState('idle');
     setImportResults([]);
     try {
-      const data = await apiFetch<CompatReport>(`/api/obsidian/compat-report?vaultRoot=${encodeURIComponent(trimmed)}`);
+      const trimmedConfigDir = configDir.trim() || '.obsidian';
+      const data = await apiFetch<CompatReport>(
+        `/api/obsidian/compat-report?vaultRoot=${encodeURIComponent(trimmed)}&configDir=${encodeURIComponent(trimmedConfigDir)}`,
+      );
       if (scanSeqRef.current !== scanSeq) return;
       const nextHasEnabledList = data.summary.hasEnabledList
         ?? data.plugins.some((plugin) => plugin.obsidianConfig?.hasEnabledList)
@@ -246,7 +254,7 @@ export function ObsidianImportSection({
       setScanError(err instanceof Error ? err.message : 'Scan failed');
       setScanState('error');
     }
-  }, [vaultPath]);
+  }, [configDir, vaultPath]);
 
   const handleImport = useCallback(async () => {
     if (!report) return;
@@ -255,13 +263,14 @@ export function ObsidianImportSection({
       .map((plugin) => plugin.id);
     if (selectedImportableIds.length === 0) return;
     setImportState('importing');
+    const activeConfigDir = report.configDir ?? (configDir.trim() || '.obsidian');
     const results: ImportResult[] = [];
     for (const pluginId of selectedImportableIds) {
       try {
         const data = await apiFetch<{ imported?: { copiedFiles?: string[] } }>('/api/obsidian/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vaultRoot: report.vaultRoot, pluginId }),
+          body: JSON.stringify({ vaultRoot: report.vaultRoot, pluginId, configDir: activeConfigDir }),
         });
         results.push({ id: pluginId, ok: true, copiedFiles: data.imported?.copiedFiles });
       } catch (err) {
@@ -273,7 +282,7 @@ export function ObsidianImportSection({
     if (results.some((result) => result.ok)) {
       notifyObsidianPluginPackagesChanged();
     }
-  }, [hasEnabledList, report, selected]);
+  }, [configDir, hasEnabledList, report, selected]);
 
   const togglePlugin = (id: string) => {
     if (importState === 'importing') return;
@@ -307,16 +316,33 @@ export function ObsidianImportSection({
 
       {expanded && (
         <div className="space-y-4 border-t border-border px-4 pb-4">
-          <div className="mt-3 flex gap-2">
-            <input
-              type="text"
-              aria-label="Obsidian vault path"
-              value={vaultPath}
-              onChange={e => setVaultPath(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') void handleScan(); }}
-              placeholder="~/obsidian-vault"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
-            />
+          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)_auto]">
+            <div className="min-w-0">
+              <label className="sr-only" htmlFor="obsidian-vault-path">Obsidian vault path</label>
+              <input
+                id="obsidian-vault-path"
+                type="text"
+                aria-label="Obsidian vault path"
+                value={vaultPath}
+                onChange={e => setVaultPath(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void handleScan(); }}
+                placeholder="~/obsidian-vault"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="sr-only" htmlFor="obsidian-config-folder">Obsidian config folder</label>
+              <input
+                id="obsidian-config-folder"
+                type="text"
+                aria-label="Obsidian config folder"
+                value={configDir}
+                onChange={e => setConfigDir(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void handleScan(); }}
+                placeholder=".obsidian"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
             <button
               onClick={() => void handleScan()}
               disabled={!vaultPath.trim() || scanState === 'scanning'}
@@ -392,20 +418,20 @@ export function ObsidianImportSection({
 
                 <div className="mt-3 grid gap-2 text-2xs text-muted-foreground sm:grid-cols-3">
                   <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
+                    Read packages from <span className="font-mono text-foreground">{report.sourcePluginsPath ?? report.migration?.sourcePluginsPath ?? `${((report.configDir ?? configDir) || '.obsidian')}/plugins`}</span>.
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
                     Copy package files into <span className="font-mono text-foreground">{report.migration?.writesTo ?? '.mindos/plugins/<plugin-id>'}</span>.
                   </div>
                   <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
-                    Write <span className="font-mono text-foreground">{report.migration?.writesConfig ?? 'obsidian-import.json'}</span> with source state and hotkeys.
-                  </div>
-                  <div className="rounded-md border border-border/70 bg-background px-2.5 py-2">
-                    Imported plugins stay disabled until you enable and load them from Installed.
+                    Write <span className="font-mono text-foreground">{report.migration?.writesConfig ?? 'obsidian-import.json'}</span>; imported plugins stay disabled until enabled from Installed.
                   </div>
                 </div>
               </section>
 
               {report.summary.pluginsDirFound === false && (
                 <div className="rounded-lg border border-[var(--amber)]/25 bg-[var(--amber-subtle)] px-3 py-2 text-xs text-[var(--amber-text)]">
-                  No <span className="font-mono">.obsidian/plugins</span> directory was found at this path. Check the vault path and scan again.
+                  No <span className="font-mono">{report.sourcePluginsPath ?? `${((report.configDir ?? configDir) || '.obsidian')}/plugins`}</span> directory was found at this path. Check the vault path or config folder and scan again.
                 </div>
               )}
 

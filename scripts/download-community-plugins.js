@@ -198,6 +198,7 @@ async function downloadPlugin(plugin) {
       releaseUrl: release.html_url,
       downloadedAt: new Date().toISOString(),
       expectedCompatibilityLevel: plugin.expectedCompatibilityLevel,
+      expectedRuntimeOutcome: plugin.expectedRuntimeOutcome,
       manifest: {
         id: manifest.id,
         name: manifest.name,

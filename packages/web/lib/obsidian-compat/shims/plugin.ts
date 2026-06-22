@@ -99,6 +99,10 @@ export class Plugin extends Component implements IPlugin {
     getRuntimeHost(this.app)?.registerEditorExtension(this.manifest.id, extension);
   }
 
+  registerEditorSuggest(editorSuggest: unknown): void {
+    getRuntimeHost(this.app)?.registerEditorSuggest(this.manifest.id, editorSuggest);
+  }
+
   registerMarkdownCodeBlockProcessor(language: string, processor: CodeBlockProcessor): void {
     getRuntimeHost(this.app)?.registerMarkdownCodeBlockProcessor(this.manifest.id, language, processor);
   }

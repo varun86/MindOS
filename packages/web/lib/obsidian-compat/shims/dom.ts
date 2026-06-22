@@ -21,8 +21,11 @@ export type ObsidianElement = HTMLElement & {
   addClass(cls: string | string[]): ObsidianElement;
   removeClass(cls: string | string[]): ObsidianElement;
   toggleClass(cls: string, value?: boolean): ObsidianElement;
+  setCssProps(props: Record<string, string | number | null | undefined>): ObsidianElement;
+  setCssStyles(styles: Record<string, string | number | null | undefined>): ObsidianElement;
   on(type: string, selectorOrCallback: string | EventListener, callback?: EventListener, options?: boolean | AddEventListenerOptions): ObsidianElement;
   off(type: string, selectorOrCallback: string | EventListener, callback?: EventListener, options?: boolean | AddEventListenerOptions): ObsidianElement;
+  detach(): void;
 };
 
 function normalizeClasses(cls: string | string[] | undefined): string[] {
@@ -119,6 +122,31 @@ function attachHelpers(el: HTMLElement): ObsidianElement {
     return this;
   };
 
+  target.setCssProps ??= function setCssProps(props) {
+    for (const [key, value] of Object.entries(props ?? {})) {
+      const property = key.startsWith('--') ? key : `--${key}`;
+      if (value === null || value === undefined) {
+        this.style.removeProperty(property);
+      } else {
+        this.style.setProperty(property, String(value));
+      }
+    }
+    return this;
+  };
+
+  target.setCssStyles ??= function setCssStyles(styles) {
+    for (const [key, value] of Object.entries(styles ?? {})) {
+      if (value === null || value === undefined) {
+        this.style.removeProperty(key);
+      } else if (key.includes('-')) {
+        this.style.setProperty(key, String(value));
+      } else {
+        (this.style as unknown as Record<string, string>)[key] = String(value);
+      }
+    }
+    return this;
+  };
+
   target.on ??= function on(type, selectorOrCallback, callback, options) {
     const listener = typeof selectorOrCallback === 'function' ? selectorOrCallback : callback;
     if (listener) {
@@ -133,6 +161,10 @@ function attachHelpers(el: HTMLElement): ObsidianElement {
       this.removeEventListener(type, listener, options);
     }
     return this;
+  };
+
+  target.detach ??= function detach() {
+    this.remove();
   };
 
   return target;
@@ -211,7 +243,22 @@ function createStubElement(tagName: string): ObsidianElement {
   const children: ObsidianElement[] = [];
   const attributes = new Map<string, string>();
   const classList = createStubClassList();
+  const styleValues = new Map<string, string>();
+  const cssRules: Array<{ cssText: string }> = [];
   let parentElement: ObsidianElement | null = null;
+  const style = {
+    setProperty(key: string, value: string) {
+      styleValues.set(key, value);
+    },
+    removeProperty(key: string) {
+      const previous = styleValues.get(key) ?? '';
+      styleValues.delete(key);
+      return previous;
+    },
+    getPropertyValue(key: string) {
+      return styleValues.get(key) ?? '';
+    },
+  };
 
   const el: Record<string, unknown> = {
     tagName: tagName.toUpperCase(),
@@ -225,7 +272,20 @@ function createStubElement(tagName: string): ObsidianElement {
     title: '',
     value: '',
     dataset: {},
-    style: {},
+    sheet: {
+      cssRules,
+      insertRule(rule: string, index = cssRules.length) {
+        const boundedIndex = Math.max(0, Math.min(index, cssRules.length));
+        cssRules.splice(boundedIndex, 0, { cssText: rule });
+        return boundedIndex;
+      },
+      deleteRule(index: number) {
+        if (index >= 0 && index < cssRules.length) {
+          cssRules.splice(index, 1);
+        }
+      },
+    },
+    style,
     classList,
     __stubAttributes: attributes,
     appendChild(child: ObsidianElement) {

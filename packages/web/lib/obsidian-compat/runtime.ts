@@ -52,6 +52,8 @@ export type EditorExtensionMountStatus = 'catalog-only';
 
 export const EDITOR_EXTENSION_CAPABILITY_GATE = 'browser-editor-extension-host';
 export const EDITOR_EXTENSION_MOUNT_REASON = 'CodeMirror extensions are browser-side executable objects. MindOS catalogs this registration until a per-plugin editor sandbox, permission prompt, and unload cleanup path exist.';
+export const EDITOR_SUGGEST_CAPABILITY_GATE = 'browser-editor-suggest-host';
+export const EDITOR_SUGGEST_MOUNT_REASON = 'EditorSuggest registrations depend on live editor cursor/context hooks. MindOS catalogs them until a per-plugin editor suggest host and explicit activation path exist.';
 export const PLUGIN_INTERACTION_TTL_MS = 5 * 60 * 1000;
 
 export interface EditorExtensionSummary {
@@ -72,6 +74,27 @@ export interface RegisteredEditorExtension {
   pluginId: string;
   extension: unknown;
   summary: EditorExtensionSummary;
+}
+
+export type EditorSuggestMountStatus = 'catalog-only';
+
+export interface EditorSuggestSummary {
+  constructorName: string;
+  hasOnTrigger: boolean;
+  hasGetSuggestions: boolean;
+  hasRenderSuggestion: boolean;
+  hasSelectSuggestion: boolean;
+  mountStatus: EditorSuggestMountStatus;
+  capabilityGate: typeof EDITOR_SUGGEST_CAPABILITY_GATE;
+  mountReason: string;
+  autoMount: false;
+}
+
+export interface RegisteredEditorSuggest {
+  id: string;
+  pluginId: string;
+  suggest: unknown;
+  summary: EditorSuggestSummary;
 }
 
 export interface WorkspaceOpenRequest {
@@ -204,6 +227,8 @@ export class ObsidianRuntimeHost extends Events {
   private statusBarItems: RegisteredStatusBarItem[] = [];
   private editorExtensions: RegisteredEditorExtension[] = [];
   private editorExtensionSeq = 0;
+  private editorSuggests: RegisteredEditorSuggest[] = [];
+  private editorSuggestSeq = 0;
   private workspaceOpenRequests: WorkspaceOpenRequest[] = [];
   private modalSeq = 0;
   private modals: RegisteredPluginModal[] = [];
@@ -292,6 +317,21 @@ export class ObsidianRuntimeHost extends Events {
       pluginId,
       code: 'editor-extension-recorded-only',
       message: 'Plugin registered a CodeMirror editor extension. MindOS records it in the editor extension catalog; mounting requires a browser-side capability gate.',
+    });
+  }
+
+  registerEditorSuggest(pluginId: string, suggest: unknown): void {
+    this.editorSuggestSeq += 1;
+    this.editorSuggests.push({
+      id: `${pluginId}:editor-suggest:${this.editorSuggestSeq}`,
+      pluginId,
+      suggest,
+      summary: summarizeEditorSuggest(suggest),
+    });
+    this.warn({
+      pluginId,
+      code: 'editor-suggest-recorded-only',
+      message: 'Plugin registered an Obsidian EditorSuggest. MindOS records it in the editor suggest catalog; mounting requires a browser-side capability gate.',
     });
   }
 
@@ -405,6 +445,7 @@ export class ObsidianRuntimeHost extends Events {
     this.ribbonIcons = this.ribbonIcons.filter((item) => item.pluginId !== pluginId);
     this.statusBarItems = this.statusBarItems.filter((item) => item.pluginId !== pluginId);
     this.editorExtensions = this.editorExtensions.filter((item) => item.pluginId !== pluginId);
+    this.editorSuggests = this.editorSuggests.filter((item) => item.pluginId !== pluginId);
     this.modals = this.modals.filter((item) => item.pluginId !== pluginId);
     this.menus = this.menus.filter((item) => item.pluginId !== pluginId);
     this.notices = this.notices.filter((item) => item.pluginId !== pluginId);
@@ -525,6 +566,10 @@ export class ObsidianRuntimeHost extends Events {
 
   getEditorExtensions(): RegisteredEditorExtension[] {
     return [...this.editorExtensions];
+  }
+
+  getEditorSuggests(): RegisteredEditorSuggest[] {
+    return [...this.editorSuggests];
   }
 
   getWorkspaceOpenRequests(): WorkspaceOpenRequest[] {
@@ -850,6 +895,24 @@ function summarizeEditorExtension(extension: unknown): EditorExtensionSummary {
     valueType,
     serializable: isJsonSerializable(extension),
   });
+}
+
+function summarizeEditorSuggest(suggest: unknown): EditorSuggestSummary {
+  const record = suggest && typeof suggest === 'object'
+    ? suggest as Record<string, unknown>
+    : {};
+
+  return {
+    constructorName: getConstructorName(record),
+    hasOnTrigger: typeof record.onTrigger === 'function',
+    hasGetSuggestions: typeof record.getSuggestions === 'function',
+    hasRenderSuggestion: typeof record.renderSuggestion === 'function',
+    hasSelectSuggestion: typeof record.selectSuggestion === 'function',
+    mountStatus: 'catalog-only',
+    capabilityGate: EDITOR_SUGGEST_CAPABILITY_GATE,
+    mountReason: EDITOR_SUGGEST_MOUNT_REASON,
+    autoMount: false,
+  };
 }
 
 function withEditorExtensionGate(

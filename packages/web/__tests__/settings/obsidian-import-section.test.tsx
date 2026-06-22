@@ -43,6 +43,8 @@ describe('ObsidianImportSection', () => {
         return {
           ok: true,
           vaultRoot: '/Users/test/Vault',
+          configDir: '.obsidian-mobile',
+          sourcePluginsPath: '.obsidian-mobile/plugins',
           summary: {
             total: 2,
             compatible: 1,
@@ -59,7 +61,8 @@ describe('ObsidianImportSection', () => {
           migration: {
             defaultSelectionPolicy: 'Source-enabled plugins that are ready or limited are selected by default.',
             sourceVaultUnchanged: true,
-            writesTo: '.plugins/<plugin-id>',
+            sourcePluginsPath: '.obsidian-mobile/plugins',
+            writesTo: '.mindos/plugins/<plugin-id>',
             writesConfig: 'obsidian-import.json',
             enableAfterImport: false,
           },
@@ -163,10 +166,14 @@ describe('ObsidianImportSection', () => {
       await flushPromises();
     });
 
-    const input = host.querySelector('input') as HTMLInputElement;
+    const inputs = host.querySelectorAll('input');
+    const input = inputs[0] as HTMLInputElement;
+    const configInput = inputs[1] as HTMLInputElement;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '~/Vault');
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(configInput, '.obsidian-mobile');
+      configInput.dispatchEvent(new Event('input', { bubbles: true }));
       await flushPromises();
     });
 
@@ -184,7 +191,10 @@ describe('ObsidianImportSection', () => {
     expect(host.textContent).toContain('broken-plugin');
     expect(host.textContent).toContain('manifest.json is missing');
     expect(host.textContent).toContain('Copy manifest.json, main.js, styles.css, data.json, obsidian-import.json');
+    expect(host.textContent).toContain('.obsidian-mobile/plugins');
+    expect(host.textContent).toContain('.mindos/plugins/<plugin-id>');
     expect((host.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(true);
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/api/obsidian/compat-report?vaultRoot=~%2FVault&configDir=.obsidian-mobile');
 
     const importButton = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('Import 1 plugin')) as HTMLButtonElement;
     await act(async () => {
@@ -194,7 +204,7 @@ describe('ObsidianImportSection', () => {
 
     expect(mocks.apiFetch).toHaveBeenCalledWith('/api/obsidian/import', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ vaultRoot: '/Users/test/Vault', pluginId: 'ready-plugin' }),
+      body: JSON.stringify({ vaultRoot: '/Users/test/Vault', pluginId: 'ready-plugin', configDir: '.obsidian-mobile' }),
     }));
     expect(host.textContent).toContain('1 imported, 0 failed');
     expect(host.textContent).toContain('Manage installed');

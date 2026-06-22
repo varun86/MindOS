@@ -1,15 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { GET } from '../../app/api/obsidian/compat-report/route';
 
-const scanObsidianVaultPlugins = vi.fn();
+const mockedObsidianImport = vi.hoisted(() => {
+  const normalizeObsidianConfigDir = (configDir?: string) => {
+    const raw = (configDir ?? '.obsidian').trim();
+    if (!raw) return '.obsidian';
+    const normalized = raw.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalized || normalized === '.') return '.obsidian';
+    if (normalized.startsWith('/') || normalized.includes('//')) {
+      throw new Error(`Obsidian config folder must be relative to the vault: ${configDir}`);
+    }
+    if (normalized.split('/').some((part) => !part || part === '.' || part === '..')) {
+      throw new Error(`Obsidian config folder escapes the vault: ${configDir}`);
+    }
+    return normalized;
+  };
+
+  return {
+    normalizeObsidianConfigDir,
+    scanObsidianVaultPlugins: vi.fn(),
+  };
+});
+
+const { scanObsidianVaultPlugins } = mockedObsidianImport;
 
 vi.mock('@/lib/obsidian-compat/obsidian-import', () => ({
-  scanObsidianVaultPlugins,
+  normalizeObsidianConfigDir: mockedObsidianImport.normalizeObsidianConfigDir,
+  scanObsidianVaultPlugins: mockedObsidianImport.scanObsidianVaultPlugins,
 }));
-
-async function importRoute() {
-  return import('../../app/api/obsidian/compat-report/route');
-}
 
 describe('GET /api/obsidian/compat-report', () => {
   beforeEach(() => {
@@ -17,7 +36,6 @@ describe('GET /api/obsidian/compat-report', () => {
   });
 
   it('rejects missing vaultRoot', async () => {
-    const { GET } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/compat-report');
     const res = await GET(req);
 
@@ -73,16 +91,19 @@ describe('GET /api/obsidian/compat-report', () => {
       vault: {
         pluginsDirFound: true,
         hasEnabledList: true,
+        configDir: '.obsidian',
+        pluginsRelativePath: '.obsidian/plugins',
       },
     }));
 
-    const { GET } = await importRoute();
     const req = new NextRequest('http://localhost/api/obsidian/compat-report?vaultRoot=~/vault');
     const res = await GET(req);
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
+    expect(json.configDir).toBe('.obsidian');
+    expect(json.sourcePluginsPath).toBe('.obsidian/plugins');
     expect(json.summary).toMatchObject({
       total: 3,
       compatible: 1,
@@ -125,6 +146,41 @@ describe('GET /api/obsidian/compat-report', () => {
     ]);
     expect(scanObsidianVaultPlugins).toHaveBeenCalledTimes(1);
     expect(scanObsidianVaultPlugins.mock.calls[0][0]).not.toContain('~/');
+    expect(scanObsidianVaultPlugins.mock.calls[0][1]).toEqual({ configDir: '.obsidian' });
     expect(json.skipped[0].reason).not.toContain(scanObsidianVaultPlugins.mock.calls[0][0]);
+  });
+
+  it('passes custom Obsidian config folder overrides into the scanner', async () => {
+    scanObsidianVaultPlugins.mockResolvedValue({
+      plugins: [],
+      skipped: [],
+      vault: {
+        pluginsDirFound: false,
+        hasEnabledList: false,
+        configDir: '.obsidian-mobile',
+        pluginsRelativePath: '.obsidian-mobile/plugins',
+      },
+    });
+
+    const req = new NextRequest('http://localhost/api/obsidian/compat-report?vaultRoot=~/vault&configDir=.obsidian-mobile');
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.configDir).toBe('.obsidian-mobile');
+    expect(json.sourcePluginsPath).toBe('.obsidian-mobile/plugins');
+    expect(json.summary.pluginsDirFound).toBe(false);
+    expect(json.migration.sourcePluginsPath).toBe('.obsidian-mobile/plugins');
+    expect(scanObsidianVaultPlugins).toHaveBeenCalledWith(expect.any(String), { configDir: '.obsidian-mobile' });
+  });
+
+  it('rejects unsafe Obsidian config folder overrides', async () => {
+    const req = new NextRequest('http://localhost/api/obsidian/compat-report?vaultRoot=~/vault&configDir=../outside');
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: 'Obsidian config folder escapes the vault: ../outside' });
+    expect(scanObsidianVaultPlugins).not.toHaveBeenCalled();
   });
 });

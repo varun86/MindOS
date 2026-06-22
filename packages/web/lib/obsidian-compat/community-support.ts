@@ -15,7 +15,8 @@ export type ObsidianCommunitySurfacePreviewId =
   | 'styles'
   | 'editor'
   | 'vault'
-  | 'network';
+  | 'network'
+  | 'secret';
 export type ObsidianCommunitySurfacePreviewState = 'mounted' | 'limited' | 'catalog' | 'blocked';
 
 export interface ObsidianCommunityPreflightSupport {
@@ -58,7 +59,7 @@ const COMMUNITY_SURFACE_PREVIEW_DEFINITIONS: CommunitySurfacePreviewDefinition[]
   {
     id: 'settings',
     state: 'mounted',
-    apiNames: ['PluginSettingTab', 'Setting', 'addSettingTab'],
+    apiNames: ['PluginSettingTab', 'Setting', 'addSettingTab', 'Plugin.getSettingDefinitions'],
   },
   {
     id: 'entries',
@@ -116,6 +117,11 @@ const COMMUNITY_SURFACE_PREVIEW_DEFINITIONS: CommunitySurfacePreviewDefinition[]
     id: 'network',
     state: 'limited',
     apiNames: ['request', 'requestUrl'],
+  },
+  {
+    id: 'secret',
+    state: 'limited',
+    apiNames: ['SecretStorage'],
   },
 ];
 

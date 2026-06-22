@@ -266,6 +266,7 @@ export interface IPlugin extends IComponent {
   registerView(type: string, creator: ViewCreator): void;
   registerExtensions(extensions: string[], viewType: string): void;
   registerEditorExtension(extension: unknown): void;
+  registerEditorSuggest(editorSuggest: unknown): void;
   registerMarkdownCodeBlockProcessor(language: string, processor: CodeBlockProcessor): void;
   registerMarkdownPostProcessor(processor: MarkdownPostProcessor): void;
 }
@@ -274,6 +275,8 @@ export interface IVault extends Events {
   adapter: DataAdapter;
   configDir: string;
   getName(): string;
+  getConfig(key: string): unknown;
+  setConfig(key: string, value: unknown): void;
   getAbstractFileByPath(path: string): TAbstractFile | null;
   getFileByPath(path: string): TFile | null;
   getFolderByPath(path: string): TFolder | null;
@@ -331,6 +334,18 @@ export interface App {
   metadataCache: IMetadataCache;
   fileManager: IFileManager;
   workspace: Workspace;
+  secretStorage: SecretStorage;
+  commands: {
+    commands: Record<string, Command>;
+    listCommands(): Command[];
+    findCommand(id: string): Command | undefined;
+    executeCommandById(id: string): Promise<void>;
+  };
+  customCss: {
+    getSnippetPath(snippet: string): string;
+    setCssEnabledStatus(snippet: string, enabled: boolean): void;
+    readSnippets(): void;
+  };
   plugins?: {
     plugins: Record<string, unknown>;
     enabledPlugins: Set<string>;
@@ -346,6 +361,12 @@ export interface App {
   unregisterCommand(pluginId: string, commandId: string): void;
 }
 
+export interface SecretStorage {
+  setSecret(id: string, secret: string): Promise<void>;
+  getSecret(id: string): Promise<string | null>;
+  listSecrets(): Promise<string[]>;
+}
+
 export interface Workspace {
   getActiveFile(): TFile | null;
   getActiveViewOfType<T>(type: abstract new (...args: any[]) => T): T | null;
@@ -355,7 +376,10 @@ export interface Workspace {
   onLayoutReady(callback: () => void): void;
   openLinkText(linktext: string, sourcePath: string, openState?: unknown): Promise<void>;
   getLeaf(newLeaf?: boolean | 'split' | 'tab' | 'window'): WorkspaceLeaf;
+  getLeftLeaf(split?: boolean): WorkspaceLeaf | null;
+  getRightLeaf(split?: boolean): WorkspaceLeaf | null;
   getLeavesOfType(viewType: string): WorkspaceLeaf[];
+  iterateCodeMirrors(callback: (codeMirror: { getOption(key: string): unknown; setOption(key: string, value: unknown): void }) => any): void;
   iterateRootLeaves(callback: (leaf: WorkspaceLeaf) => any): void;
   iterateAllLeaves(callback: (leaf: WorkspaceLeaf) => any): void;
   registerHoverLinkSource?: (source: string, options: unknown) => void;
@@ -374,11 +398,131 @@ export interface PluginSettingTab extends IComponent {
   app: App;
   containerEl: HTMLElement;
   items?: PluginSettingItem[];
+  settingItems?: SettingDefinitionItem[];
 
+  getSettingDefinitions(): SettingDefinitionItem[];
+  update(): void;
+  getControlValue(key: string): unknown;
+  setControlValue(key: string, value: unknown): void | Promise<void>;
+  refreshDomState(): void;
   display(): void;
 }
 
 export type SettingKind = 'text' | 'toggle' | 'dropdown' | 'button';
+
+export type DeclarativeSettingControlType =
+  | 'toggle'
+  | 'dropdown'
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'file'
+  | 'folder'
+  | 'slider'
+  | 'color'
+  | string;
+
+export interface SettingControlBase<V = unknown, K extends string = string> {
+  key: K;
+  defaultValue?: V;
+  validate?: (value: V) => string | void | Promise<string | void>;
+  disabled?: boolean | (() => boolean);
+}
+
+export interface SettingControl<K extends string = string> extends SettingControlBase<unknown, K> {
+  type: DeclarativeSettingControlType;
+  placeholder?: string;
+  options?: Record<string, string> | Array<{ value: string; label: string } | string>;
+  min?: number;
+  max?: number;
+  step?: number | 'any';
+  rows?: number;
+  includeRoot?: boolean;
+  filter?: (...args: unknown[]) => boolean;
+}
+
+export interface SettingDefinitionBase {
+  name: string;
+  desc?: string | DocumentFragment;
+  aliases?: string[];
+  searchable?: boolean | (() => boolean);
+  visible?: boolean | (() => boolean);
+}
+
+export interface SettingDefinitionControl<K extends string = string> extends SettingDefinitionBase {
+  control: SettingControl<K>;
+  action?: never;
+  render?: never;
+}
+
+export interface SettingDefinitionAction extends SettingDefinitionBase {
+  action: (el: HTMLElement, index: number) => void;
+  disabled?: boolean | (() => boolean);
+  control?: never;
+  render?: never;
+}
+
+export interface SettingDefinitionRender extends SettingDefinitionBase {
+  render: (el: HTMLElement) => void | (() => void);
+  control?: never;
+  action?: never;
+}
+
+export interface SettingDefinitionEmpty extends SettingDefinitionBase {
+  control?: never;
+  action?: never;
+  render?: never;
+}
+
+export type SettingDefinition<K extends string = string> =
+  | SettingDefinitionControl<K>
+  | SettingDefinitionAction
+  | SettingDefinitionRender
+  | SettingDefinitionEmpty;
+
+export interface SettingDefinitionAddItem {
+  name: string;
+  action: (el: HTMLElement) => void;
+}
+
+export interface SettingDefinitionGroup<K extends string = string> {
+  type: 'group' | 'list';
+  heading?: string;
+  cls?: string;
+  search?: {
+    placeholder?: string;
+    match: (def: SettingDefinition, query: string) => boolean;
+  };
+  extraButtons?: Array<(...args: unknown[]) => unknown>;
+  items?: SettingGroupItem<K>[];
+  visible?: boolean | (() => boolean);
+}
+
+export interface SettingDefinitionList<K extends string = string> extends SettingDefinitionGroup<K> {
+  type: 'list';
+  emptyState?: string | DocumentFragment;
+  onReorder?: (oldIndex: number, newIndex: number) => void;
+  onDelete?: (index: number) => void;
+  addItem?: SettingDefinitionAddItem;
+}
+
+export interface SettingDefinitionPage<K extends string = string> {
+  type: 'page';
+  name: string;
+  desc?: string | DocumentFragment;
+  displayValue?: string | (() => string);
+  status?: 'warning' | null | (() => 'warning' | null);
+  items?: SettingDefinitionItem<K>[];
+  page?: () => unknown;
+  visible?: boolean | (() => boolean);
+}
+
+export type SettingGroupItem<K extends string = string> = SettingDefinition<K> | SettingDefinitionPage<K>;
+export type SettingDefinitionItem<K extends string = string> =
+  | SettingDefinition<K>
+  | SettingDefinitionGroup<K>
+  | SettingDefinitionList<K>
+  | SettingDefinitionPage<K>;
 
 export interface PluginSettingItem {
   name?: string;

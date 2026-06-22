@@ -31,8 +31,43 @@ describe('/api/obsidian-plugins lifecycle', () => {
         enabled: false,
         loaded: false,
         compatibilityLevel: 'compatible',
+        packageLocation: expect.objectContaining({
+          relativePath: '.plugins/list-plugin',
+          legacy: true,
+          migrationAvailable: true,
+        }),
+        coverageSummary: expect.any(Object),
       }),
     ]);
+  });
+
+  it('migrates a legacy plugin package through the lifecycle API', async () => {
+    writePlugin('legacy-api-plugin', `const { Plugin } = require('obsidian'); module.exports = class LegacyApiPlugin extends Plugin {};`);
+
+    const { POST } = await importLifecycleRoute();
+    await POST(postRequest({ action: 'enable', pluginId: 'legacy-api-plugin' }));
+    const res = await POST(postRequest({ action: 'migrate-legacy', pluginId: 'legacy-api-plugin' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.result).toMatchObject({
+      migrated: true,
+      sourceRelativePath: '.plugins/legacy-api-plugin',
+      targetRelativePath: '.mindos/plugins/legacy-api-plugin',
+    });
+    expect(fs.existsSync(path.join(mindRoot, '.plugins', 'legacy-api-plugin'))).toBe(false);
+    expect(fs.existsSync(path.join(mindRoot, '.mindos', 'plugins', 'legacy-api-plugin', 'manifest.json'))).toBe(true);
+    expect(json.plugins[0]).toMatchObject({
+      id: 'legacy-api-plugin',
+      enabled: true,
+      packageLocation: {
+        relativePath: '.mindos/plugins/legacy-api-plugin',
+        rootRelativePath: '.mindos/plugins',
+        legacy: false,
+        migrationAvailable: false,
+      },
+    });
   });
 
   it('enables and loads a lightweight plugin, returning runtime summary', async () => {

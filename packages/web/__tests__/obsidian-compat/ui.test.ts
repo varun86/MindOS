@@ -7,7 +7,13 @@ import type { App } from '@/lib/obsidian-compat/types';
 const appStub: App = {
   vault: {} as App['vault'],
   metadataCache: {} as App['metadataCache'],
+  fileManager: {} as App['fileManager'],
   workspace: {} as App['workspace'],
+  secretStorage: {
+    setSecret: async () => {},
+    getSecret: async () => null,
+    listSecrets: async () => [],
+  },
   isDarkMode: () => false,
   loadLocalStorage: () => null,
   saveLocalStorage: () => {},

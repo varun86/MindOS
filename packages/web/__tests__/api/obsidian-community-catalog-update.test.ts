@@ -30,7 +30,7 @@ function postRequest(body: Record<string, unknown>) {
 }
 
 function writeInstalledPlugin(pluginId: string, version = '1.0.0', mainJs?: string) {
-  const pluginDir = path.join(mindRoot, '.plugins', pluginId);
+  const pluginDir = path.join(mindRoot, '.mindos', 'plugins', pluginId);
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(
     path.join(pluginDir, 'manifest.json'),
@@ -58,7 +58,7 @@ function writeInstalledPlugin(pluginId: string, version = '1.0.0', mainJs?: stri
 }
 
 function writeLocalImportedPlugin(pluginId: string, version = '1.0.0') {
-  const pluginDir = path.join(mindRoot, '.plugins', pluginId);
+  const pluginDir = path.join(mindRoot, '.mindos', 'plugins', pluginId);
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(
     path.join(pluginDir, 'manifest.json'),
@@ -69,9 +69,9 @@ function writeLocalImportedPlugin(pluginId: string, version = '1.0.0') {
 }
 
 function enablePlugin(pluginId: string) {
-  fs.mkdirSync(path.join(mindRoot, '.plugins'), { recursive: true });
+  fs.mkdirSync(path.join(mindRoot, '.mindos', 'plugins'), { recursive: true });
   fs.writeFileSync(
-    path.join(mindRoot, '.plugins', '.plugin-manager.json'),
+    path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'),
     JSON.stringify({ enabled: { [pluginId]: true } }),
     'utf-8',
   );
@@ -171,7 +171,7 @@ describe('/api/obsidian/community-catalog/update', () => {
       error: 'Community plugin update requires Obsidian Community provenance for quickadd.',
     });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local imported main');
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'main.js'), 'utf-8')).toBe('local imported main');
   });
 
   it('requires a preview version and package digest before fetching remote update assets', async () => {
@@ -228,9 +228,9 @@ describe('/api/obsidian/community-catalog/update', () => {
         loaded: false,
       }),
     ]);
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'data.json'), 'utf-8')).toBe('{"keep":true}');
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', '.plugin-manager.json'), 'utf-8')).toBe(JSON.stringify({ enabled: { quickadd: true } }));
-    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'data.json'), 'utf-8')).toBe('{"keep":true}');
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', '.plugin-manager.json'), 'utf-8')).toBe(JSON.stringify({ enabled: { quickadd: true } }));
+    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
       version: '1.2.3',
     });
   });
@@ -320,7 +320,7 @@ describe('/api/obsidian/community-catalog/update', () => {
     expect(await res.json()).toEqual({
       error: 'Remote plugin version changed from 1.2.2 to 1.2.3. Preview the update again.',
     });
-    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
+    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
       version: '1.0.0',
     });
   });
@@ -342,9 +342,9 @@ describe('/api/obsidian/community-catalog/update', () => {
     expect(await res.json()).toEqual({
       error: 'Remote plugin package changed since preview. Preview the update again.',
     });
-    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
+    expect(JSON.parse(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'manifest.json'), 'utf-8'))).toMatchObject({
       version: '1.0.0',
     });
-    expect(fs.readFileSync(path.join(mindRoot, '.plugins', 'quickadd', 'main.js'), 'utf-8')).not.toContain('QuickAddUpdated');
+    expect(fs.readFileSync(path.join(mindRoot, '.mindos', 'plugins', 'quickadd', 'main.js'), 'utf-8')).not.toContain('QuickAddUpdated');
   });
 });

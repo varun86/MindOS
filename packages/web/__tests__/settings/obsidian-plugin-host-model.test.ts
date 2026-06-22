@@ -63,6 +63,14 @@ describe('ObsidianPluginHostModel', () => {
           bytes: 96,
           validJson: true,
         },
+        secretStorage: {
+          backend: 'local-aes-256-gcm-file',
+          encrypted: true,
+          path: '.mindos/plugins/.secret-storage.json',
+          keyPath: '.mindos/plugins/.secret-storage.key',
+          pluginId: 'quickadd-like',
+          secrets: 1,
+        },
         styleSheets: 1,
         styleSheetList: [{ path: 'styles.css', bytes: 120 }],
         editorExtensions: 1,
@@ -77,15 +85,18 @@ describe('ObsidianPluginHostModel', () => {
     });
 
     expect(runtimeSummary(item)).toContain('2 commands');
+    expect(runtimeSummary(item)).toContain('1 encrypted secret');
     expect(surfaceRouting(item).map((route) => `${route.label}:${route.state}`)).toEqual([
       'Commands:mounted',
       'Storage:mounted',
+      'Secrets:mounted',
       'Views:mounted',
       'Styles:mounted',
       'Editor:catalog',
     ]);
     expect(surfaceRouting(item).find((route) => route.label === 'Views')?.value).toContain('.qa');
     expect(surfaceRouting(item).find((route) => route.label === 'Storage')?.value).toContain('data.json');
+    expect(surfaceRouting(item).find((route) => route.label === 'Secrets')?.value).toContain('SecretStorage');
     expect(surfaceRouting(item).find((route) => route.label === 'Styles')?.value).toContain('Scoped stylesheet host');
   });
 

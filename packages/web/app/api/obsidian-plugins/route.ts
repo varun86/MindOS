@@ -6,7 +6,20 @@ import { readSettings } from '@/lib/settings';
 import { withObsidianPluginRuntime } from '@/lib/obsidian-compat/runtime-service';
 import type { PluginEditorCommandContext } from '@/lib/obsidian-compat/plugin-manager';
 
-type PluginAction = 'enable' | 'disable' | 'load' | 'load-enabled' | 'execute-command' | 'execute-ribbon-action' | 'choose-modal-suggestion' | 'choose-menu-item' | 'uninstall';
+type PluginAction = 'enable' | 'disable' | 'load' | 'load-enabled' | 'execute-command' | 'execute-ribbon-action' | 'choose-modal-suggestion' | 'choose-menu-item' | 'uninstall' | 'migrate-legacy';
+
+const VALID_PLUGIN_ACTIONS: PluginAction[] = [
+  'enable',
+  'disable',
+  'load',
+  'load-enabled',
+  'execute-command',
+  'execute-ribbon-action',
+  'choose-modal-suggestion',
+  'choose-menu-item',
+  'uninstall',
+  'migrate-legacy',
+];
 
 function requirePluginId(action: PluginAction, pluginId: unknown): string {
   if (typeof pluginId !== 'string' || pluginId.trim().length === 0) {
@@ -109,7 +122,7 @@ export async function POST(req: NextRequest) {
       editorContext?: unknown;
     };
     const action = body.action;
-    if (!action || !['enable', 'disable', 'load', 'load-enabled', 'execute-command', 'execute-ribbon-action', 'choose-modal-suggestion', 'choose-menu-item', 'uninstall'].includes(action)) {
+    if (!action || !VALID_PLUGIN_ACTIONS.includes(action)) {
       return NextResponse.json({ ok: false, error: 'Invalid action' }, { status: 400 });
     }
 
@@ -128,6 +141,8 @@ export async function POST(req: NextRequest) {
         result = await manager.loadEnabledPlugins();
       } else if (action === 'uninstall') {
         await manager.uninstall(requirePluginId(action, body.pluginId));
+      } else if (action === 'migrate-legacy') {
+        result = await manager.migrateLegacyPlugin(requirePluginId(action, body.pluginId));
       } else if (action === 'execute-command') {
         result = await manager.executeCommand(requireCommandId(body.commandId), {
           editor: parseEditorContext(body.editorContext),

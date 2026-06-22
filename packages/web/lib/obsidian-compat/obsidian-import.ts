@@ -1,6 +1,6 @@
 /**
  * Obsidian Plugin Compatibility - Obsidian vault import scanner
- * Scans `.obsidian/plugins` and imports selected plugins into MindOS `.mindos/plugins`.
+ * Scans Obsidian config-folder plugins and imports selected plugins into MindOS `.mindos/plugins`.
  */
 
 import fs from 'fs';
@@ -36,6 +36,7 @@ export interface ImportedObsidianPluginConfig extends ObsidianVaultPluginConfig 
   schemaVersion: 1;
   source: 'obsidian';
   pluginId: string;
+  sourceConfigDir?: string;
 }
 
 interface ObsidianVaultConfigSnapshot {
@@ -66,13 +67,20 @@ export interface ScanResult {
   vault: {
     pluginsDirFound: boolean;
     hasEnabledList: boolean;
+    configDir: string;
+    pluginsRelativePath: string;
   };
+}
+
+export interface ObsidianVaultConfigOptions {
+  configDir?: string;
 }
 
 export interface ImportObsidianPluginOptions {
   vaultRoot: string;
   pluginId: string;
   targetMindRoot: string;
+  configDir?: string;
 }
 
 export interface ImportedObsidianPlugin {
@@ -82,8 +90,36 @@ export interface ImportedObsidianPlugin {
   obsidianConfig: ImportedObsidianPluginConfig;
 }
 
-function resolveVaultPluginsDir(vaultRoot: string): string {
-  return resolveExistingSafe(vaultRoot, '.obsidian/plugins');
+export const DEFAULT_OBSIDIAN_CONFIG_DIR = '.obsidian';
+
+export function normalizeObsidianConfigDir(configDir?: string): string {
+  const raw = (configDir ?? DEFAULT_OBSIDIAN_CONFIG_DIR).trim();
+  if (!raw) return DEFAULT_OBSIDIAN_CONFIG_DIR;
+  const normalized = raw.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalized || normalized === '.') return DEFAULT_OBSIDIAN_CONFIG_DIR;
+  if (path.isAbsolute(normalized) || normalized.startsWith('/')) {
+    throw new Error(`Obsidian config folder must be relative to the vault: ${configDir}`);
+  }
+  if (normalized.includes('//')) {
+    throw new Error(`Obsidian config folder contains an empty path segment: ${configDir}`);
+  }
+  const parts = normalized.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) {
+    throw new Error(`Obsidian config folder escapes the vault: ${configDir}`);
+  }
+  return parts.join('/');
+}
+
+function obsidianConfigFileRelativePath(configDir: string, fileName: string): string {
+  return `${configDir}/${fileName}`;
+}
+
+function obsidianPluginsRelativePath(configDir: string): string {
+  return `${configDir}/plugins`;
+}
+
+function resolveVaultPluginsDir(vaultRoot: string, configDir: string): string {
+  return resolveExistingSafe(vaultRoot, obsidianPluginsRelativePath(configDir));
 }
 
 function resolvePluginDir(root: string, basePath: string, pluginId: string): string {
@@ -150,10 +186,16 @@ function readJsonFile(root: string, relativePath: string): unknown | null {
   }
 }
 
-function readObsidianEnabledPluginIds(vaultRoot: string): { ids: Set<string>; hasEnabledList: boolean } {
-  const enabledListPath = path.join(vaultRoot, '.obsidian', 'community-plugins.json');
-  const hasEnabledList = fs.existsSync(enabledListPath);
-  const parsed = readJsonFile(vaultRoot, '.obsidian/community-plugins.json');
+function readObsidianEnabledPluginIds(vaultRoot: string, configDir: string): { ids: Set<string>; hasEnabledList: boolean } {
+  const enabledListRelativePath = obsidianConfigFileRelativePath(configDir, 'community-plugins.json');
+  let hasEnabledList = false;
+  try {
+    const enabledListPath = resolveSafe(vaultRoot, enabledListRelativePath);
+    hasEnabledList = fs.existsSync(enabledListPath);
+  } catch {
+    hasEnabledList = false;
+  }
+  const parsed = readJsonFile(vaultRoot, enabledListRelativePath);
   if (Array.isArray(parsed)) {
     return {
       ids: new Set(parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)),
@@ -206,8 +248,8 @@ function normalizeHotkeyList(value: unknown): ObsidianPluginHotkey[] {
   return [];
 }
 
-function readObsidianHotkeys(vaultRoot: string): Map<string, ObsidianPluginHotkey[]> {
-  const parsed = readJsonFile(vaultRoot, '.obsidian/hotkeys.json');
+function readObsidianHotkeys(vaultRoot: string, configDir: string): Map<string, ObsidianPluginHotkey[]> {
+  const parsed = readJsonFile(vaultRoot, obsidianConfigFileRelativePath(configDir, 'hotkeys.json'));
   const hotkeys = new Map<string, ObsidianPluginHotkey[]>();
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return hotkeys;
@@ -222,12 +264,12 @@ function readObsidianHotkeys(vaultRoot: string): Map<string, ObsidianPluginHotke
   return hotkeys;
 }
 
-function readObsidianVaultConfigSnapshot(vaultRoot: string): ObsidianVaultConfigSnapshot {
-  const enabled = readObsidianEnabledPluginIds(vaultRoot);
+function readObsidianVaultConfigSnapshot(vaultRoot: string, configDir: string): ObsidianVaultConfigSnapshot {
+  const enabled = readObsidianEnabledPluginIds(vaultRoot, configDir);
   return {
     enabledPluginIds: enabled.ids,
     hasEnabledList: enabled.hasEnabledList,
-    hotkeys: readObsidianHotkeys(vaultRoot),
+    hotkeys: readObsidianHotkeys(vaultRoot, configDir),
   };
 }
 
@@ -245,15 +287,21 @@ function obsidianVaultPluginConfigFromSnapshot(snapshot: ObsidianVaultConfigSnap
   };
 }
 
-export function readObsidianVaultPluginConfig(vaultRoot: string, pluginId: string): ObsidianVaultPluginConfig {
-  return obsidianVaultPluginConfigFromSnapshot(readObsidianVaultConfigSnapshot(vaultRoot), pluginId);
+export function readObsidianVaultPluginConfig(
+  vaultRoot: string,
+  pluginId: string,
+  options: ObsidianVaultConfigOptions = {},
+): ObsidianVaultPluginConfig {
+  const configDir = normalizeObsidianConfigDir(options.configDir);
+  return obsidianVaultPluginConfigFromSnapshot(readObsidianVaultConfigSnapshot(vaultRoot, configDir), pluginId);
 }
 
-function toImportedObsidianPluginConfig(pluginId: string, config: ObsidianVaultPluginConfig): ImportedObsidianPluginConfig {
+function toImportedObsidianPluginConfig(pluginId: string, config: ObsidianVaultPluginConfig, configDir: string): ImportedObsidianPluginConfig {
   return {
     schemaVersion: 1,
     source: 'obsidian',
     pluginId,
+    sourceConfigDir: configDir,
     enabledInObsidian: config.enabledInObsidian,
     hasEnabledList: config.hasEnabledList,
     hotkeys: config.hotkeys,
@@ -288,6 +336,9 @@ export function readImportedObsidianPluginConfig(mindRoot: string, pluginId: str
       schemaVersion: 1,
       source: 'obsidian',
       pluginId,
+      ...(typeof record.sourceConfigDir === 'string' && record.sourceConfigDir.trim()
+        ? { sourceConfigDir: normalizeObsidianConfigDir(record.sourceConfigDir) }
+        : {}),
       enabledInObsidian: record.enabledInObsidian === true,
       hasEnabledList: record.hasEnabledList === true,
       hotkeys,
@@ -298,19 +349,24 @@ export function readImportedObsidianPluginConfig(mindRoot: string, pluginId: str
   }
 }
 
-export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanResult> {
+export async function scanObsidianVaultPlugins(
+  vaultRoot: string,
+  options: ObsidianVaultConfigOptions = {},
+): Promise<ScanResult> {
+  const configDir = normalizeObsidianConfigDir(options.configDir);
+  const pluginsRelativePath = obsidianPluginsRelativePath(configDir);
   let pluginsDir: string;
   try {
-    pluginsDir = resolveVaultPluginsDir(vaultRoot);
+    pluginsDir = resolveVaultPluginsDir(vaultRoot, configDir);
   } catch {
-    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false } };
+    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false, configDir, pluginsRelativePath } };
   }
   if (!fs.existsSync(pluginsDir)) {
-    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false } };
+    return { plugins: [], skipped: [], vault: { pluginsDirFound: false, hasEnabledList: false, configDir, pluginsRelativePath } };
   }
 
   const entries = fs.readdirSync(pluginsDir);
-  const obsidianConfigSnapshot = readObsidianVaultConfigSnapshot(vaultRoot);
+  const obsidianConfigSnapshot = readObsidianVaultConfigSnapshot(vaultRoot, configDir);
   const plugins: ScannedObsidianPlugin[] = [];
   const skipped: SkippedPlugin[] = [];
   const seenPluginIds = new Set<string>();
@@ -357,12 +413,15 @@ export async function scanObsidianVaultPlugins(vaultRoot: string): Promise<ScanR
     vault: {
       pluginsDirFound: true,
       hasEnabledList: obsidianConfigSnapshot.hasEnabledList,
+      configDir,
+      pluginsRelativePath,
     },
   };
 }
 
 export async function importObsidianPlugin(options: ImportObsidianPluginOptions): Promise<ImportedObsidianPlugin> {
-  const sourceDir = resolvePluginDir(options.vaultRoot, '.obsidian/plugins', options.pluginId);
+  const configDir = normalizeObsidianConfigDir(options.configDir);
+  const sourceDir = resolvePluginDir(options.vaultRoot, obsidianPluginsRelativePath(configDir), options.pluginId);
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     throw new Error(`Obsidian plugin not found: ${options.pluginId}`);
   }
@@ -394,7 +453,8 @@ export async function importObsidianPlugin(options: ImportObsidianPluginOptions)
   }
   const obsidianConfig = toImportedObsidianPluginConfig(
     options.pluginId,
-    readObsidianVaultPluginConfig(options.vaultRoot, options.pluginId),
+    readObsidianVaultPluginConfig(options.vaultRoot, options.pluginId, { configDir }),
+    configDir,
   );
   fs.writeFileSync(
     path.join(targetDir, 'obsidian-import.json'),

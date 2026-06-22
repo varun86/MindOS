@@ -87,6 +87,56 @@ describe('Obsidian community preflight support projection', () => {
     ]);
   });
 
+  it('projects declarative settings definitions into the settings catalog', () => {
+    const input = supportInput({
+      compatibility: {
+        level: 'partial',
+        report: {
+          obsidianApis: ['Plugin', 'Plugin.getSettingDefinitions'],
+          moduleImports: [],
+          nodeModules: [],
+          unsupportedModules: [],
+          supportedApis: ['Plugin'],
+          partialApis: ['Plugin.getSettingDefinitions'],
+          unsupportedApis: [],
+          blockers: [],
+        },
+      },
+    });
+
+    expect(buildObsidianCommunityPreflightSupport(input).kind).toBe('limited');
+    expect(buildObsidianCommunitySurfacePreview(input)).toEqual([
+      { id: 'settings', state: 'mounted', count: 1 },
+    ]);
+  });
+
+  it('routes SecretStorage to the limited secret runtime surface', () => {
+    const input = supportInput({
+      compatibility: {
+        level: 'partial',
+        report: {
+          obsidianApis: ['Plugin', 'SecretStorage'],
+          moduleImports: [],
+          nodeModules: [],
+          unsupportedModules: [],
+          supportedApis: ['Plugin'],
+          partialApis: ['SecretStorage'],
+          unsupportedApis: [],
+          blockers: [],
+        },
+      },
+    });
+
+    expect(buildObsidianCommunityPreflightSupport(input)).toMatchObject({
+      kind: 'limited',
+      installable: true,
+      reason: 'Limited APIs are routed through safe MindOS hosts: SecretStorage',
+    });
+    expect(buildObsidianCommunitySurfacePreview(input)).toEqual([
+      { id: 'secret', state: 'limited', count: 1 },
+    ]);
+  });
+
   it('upgrades otherwise ready packages to review when community manifest policy needs attention', () => {
     const input = supportInput({
       policy: {

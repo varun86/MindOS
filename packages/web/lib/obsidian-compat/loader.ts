@@ -52,9 +52,10 @@ type PluginDocumentShim = {
   removeEventListener(): void;
   on(): void;
   off(): void;
-  querySelector(): HTMLElement | null;
-  querySelectorAll(): HTMLElement[];
+  querySelector(selector: string): HTMLElement | null;
+  querySelectorAll(selector: string): HTMLElement[];
   getElementsByTagName(tagName: string): HTMLElement[];
+  getElementsByClassName(className: string): HTMLElement[];
 };
 
 class CompatibilityHTMLElement {}
@@ -284,6 +285,7 @@ export class PluginLoader {
         'window',
         'document',
         'activeWindow',
+        'activeDocument',
         'self',
         'app',
         'createEl',
@@ -291,6 +293,8 @@ export class PluginLoader {
         'createSpan',
         'createFragment',
         'HTMLElement',
+        'CodeMirror',
+        'CodeMirrorAdapter',
         'setTimeout',
         'clearTimeout',
         'setInterval',
@@ -305,6 +309,7 @@ export class PluginLoader {
         globals.window,
         globals.document,
         globals.activeWindow,
+        globals.document,
         globals.window,
         this.app,
         globals.createEl,
@@ -312,6 +317,8 @@ export class PluginLoader {
         globals.createSpan,
         globals.createFragment,
         globals.HTMLElement,
+        globals.CodeMirror,
+        globals.CodeMirrorAdapter,
         globals.setTimeout,
         globals.clearTimeout,
         globals.setInterval,
@@ -352,6 +359,8 @@ export class PluginLoader {
   private createPluginGlobals(obsidianModule: Record<string, unknown>) {
     const localStorage = this.createLocalStorageShim();
     const documentShim = this.createDocumentShim();
+    const codeMirrorShim = this.createCodeMirrorShim();
+    const codeMirrorAdapterShim = { commands: {} as Record<string, unknown> };
     const createEl = (tagName: string, attrs?: unknown, callback?: (el: HTMLElement) => void) => {
       const element = createObsidianElement(tagName);
       this.applyCreateElAttrs(element, attrs);
@@ -387,6 +396,9 @@ export class PluginLoader {
     const windowShim = {
       app: this.app,
       document: documentShim,
+      activeDocument: documentShim,
+      CodeMirror: codeMirrorShim,
+      CodeMirrorAdapter: codeMirrorAdapterShim,
       localStorage,
       moment: obsidianModule.moment,
       setTimeout: safeSetTimeout,
@@ -411,6 +423,8 @@ export class PluginLoader {
       createSpan,
       createFragment,
       HTMLElement: typeof HTMLElement === 'undefined' ? CompatibilityHTMLElement : HTMLElement,
+      CodeMirror: codeMirrorShim,
+      CodeMirrorAdapter: codeMirrorAdapterShim,
       setTimeout: safeSetTimeout,
       clearTimeout,
       setInterval: safeSetInterval,
@@ -436,6 +450,16 @@ export class PluginLoader {
   private createDocumentShim(): PluginDocumentShim {
     const body = createObsidianElement('body');
     const head = createObsidianElement('head');
+    const querySelectorAll = (selector: string): HTMLElement[] => [
+      ...Array.from(body.querySelectorAll(selector)),
+      ...Array.from(head.querySelectorAll(selector)),
+    ] as HTMLElement[];
+    const classSelector = (className: string): string => className
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => `.${item.replace(/[^a-zA-Z0-9_-]/g, '\\$&')}`)
+      .join('');
     return {
       body,
       head,
@@ -451,14 +475,29 @@ export class PluginLoader {
       removeEventListener: () => {},
       on: () => {},
       off: () => {},
-      querySelector: () => null,
-      querySelectorAll: () => [],
+      querySelector: (selector: string) => querySelectorAll(selector)[0] ?? null,
+      querySelectorAll,
       getElementsByTagName: (tagName: string) => {
         const normalized = tagName.toLowerCase();
         if (normalized === 'body') return [body];
         if (normalized === 'head') return [head];
         return [];
       },
+      getElementsByClassName: (className: string) => {
+        const selector = classSelector(className);
+        return selector ? querySelectorAll(selector) : [];
+      },
+    };
+  }
+
+  private createCodeMirrorShim() {
+    const modes: Record<string, unknown> = {};
+    return {
+      modes,
+      defineMode: (name: string, factory: unknown) => {
+        modes[String(name)] = factory;
+      },
+      getMode: (_config: unknown, name: string) => modes[String(name)] ?? { name },
     };
   }
 

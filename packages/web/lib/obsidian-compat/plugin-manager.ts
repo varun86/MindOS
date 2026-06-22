@@ -7,10 +7,19 @@ import fs from 'fs';
 import path from 'path';
 import { analyzePluginCompatibility, getCompatibilityLevel, type CompatibilityLevel, type PluginCompatibilityReport } from './compatibility-report';
 import {
+  buildObsidianCapabilityCoverage,
+  summarizeObsidianCapabilityCoverage,
+  summarizeObsidianCapabilitySurfaces,
+  type ObsidianCapabilityCoverage,
+  type ObsidianCapabilitySurfaceSummary,
+  type ObsidianCapabilitySupport,
+} from './capability-matrix';
+import {
   importObsidianPlugin,
   readImportedObsidianPluginConfig,
   scanObsidianVaultPlugins,
   type ObsidianPluginHotkey,
+  type ObsidianVaultConfigOptions,
   type ScanResult,
 } from './obsidian-import';
 import { describeCommandAvailability, type CommandCallbackType } from './command-registry';
@@ -25,9 +34,17 @@ import {
 } from './stylesheet-host';
 import {
   resolveCanonicalPluginManagerStatePath,
+  resolveCanonicalObsidianPluginDir,
   resolveInstalledObsidianPluginDir,
   resolvePluginManagerStatePathsForRead,
 } from './plugin-paths';
+import {
+  migrateLegacyObsidianPlugin,
+  planLegacyObsidianPluginMigration,
+  type LegacyPluginMigrationPlan,
+  type LegacyPluginMigrationResult,
+} from './plugin-migration';
+import { removeObsidianPluginSecrets, type ObsidianSecretStorageSummary } from './secret-storage';
 import type { PluginManifest, TFile } from './types';
 import type { EditorExtensionSummary, PluginMarkdownCodeBlockSnapshot, PluginMarkdownPostProcessorSnapshot, PluginMenuSnapshot, PluginModalSnapshot, PluginNoticeSnapshot, PluginViewSnapshot, RegisteredViewExtension, WorkspaceOpenRequest } from './runtime';
 import { resolveExistingSafe } from '@/lib/core/security';
@@ -35,6 +52,13 @@ import { ErrorCodes, MindOSError } from '@/lib/errors';
 
 interface PluginManagerState {
   enabled: Record<string, boolean>;
+}
+
+export interface ManagedPluginPackageLocation {
+  relativePath: string;
+  rootRelativePath: string;
+  legacy: boolean;
+  migrationAvailable: boolean;
 }
 
 export interface ManagedPlugin {
@@ -46,6 +70,10 @@ export interface ManagedPlugin {
   loaded: boolean;
   compatibility: PluginCompatibilityReport;
   compatibilityLevel: CompatibilityLevel;
+  coverage: ObsidianCapabilityCoverage[];
+  coverageSummary: Record<ObsidianCapabilitySupport, number>;
+  surfaceSummary: ObsidianCapabilitySurfaceSummary[];
+  packageLocation?: ManagedPluginPackageLocation;
   runtime: PluginRuntimeSummary;
   lastError?: string;
 }
@@ -88,6 +116,8 @@ export interface PluginDataFileSummary {
   updatedAt?: string;
   validJson?: boolean;
 }
+
+export type PluginSecretStorageSummary = ObsidianSecretStorageSummary;
 
 export interface PluginCommunityOriginSummary {
   source: 'obsidian-community';
@@ -144,6 +174,7 @@ export interface PluginRuntimeSummary {
   statusBarItems: number;
   statusBarItemList: Array<{ text: string }>;
   dataFile: PluginDataFileSummary;
+  secretStorage: PluginSecretStorageSummary;
   communityOrigin?: PluginCommunityOriginSummary;
   styleSheets: number;
   styleSheetList: Array<{ path: string; bytes: number }>;
@@ -235,6 +266,7 @@ export class PluginManager {
       throw new Error(`Unknown plugin: ${pluginId}`);
     }
     fs.rmSync(pluginLocation.pluginDir, { recursive: true, force: true });
+    removeObsidianPluginSecrets(this.mindRoot, pluginId);
     this.plugins.delete(pluginId);
     this.writeState();
   }
@@ -520,16 +552,36 @@ export class PluginManager {
     return snapshots;
   }
 
-  async scanObsidianVault(vaultRoot: string): Promise<ScanResult> {
-    return scanObsidianVaultPlugins(vaultRoot);
+  async scanObsidianVault(vaultRoot: string, options: ObsidianVaultConfigOptions = {}): Promise<ScanResult> {
+    return scanObsidianVaultPlugins(vaultRoot, options);
   }
 
-  async importFromObsidianVault(vaultRoot: string, pluginId: string): Promise<void> {
+  async importFromObsidianVault(vaultRoot: string, pluginId: string, options: ObsidianVaultConfigOptions = {}): Promise<void> {
     await importObsidianPlugin({
       vaultRoot,
       pluginId,
       targetMindRoot: this.mindRoot,
+      configDir: options.configDir,
     });
+  }
+
+  previewLegacyMigration(pluginId: string): LegacyPluginMigrationPlan {
+    return planLegacyObsidianPluginMigration(this.mindRoot, pluginId);
+  }
+
+  async migrateLegacyPlugin(pluginId: string): Promise<LegacyPluginMigrationResult> {
+    const plugin = this.requirePlugin(pluginId);
+    const loaded = this.loader.getLoadedPlugins().some((loadedPlugin) => loadedPlugin.manifest.id === pluginId);
+    if (loaded || plugin.loaded) {
+      await this.loader.unloadPlugin(pluginId);
+    }
+    this.forgetEditorSessionsForPlugin(pluginId);
+    plugin.loaded = false;
+
+    const result = migrateLegacyObsidianPlugin(this.mindRoot, pluginId);
+    this.writeState();
+    await this.discover();
+    return result;
   }
 
   private toManagedPlugin(manifest: PluginManifest, state: PluginManagerState): ManagedPlugin {
@@ -543,6 +595,7 @@ export class PluginManager {
       code = '';
     }
     const compatibility = analyzePluginCompatibility(code, manifest);
+    const coverage = buildObsidianCapabilityCoverage(compatibility);
 
     return {
       id: manifest.id,
@@ -553,6 +606,10 @@ export class PluginManager {
       loaded,
       compatibility,
       compatibilityLevel: getCompatibilityLevel(compatibility),
+      coverage,
+      coverageSummary: summarizeObsidianCapabilityCoverage(coverage),
+      surfaceSummary: summarizeObsidianCapabilitySurfaces(coverage),
+      packageLocation: this.packageLocationFor(manifest.id),
       runtime: this.runtimeSummaryFor(manifest.id),
     };
   }
@@ -701,6 +758,7 @@ export class PluginManager {
       statusBarItems: statusBarItems.length,
       statusBarItemList: statusBarItems.map((item) => ({ text: item.element.textContent ?? '' })),
       dataFile: this.dataFileSummaryFor(pluginId),
+      secretStorage: this.loader.getApp().getSecretStorageSummary(pluginId),
       communityOrigin: this.communityOriginSummaryFor(pluginId),
       styleSheets: styleSheetList.length,
       styleSheetList,
@@ -748,6 +806,26 @@ export class PluginManager {
     return {
       bytes: stat.size,
       css: fs.readFileSync(stylePath, 'utf-8'),
+    };
+  }
+
+  private packageLocationFor(pluginId: string): ManagedPluginPackageLocation | undefined {
+    const location = resolveInstalledObsidianPluginDir(this.mindRoot, pluginId);
+    if (!location) return undefined;
+
+    let canonicalExists = false;
+    try {
+      const canonical = resolveCanonicalObsidianPluginDir(this.mindRoot, pluginId);
+      canonicalExists = fs.existsSync(canonical.pluginDir) && fs.statSync(canonical.pluginDir).isDirectory();
+    } catch {
+      canonicalExists = false;
+    }
+
+    return {
+      relativePath: location.pluginRelativePath,
+      rootRelativePath: location.relativePath,
+      legacy: location.legacy,
+      migrationAvailable: location.legacy && !canonicalExists,
     };
   }
 
