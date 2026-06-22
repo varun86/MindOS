@@ -61,6 +61,7 @@ describe('MindOS pi extension tools', () => {
       sessionManager: { session: true },
       settingsManager: { settings: true },
       resourceLoader,
+      permissionMode: 'read',
     });
 
     const tools = collectMindosPiRuntimeToolsForFallback({
@@ -93,6 +94,7 @@ describe('MindOS pi extension tools', () => {
       ctx: expect.objectContaining({
         cwd: '/repo',
         hasUI: false,
+        permissionMode: 'read',
         model: { id: 'model' },
         resourceLoader,
       }),

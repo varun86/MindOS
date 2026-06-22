@@ -12,11 +12,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setMindRootResolverForTests } from '../../foundation/mind-root/index.js';
 import { finalizeSubagentAsyncRunFromEvent, wrapSubagentToolForLedger } from './subagent-ledger-extension.js';
-import { getCurrentAgentRunContext, setAgentRunContextForResource } from '../agent-run-context.js';
+import { getCurrentAgentRunContext, runWithAgentRunContext, setAgentRunContextForResource } from '../agent-run-context.js';
 import {
   listAgentEvents,
   listAgentRuns,
   resetAgentRunsForTest,
+  startAgentRun,
 } from '../ledger/run-ledger.js';
 
 function deferred<T>() {
@@ -83,6 +84,45 @@ describe('MindOS subagent ledger extension', () => {
         inputSummary: expect.stringContaining('Review the patch.'),
         outputSummary: 'Review completed.',
         metadata: expect.objectContaining({ toolCallId: 'tool-call-1', source: 'pi-subagents' }),
+      }),
+    ]);
+  });
+
+  it('inherits the parent run permission when the pi tool context has no permissionMode', async () => {
+    const mainRun = startAgentRun({
+      agentKind: 'mindos-main',
+      runtimeId: 'mindos',
+      displayName: 'MindOS Agent',
+      permissionMode: 'read',
+      inputSummary: 'Parent read-only run.',
+    });
+    const upstream = {
+      name: 'subagent',
+      parameters: {} as any,
+      execute: vi.fn(async () => ({
+        content: [{ type: 'text', text: 'Read-only child completed.' }],
+        details: {},
+      })),
+    };
+    const wrapped = wrapSubagentToolForLedger(upstream as any);
+
+    await runWithAgentRunContext({
+      rootRunId: mainRun.id,
+      parentRunId: mainRun.id,
+    }, () => wrapped.execute(
+      'tool-call-inherit-permission',
+      { agent: 'reviewer', task: 'Review without explicit ctx permission.' },
+      undefined,
+      undefined,
+      { cwd: '/tmp/mindos' },
+    ));
+
+    expect(listAgentRuns({ kind: 'pi-subagent' })).toEqual([
+      expect.objectContaining({
+        runtimeId: 'reviewer',
+        parentRunId: mainRun.id,
+        permissionMode: 'read',
+        status: 'completed',
       }),
     ]);
   });

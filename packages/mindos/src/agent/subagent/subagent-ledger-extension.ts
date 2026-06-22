@@ -20,6 +20,7 @@ import {
   appendAgentRunEvent,
   completeAgentRun,
   failAgentRun,
+  getAgentRun,
   listAgentRuns,
   startAgentRun,
   updateAgentRun,
@@ -318,7 +319,17 @@ function subagentCwd(params: unknown, ctx?: Record<string, any>): string | undef
 }
 
 function subagentPermissionMode(ctx?: Record<string, any>) {
-  return createMindosAgentPermissionPolicyFromContext(ctx, 'ask').permissionMode;
+  if (ctx && typeof ctx.permissionMode === 'string') {
+    return createMindosAgentPermissionPolicyFromContext(ctx, 'ask').permissionMode;
+  }
+  const inherited = inheritedAgentRunContext(ctx);
+  const parentPermissionMode = inherited?.parentRunId
+    ? getAgentRun(inherited.parentRunId)?.permissionMode
+    : undefined;
+  return createMindosAgentPermissionPolicyFromContext(
+    parentPermissionMode ? { permissionMode: parentPermissionMode } : undefined,
+    'ask',
+  ).permissionMode;
 }
 
 function sessionManagerFromToolContext(ctx?: Record<string, any>): unknown {

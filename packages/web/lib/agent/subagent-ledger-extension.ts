@@ -22,7 +22,10 @@ import {
   type SubagentChildRuntimeInput,
   type RegisterSubagentExtension,
 } from '@geminilight/mindos/agent/subagent/subagent-ledger-extension';
-import { resolveBuiltinWebRuntimePackagePath } from './builtin-extension-runtime';
+import {
+  findBuiltinWebRuntimePackagePath,
+  resolveBuiltinWebRuntimePackagePath,
+} from './builtin-extension-runtime';
 import { effectiveAiConfig } from '../settings';
 import { getDefaultApi, getDefaultBaseUrl, getPreset, toPiProvider, type ProviderId } from './providers';
 
@@ -34,6 +37,7 @@ export {
 
 export const MINDOS_PI_CHILD_API_KEY_ENV = 'MINDOS_PI_CHILD_API_KEY';
 export const PI_CODING_AGENT_DIR_ENV = 'PI_CODING_AGENT_DIR';
+export const MINDOS_PI_CHILD_CLI_PATH_ENV = 'MINDOS_PI_CHILD_CLI_PATH';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -47,6 +51,9 @@ export interface MindosPiChildModelConfig {
 
 interface MindosPiChildRuntimeConfig {
   agentDir: string;
+  binDir: string;
+  piCliPath: string;
+  nodePath: string;
   env: Record<string, string>;
   modelsJson: JsonRecord;
   settingsJson: JsonRecord;
@@ -91,6 +98,15 @@ function writeJsonFile(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 }
 
+function writePrivateExecutable(filePath: string, content: string): void {
+  fs.writeFileSync(filePath, content, { mode: 0o700 });
+  try {
+    fs.chmodSync(filePath, 0o700);
+  } catch {
+    // Best effort on platforms/filesystems that do not support chmod.
+  }
+}
+
 function shallowEqualStringRecord(a: Record<string, string>, b: Record<string, string>): boolean {
   const aKeys = Object.keys(a).sort();
   const bKeys = Object.keys(b).sort();
@@ -100,6 +116,42 @@ function shallowEqualStringRecord(a: Record<string, string>, b: Record<string, s
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function currentWebAppDir(): string {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(currentDir, '..', '..');
+}
+
+function resolveMindosPiCliPath(): string {
+  const webAppDir = currentWebAppDir();
+  const found = findBuiltinWebRuntimePackagePath(
+    webAppDir,
+    '@earendil-works/pi-coding-agent',
+    'dist',
+    'cli.js',
+  );
+  if (found) return found;
+
+  return resolveBuiltinWebRuntimePackagePath(
+    webAppDir,
+    '@earendil-works/pi-coding-agent',
+    'dist',
+    'cli.js',
+  );
+}
+
+function createPathEnv(binDir: string): Record<string, string> {
+  const inheritedPath = process.env.PATH ?? process.env.Path ?? '';
+  const nextPath = inheritedPath ? `${binDir}${path.delimiter}${inheritedPath}` : binDir;
+  return {
+    PATH: nextPath,
+    ...(process.platform === 'win32' ? { Path: nextPath } : {}),
+  };
 }
 
 function resolveCurrentMindosPiChildModelConfig(): MindosPiChildModelConfig {
@@ -216,27 +268,67 @@ export function buildMindosPiChildRuntimeConfig(
     defaultModel: modelId,
   };
   const agentDir = runtimeDirForConfig({ provider: piProvider, modelId, baseUrl, api });
+  const binDir = path.join(agentDir, 'bin');
+  const piCliPath = resolveMindosPiCliPath();
+  const nodePath = process.execPath;
 
   return {
     agentDir,
+    binDir,
+    piCliPath,
+    nodePath,
     env: {
       [PI_CODING_AGENT_DIR_ENV]: agentDir,
       [MINDOS_PI_CHILD_API_KEY_ENV]: config.apiKey,
+      [MINDOS_PI_CHILD_CLI_PATH_ENV]: piCliPath,
+      ...createPathEnv(binDir),
     },
     modelsJson,
     settingsJson,
   };
 }
 
-function ensureMindosPiChildRuntimeDir(config: MindosPiChildRuntimeConfig): void {
+export function ensureMindosPiChildRuntimeDir(config: MindosPiChildRuntimeConfig): void {
+  if (!fs.existsSync(config.piCliPath)) {
+    throw new Error(`MindOS subagent child runtime could not locate pi CLI at ${config.piCliPath}.`);
+  }
   fs.mkdirSync(config.agentDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(config.binDir, { recursive: true, mode: 0o700 });
   try {
     fs.chmodSync(config.agentDir, 0o700);
+    fs.chmodSync(config.binDir, 0o700);
   } catch {
     // Best effort on platforms/filesystems that do not support chmod.
   }
   writeJsonFile(path.join(config.agentDir, 'models.json'), config.modelsJson);
   writeJsonFile(path.join(config.agentDir, 'settings.json'), config.settingsJson);
+  const shimPath = path.join(config.binDir, 'pi-shim.cjs');
+  const jsShim = [
+    '#!/usr/bin/env node',
+    "const { spawnSync } = require('child_process');",
+    `const cliPath = ${JSON.stringify(config.piCliPath)};`,
+    "const result = spawnSync(process.execPath, [cliPath, ...process.argv.slice(2)], { stdio: 'inherit', env: process.env });",
+    'if (result.error) {',
+    "  console.error(result.error.message || String(result.error));",
+    '  process.exit(1);',
+    '}',
+    'if (result.signal) {',
+    "  console.error(`pi child process terminated by ${result.signal}`);",
+    '  process.exit(1);',
+    '}',
+    'process.exit(result.status ?? 0);',
+    '',
+  ].join('\n');
+  writePrivateExecutable(shimPath, jsShim);
+  writePrivateExecutable(
+    path.join(config.binDir, 'pi'),
+    ['#!/bin/sh', `exec ${shellQuote(config.nodePath)} ${shellQuote(shimPath)} "$@"`, ''].join('\n'),
+  );
+  fs.writeFileSync(
+    path.join(config.binDir, 'pi.cmd'),
+    ['@echo off', `"${config.nodePath}" "${shimPath}" %*`, ''].join('\r\n'),
+    { mode: 0o700 },
+  );
 }
 
 export async function withMindosSubagentChildRuntime<T>(
@@ -256,8 +348,7 @@ export async function withMindosSubagentChildRuntime<T>(
 }
 
 async function loadUpstreamSubagentExtension(): Promise<RegisterSubagentExtension> {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const webAppDir = path.resolve(currentDir, '..', '..');
+  const webAppDir = currentWebAppDir();
   const upstreamPath = resolveBuiltinWebRuntimePackagePath(webAppDir, 'pi-subagents', 'src', 'extension', 'index.ts');
   const upstreamRealPath = fs.realpathSync(upstreamPath);
   const jiti = createJiti(upstreamRealPath, {

@@ -106,6 +106,7 @@ export async function runHeadlessAgent(options: HeadlessAgentRunOptions): Promis
     additionalSkillPaths: runtimePaths.additionalSkillPaths,
     additionalExtensionPaths: runtimePaths.additionalExtensionPaths,
     allowProjectBash: permissionPolicy.toolScope.terminal,
+    permissionMode: permissionPolicy.permissionMode,
     hostServices: createWebMindosPiRuntimeHostServices(serverSettings),
   }));
 

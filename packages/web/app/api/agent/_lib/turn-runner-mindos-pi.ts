@@ -101,6 +101,7 @@ export async function runMindosPiTurn(input: RunMindosPiTurnInput): Promise<Resp
       additionalSkillPaths: runtimePaths.additionalSkillPaths,
       additionalExtensionPaths: runtimePaths.additionalExtensionPaths,
       allowProjectBash: input.permissionPolicy.toolScope.terminal,
+      permissionMode: input.permissionPolicy.permissionMode,
       hostServices: createWebMindosPiRuntimeHostServices(input.serverSettings),
     }));
     systemPrompt = runtime.systemPrompt;

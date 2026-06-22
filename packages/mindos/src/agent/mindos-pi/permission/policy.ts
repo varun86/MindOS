@@ -103,16 +103,20 @@ export const MINDOS_ASK_KB_TOOL_NAMES = [
   'compile',
 ] as const;
 
-const SAFE_EXTENSION_SCOPES = [
+const BASE_SAFE_EXTENSION_SCOPES = [
   'kb',
   'ask-user-question',
   'pi-web-access',
 ] as const satisfies readonly MindosExtensionScope[];
 
-const AUTO_EXTENSION_SCOPES = [
-  ...SAFE_EXTENSION_SCOPES,
-  'im',
+const SAFE_AGENT_EXTENSION_SCOPES = [
+  ...BASE_SAFE_EXTENSION_SCOPES,
   'subagents',
+] as const satisfies readonly MindosExtensionScope[];
+
+const AUTO_EXTENSION_SCOPES = [
+  ...SAFE_AGENT_EXTENSION_SCOPES,
+  'im',
   'schedule-prompt',
 ] as const satisfies readonly MindosExtensionScope[];
 
@@ -147,7 +151,7 @@ function askToolScope(): MindosAgentToolScope {
     askUserQuestion: true,
     terminal: false,
     mcp: false,
-    subagents: false,
+    subagents: true,
     acpDelegation: false,
     a2aDelegation: false,
     im: false,
@@ -186,7 +190,7 @@ function readOnlyPolicy(): MindosAgentPermissionPolicy {
       askUserQuestion: true,
       terminal: false,
       mcp: false,
-      subagents: false,
+      subagents: true,
       acpDelegation: false,
       a2aDelegation: false,
       im: false,
@@ -195,7 +199,7 @@ function readOnlyPolicy(): MindosAgentPermissionPolicy {
     },
     kbToolNames: [...MINDOS_READONLY_KB_TOOL_NAMES],
     writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+    extensionScopes: [...SAFE_AGENT_EXTENSION_SCOPES],
   };
 }
 
@@ -208,7 +212,7 @@ function askPolicy(): MindosAgentPermissionPolicy {
     toolScope: askToolScope(),
     kbToolNames: [...MINDOS_ASK_KB_TOOL_NAMES],
     writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+    extensionScopes: [...SAFE_AGENT_EXTENSION_SCOPES],
   };
 }
 
@@ -279,7 +283,7 @@ export function createMindosKnowledgeWritePermissionPolicy(
     },
     kbToolNames: [...MINDOS_KNOWLEDGE_WRITE_TOOL_NAMES],
     writeToolNames: [...MINDOS_WRITE_TOOL_NAMES],
-    extensionScopes: [...SAFE_EXTENSION_SCOPES],
+    extensionScopes: [...BASE_SAFE_EXTENSION_SCOPES],
   };
 }
 

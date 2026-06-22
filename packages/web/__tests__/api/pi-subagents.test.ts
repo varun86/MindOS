@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterEach, vi } from 'vitest';
+import { spawnSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,6 +14,8 @@ import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-codin
 import { resetAgentRunsForTest } from '@geminilight/mindos/agent/ledger/run-ledger';
 import {
   buildMindosPiChildRuntimeConfig,
+  ensureMindosPiChildRuntimeDir,
+  MINDOS_PI_CHILD_CLI_PATH_ENV,
   MINDOS_PI_CHILD_API_KEY_ENV,
   PI_CODING_AGENT_DIR_ENV,
 } from '../../lib/agent/subagent-ledger-extension';
@@ -118,9 +121,22 @@ describe('pi-subagents built-in extension', () => {
         expect(readonlyExtensionList).toContain('ask-user-question-bridge-extension');
         expect(readonlyExtensionList).toContain('pi-web-access');
         expect(readonlyExtensionList).not.toContain('pi-mcp-adapter');
-        expect(readonlyExtensionList).not.toContain('subagent-ledger-extension');
+        expect(readonlyExtensionList).toContain('subagent-ledger-extension');
         expect(readonlyExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
         expect(readonlyExtensionList).not.toContain('schedule-prompt');
+
+        const askPaths = getMindosWebPiRuntimePaths({
+          ...base,
+          permissionPolicy: createMindosAgentPermissionPolicy('ask'),
+        });
+        const askExtensionList = askPaths.additionalExtensionPaths.join('\n');
+        expect(askExtensionList).toContain('kb-extension');
+        expect(askExtensionList).toContain('ask-user-question-bridge-extension');
+        expect(askExtensionList).toContain('pi-web-access');
+        expect(askExtensionList).toContain('subagent-ledger-extension');
+        expect(askExtensionList).not.toContain('pi-mcp-adapter');
+        expect(askExtensionList).not.toContain(path.join('lib', 'im', 'index.ts'));
+        expect(askExtensionList).not.toContain('schedule-prompt');
 
         const kbWritePaths = getMindosWebPiRuntimePaths({
           ...base,
@@ -342,6 +358,11 @@ describe('pi-subagents built-in extension', () => {
       expect(runtimeConfig).not.toBeNull();
       expect(runtimeConfig!.env[MINDOS_PI_CHILD_API_KEY_ENV]).toBe('sk-test-secret');
       expect(runtimeConfig!.env[PI_CODING_AGENT_DIR_ENV]).toContain('mindos-pi-child-runtime-');
+      expect(runtimeConfig!.env[MINDOS_PI_CHILD_CLI_PATH_ENV]).toBe(runtimeConfig!.piCliPath);
+      expect(runtimeConfig!.env.PATH.split(path.delimiter)[0]).toBe(runtimeConfig!.binDir);
+      expect(runtimeConfig!.binDir).toBe(path.join(runtimeConfig!.agentDir, 'bin'));
+      expect(runtimeConfig!.piCliPath.replace(/\\/g, '/')).toContain('@earendil-works/pi-coding-agent');
+      expect(runtimeConfig!.piCliPath).toContain(path.join('dist', 'cli.js'));
       expect(runtimeConfig!.settingsJson).toEqual({
         defaultProvider: 'openai',
         defaultModel: 'step-3.7-flash',
@@ -364,6 +385,50 @@ describe('pi-subagents built-in extension', () => {
         },
       });
       expect(JSON.stringify(runtimeConfig!.modelsJson)).not.toContain('sk-test-secret');
+    });
+
+    it('writes an executable pi shim into the child runtime PATH', () => {
+      const runtimeConfig = buildMindosPiChildRuntimeConfig({
+        provider: 'openai',
+        modelName: 'step-3.7-flash',
+        apiKey: 'sk-test-secret',
+        baseUrl: 'https://gateway.example/v1',
+        model: {
+          id: 'step-3.7-flash',
+          name: 'step-3.7-flash',
+          provider: 'openai',
+          api: 'openai-completions',
+          baseUrl: 'https://gateway.example/v1',
+        },
+      });
+
+      expect(runtimeConfig).not.toBeNull();
+      try {
+        ensureMindosPiChildRuntimeDir(runtimeConfig!);
+
+        const piShim = path.join(runtimeConfig!.binDir, 'pi');
+        const piCmdShim = path.join(runtimeConfig!.binDir, 'pi.cmd');
+        const jsShim = path.join(runtimeConfig!.binDir, 'pi-shim.cjs');
+
+        expect(fs.existsSync(path.join(runtimeConfig!.agentDir, 'models.json'))).toBe(true);
+        expect(fs.existsSync(path.join(runtimeConfig!.agentDir, 'settings.json'))).toBe(true);
+        expect(fs.existsSync(piShim)).toBe(true);
+        expect(fs.existsSync(piCmdShim)).toBe(true);
+        expect(fs.existsSync(jsShim)).toBe(true);
+        expect(fs.readFileSync(piShim, 'utf-8')).toContain('pi-shim.cjs');
+        expect(fs.readFileSync(jsShim, 'utf-8')).toContain(runtimeConfig!.piCliPath);
+        expect(fs.statSync(piShim).mode & 0o111).not.toBe(0);
+
+        const spawnResult = spawnSync('pi', ['--version'], {
+          env: { ...process.env, ...runtimeConfig!.env },
+          encoding: 'utf-8',
+        });
+        expect(spawnResult.error).toBeUndefined();
+        expect(spawnResult.status).toBe(0);
+        expect(`${spawnResult.stdout}\n${spawnResult.stderr}`.trim()).toMatch(/\d+\.\d+\.\d+/);
+      } finally {
+        fs.rmSync(runtimeConfig!.agentDir, { recursive: true, force: true });
+      }
     });
   });
 });

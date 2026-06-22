@@ -8,6 +8,7 @@ export const BUILTIN_AGENT_EXTENSION_PACKAGES = [
   'pi-schedule-prompt',
   'pi-subagents',
   'pi-web-access',
+  '@earendil-works/pi-coding-agent',
 ] as const;
 
 export type BuiltinAgentExtensionPackage = typeof BUILTIN_AGENT_EXTENSION_PACKAGES[number];

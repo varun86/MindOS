@@ -9,6 +9,7 @@ import type {
   MindosExtensionLoadError,
   MindosPiResourceLoaderAdapter,
 } from './resource-types.js';
+import type { MindosPermissionMode } from '../permission/index.js';
 import type { MindosExecutableTool } from '../tool/executable-tool.js';
 import {
   createMindosAgentEventReducer,
@@ -306,6 +307,7 @@ export type MindosPiAgentRuntimeOptions = {
   additionalSkillPaths?: string[];
   additionalExtensionPaths?: string[];
   allowProjectBash?: boolean;
+  permissionMode?: MindosPermissionMode;
   bashTool: unknown;
   services: MindosPiAgentRuntimeServices;
 };
@@ -478,6 +480,7 @@ export async function createMindosPiAgentRuntime(options: MindosPiAgentRuntimeOp
       sessionManager,
       settingsManager,
       resourceLoader,
+      permissionMode: options.permissionMode,
     }),
   });
 

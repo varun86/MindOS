@@ -22,7 +22,7 @@ describe('MindOS Pi permission policy', () => {
         askUserQuestion: true,
         terminal: false,
         mcp: false,
-        subagents: false,
+        subagents: true,
         acpDelegation: false,
         a2aDelegation: false,
         im: false,
@@ -39,10 +39,10 @@ describe('MindOS Pi permission policy', () => {
       'get_recent',
       'get_backlinks',
     ]);
-    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(false);
+    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(true);
   });
 
-  it('maps ask permission to bounded KB writes without agentic extension scopes', () => {
+  it('maps ask permission to bounded KB writes with safe delegation extension scopes', () => {
     const policy = createMindosAgentPermissionPolicy('ask');
 
     expect(policy).toMatchObject({
@@ -57,7 +57,7 @@ describe('MindOS Pi permission policy', () => {
         askUserQuestion: true,
         terminal: false,
         mcp: false,
-        subagents: false,
+        subagents: true,
         acpDelegation: false,
         a2aDelegation: false,
         im: false,
@@ -72,7 +72,7 @@ describe('MindOS Pi permission policy', () => {
     expect(policy.kbToolNames).not.toContain('move_file');
     expect(policy.kbToolNames).not.toContain('edit_lines');
     expect(hasMindosExtensionScope(policy, 'pi-web-access')).toBe(true);
-    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(false);
+    expect(hasMindosExtensionScope(policy, 'subagents')).toBe(true);
     expect(hasMindosExtensionScope(policy, 'pi-mcp-adapter')).toBe(false);
     expect(hasMindosExtensionScope(policy, 'user-extensions')).toBe(false);
   });

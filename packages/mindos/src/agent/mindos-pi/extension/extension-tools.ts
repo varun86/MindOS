@@ -1,4 +1,5 @@
 import type { MindosExecutableTool } from '../../tool/executable-tool.js';
+import type { MindosPermissionMode } from '../../permission/index.js';
 import type {
   MindosExtensionEntry,
   MindosPiResourceLoaderAdapter,
@@ -35,6 +36,7 @@ export function createMindosHeadlessExtensionContext(input: {
   sessionManager: unknown;
   settingsManager: unknown;
   resourceLoader: unknown;
+  permissionMode?: MindosPermissionMode;
 }): Record<string, unknown> {
   return {
     cwd: input.cwd,
@@ -44,6 +46,7 @@ export function createMindosHeadlessExtensionContext(input: {
     sessionManager: input.sessionManager,
     settingsManager: input.settingsManager,
     resourceLoader: input.resourceLoader,
+    ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
     ui: {
       notify: () => {},
       setWidget: () => {},
