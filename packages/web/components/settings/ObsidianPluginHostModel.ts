@@ -53,8 +53,8 @@ export interface ObsidianPluginRuntime {
   secretStorage?: {
     backend: string;
     encrypted: boolean;
-    path: string;
-    keyPath: string;
+    path?: string;
+    keyPath?: string;
     pluginId: string;
     secrets: number;
   };

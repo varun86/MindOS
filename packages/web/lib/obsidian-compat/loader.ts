@@ -21,7 +21,7 @@ import { validateManifest, ManifestError } from './manifest';
 import { CompatError, CompatErrorCodes } from './errors';
 import { Plugin } from './shims/plugin';
 import { createObsidianModule } from './shims/obsidian';
-import { AppShim } from './shims/app';
+import { AppShim, type AppShimOptions } from './shims/app';
 import { createObsidianElement } from './shims/dom';
 import { PluginManifest } from './types';
 import {
@@ -35,6 +35,8 @@ export interface LoadedPlugin {
   instance: Plugin;
   pluginDir: string;
 }
+
+export type PluginLoaderOptions = AppShimOptions;
 
 type PluginLocalStorage = {
   getItem(key: string): string | null;
@@ -67,8 +69,8 @@ export class PluginLoader {
   private plugins: Map<string, LoadedPlugin> = new Map();
   private app: AppShim;
 
-  constructor(private mindRoot: string) {
-    this.app = new AppShim(mindRoot);
+  constructor(private mindRoot: string, options: PluginLoaderOptions = {}) {
+    this.app = new AppShim(mindRoot, undefined, options);
   }
 
   private resolvePluginDir(pluginId: string): string {

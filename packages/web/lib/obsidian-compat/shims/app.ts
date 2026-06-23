@@ -11,7 +11,7 @@ import { Events } from '../events';
 import { ObsidianRuntimeHost } from '../runtime';
 import type { App, Command, Editor, IFileManager, IMetadataCache, MarkdownView, SecretStorage, TFile, Workspace, WorkspaceLeaf } from '../types';
 import type { CommandExecutionContext } from '../command-registry';
-import { ObsidianSecretStorage, type ObsidianSecretStorageSummary } from '../secret-storage';
+import { ObsidianSecretStorage, type ObsidianSecretStorageBackend, type ObsidianSecretStorageSummary } from '../secret-storage';
 import fs from 'fs';
 import path from 'path';
 import { resolveExistingSafe } from '@/lib/core/security';
@@ -272,6 +272,10 @@ class WorkspaceShim extends Events implements Workspace {
 /**
  * App shim: central adapter that provides vault, metadata, workspace to plugins.
  */
+export interface AppShimOptions {
+  secretStorageBackend?: ObsidianSecretStorageBackend;
+}
+
 export class AppShim implements App {
   vault: Vault;
   metadataCache: IMetadataCache;
@@ -293,7 +297,7 @@ export class AppShim implements App {
   private commandRegistry: CommandRegistry;
   private runtimeHost: ObsidianRuntimeHost;
 
-  constructor(private mindRoot: string, runtimeHost = new ObsidianRuntimeHost()) {
+  constructor(private mindRoot: string, runtimeHost = new ObsidianRuntimeHost(), options: AppShimOptions = {}) {
     this.runtimeHost = runtimeHost;
     this.vault = new Vault(mindRoot);
     this.metadataCache = new MetadataCacheShim(mindRoot, this.vault);
@@ -302,6 +306,7 @@ export class AppShim implements App {
       mindRoot,
       () => this.runtimeHost.getCurrentPluginId(),
       (warning) => this.runtimeHost.warn(warning),
+      options.secretStorageBackend,
     );
     this.workspace = new WorkspaceShim(this, this.runtimeHost);
     this.commandRegistry = new CommandRegistry();
@@ -381,6 +386,10 @@ export class AppShim implements App {
 
   getSecretStorageSummary(pluginId: string): ObsidianSecretStorageSummary {
     return (this.secretStorage as ObsidianSecretStorage).getSummary(pluginId);
+  }
+
+  removePluginSecrets(pluginId: string): Promise<number> {
+    return (this.secretStorage as ObsidianSecretStorage).removePluginSecrets(pluginId);
   }
 
   readFileContentSync(file: TFile): string {

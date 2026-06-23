@@ -13,6 +13,8 @@ const SECRET_STORAGE_BACKEND = 'local-aes-256-gcm-file';
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
 
+type MaybePromise<T> = T | Promise<T>;
+
 interface StoredSecretEntry {
   alg: 'aes-256-gcm';
   iv: string;
@@ -28,12 +30,12 @@ interface SecretStorageFile {
 }
 
 export interface ObsidianSecretStorageSummary {
-  backend: typeof SECRET_STORAGE_BACKEND;
-  encrypted: true;
-  path: string;
-  keyPath: string;
+  backend: string;
+  encrypted: boolean;
   pluginId: string;
   secrets: number;
+  path?: string;
+  keyPath?: string;
 }
 
 export interface SecretStorageHostWarning {
@@ -44,42 +46,51 @@ export interface SecretStorageHostWarning {
 
 export type SecretStorageWarningSink = (warning: SecretStorageHostWarning) => void;
 
-export class ObsidianSecretStorage {
+export interface ObsidianSecretStorageBackend {
+  readonly backend: string;
+  readonly encrypted: boolean;
+  setSecret(pluginId: string, secretId: string, secret: string): MaybePromise<void>;
+  getSecret(pluginId: string, secretId: string): MaybePromise<string | null>;
+  listSecrets(pluginId: string): MaybePromise<string[]>;
+  removePluginSecrets(pluginId: string): MaybePromise<number>;
+  getSummary(pluginId: string): ObsidianSecretStorageSummary;
+}
+
+class SecretStorageBackendError extends Error {
   constructor(
-    private readonly mindRoot: string,
-    private readonly getActivePluginId: () => string | undefined,
-    private readonly warn?: SecretStorageWarningSink,
-  ) {}
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'SecretStorageBackendError';
+  }
+}
 
-  async setSecret(id: string, secret: string): Promise<void> {
-    const pluginId = this.requirePluginContext();
-    const normalizedId = normalizeSecretId(id);
-    if (typeof secret !== 'string') {
-      throw new Error('[obsidian-compat] SecretStorage.setSecret requires a string secret.');
-    }
+export class LocalAesGcmSecretStorageBackend implements ObsidianSecretStorageBackend {
+  readonly backend = SECRET_STORAGE_BACKEND;
+  readonly encrypted = true;
 
+  constructor(private readonly mindRoot: string) {}
+
+  setSecret(pluginId: string, secretId: string, secret: string): void {
     const store = this.readStore();
     const pluginEntries = store.entries[pluginId] ?? {};
-    pluginEntries[normalizedId] = this.encrypt(secret);
+    pluginEntries[secretId] = this.encrypt(secret);
     store.entries[pluginId] = pluginEntries;
     this.writeStore(store);
   }
 
-  async getSecret(id: string): Promise<string | null> {
-    const pluginId = this.requirePluginContext();
-    const normalizedId = normalizeSecretId(id);
-    const entry = this.readStore().entries[pluginId]?.[normalizedId];
+  getSecret(pluginId: string, secretId: string): string | null {
+    const entry = this.readStore().entries[pluginId]?.[secretId];
     if (!entry) return null;
-    return this.decrypt(entry, pluginId, normalizedId);
+    return this.decrypt(entry, secretId);
   }
 
-  async listSecrets(): Promise<string[]> {
-    const pluginId = this.requirePluginContext();
+  listSecrets(pluginId: string): string[] {
     return Object.keys(this.readStore().entries[pluginId] ?? {}).sort();
   }
 
   removePluginSecrets(pluginId: string): number {
-    assertSafeObsidianPluginId(pluginId);
     const store = this.readStore();
     const count = Object.keys(store.entries[pluginId] ?? {}).length;
     if (count === 0) return 0;
@@ -89,24 +100,14 @@ export class ObsidianSecretStorage {
   }
 
   getSummary(pluginId: string): ObsidianSecretStorageSummary {
-    assertSafeObsidianPluginId(pluginId);
     return {
-      backend: SECRET_STORAGE_BACKEND,
-      encrypted: true,
+      backend: this.backend,
+      encrypted: this.encrypted,
       path: relativeToMindRoot(this.mindRoot, this.storagePath()),
       keyPath: relativeToMindRoot(this.mindRoot, this.keyPath()),
       pluginId,
       secrets: Object.keys(this.readStore().entries[pluginId] ?? {}).length,
     };
-  }
-
-  private requirePluginContext(): string {
-    const pluginId = this.getActivePluginId();
-    if (!pluginId) {
-      throw new Error('[obsidian-compat] SecretStorage requires an active plugin context.');
-    }
-    assertSafeObsidianPluginId(pluginId);
-    return pluginId;
   }
 
   private encrypt(secret: string): StoredSecretEntry {
@@ -124,7 +125,7 @@ export class ObsidianSecretStorage {
     };
   }
 
-  private decrypt(entry: StoredSecretEntry, pluginId: string, secretId: string): string {
+  private decrypt(entry: StoredSecretEntry, secretId: string): string {
     try {
       if (entry.alg !== 'aes-256-gcm') {
         throw new Error(`Unsupported algorithm: ${entry.alg}`);
@@ -140,13 +141,11 @@ export class ObsidianSecretStorage {
         decipher.final(),
       ]);
       return decrypted.toString('utf-8');
-    } catch (error) {
-      this.warn?.({
-        pluginId,
-        code: 'secret-storage-decrypt-failed',
-        message: `SecretStorage could not decrypt "${secretId}": ${error instanceof Error ? error.message : String(error)}`,
-      });
-      throw new Error(`[obsidian-compat] Failed to decrypt SecretStorage entry "${secretId}".`);
+    } catch {
+      throw new SecretStorageBackendError(
+        'secret-storage-decrypt-failed',
+        `[obsidian-compat] Failed to decrypt SecretStorage entry "${secretId}".`,
+      );
     }
   }
 
@@ -204,6 +203,85 @@ export class ObsidianSecretStorage {
   }
 }
 
+export class ObsidianSecretStorage {
+  private readonly backend: ObsidianSecretStorageBackend;
+
+  constructor(
+    mindRoot: string,
+    private readonly getActivePluginId: () => string | undefined,
+    private readonly warn?: SecretStorageWarningSink,
+    backend?: ObsidianSecretStorageBackend,
+  ) {
+    this.backend = backend ?? new LocalAesGcmSecretStorageBackend(mindRoot);
+  }
+
+  async setSecret(id: string, secret: string): Promise<void> {
+    const pluginId = this.requirePluginContext();
+    const normalizedId = normalizeSecretId(id);
+    if (typeof secret !== 'string') {
+      throw new Error('[obsidian-compat] SecretStorage.setSecret requires a string secret.');
+    }
+
+    await this.runBackendOperation('set', pluginId, normalizedId, () => this.backend.setSecret(pluginId, normalizedId, secret));
+  }
+
+  async getSecret(id: string): Promise<string | null> {
+    const pluginId = this.requirePluginContext();
+    const normalizedId = normalizeSecretId(id);
+    return this.runBackendOperation('get', pluginId, normalizedId, () => this.backend.getSecret(pluginId, normalizedId));
+  }
+
+  async listSecrets(): Promise<string[]> {
+    const pluginId = this.requirePluginContext();
+    const secrets = await this.runBackendOperation('list', pluginId, undefined, () => this.backend.listSecrets(pluginId));
+    return [...secrets].sort();
+  }
+
+  async removePluginSecrets(pluginId: string): Promise<number> {
+    assertSafeObsidianPluginId(pluginId);
+    return this.runBackendOperation('remove', pluginId, undefined, () => this.backend.removePluginSecrets(pluginId));
+  }
+
+  getSummary(pluginId: string): ObsidianSecretStorageSummary {
+    assertSafeObsidianPluginId(pluginId);
+    return this.backend.getSummary(pluginId);
+  }
+
+  private requirePluginContext(): string {
+    const pluginId = this.getActivePluginId();
+    if (!pluginId) {
+      throw new Error('[obsidian-compat] SecretStorage requires an active plugin context.');
+    }
+    assertSafeObsidianPluginId(pluginId);
+    return pluginId;
+  }
+
+  private async runBackendOperation<T>(
+    operation: 'set' | 'get' | 'list' | 'remove',
+    pluginId: string,
+    secretId: string | undefined,
+    run: () => MaybePromise<T>,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      const code = error instanceof SecretStorageBackendError
+        ? error.code
+        : `secret-storage-${operation}-failed`;
+      const target = secretId ? `"${secretId}"` : `plugin "${pluginId}"`;
+      this.warn?.({
+        pluginId,
+        code,
+        message: `SecretStorage ${operation} failed for ${target} using backend "${this.backend.backend}".`,
+      });
+      if (error instanceof SecretStorageBackendError) {
+        throw new Error(error.message);
+      }
+      throw new Error(`[obsidian-compat] SecretStorage backend "${this.backend.backend}" failed during ${operation}.`);
+    }
+  }
+}
+
 export function normalizeSecretId(id: string): string {
   const normalized = id.trim();
   if (!SECRET_ID_PATTERN.test(normalized)) {
@@ -213,7 +291,8 @@ export function normalizeSecretId(id: string): string {
 }
 
 export function removeObsidianPluginSecrets(mindRoot: string, pluginId: string): number {
-  return new ObsidianSecretStorage(mindRoot, () => pluginId).removePluginSecrets(pluginId);
+  assertSafeObsidianPluginId(pluginId);
+  return new LocalAesGcmSecretStorageBackend(mindRoot).removePluginSecrets(pluginId);
 }
 
 function emptyStore(): SecretStorageFile {

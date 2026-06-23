@@ -25,7 +25,7 @@ import {
 import { describeCommandAvailability, type CommandCallbackType } from './command-registry';
 import type { CommandExecutionContext } from './command-registry';
 import { createMarkdownEditorCommandContext, type MarkdownEditorCommandContext } from './editor-facade';
-import { PluginLoader } from './loader';
+import { PluginLoader, type PluginLoaderOptions } from './loader';
 import {
   OBSIDIAN_PLUGIN_STYLESHEET_MAX_BYTES,
   pluginStyleScopeSelector,
@@ -44,7 +44,7 @@ import {
   type LegacyPluginMigrationPlan,
   type LegacyPluginMigrationResult,
 } from './plugin-migration';
-import { removeObsidianPluginSecrets, type ObsidianSecretStorageSummary } from './secret-storage';
+import type { ObsidianSecretStorageSummary } from './secret-storage';
 import type { PluginManifest, TFile } from './types';
 import type { EditorExtensionSummary, PluginMarkdownCodeBlockSnapshot, PluginMarkdownPostProcessorSnapshot, PluginMenuSnapshot, PluginModalSnapshot, PluginNoticeSnapshot, PluginViewSnapshot, RegisteredViewExtension, WorkspaceOpenRequest } from './runtime';
 import { resolveExistingSafe } from '@/lib/core/security';
@@ -53,6 +53,8 @@ import { ErrorCodes, MindOSError } from '@/lib/errors';
 interface PluginManagerState {
   enabled: Record<string, boolean>;
 }
+
+export type PluginManagerOptions = PluginLoaderOptions;
 
 export interface ManagedPluginPackageLocation {
   relativePath: string;
@@ -201,8 +203,8 @@ export class PluginManager {
   private modalEditorSessions = new Map<string, EditorExecutionSession>();
   private menuEditorSessions = new Map<string, EditorExecutionSession>();
 
-  constructor(private mindRoot: string) {
-    this.loader = new PluginLoader(mindRoot);
+  constructor(private mindRoot: string, options: PluginManagerOptions = {}) {
+    this.loader = new PluginLoader(mindRoot, options);
   }
 
   async discover(): Promise<ManagedPlugin[]> {
@@ -266,7 +268,7 @@ export class PluginManager {
       throw new Error(`Unknown plugin: ${pluginId}`);
     }
     fs.rmSync(pluginLocation.pluginDir, { recursive: true, force: true });
-    removeObsidianPluginSecrets(this.mindRoot, pluginId);
+    await this.loader.getApp().removePluginSecrets(pluginId);
     this.plugins.delete(pluginId);
     this.writeState();
   }
