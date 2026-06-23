@@ -169,6 +169,56 @@ describe('Echo segment page actions', () => {
     expect(host.textContent).toContain('Generated insight.');
   });
 
+  it('runs the Imprint page primary assistant CTA through the shared assistant runner', async () => {
+    await act(async () => {
+      root.render(<EchoSegmentPageClient segment="imprint" />);
+    });
+
+    const backLink = host.querySelector('a[href="/echo/overview"]');
+    expect(backLink?.parentElement?.textContent).not.toContain(messages.zh.echoPages.assistantGenerateImprint);
+
+    const assistantButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes(messages.zh.echoPages.assistantGenerateImprint),
+    );
+    expect(assistantButton).toBeTruthy();
+
+    await act(async () => {
+      assistantButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const assistantCall = fetchMock.mock.calls.find(([url]) => url === '/api/assistant-runs');
+    expect(assistantCall).toBeTruthy();
+    const [, init] = assistantCall!;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      assistantId: 'echo-imprint',
+      permissionMode: 'read',
+      maxSteps: 10,
+      messages: [
+        {
+          role: 'user',
+          content: expect.stringContaining('You are running the Echo Imprint assistant inside MindOS Echo.'),
+        },
+      ],
+    });
+    expect(String(init.body)).toContain('## 现场');
+    expect(String(init.body)).toContain('Visible log entries');
+  });
+
+  it('keeps empty saved Echo sections focused on the list empty state only', async () => {
+    await act(async () => {
+      root.render(<EchoSegmentPageClient segment="growth" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain(messages.zh.echoPages.echoReaderEmptyLabel);
+    expect(host.textContent).not.toContain(messages.zh.echoPages.echoReaderDetailEmptyLabel);
+  });
+
   it('saves generated Echo markdown and displays the saved item on the page', async () => {
     await act(async () => {
       root.render(<EchoSegmentPageClient segment="growth" />);

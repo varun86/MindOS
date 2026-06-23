@@ -9,6 +9,7 @@ import {
   buildEchoAssistantRunPrompt,
   buildEchoRecentSessionSummaries,
   getBuiltinEchoAssistantMarkdownFiles,
+  getEchoAssistantMaxSteps,
   getEchoAssistantIdForSegment,
 } from '@/lib/echo-assistants';
 import type { ChatSession } from '@/lib/types';
@@ -27,6 +28,10 @@ describe('echo assistants', () => {
     expect(getEchoAssistantIdForSegment('threads')).toBe('echo-threader');
     expect(getEchoAssistantIdForSegment('growth')).toBe('echo-insight');
     expect(getEchoAssistantIdForSegment('practice')).toBe('echo-practice');
+    expect(getEchoAssistantMaxSteps(ECHO_IMPRINT_ASSISTANT_ID)).toBe(10);
+    expect(getEchoAssistantMaxSteps(ECHO_THREADER_ASSISTANT_ID)).toBe(12);
+    expect(getEchoAssistantMaxSteps(ECHO_INSIGHT_ASSISTANT_ID)).toBe(12);
+    expect(getEchoAssistantMaxSteps(ECHO_PRACTICE_ASSISTANT_ID)).toBe(12);
 
     for (const assistantId of ECHO_ASSISTANT_IDS) {
       const prompt = ECHO_ASSISTANT_DEFAULT_PROMPTS[assistantId];

@@ -192,6 +192,10 @@ export function getEchoAssistantIdForSegment(segment: EchoSegment): EchoAssistan
   return segment === 'overview' ? undefined : ECHO_ASSISTANT_BY_SEGMENT[segment];
 }
 
+export function getEchoAssistantMaxSteps(assistantId: EchoAssistantId): number {
+  return ECHO_ASSISTANT_DEFINITIONS[assistantId].steps;
+}
+
 export function getBuiltinEchoAssistantMarkdownFiles(): Array<{ assistantId: EchoAssistantId; path: string; content: string }> {
   return ECHO_ASSISTANT_IDS.map((assistantId) => ({
     assistantId,

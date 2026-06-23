@@ -15,6 +15,7 @@ import { ECHO_SEGMENT_HREF, type EchoSegment } from '@/lib/echo-segments';
 import {
   buildEchoAssistantRunPrompt,
   buildEchoRecentSessionSummaries,
+  getEchoAssistantMaxSteps,
   getEchoAssistantIdForSegment,
   type EchoPromptFact,
 } from '@/lib/echo-assistants';
@@ -302,6 +303,7 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
   }, []);
 
   const echoAssistantId = getEchoAssistantIdForSegment(segment);
+  const echoAssistantMaxSteps = echoAssistantId ? getEchoAssistantMaxSteps(echoAssistantId) : undefined;
   const activeEchoSegment: EchoStoredSegment | null = segment === 'overview' ? null : segment;
   const recentSessions = useMemo(() => buildEchoRecentSessionSummaries(sessions), [sessions]);
 
@@ -478,27 +480,31 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
 
   const assistantHeaderAction = activeEchoSegment
     ? (
-        <EchoAssistantGenerateButton
-          p={p}
-          segment={activeEchoSegment}
-          onGenerate={triggerEchoAssistantGenerate}
-        />
-      )
+      <EchoAssistantGenerateButton
+        p={p}
+        segment={activeEchoSegment}
+        onGenerate={triggerEchoAssistantGenerate}
+        className={segment === 'imprint' ? 'max-sm:flex-1' : undefined}
+      />
+    )
     : undefined;
   const headerActions = segment === 'imprint'
     ? (
-        <>
-          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
-            {p.continueRecordLabel}
-          </Button>
-          {assistantHeaderAction}
-          <DailyEchoReportButton
-            onGenerated={handleDailyEchoGenerated}
-            onError={(err) => console.error('[EchoImprint]', err)}
-            locale={{ t: p }}
-          />
-        </>
-      )
+      <>
+        {assistantHeaderAction}
+        <Button type="button" variant="outline" size="xl" onClick={openImprintAsk} className="max-sm:flex-1">
+          {p.continueRecordLabel}
+        </Button>
+        <DailyEchoReportButton
+          onGenerated={handleDailyEchoGenerated}
+          onError={(err) => console.error('[EchoImprint]', err)}
+          locale={{ t: p }}
+          variant="outline"
+          size="xl"
+          className="max-sm:flex-1"
+        />
+      </>
+    )
     : assistantHeaderAction;
 
   return (
@@ -556,6 +562,7 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
             assistantId={echoAssistantId}
             userPrompt={echoAssistantPrompt}
             generateSignal={assistantGenerateSignal}
+            maxSteps={echoAssistantMaxSteps}
             onSaved={handleEchoSaved}
           />
         )}

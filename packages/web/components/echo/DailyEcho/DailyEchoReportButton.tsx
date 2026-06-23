@@ -11,18 +11,25 @@ import { Zap, AlertCircle, Loader2 } from 'lucide-react';
 import type { DailyEchoReport } from '@/lib/daily-echo/types';
 import { generateDailyEchoReport } from '@/lib/daily-echo/generator';
 import { loadDailyEchoConfig } from '@/lib/daily-echo/config';
-import { Button } from '@/components/ui/button';
+import type { VariantProps } from 'class-variance-authority';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 interface DailyEchoReportButtonProps {
   onGenerated: (report: DailyEchoReport) => void;
   onError: (error: string) => void;
   locale?: { t: Record<string, any> };
+  variant?: VariantProps<typeof buttonVariants>['variant'];
+  size?: VariantProps<typeof buttonVariants>['size'];
+  className?: string;
 }
 
 export default function DailyEchoReportButton({
   onGenerated,
   onError,
   locale,
+  variant = 'amber',
+  size = 'xl',
+  className,
 }: DailyEchoReportButtonProps) {
   const t = locale?.t || {};
   const [isLoading, setIsLoading] = useState(false);
@@ -52,9 +59,10 @@ export default function DailyEchoReportButton({
         onClick={handleGenerate}
         disabled={isLoading}
         variant="destructive"
-        size="xl"
+        size={size}
         type="button"
         title={error}
+        className={className}
       >
         <AlertCircle size={16} className="shrink-0" />
         <span>
@@ -70,10 +78,11 @@ export default function DailyEchoReportButton({
     <Button
       onClick={handleGenerate}
       disabled={isLoading}
-      variant="amber"
-      size="xl"
+      variant={variant}
+      size={size}
       type="button"
       aria-busy={isLoading}
+      className={className}
     >
       {isLoading ? (
         <>

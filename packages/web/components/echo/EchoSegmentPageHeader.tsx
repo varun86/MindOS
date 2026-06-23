@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Sparkles } from 'lucide-react';
+import type { VariantProps } from 'class-variance-authority';
 import { ECHO_SEGMENT_HREF, type EchoSegment } from '@/lib/echo-segments';
 import type { Messages } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -74,20 +75,26 @@ export function EchoAssistantGenerateButton({
   p,
   segment,
   onGenerate,
+  variant = 'amber',
+  size = 'xl',
+  className,
 }: {
   p: EchoCopy;
   segment: Exclude<EchoSegment, 'overview'>;
   onGenerate: () => void;
+  variant?: VariantProps<typeof buttonVariants>['variant'];
+  size?: VariantProps<typeof buttonVariants>['size'];
+  className?: string;
 }) {
   const label = echoAssistantActionLabel(segment, p);
 
   return (
     <Button
       type="button"
-      variant="amber"
-      size="xl"
+      variant={variant}
+      size={size}
       onClick={onGenerate}
-      className="shadow-sm"
+      className={cn('shadow-sm', className)}
     >
       <Sparkles size={16} aria-hidden />
       {label}

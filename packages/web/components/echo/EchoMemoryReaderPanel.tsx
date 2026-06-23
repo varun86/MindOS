@@ -135,12 +135,20 @@ function ImprintReaderPanel({
   detailError: string;
   p: EchoSavedItemsCopy;
 }) {
+  const hasItems = items.length > 0;
+  const showDetailPanel = loading || detailError || detailLoading || selectedItem || hasItems;
+
   return (
     <div
-      className="grid gap-5 lg:h-[calc(100vh-13rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.42fr)]"
+      className={cn(
+        'grid gap-5',
+        showDetailPanel
+          ? 'lg:h-[calc(100vh-13rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.42fr)]'
+          : 'lg:max-w-[36rem]',
+      )}
       aria-labelledby="echo-memory-reader-title"
     >
-      <section className={cn(echoSurfaceClass, 'flex min-h-[22rem] flex-col overflow-hidden lg:min-h-0')}>
+      <section className={cn(echoSurfaceClass, 'flex flex-col overflow-hidden lg:min-h-0')}>
         <div className="shrink-0 border-b border-border/45 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -159,8 +167,8 @@ function ImprintReaderPanel({
           {error ? (
             <p className="px-3 py-4 font-sans text-sm text-error" role="alert">{error}</p>
           ) : loading ? (
-            <p className="px-3 py-4 font-sans text-sm text-muted-foreground">{p.echoSavedLoadingLabel}</p>
-          ) : items.length > 0 ? (
+            <ReaderLoadingState label={p.echoSavedLoadingLabel} compact />
+          ) : hasItems ? (
             <div className="space-y-2">
               {items.map((item, index) => (
                 <ImprintEventListItem
@@ -174,34 +182,36 @@ function ImprintReaderPanel({
               ))}
             </div>
           ) : (
-            <div className="flex h-full min-h-56 items-center justify-center px-6 py-10 text-center">
+            <div className="flex min-h-52 items-center justify-center px-6 py-10 text-center">
               <p className="max-w-xs font-sans text-sm leading-6 text-muted-foreground">{p.imprintReaderEmptyLabel}</p>
             </div>
           )}
         </div>
       </section>
 
-      <section className={cn(echoSurfaceClass, 'flex min-h-[30rem] min-w-0 flex-col overflow-hidden lg:min-h-0')}>
-        {detailError ? (
-          <p className="px-8 py-7 font-sans text-sm text-error" role="alert">
-            {p.echoSavedDetailErrorPrefix} {detailError}
-          </p>
-        ) : detailLoading ? (
-          <p className="px-8 py-7 font-sans text-sm text-muted-foreground">{p.echoSavedDetailLoadingLabel}</p>
-        ) : selectedItem ? (
-          <ImprintEventDetail
-            selectedItem={selectedItem}
-            selectedIndex={items.findIndex((item) => item.path === selectedItem.path)}
-            readableMarkdown={readableMarkdown}
-            EchoMarkdown={EchoMarkdown}
-            p={p}
-          />
-        ) : (
-          <div className="flex min-h-[30rem] flex-1 items-center justify-center px-8 py-10 text-center">
-            <p className="max-w-sm font-sans text-sm leading-6 text-muted-foreground">{p.imprintReaderDetailEmptyLabel}</p>
-          </div>
-        )}
-      </section>
+      {showDetailPanel ? (
+        <section className={cn(echoSurfaceClass, 'flex min-h-0 min-w-0 flex-col overflow-hidden lg:min-h-0')}>
+          {detailError ? (
+            <p className="px-8 py-7 font-sans text-sm text-error" role="alert">
+              {p.echoSavedDetailErrorPrefix} {detailError}
+            </p>
+          ) : loading || detailLoading ? (
+            <DetailLoadingState label={loading ? p.echoSavedLoadingLabel : p.echoSavedDetailLoadingLabel} />
+          ) : selectedItem ? (
+            <ImprintEventDetail
+              selectedItem={selectedItem}
+              selectedIndex={items.findIndex((item) => item.path === selectedItem.path)}
+              readableMarkdown={readableMarkdown}
+              EchoMarkdown={EchoMarkdown}
+              p={p}
+            />
+          ) : (
+            <div className="flex min-h-80 flex-1 items-center justify-center px-8 py-10 text-center">
+              <p className="max-w-sm font-sans text-sm leading-6 text-muted-foreground">{p.imprintReaderDetailEmptyLabel}</p>
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -410,6 +420,42 @@ function SectionLabel({
   );
 }
 
+function ReaderLoadingState({ label, compact = false }: { label: string; compact?: boolean }) {
+  return (
+    <div className={cn('space-y-3', compact ? 'p-2' : 'p-4')} role="status" aria-label={label}>
+      <p className="px-1 font-sans text-xs text-muted-foreground">{label}</p>
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="flex items-start gap-3 rounded-lg border border-border/35 bg-background/35 p-3">
+          <span className="h-9 w-9 shrink-0 rounded-md bg-muted/55" aria-hidden />
+          <span className="min-w-0 flex-1 space-y-2" aria-hidden>
+            <span className="block h-3.5 w-2/3 rounded-full bg-muted/60" />
+            <span className="block h-3 w-1/2 rounded-full bg-muted/45" />
+            <span className="block h-3 w-5/6 rounded-full bg-muted/35" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailLoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-80 flex-1 flex-col px-6 py-6 md:px-8" role="status" aria-label={label}>
+      <p className="font-sans text-sm text-muted-foreground">{label}</p>
+      <div className="mt-6 space-y-5" aria-hidden>
+        <div className="space-y-3">
+          <div className="h-8 w-2/3 rounded-full bg-muted/60" />
+          <div className="h-3 w-1/3 rounded-full bg-muted/45" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+          <div className="h-40 rounded-lg border border-border/35 bg-background/40" />
+          <div className="h-40 rounded-lg border border-border/35 bg-background/40" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EchoMemoryReaderPanel({
   segment,
   listTitle,
@@ -440,6 +486,8 @@ export default function EchoMemoryReaderPanel({
   const readableMarkdown = detail?.markdown && selectedItem
     ? stripDuplicateTitleHeading(detail.markdown, selectedItem.title)
     : detail?.markdown ?? '';
+  const hasItems = items.length > 0;
+  const showDetailPanel = loading || detailError || detailLoading || selectedItem || hasItems;
 
   useEffect(() => {
     if (!detail?.markdown || EchoMarkdown) return;
@@ -475,10 +523,15 @@ export default function EchoMemoryReaderPanel({
 
   return (
     <div
-      className="grid gap-5 lg:h-[calc(100vh-13rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.42fr)]"
+      className={cn(
+        'grid gap-5',
+        showDetailPanel
+          ? 'lg:h-[calc(100vh-13rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.42fr)]'
+          : 'lg:max-w-[36rem]',
+      )}
       aria-labelledby="echo-memory-reader-title"
     >
-      <section className={cn(echoSurfaceClass, 'flex min-h-[22rem] flex-col overflow-hidden lg:min-h-0')}>
+      <section className={cn(echoSurfaceClass, 'flex flex-col overflow-hidden lg:min-h-0')}>
         <div className="shrink-0 border-b border-border/45 px-6 py-5">
           <h2 id="echo-memory-reader-title" className="font-sans text-lg font-semibold leading-tight text-foreground">
             {listTitle}
@@ -489,8 +542,8 @@ export default function EchoMemoryReaderPanel({
           {error ? (
             <p className="px-6 py-5 font-sans text-sm text-error" role="alert">{error}</p>
           ) : loading ? (
-            <p className="px-6 py-5 font-sans text-sm text-muted-foreground">{p.echoSavedLoadingLabel}</p>
-          ) : items.length > 0 ? (
+            <ReaderLoadingState label={p.echoSavedLoadingLabel} />
+          ) : hasItems ? (
             <div className="divide-y divide-border/45">
               {items.map((item, index) => {
                 const active = item.path === selectedPath;
@@ -523,68 +576,70 @@ export default function EchoMemoryReaderPanel({
               })}
             </div>
           ) : (
-            <div className="flex h-full min-h-56 items-center justify-center px-6 py-10 text-center">
+            <div className="flex min-h-52 items-center justify-center px-6 py-10 text-center">
               <p className="max-w-xs font-sans text-sm leading-6 text-muted-foreground">{p.echoReaderEmptyLabel}</p>
             </div>
           )}
         </div>
       </section>
 
-      <section className={cn(echoSurfaceClass, 'flex min-h-[30rem] min-w-0 flex-col overflow-hidden lg:min-h-0')}>
-        {detailError ? (
-          <p className="px-8 py-7 font-sans text-sm text-error" role="alert">
-            {p.echoSavedDetailErrorPrefix} {detailError}
-          </p>
-        ) : detailLoading ? (
-          <p className="px-8 py-7 font-sans text-sm text-muted-foreground">{p.echoSavedDetailLoadingLabel}</p>
-        ) : selectedItem ? (
-          <article className="flex min-h-0 flex-1 flex-col" aria-labelledby="echo-memory-detail-title">
-            <header className="shrink-0 border-b border-border/45 px-8 py-7 md:px-10 md:py-8">
-              <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-                <div className="flex min-w-0 items-start gap-5">
-                  <span className="mt-1 text-[var(--amber)]" aria-hidden>
-                    {segmentIcon(segment, items.findIndex((item) => item.path === selectedItem.path))}
-                  </span>
-                  <div className="min-w-0">
-                    <h3 id="echo-memory-detail-title" className="font-sans text-2xl font-semibold leading-tight text-foreground md:text-3xl">
-                      {selectedItem.title}
-                    </h3>
-                    <p className="mt-4 truncate font-sans text-sm text-muted-foreground">{selectedItem.date} · {selectedItem.path}</p>
+      {showDetailPanel ? (
+        <section className={cn(echoSurfaceClass, 'flex min-h-0 min-w-0 flex-col overflow-hidden lg:min-h-0')}>
+          {detailError ? (
+            <p className="px-8 py-7 font-sans text-sm text-error" role="alert">
+              {p.echoSavedDetailErrorPrefix} {detailError}
+            </p>
+          ) : loading || detailLoading ? (
+            <DetailLoadingState label={loading ? p.echoSavedLoadingLabel : p.echoSavedDetailLoadingLabel} />
+          ) : selectedItem ? (
+            <article className="flex min-h-0 flex-1 flex-col" aria-labelledby="echo-memory-detail-title">
+              <header className="shrink-0 border-b border-border/45 px-8 py-7 md:px-10 md:py-8">
+                <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                  <div className="flex min-w-0 items-start gap-5">
+                    <span className="mt-1 text-[var(--amber)]" aria-hidden>
+                      {segmentIcon(segment, items.findIndex((item) => item.path === selectedItem.path))}
+                    </span>
+                    <div className="min-w-0">
+                      <h3 id="echo-memory-detail-title" className="font-sans text-2xl font-semibold leading-tight text-foreground md:text-3xl">
+                        {selectedItem.title}
+                      </h3>
+                      <p className="mt-4 truncate font-sans text-sm text-muted-foreground">{selectedItem.date} · {selectedItem.path}</p>
+                    </div>
                   </div>
+                  <Link
+                    href={`/view/${encodePath(selectedItem.path)}`}
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'w-fit shrink-0',
+                    )}
+                  >
+                    {p.echoSavedOpenLabel}
+                    <ArrowUpRight size={13} aria-hidden />
+                  </Link>
                 </div>
-                <Link
-                  href={`/view/${encodePath(selectedItem.path)}`}
-                  className={cn(
-                    buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'w-fit shrink-0',
-                  )}
-                >
-                  {p.echoSavedOpenLabel}
-                  <ArrowUpRight size={13} aria-hidden />
-                </Link>
-              </div>
-            </header>
+              </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-8 py-7 md:px-10 md:py-8">
-              {readableMarkdown ? (
-                <div className={echoDetailProseClass}>
-                  {EchoMarkdown ? (
-                    <EchoMarkdown markdown={readableMarkdown} />
-                  ) : (
-                    <p className="whitespace-pre-wrap font-sans text-base leading-8 text-muted-foreground">{readableMarkdown}</p>
-                  )}
-                </div>
-              ) : (
-                <p className="font-sans text-base leading-8 text-muted-foreground">{selectedItem.excerpt}</p>
-              )}
+              <div className="min-h-0 flex-1 overflow-y-auto px-8 py-7 md:px-10 md:py-8">
+                {readableMarkdown ? (
+                  <div className={echoDetailProseClass}>
+                    {EchoMarkdown ? (
+                      <EchoMarkdown markdown={readableMarkdown} />
+                    ) : (
+                      <p className="whitespace-pre-wrap font-sans text-base leading-8 text-muted-foreground">{readableMarkdown}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="font-sans text-base leading-8 text-muted-foreground">{selectedItem.excerpt}</p>
+                )}
+              </div>
+            </article>
+          ) : (
+            <div className="flex min-h-80 flex-1 items-center justify-center px-8 py-10 text-center">
+              <p className="max-w-sm font-sans text-sm leading-6 text-muted-foreground">{p.echoReaderDetailEmptyLabel}</p>
             </div>
-          </article>
-        ) : (
-          <div className="flex min-h-[30rem] flex-1 items-center justify-center px-8 py-10 text-center">
-            <p className="max-w-sm font-sans text-sm leading-6 text-muted-foreground">{p.echoReaderDetailEmptyLabel}</p>
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

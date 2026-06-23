@@ -72,12 +72,15 @@ export default function ChangesBanner() {
   if (!isRendered) return null;
 
   const Icon = notice.Icon;
+  const containerClass = hasAgentReview
+    ? 'fixed right-3 top-[calc(var(--app-titlebar-h)+60px)] z-app-popover w-[calc(100vw-24px)] max-w-[360px] transition-all duration-150 ease-out md:right-6 md:top-[calc(var(--app-titlebar-h)+12px)] md:w-[360px]'
+    : 'fixed bottom-4 right-3 z-app-popover w-[calc(100vw-24px)] max-w-[360px] transition-all duration-150 ease-out md:bottom-6 md:right-6 md:w-[360px]';
 
   return (
     <div
       data-changes-banner
       data-changes-banner-kind={hasAgentReview ? 'agent-review' : 'activity'}
-      className={`fixed right-3 top-[calc(var(--app-titlebar-h)+60px)] z-app-popover w-[calc(100vw-24px)] max-w-[360px] transition-all duration-150 ease-out md:right-6 md:top-[calc(var(--app-titlebar-h)+12px)] md:w-[360px] ${
+      className={`${containerClass} ${
         isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98] pointer-events-none'
       }`}
     >
