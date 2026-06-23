@@ -127,9 +127,66 @@ describe('idle polling budget (35s 空闲请求数 ≤10 的支撑契约)', () =
     await renderComponent(<ChangesBanner />);
     await act(() => vi.advanceTimersByTimeAsync(50));
 
-    expect(host.textContent).toContain('1 agent change pending review in 1 file');
+    expect(host.textContent).toContain('Agent updated 1 file');
+    expect(host.textContent).toContain('1 edit needs your review');
+    expect(host.textContent).toContain('Review changes');
+    expect(host.textContent).not.toContain('Mark all read');
     const link = host.querySelector<HTMLAnchorElement>('a[href^="/changelog?source=agent"]');
     expect(link?.getAttribute('href')).toBe('/changelog?source=agent');
+  });
+
+  it('ChangesBanner keeps agent review notices visible until the user dismisses them', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/changes?op=summary') {
+        return { unreadCount: 1, totalCount: 1, lastSeenAt: '2026-06-22T00:00:00.000Z' };
+      }
+      if (url.startsWith('/api/changes?') && url.includes('source=agent')) {
+        return {
+          events: [{
+            id: 'agent-1',
+            ts: '2026-06-22T00:01:00.000Z',
+            op: 'update_lines',
+            path: 'Research/notes.md',
+            source: 'agent',
+            summary: 'Updated lines 1-2',
+          }],
+        };
+      }
+      return {};
+    });
+
+    await renderComponent(<ChangesBanner />);
+    await act(() => vi.advanceTimersByTimeAsync(50));
+    await act(() => vi.advanceTimersByTimeAsync(10_500));
+
+    expect(host.textContent).toContain('Agent updated 1 file');
+    expect(host.textContent).toContain('Review changes');
+  });
+
+  it('ChangesBanner treats ordinary unread changes as a light activity notice', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/changes?op=summary') {
+        return { unreadCount: 3, totalCount: 3, lastSeenAt: '2026-06-22T00:00:00.000Z' };
+      }
+      if (url.startsWith('/api/changes?') && url.includes('source=agent')) {
+        return { events: [] };
+      }
+      return {};
+    });
+
+    await renderComponent(<ChangesBanner />);
+    await act(() => vi.advanceTimersByTimeAsync(50));
+
+    expect(host.textContent).toContain('3 new changes');
+    expect(host.textContent).toContain('Review recent activity when you are ready.');
+    expect(host.textContent).toContain('View activity');
+    expect(host.textContent).not.toContain('Mark all read');
+    const link = host.querySelector<HTMLAnchorElement>('a[href="/changelog"]');
+    expect(link?.getAttribute('href')).toBe('/changelog');
+
+    await act(() => vi.advanceTimersByTimeAsync(10_500));
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    expect(host.textContent).not.toContain('3 new changes');
   });
 
   it('SidebarLayout tree-version poll runs at most every 15s (own writes arrive via events)', () => {
