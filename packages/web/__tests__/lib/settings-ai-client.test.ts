@@ -92,6 +92,26 @@ describe('isAiConfiguredForAgentTurn', () => {
     ).toBe(true);
   });
 
+  it('uses AI_PROVIDER env fallback when no provider entry exists', () => {
+    expect(
+      isAiConfiguredForAgentTurn({
+        ai: { providers: [] },
+        envOverrides: { OPENAI_API_KEY: true },
+        envValues: { AI_PROVIDER: 'openai' },
+      }),
+    ).toBe(true);
+  });
+
+  it('uses anthropic default env fallback when settings have no providers', () => {
+    expect(
+      isAiConfiguredForAgentTurn({
+        ai: { providers: [] },
+        envOverrides: { ANTHROPIC_API_KEY: true },
+        envValues: {},
+      }),
+    ).toBe(true);
+  });
+
   it('treats missing provider as first entry fallback (error path)', () => {
     expect(
       isAiConfiguredForAgentTurn({

@@ -6,6 +6,9 @@ import ChatContent from '@/components/chat/ChatContent';
 
 const mockUploadInputRef = { current: null as HTMLInputElement | null };
 const mockImageInputRef = { current: null as HTMLInputElement | null };
+const { mockSubmit } = vi.hoisted(() => ({
+  mockSubmit: vi.fn((e: Event) => e.preventDefault()),
+}));
 
 vi.mock('@/lib/stores/locale-store', () => ({
   useLocale: () => ({
@@ -13,6 +16,8 @@ vi.mock('@/lib/stores/locale-store', () => ({
       ask: {
         placeholder: 'Ask a question...',
         send: 'Send',
+        providerNotConfigured: 'Connect a model provider before sending.',
+        configureProvider: 'Configure',
         newlineHint: 'New line',
         stopped: 'Stopped',
         errorNoResponse: 'No response',
@@ -150,7 +155,7 @@ vi.mock('@/hooks/useAgentChat', () => ({
     reconnectMaxRef: { current: 3 },
     abortRef: { current: null },
     firstMessageFired: { current: false },
-    submit: (e: Event) => e.preventDefault(),
+    submit: mockSubmit,
     stop: vi.fn(),
   }),
 }));
@@ -180,6 +185,19 @@ describe('ChatContent attach menu', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ai: {
+          activeProvider: 'p_openai01',
+          providers: [
+            { id: 'p_openai01', name: 'OpenAI', protocol: 'openai', apiKey: 'sk-test', model: 'gpt-5.4', baseUrl: '' },
+          ],
+        },
+        envOverrides: {},
+        envValues: {},
+      }),
+    }));
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -191,6 +209,7 @@ describe('ChatContent attach menu', () => {
     });
     host.remove();
     document.body.innerHTML = '';
+    vi.unstubAllGlobals();
   });
 
   it('keeps attach menu open on mousedown inside the portal and triggers file input click', async () => {
@@ -225,5 +244,48 @@ describe('ChatContent attach menu', () => {
 
     expect(inputClickSpy).toHaveBeenCalled();
     inputClickSpy.mockRestore();
+  });
+
+  it('blocks MindOS submit and opens AI settings when no model provider is configured', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ai: { activeProvider: undefined, providers: [] },
+        envOverrides: {},
+        envValues: {},
+      }),
+    }));
+    const settingsEvents: Array<{ tab?: string }> = [];
+    const onOpenSettings = (event: Event) => {
+      settingsEvents.push((event as CustomEvent).detail ?? {});
+    };
+    window.addEventListener('mindos:open-settings', onOpenSettings);
+
+    await act(async () => {
+      root.render(<ChatContent visible variant="panel" initialMessage="summarize my notes" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const submitButton = host.querySelector('button[type="submit"]') as HTMLButtonElement;
+    expect(submitButton.disabled).toBe(true);
+    expect(submitButton.title).toBe('Connect a model provider before sending.');
+    expect(host.textContent).toContain('Connect a model provider before sending.');
+
+    await act(async () => {
+      Array.from(host.querySelectorAll('button'))
+        .find((button) => button.textContent?.trim() === 'Configure')
+        ?.click();
+    });
+
+    expect(settingsEvents).toEqual([{ tab: 'ai' }]);
+
+    const form = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(mockSubmit).not.toHaveBeenCalled();
+
+    window.removeEventListener('mindos:open-settings', onOpenSettings);
   });
 });

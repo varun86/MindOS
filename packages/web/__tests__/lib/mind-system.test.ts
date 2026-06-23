@@ -56,6 +56,53 @@ mindSpace:
     }
   });
 
+  it('keeps cached slot results immutable and refreshes when instruction metadata changes', () => {
+    const mindRoot = mkTempMindRoot();
+    try {
+      const instruction = path.join(mindRoot, 'CustomDao', 'INSTRUCTION.md');
+      fs.mkdirSync(path.dirname(instruction), { recursive: true });
+      fs.writeFileSync(instruction, `---
+mindSpace:
+  id: dao
+  type: system
+  source: builtin
+  order: 7
+---
+
+# Custom Dao
+`, 'utf-8');
+
+      const first = listMindSystemSlots(mindRoot);
+      first[0].path = 'mutated-by-consumer';
+
+      expect(listMindSystemSlots(mindRoot)[0]).toMatchObject({
+        key: 'dao',
+        path: 'CustomDao',
+        order: 7,
+      });
+
+      fs.writeFileSync(instruction, `---
+mindSpace:
+  id: dao
+  type: system
+  source: builtin
+  order: 3
+---
+
+# Custom Dao
+updated
+`, 'utf-8');
+
+      expect(listMindSystemSlots(mindRoot)[0]).toMatchObject({
+        key: 'dao',
+        path: 'CustomDao',
+        order: 3,
+      });
+    } finally {
+      cleanupMindRoot(mindRoot);
+    }
+  });
+
   it('lists Dao, Fa, Shu, and Qi as special UI slots while leaving Shi and Yan as normal folders', () => {
     const mindRoot = mkTempMindRoot();
     try {

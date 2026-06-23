@@ -126,7 +126,8 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
               <div className="w-full max-w-4xl">
 
                 {/* Pill Tabs */}
-                <div className="flex items-center justify-center gap-1.5 mb-5" role="tablist">
+                <div className="-mx-1 mb-5 overflow-x-auto px-1 pb-1" role="tablist" aria-label={t.ask.title}>
+                  <div className="flex w-max min-w-full items-center justify-start gap-1.5 sm:justify-center">
                   {categories.map((cat, i) => {
                     const Icon = TAB_ICONS[i % TAB_ICONS.length];
                     const isActive = i === activeTab;
@@ -149,6 +150,7 @@ export default function HomeContent({ recent, existingFiles, spaces }: { recent:
                       </button>
                     );
                   })}
+                  </div>
                 </div>
 
                 {/* Prompt Cards — 2x2 grid */}

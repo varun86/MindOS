@@ -23,12 +23,24 @@ const SLOT_KEYS = new Set<MindSystemSlotKey>(DEFAULT_MIND_SYSTEM_SLOTS.map(slot 
 const DEFAULT_SLOT_BY_KEY = new Map<MindSystemSlotKey, MindSystemSlot>(
   DEFAULT_MIND_SYSTEM_SLOTS.map(slot => [slot.key, slot]),
 );
+const SLOT_CACHE_MAX_ENTRIES = 16;
+
+interface MindSystemSlotCacheEntry {
+  signature: string;
+  slots: MindSystemSlot[];
+}
+
+const slotCache = new Map<string, MindSystemSlotCacheEntry>();
 
 export function defaultMindSystemSlots(): MindSystemSlot[] {
   return DEFAULT_MIND_SYSTEM_SLOTS.map(slot => ({ ...slot }));
 }
 
 export function listMindSystemSlots(mindRoot: string): MindSystemSlot[] {
+  const signature = readMindSystemSlotSignature(mindRoot);
+  const cached = slotCache.get(mindRoot);
+  if (cached && cached.signature === signature) return cloneSlots(cached.slots);
+
   const slotsByKey = new Map<MindSystemSlotKey, MindSystemSlot>();
   for (const slot of listFrontmatterMindSystemSlots(mindRoot)) {
     slotsByKey.set(slot.key, slot);
@@ -39,8 +51,14 @@ export function listMindSystemSlots(mindRoot: string): MindSystemSlot[] {
     slotsByKey.set(slot.key, { ...slot });
   }
 
-  return [...slotsByKey.values()]
+  const slots = [...slotsByKey.values()]
     .sort((a, b) => a.order - b.order);
+  slotCache.set(mindRoot, { signature, slots: cloneSlots(slots) });
+  if (slotCache.size > SLOT_CACHE_MAX_ENTRIES) {
+    const oldest = slotCache.keys().next().value;
+    if (oldest) slotCache.delete(oldest);
+  }
+  return cloneSlots(slots);
 }
 
 export function mindSystemPathExists(mindRoot: string, slot: Pick<MindSystemSlot, 'path'>): boolean {
@@ -75,6 +93,30 @@ function listFrontmatterMindSystemSlots(mindRoot: string): MindSystemSlot[] {
     });
   }
   return slots;
+}
+
+function cloneSlots(slots: MindSystemSlot[]): MindSystemSlot[] {
+  return slots.map(slot => ({ ...slot }));
+}
+
+function readMindSystemSlotSignature(mindRoot: string): string {
+  try {
+    return fs.readdirSync(mindRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map(entry => {
+        const instructionPath = path.join(mindRoot, entry.name, 'INSTRUCTION.md');
+        try {
+          const stat = fs.statSync(instructionPath);
+          return `${entry.name}:${stat.mtimeMs}:${stat.size}`;
+        } catch {
+          return `${entry.name}:missing`;
+        }
+      })
+      .sort()
+      .join('|');
+  } catch {
+    return 'missing-root';
+  }
 }
 
 function readMindSystemSpaceId(mindRoot: string, spacePath: string): MindSystemSlotKey | null {

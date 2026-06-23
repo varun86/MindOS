@@ -109,6 +109,8 @@ export const aiChatEn = {
     providerCapsule: 'Switch model provider',
     providerDefault: 'Default',
     providerNoKey: 'No configured providers',
+    providerNotConfigured: 'Connect a model provider before sending.',
+    configureProvider: 'Configure',
     selectModel: 'Select model',
     searchModels: 'Search models...',
     loadingModels: 'Loading models...',

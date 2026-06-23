@@ -13,6 +13,7 @@ import UpdateToast from '@/components/UpdateToast';
 import { cookies, headers } from 'next/headers';
 import { createHash } from 'crypto';
 import type { Locale } from '@/lib/i18n';
+import { shouldLoadShellData } from '@/lib/shell-route';
 import '@/lib/renderers/index'; // globally register built-in renderers once
 
 export const metadata: Metadata = {
@@ -43,13 +44,17 @@ export default async function RootLayout({
   // Workspace-tab sets are namespaced per mind root (spec-titlebar-row Phase 2):
   // a stable opaque id keeps vault-relative doc keys from leaking across roots.
   let mindRootId = 'default';
-  try {
-    fileTree = getFileTree();
-    const mindRoot = getMindRoot();
-    mindSystemSlots = listMindSystemSlots(mindRoot);
-    mindRootId = createHash('sha256').update(mindRoot).digest('hex').slice(0, 12);
-  } catch (err) {
-    console.error('[RootLayout] Failed to load file tree:', err);
+  const headerStore = await headers();
+  const pathname = headerStore.get('x-pathname');
+  if (shouldLoadShellData(pathname)) {
+    try {
+      fileTree = getFileTree();
+      const mindRoot = getMindRoot();
+      mindSystemSlots = listMindSystemSlots(mindRoot);
+      mindRootId = createHash('sha256').update(mindRoot).digest('hex').slice(0, 12);
+    } catch (err) {
+      console.error('[RootLayout] Failed to load file tree:', err);
+    }
   }
 
   // Read locale from cookie, or infer from Accept-Language header
@@ -63,7 +68,6 @@ export default async function RootLayout({
   } else if (cookieLocale !== 'en') {
     // Cookie not set or invalid — infer from Accept-Language header
     // (matches client: navigator.language.startsWith('zh') ? 'zh' : 'en')
-    const headerStore = await headers();
     const acceptLanguage = headerStore.get('Accept-Language') || '';
     ssrLocale = acceptLanguage.includes('zh') ? 'zh' : 'en';
   }

@@ -51,6 +51,7 @@ import {
   toSessionModelSelection,
   type ProviderSelection,
 } from '@/lib/session-model-selection';
+import { isAiConfiguredForAgentTurn, type SettingsJsonForAi } from '@/lib/settings-ai-client';
 
 /** Stable empty array — a fresh [] literal per render would bust MessageList's memo */
 const EMPTY_SUGGESTIONS: ReadonlyArray<{ label: string; prompt: string }> = [];
@@ -300,6 +301,42 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
       reason: descriptor.availability?.reason,
     };
   }, [nativeDetection.errorByKind, nativeDetection.loadingByKind, nativeDetection.runtimes, selectedAgentRuntime]);
+  const [aiConfigStatus, setAiConfigStatus] = useState<'unknown' | 'configured' | 'not-configured'>('unknown');
+
+  useEffect(() => {
+    if (!visible || !isMindosRuntime) {
+      setAiConfigStatus('unknown');
+      return;
+    }
+
+    let cancelled = false;
+    const checkAiConfig = async () => {
+      try {
+        const res = await fetch('/api/settings', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`Settings load failed (${res.status})`);
+        const data = await res.json() as SettingsJsonForAi;
+        if (!cancelled) {
+          setAiConfigStatus(isAiConfiguredForAgentTurn(data, providerOverride) ? 'configured' : 'not-configured');
+        }
+      } catch {
+        if (!cancelled) setAiConfigStatus('unknown');
+      }
+    };
+
+    void checkAiConfig();
+    const onSettingsChange = () => void checkAiConfig();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkAiConfig();
+    };
+    window.addEventListener('mindos:settings-changed', onSettingsChange);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('mindos:settings-changed', onSettingsChange);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isMindosRuntime, providerOverride, visible]);
+
   const activeRuntimeSessionBinding = useMemo(
     () => getMatchingRuntimeSessionBinding(session.activeSession, selectedAgentRuntime),
     [
@@ -521,15 +558,21 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
   const runtimeUnavailableMessage = selectedAgentRuntime && selectedRuntimeUnavailable
     ? `${selectedAgentRuntime.name} is ${runtimeStatusLabel(selectedRuntimeUnavailable.status)}.${selectedRuntimeUnavailable.reason ? ` ${compactRuntimeDisplayReason(selectedRuntimeUnavailable.reason, { runtime: selectedAgentRuntime.kind === 'codex' || selectedAgentRuntime.kind === 'claude' ? selectedAgentRuntime.kind : undefined })}` : ''}`
     : '';
-  const composerStatusMessage = uploadError || imageError || dropError || runtimeCheckingMessage || runtimeUnavailableMessage;
+  const providerNotConfigured = isMindosRuntime && aiConfigStatus === 'not-configured';
+  const providerNotConfiguredMessage = providerNotConfigured ? t.ask.providerNotConfigured : '';
+  const composerStatusMessage = uploadError || imageError || dropError || runtimeCheckingMessage || runtimeUnavailableMessage || providerNotConfiguredMessage;
+
+  const openAiSettings = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('mindos:open-settings', { detail: { tab: 'ai' } }));
+  }, []);
 
   const handleSubmitWithRuntimeGuard = useCallback((event: React.FormEvent) => {
-    if (selectedRuntimeChecking || selectedRuntimeUnavailable) {
+    if (selectedRuntimeChecking || selectedRuntimeUnavailable || providerNotConfigured) {
       event.preventDefault();
       return;
     }
     void handleSubmit(event);
-  }, [handleSubmit, selectedRuntimeChecking, selectedRuntimeUnavailable]);
+  }, [handleSubmit, providerNotConfigured, selectedRuntimeChecking, selectedRuntimeUnavailable]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1269,8 +1312,17 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
                 )}
               </div>
               {composerStatusMessage && (
-                <div className="mt-1 text-xs text-error">
-                  {composerStatusMessage}
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-error">
+                  <span>{composerStatusMessage}</span>
+                  {providerNotConfigured && (
+                    <button
+                      type="button"
+                      className="font-medium underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      onClick={openAiSettings}
+                    >
+                      {t.ask.configureProvider}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1358,9 +1410,9 @@ export default function ChatContent({ visible, currentFile, initialMessage, init
               isLoading={isLoading}
               reconnecting={loadingPhase === 'reconnecting'}
               placeholder={t.ask.placeholder}
-              sendTitle={hasLoadingAttachments ? (t.ask.uploadsProcessing ?? 'Wait for uploaded files to finish processing before sending.') : runtimeCheckingMessage || runtimeUnavailableMessage || t.ask.send}
+              sendTitle={hasLoadingAttachments ? (t.ask.uploadsProcessing ?? 'Wait for uploaded files to finish processing before sending.') : runtimeCheckingMessage || runtimeUnavailableMessage || providerNotConfiguredMessage || t.ask.send}
               stopTitle={loadingPhase === 'reconnecting' ? t.ask.cancelReconnect : t.ask.stopTitle}
-              sendDisabledExternal={hasLoadingAttachments || selectedRuntimeChecking || !!selectedRuntimeUnavailable}
+              sendDisabledExternal={hasLoadingAttachments || selectedRuntimeChecking || !!selectedRuntimeUnavailable || providerNotConfigured}
               allowEmptySend={images.length > 0}
               iconSize={inputIconSize}
               inputRef={inputRef}

@@ -108,6 +108,8 @@ export const aiChatZh = {
     providerCapsule: '切换模型服务商',
     providerDefault: '默认',
     providerNoKey: '暂无已配置的服务商',
+    providerNotConfigured: '发送前请先连接模型服务商。',
+    configureProvider: '去配置',
     selectModel: '选择模型',
     searchModels: '搜索模型...',
     loadingModels: '加载模型中...',

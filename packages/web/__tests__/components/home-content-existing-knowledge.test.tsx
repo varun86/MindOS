@@ -76,4 +76,26 @@ describe('HomeContent existing knowledge state', () => {
     });
     host.remove();
   });
+
+  it('keeps homepage suggestion tabs horizontally scrollable on narrow viewports', async () => {
+    const HomeContent = (await import('@/components/HomeContent')).default;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(<HomeContent recent={[]} existingFiles={['Notes/A.md']} spaces={[]} />);
+    });
+
+    const tablist = host.querySelector('[role="tablist"]');
+    expect(tablist?.className).toContain('overflow-x-auto');
+    expect(tablist?.getAttribute('aria-label')).toBe('MindOS');
+    expect(tablist?.firstElementChild?.className).toContain('w-max');
+    expect(tablist?.firstElementChild?.className).toContain('justify-start');
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
 });

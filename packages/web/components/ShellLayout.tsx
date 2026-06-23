@@ -5,6 +5,7 @@ import { useLayoutEffect, useState } from 'react';
 import SidebarLayout from './SidebarLayout';
 import { FileNode } from '@/lib/types';
 import type { MindSystemSlot } from '@/lib/mind-system';
+import { shouldRenderShell } from '@/lib/shell-route';
 
 /**
  * Structural sharing for FileNode trees.
@@ -77,6 +78,6 @@ export default function ShellLayout({ fileTree, mindSystemSlots, children }: She
     setSharedTree(prev => shareFileTree(fileTree, prev));
   }, [fileTree]);
 
-  if (pathname === '/login') return <>{children}</>;
+  if (!shouldRenderShell(pathname)) return <>{children}</>;
   return <SidebarLayout fileTree={sharedTree} mindSystemSlots={mindSystemSlots}>{children}</SidebarLayout>;
 }
