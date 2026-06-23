@@ -98,6 +98,7 @@ const echoPanelClass =
   'rounded-xl border border-border/50 bg-background/55 shadow-sm';
 
 function echoReaderListTitle(segment: EchoStoredSegment, title: string, p: EchoCopy): string {
+  if (segment === 'imprint') return p.imprintEventBookTitle;
   if (segment === 'threads') return p.threadsListTitle;
   return title;
 }
@@ -487,15 +488,15 @@ export default function EchoSegmentPageClient({ segment }: { segment: EchoSegmen
   const headerActions = segment === 'imprint'
     ? (
         <>
+          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
+            {p.continueRecordLabel}
+          </Button>
+          {assistantHeaderAction}
           <DailyEchoReportButton
             onGenerated={handleDailyEchoGenerated}
             onError={(err) => console.error('[EchoImprint]', err)}
             locale={{ t: p }}
           />
-          {assistantHeaderAction}
-          <Button type="button" variant="amber" size="xl" onClick={openImprintAsk}>
-            {p.continueRecordLabel}
-          </Button>
         </>
       )
     : assistantHeaderAction;

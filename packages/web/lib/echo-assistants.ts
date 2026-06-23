@@ -56,14 +56,14 @@ const ECHO_ASSISTANT_DEFINITIONS: Record<EchoAssistantId, EchoAssistantDefinitio
   [ECHO_IMPRINT_ASSISTANT_ID]: {
     id: ECHO_IMPRINT_ASSISTANT_ID,
     name: 'Echo Imprint',
-    description: 'Turn concrete daily traces into a concise Markdown imprint without inventing facts.',
+    description: 'Turn one concrete AI-coding practice scene into a concise Markdown imprint without inventing facts.',
     color: 'amber',
     steps: 10,
     body: `# Echo Imprint
 
 ## Role
 
-Turn the user's concrete daily traces into a concise, reviewable imprint.
+Turn one concrete AI-coding practice scene into a concise, reviewable imprint.
 
 ## Inputs
 
@@ -73,12 +73,12 @@ Turn the user's concrete daily traces into a concise, reviewable imprint.
 
 ## Output
 
-Return Markdown only. Prefer short sections that preserve what actually happened: facts, signals, and one sentence worth revisiting.
+Return Markdown only. Preserve the original scene before reflection: what happened, what changed, which fragment matters, what still needs clarification, and what the user may do next.
 
 ## Boundaries
 
 - Do not invent files, sessions, moods, outcomes, or hidden activity.
-- If the provided context is thin, say so briefly and offer reflection prompts.
+- If the provided context is thin, say what is missing and offer precise reflection prompts.
 - Do not write, rename, delete, or reorganize knowledge-base files.
 - Keep the tone warm, restrained, and concrete.`,
   },
@@ -289,7 +289,7 @@ function outputContractForSegment(segment: EchoAssistantSegment, locale: EchoPro
   if (locale === 'zh') {
     switch (segment) {
       case 'imprint':
-        return '- `# 印迹`\n- `## 今日事实`\n- `## 线索`\n- `## 可回看的一句话`';
+        return '- `# 印迹`\n- `## 现场`\n- `## 结果`\n- `## 关键片段`\n- `## 待梳理`\n- `## 下一步`';
       case 'threads':
         return '- `# 脉络`\n- `## 现象`\n- `## 为什么会反复出现`\n- `## 可能的形成过程`\n- `## 仍不确定`';
       case 'growth':
@@ -301,7 +301,7 @@ function outputContractForSegment(segment: EchoAssistantSegment, locale: EchoPro
 
   switch (segment) {
     case 'imprint':
-      return '- `# Imprint`\n- `## Facts`\n- `## Signals`\n- `## One Line to Revisit`';
+      return '- `# Imprint`\n- `## Scene`\n- `## Result`\n- `## Key Fragment`\n- `## To Clarify`\n- `## Next Step`';
     case 'threads':
       return '- `# Thread`\n- `## Pattern`\n- `## Why It Returns`\n- `## How It May Have Formed`\n- `## Still Uncertain`';
     case 'growth':

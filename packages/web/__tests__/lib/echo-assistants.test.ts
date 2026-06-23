@@ -78,6 +78,28 @@ describe('echo assistants', () => {
     expect(prompt).toContain('Do not use tools unless the user explicitly asks');
   });
 
+  it('frames imprint output as a concrete practice event', () => {
+    const prompt = buildEchoAssistantRunPrompt({
+      locale: 'zh',
+      segment: 'imprint',
+      segmentTitle: '印迹',
+      lead: '保存一次真实 AI 协作现场。',
+      snapshotTitle: '从一行开始',
+      snapshotBody: '先留下发生了什么。',
+      facts: [
+        { label: '当前会话', value: '用户指出 sidebar 激活态抖动，最后修复为稳定 Home 状态。' },
+      ],
+    });
+
+    expect(prompt).toContain('# 印迹');
+    expect(prompt).toContain('## 现场');
+    expect(prompt).toContain('## 结果');
+    expect(prompt).toContain('## 关键片段');
+    expect(prompt).toContain('## 待梳理');
+    expect(prompt).toContain('## 下一步');
+    expect(prompt).toContain('当前会话: 用户指出 sidebar 激活态抖动');
+  });
+
   it('summarizes recent sessions without carrying the full conversation', () => {
     const sessions: ChatSession[] = [
       makeSession({

@@ -16,6 +16,7 @@ import {
   Target,
 } from 'lucide-react';
 import type { EchoSavedItem, EchoSavedItemDetail, EchoStoredSegment } from '@/lib/echo-store';
+import { ECHO_SEGMENT_HREF } from '@/lib/echo-segments';
 import type { Messages } from '@/lib/i18n';
 import { cn, encodePath } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
@@ -82,6 +83,333 @@ function stripDuplicateTitleHeading(markdown: string, title: string): string {
   return nextLines.join('\n').trim();
 }
 
+function imprintSourceLabel(item: EchoSavedItem, p: EchoSavedItemsCopy): string {
+  if (item.assistantId) return p.imprintSourceAssistant;
+  if (item.path.includes('/Daily/')) return p.imprintSourceManual;
+  return p.imprintSourceMarkdown;
+}
+
+function markdownSection(markdown: string, headings: string[]): string {
+  const normalizedHeadings = new Set(headings.map((heading) => heading.trim().toLowerCase()));
+  const lines = markdown.split(/\r?\n/);
+  const selected: string[] = [];
+  let capturing = false;
+
+  for (const line of lines) {
+    const heading = line.trim().match(/^#{2,3}\s+(.+)$/)?.[1]?.trim().toLowerCase();
+    if (heading) {
+      if (capturing) break;
+      capturing = normalizedHeadings.has(heading);
+      continue;
+    }
+    if (capturing) selected.push(line);
+  }
+
+  return selected.join('\n').trim();
+}
+
+function ImprintReaderPanel({
+  listTitle,
+  items,
+  selectedPath,
+  onSelect,
+  selectedItem,
+  readableMarkdown,
+  EchoMarkdown,
+  loading,
+  error,
+  detailLoading,
+  detailError,
+  p,
+}: {
+  listTitle: string;
+  items: EchoSavedItem[];
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+  selectedItem: EchoSavedItem | null;
+  readableMarkdown: string;
+  EchoMarkdown: EchoMarkdownComponent | null;
+  loading: boolean;
+  error: string;
+  detailLoading: boolean;
+  detailError: string;
+  p: EchoSavedItemsCopy;
+}) {
+  return (
+    <div
+      className="grid gap-5 lg:h-[calc(100vh-13rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(18rem,0.74fr)_minmax(0,1.42fr)]"
+      aria-labelledby="echo-memory-reader-title"
+    >
+      <section className={cn(echoSurfaceClass, 'flex min-h-[22rem] flex-col overflow-hidden lg:min-h-0')}>
+        <div className="shrink-0 border-b border-border/45 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 id="echo-memory-reader-title" className="font-sans text-base font-medium leading-tight text-foreground">
+                {listTitle}
+              </h2>
+              <p className="mt-1 font-sans text-xs text-muted-foreground">{p.imprintEventBookSubtitle}</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-border/60 bg-background/70 px-2.5 py-1 font-mono text-[0.68rem] text-muted-foreground">
+              {p.imprintEventCountLabel(items.length)}
+            </span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {error ? (
+            <p className="px-3 py-4 font-sans text-sm text-error" role="alert">{error}</p>
+          ) : loading ? (
+            <p className="px-3 py-4 font-sans text-sm text-muted-foreground">{p.echoSavedLoadingLabel}</p>
+          ) : items.length > 0 ? (
+            <div className="space-y-2">
+              {items.map((item, index) => (
+                <ImprintEventListItem
+                  key={item.path}
+                  item={item}
+                  index={index}
+                  active={item.path === selectedPath}
+                  onSelect={onSelect}
+                  p={p}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-56 items-center justify-center px-6 py-10 text-center">
+              <p className="max-w-xs font-sans text-sm leading-6 text-muted-foreground">{p.imprintReaderEmptyLabel}</p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className={cn(echoSurfaceClass, 'flex min-h-[30rem] min-w-0 flex-col overflow-hidden lg:min-h-0')}>
+        {detailError ? (
+          <p className="px-8 py-7 font-sans text-sm text-error" role="alert">
+            {p.echoSavedDetailErrorPrefix} {detailError}
+          </p>
+        ) : detailLoading ? (
+          <p className="px-8 py-7 font-sans text-sm text-muted-foreground">{p.echoSavedDetailLoadingLabel}</p>
+        ) : selectedItem ? (
+          <ImprintEventDetail
+            selectedItem={selectedItem}
+            selectedIndex={items.findIndex((item) => item.path === selectedItem.path)}
+            readableMarkdown={readableMarkdown}
+            EchoMarkdown={EchoMarkdown}
+            p={p}
+          />
+        ) : (
+          <div className="flex min-h-[30rem] flex-1 items-center justify-center px-8 py-10 text-center">
+            <p className="max-w-sm font-sans text-sm leading-6 text-muted-foreground">{p.imprintReaderDetailEmptyLabel}</p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ImprintEventListItem({
+  item,
+  index,
+  active,
+  onSelect,
+  p,
+}: {
+  item: EchoSavedItem;
+  index: number;
+  active: boolean;
+  onSelect: (path: string) => void;
+  p: EchoSavedItemsCopy;
+}) {
+  const source = imprintSourceLabel(item, p);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(item.path)}
+      className={cn(
+        'group flex w-full items-start gap-3 rounded-lg px-3.5 py-3.5 text-left transition-[background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active
+          ? 'border border-[var(--amber)]/35 bg-[var(--amber)]/10 shadow-sm'
+          : 'border border-transparent hover:bg-muted/30',
+      )}
+    >
+      <span
+        className={cn(
+          'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors duration-150',
+          active
+            ? 'border-[var(--amber)]/30 bg-[var(--amber)]/10 text-[var(--amber)]'
+            : 'border-border/60 bg-background/65 text-muted-foreground group-hover:text-foreground',
+        )}
+        aria-hidden
+      >
+        {segmentIcon('imprint', index)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-sans text-sm font-medium leading-5 text-foreground">{item.title}</span>
+        <span className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 font-sans text-[0.72rem] text-muted-foreground">
+          <span>{source}</span>
+          <span aria-hidden>·</span>
+          <span>{item.date}</span>
+          <span className="rounded-full bg-muted/45 px-2 py-0.5">{p.imprintStatusCaptured}</span>
+        </span>
+        {item.excerpt ? (
+          <span className="mt-2 line-clamp-2 font-sans text-xs leading-5 text-muted-foreground">{item.excerpt}</span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+function ImprintEventDetail({
+  selectedItem,
+  selectedIndex,
+  readableMarkdown,
+  EchoMarkdown,
+  p,
+}: {
+  selectedItem: EchoSavedItem;
+  selectedIndex: number;
+  readableMarkdown: string;
+  EchoMarkdown: EchoMarkdownComponent | null;
+  p: EchoSavedItemsCopy;
+}) {
+  const markdown = readableMarkdown.trim();
+  const source = imprintSourceLabel(selectedItem, p);
+  const sceneMarkdown = markdownSection(markdown, ['现场', 'Scene']) || markdown;
+  const resultMarkdown = markdownSection(markdown, ['结果', 'Result']) || selectedItem.excerpt || p.imprintRawFallback;
+  const evidence = [
+    { label: p.imprintDetailDateLabel, value: selectedItem.date },
+    { label: p.imprintDetailSourceLabel, value: source },
+    { label: p.imprintDetailPathLabel, value: selectedItem.path },
+  ];
+
+  return (
+    <article className="flex min-h-0 flex-1 flex-col" aria-labelledby="echo-memory-detail-title">
+      <header className="shrink-0 border-b border-border/45 px-6 py-5 md:px-8 md:py-6">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--amber)]/25 bg-[var(--amber)]/10 text-[var(--amber)]" aria-hidden>
+              {segmentIcon('imprint', selectedIndex)}
+            </span>
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-border/55 bg-muted/35 px-2.5 py-1 font-sans text-xs text-muted-foreground">{source}</span>
+                <span className="rounded-full bg-[var(--amber)]/10 px-2.5 py-1 font-sans text-xs text-[var(--amber)]">{p.imprintStatusCaptured}</span>
+              </div>
+              <h3 id="echo-memory-detail-title" className="font-sans text-2xl font-semibold leading-tight text-foreground md:text-3xl">
+                {selectedItem.title}
+              </h3>
+              <p className="mt-3 truncate font-sans text-sm text-muted-foreground">{selectedItem.date} · {selectedItem.path}</p>
+            </div>
+          </div>
+          <Link
+            href={`/view/${encodePath(selectedItem.path)}`}
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              'w-fit shrink-0',
+            )}
+          >
+            {p.echoSavedOpenLabel}
+            <ArrowUpRight size={13} aria-hidden />
+          </Link>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 md:px-8 md:py-6">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+          <section className="min-w-0 rounded-lg border border-border/55 bg-background/60 p-5">
+            <SectionLabel icon={<NotebookText size={16} aria-hidden />} title={p.imprintDetailSceneTitle} />
+            <div className={cn(echoDetailProseClass, 'mt-4')}>
+              {sceneMarkdown ? (
+                EchoMarkdown ? (
+                  <EchoMarkdown markdown={sceneMarkdown} />
+                ) : (
+                  <p className="whitespace-pre-wrap font-sans text-base leading-8 text-muted-foreground">{sceneMarkdown}</p>
+                )
+              ) : (
+                <p className="font-sans text-base leading-8 text-muted-foreground">{selectedItem.excerpt || p.imprintRawFallback}</p>
+              )}
+            </div>
+          </section>
+
+          <aside className="space-y-3">
+            <section className="rounded-lg border border-border/55 bg-background/60 p-4">
+              <SectionLabel icon={<Target size={15} aria-hidden />} title={p.imprintDetailEvidenceTitle} compact />
+              <dl className="mt-4 space-y-3">
+                {evidence.map((entry) => (
+                  <div key={entry.label} className="min-w-0">
+                    <dt className="font-sans text-[0.7rem] uppercase tracking-[0.08em] text-muted-foreground">{entry.label}</dt>
+                    <dd className="mt-1 truncate font-sans text-sm text-foreground">{entry.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+
+            <section className="rounded-lg border border-border/55 bg-background/60 p-4">
+              <SectionLabel icon={<Scale size={15} aria-hidden />} title={p.imprintDetailQuestionsTitle} compact />
+              <ul className="mt-4 space-y-2 font-sans text-sm leading-6 text-muted-foreground">
+                {p.imprintDetailQuestions.map((question) => (
+                  <li key={question} className="flex gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--amber)]/70" aria-hidden />
+                    <span>{question}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </aside>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(15rem,0.72fr)]">
+          <section className="rounded-lg border border-border/55 bg-background/60 p-5">
+            <SectionLabel icon={<BookOpen size={16} aria-hidden />} title={p.imprintDetailResultTitle} />
+            <p className="mt-4 font-sans text-sm leading-7 text-muted-foreground">
+              {resultMarkdown}
+            </p>
+          </section>
+
+          <section className="rounded-lg border border-[var(--amber)]/20 bg-[var(--amber)]/10 p-5">
+            <SectionLabel icon={<FlaskConical size={16} aria-hidden />} title={p.imprintDetailNextTitle} />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href={ECHO_SEGMENT_HREF.threads} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                {p.imprintDetailOpenThread}
+              </Link>
+              <Link href={ECHO_SEGMENT_HREF.growth} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                {p.imprintDetailOpenInsight}
+              </Link>
+              <Link href={ECHO_SEGMENT_HREF.practice} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                {p.imprintDetailOpenPractice}
+              </Link>
+            </div>
+          </section>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SectionLabel({
+  icon,
+  title,
+  compact = false,
+}: {
+  icon: ReactNode;
+  title: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn(
+        'flex shrink-0 items-center justify-center rounded-md bg-muted/45 text-muted-foreground',
+        compact ? 'h-7 w-7' : 'h-8 w-8',
+      )}>
+        {icon}
+      </span>
+      <h4 className={cn('font-sans font-medium text-foreground', compact ? 'text-sm' : 'text-base')}>
+        {title}
+      </h4>
+    </div>
+  );
+}
+
 export default function EchoMemoryReaderPanel({
   segment,
   listTitle,
@@ -125,6 +453,25 @@ export default function EchoMemoryReaderPanel({
       });
     return () => { cancelled = true; };
   }, [detail?.markdown, EchoMarkdown]);
+
+  if (segment === 'imprint') {
+    return (
+      <ImprintReaderPanel
+        listTitle={listTitle}
+        items={items}
+        selectedPath={selectedPath}
+        onSelect={onSelect}
+        selectedItem={selectedItem}
+        readableMarkdown={readableMarkdown}
+        EchoMarkdown={EchoMarkdown}
+        loading={loading}
+        error={error}
+        detailLoading={detailLoading}
+        detailError={detailError}
+        p={p}
+      />
+    );
+  }
 
   return (
     <div

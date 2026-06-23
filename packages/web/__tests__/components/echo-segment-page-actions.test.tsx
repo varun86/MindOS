@@ -45,6 +45,38 @@ describe('Echo segment page actions', () => {
     document.body.appendChild(host);
     root = createRoot(host);
     fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/echo?segment=imprint&path=')) {
+        return jsonResponse({
+          item: {
+            type: 'echo.imprint',
+            segment: 'imprint',
+            title: '修复 sidebar 激活态抖动',
+            path: 'Echo/Daily/2026/06/2026-06-23.md',
+            date: '2026-06-23',
+            updatedAt: '2026-06-23T00:00:00.000Z',
+            excerpt: '点击 logo 后 rail 激活态短暂跳到 Wiki，最后修复为稳定 Home 状态。',
+            markdown: '# 修复 sidebar 激活态抖动\n\n## 现场\n\n点击 logo 后 rail 激活态短暂跳到 Wiki。\n\n## 结果\n\n稳定回到 Home。',
+            assistantId: 'echo-imprint',
+          },
+        });
+      }
+      if (url === '/api/echo?segment=imprint') {
+        return jsonResponse({
+          updatedAt: '2026-06-23T00:00:00.000Z',
+          items: [
+            {
+              type: 'echo.imprint',
+              segment: 'imprint',
+              title: '修复 sidebar 激活态抖动',
+              path: 'Echo/Daily/2026/06/2026-06-23.md',
+              date: '2026-06-23',
+              updatedAt: '2026-06-23T00:00:00.000Z',
+              excerpt: '点击 logo 后 rail 激活态短暂跳到 Wiki，最后修复为稳定 Home 状态。',
+              assistantId: 'echo-imprint',
+            },
+          ],
+        });
+      }
       if (url.startsWith('/api/echo?segment=growth&path=')) {
         return jsonResponse({
           item: {
@@ -174,6 +206,35 @@ describe('Echo segment page actions', () => {
     expect(host.textContent).toContain('Generated insight.');
     expect(host.textContent).toContain('Echo/Insights/洞察.md');
     expect(host.querySelector('a[href="/view/Echo/Insights/%E6%B4%9E%E5%AF%9F.md"]')).not.toBeNull();
+  });
+
+  it('renders imprint as a practice event book with scene, evidence, and next-step actions', async () => {
+    await act(async () => {
+      root.render(<EchoSegmentPageClient segment="imprint" />);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('#echo-memory-reader-title')?.textContent).toBe(messages.zh.echoPages.imprintEventBookTitle);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintEventBookSubtitle);
+    expect(host.textContent).toContain('修复 sidebar 激活态抖动');
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintSourceAssistant);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintStatusCaptured);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintDetailSceneTitle);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintDetailResultTitle);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintDetailEvidenceTitle);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintDetailQuestionsTitle);
+    expect(host.textContent).toContain(messages.zh.echoPages.imprintDetailOpenThread);
+    expect(host.querySelector('a[href="/echo/threads"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/echo/growth"]')).not.toBeNull();
+    expect(host.querySelector('a[href="/echo/practice"]')).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/echo?segment=imprint&path=Echo%2FDaily%2F2026%2F06%2F2026-06-23.md',
+      expect.any(Object),
+    );
   });
 });
 
